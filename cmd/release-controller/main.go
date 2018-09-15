@@ -14,7 +14,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	coreclientset "k8s.io/client-go/kubernetes/typed/core/v1"
+	informers "k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
@@ -22,6 +23,7 @@ import (
 
 type options struct {
 	ReleaseNamespace string
+	JobNamespace     string
 }
 
 func main() {
@@ -38,6 +40,7 @@ func main() {
 		},
 	}
 	flag := cmd.Flags()
+	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace to look for release image streams in, will default to the current namespace.")
 	flag.AddGoFlag(original.Lookup("v"))
 
@@ -57,12 +60,15 @@ func (o *options) Run() error {
 	if len(ns) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
 	}
+	if len(o.JobNamespace) == 0 {
+		return fmt.Errorf("no job namespace set, use --job-namespace")
+	}
 
-	client, err := coreclientset.NewForConfig(config)
+	client, err := clientset.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
-	namespace, err := client.Namespaces().Get(ns, metav1.GetOptions{})
+	namespace, err := client.Core().Namespaces().Get(ns, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("unable to find release namespace: %v", err)
 	}
@@ -75,10 +81,17 @@ func (o *options) Run() error {
 	stopCh := wait.NeverStop
 	factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
 	imagestreams := factory.Image().V1().ImageStreams()
-	c := NewController(client, imageClient.Image(), imagestreams)
+	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
+	jobs := batchFactory.Batch().V1().Jobs()
+
+	c := NewController(client.Core(), imageClient.Image(), imagestreams, client.Batch(), jobs, o.JobNamespace)
+
 	factory.Start(stopCh)
+	batchFactory.Start(stopCh)
 	factory.WaitForCacheSync(stopCh)
+	batchFactory.WaitForCacheSync(stopCh)
 	glog.Infof("Caches synced")
+
 	c.Run(3, stopCh)
 	return nil
 	// load flag
