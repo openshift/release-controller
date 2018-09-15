@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,7 +63,8 @@ type Controller struct {
 	// own creates. Exposed only for testing.
 	expectationDelay time.Duration
 
-	jobNamespace string
+	releaseNamespace string
+	jobNamespace     string
 
 	sourceCache *lru.Cache
 }
@@ -74,6 +76,7 @@ func NewController(
 	imagestreams imageinformers.ImageStreamInformer,
 	jobClient batchclient.JobsGetter,
 	jobs batchinformers.JobInformer,
+	releaseNamespace string,
 	jobNamespace string,
 ) *Controller {
 	broadcaster := record.NewBroadcaster()
@@ -104,7 +107,8 @@ func NewController(
 			imagestreams.Informer().HasSynced,
 		},
 
-		jobNamespace: jobNamespace,
+		releaseNamespace: releaseNamespace,
+		jobNamespace:     jobNamespace,
 
 		sourceCache: sourceCache,
 	}
@@ -354,7 +358,7 @@ func (c *Controller) sync(key queueKey) error {
 				c.queue.Add(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
 			}
 		}
-		return nil
+		return c.cleanupInvariants()
 	}
 
 	// if we are waiting to observe the result of our previous actions, simply delay
@@ -368,7 +372,7 @@ func (c *Controller) sync(key queueKey) error {
 	// artifacts if the release no longer points to those
 	imageStream, err := c.imagestreamLister.ImageStreams(key.namespace).Get(key.name)
 	if errors.IsNotFound(err) {
-		return c.cleanupRelease(key.namespace, key.name)
+		return c.cleanupInvariants()
 	}
 	if err != nil {
 		return err
@@ -379,7 +383,7 @@ func (c *Controller) sync(key queueKey) error {
 		return nil
 	}
 	if !ok {
-		return c.cleanupRelease(key.namespace, key.name)
+		return c.cleanupInvariants()
 	}
 
 	now := time.Now()
@@ -410,8 +414,7 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	if glog.V(4) {
-		glog.Infof("ready     %v", tagNames(readyReleases))
-		glog.Infof("verified  %v", tagNames(verifiedReleases))
+		glog.Infof("ready=%v verified=%v", tagNames(readyReleases), tagNames(verifiedReleases))
 	}
 
 	return nil
@@ -481,8 +484,79 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 	return cfg, nil
 }
 
-func (c *Controller) cleanupRelease(namespace, name string) error {
+func (c *Controller) cleanupInvariants() error {
+	is, err := c.imagestreamLister.ImageStreams(c.releaseNamespace).Get("release")
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	validReleases := make(map[string]struct{})
+	for _, tag := range is.Spec.Tags {
+		validReleases[tag.Name] = struct{}{}
+	}
+
+	// all jobs created for a release that no longer exists should be deleted
+	jobs, err := c.jobLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, job := range jobs {
+		if _, ok := validReleases[job.Name]; ok {
+			continue
+		}
+		generation, ok := releaseGenerationFromObject(job.Name, job.Annotations)
+		if !ok {
+			continue
+		}
+		if generation < is.Generation {
+			glog.V(2).Infof("Removing orphaned release job %s", job.Name)
+			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil {
+				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
+			}
+		}
+	}
+
+	// all image mirrors created for a release that no longer exists should be deleted
+	mirrors, err := c.imagestreamLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, mirror := range mirrors {
+		if _, ok := validReleases[mirror.Name]; ok {
+			continue
+		}
+		generation, ok := releaseGenerationFromObject(mirror.Name, mirror.Annotations)
+		if !ok {
+			continue
+		}
+		if generation < is.Generation {
+			glog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
+			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(mirror.Name, nil); err != nil {
+				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s: %v", mirror.Name, err))
+			}
+		}
+	}
 	return nil
+}
+
+func releaseGenerationFromObject(name string, annotations map[string]string) (int64, bool) {
+	_, ok := annotations["release.openshift.io/source"]
+	if !ok {
+		return 0, false
+	}
+	s, ok := annotations["release.openshift.io/generation"]
+	if !ok {
+		glog.V(4).Infof("Can't check job %s, no generation", name)
+		return 0, false
+	}
+	generation, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		glog.V(4).Infof("Can't check job %s, generation is invalid: %v", name, err)
+		return 0, false
+	}
+	return generation, true
 }
 
 func determineNeededActions(release *Release, now time.Time) (pending []*imagev1.TagReference, prune []*imagev1.TagReference, pendingImages bool, inputHash string) {
@@ -491,6 +565,10 @@ func determineNeededActions(release *Release, now time.Time) (pending []*imagev1
 	for i := range release.Target.Spec.Tags {
 		tag := &release.Target.Spec.Tags[i]
 		if tag.Annotations["release.openshift.io/source"] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+			continue
+		}
+
+		if tag.Annotations["release.openshift.io/name"] != release.Config.Name {
 			continue
 		}
 
@@ -538,57 +616,7 @@ func (c *Controller) syncPending(release *Release, pendingReleases []*imagev1.Ta
 			return nil, nil, fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
 
-		job, err := c.jobLister.Jobs(c.jobNamespace).Get(tag.Name)
-		if errors.IsNotFound(err) {
-			toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, tag.Name)
-			toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
-			glog.V(2).Infof("Running release creation job for %s", tag.Name)
-			job, err = c.jobClient.Jobs(c.jobNamespace).Create(&batchv1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: tag.Name,
-					Annotations: map[string]string{
-						"release.openshift.io/source": mirror.Annotations["release.openshift.io/source"],
-					},
-				},
-				Spec: batchv1.JobSpec{
-					BackoffLimit: int32p(3),
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							ServiceAccountName: "builder",
-							RestartPolicy:      corev1.RestartPolicyNever,
-							Containers: []corev1.Container{
-								{
-									Name:  "build",
-									Image: "openshift/origin-cli:v4.0",
-									Env: []corev1.EnvVar{
-										{Name: "HOME", Value: "/tmp"},
-									},
-									Command: []string{
-										"/bin/bash", "-c", `
-										set -e
-										oc registry login
-										oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
-										`, "",
-										tag.Name, tag.Name, c.jobNamespace, toImage, toImageBase,
-									},
-									TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-								},
-							},
-						},
-					},
-				},
-			})
-			if err != nil {
-				if !errors.IsAlreadyExists(err) {
-					return nil, nil, err
-				}
-				// perform a live lookup if we are racing to create the job
-				job, err = c.jobClient.Jobs(c.jobNamespace).Get(tag.Name, metav1.GetOptions{})
-			}
-		}
-		if err != nil {
-			return nil, nil, err
-		}
+		job, err := c.getOrCreateReleaseJob(release, tag.Name, mirror)
 		success, complete := jobIsComplete(job)
 		switch {
 		case !complete:
@@ -615,6 +643,71 @@ func (c *Controller) syncPending(release *Release, pendingReleases []*imagev1.Ta
 	return nil, ready, nil
 }
 
+func (c *Controller) getOrCreateReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+	job, err := c.jobLister.Jobs(c.jobNamespace).Get(name)
+	if err == nil {
+		return job, nil
+	}
+	if !errors.IsNotFound(err) {
+		return nil, err
+	}
+
+	toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
+	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
+
+	job = newReleaseJob(name, c.jobNamespace, toImage, toImageBase)
+	job.Annotations["release.openshift.io/source"] = mirror.Annotations["release.openshift.io/source"]
+	job.Annotations["release.openshift.io/generation"] = strconv.FormatInt(release.Target.Generation, 10)
+
+	glog.V(2).Infof("Running release creation job for %s", name)
+	job, err = c.jobClient.Jobs(c.jobNamespace).Create(job)
+	if err == nil {
+		return job, nil
+	}
+	if !errors.IsAlreadyExists(err) {
+		return nil, err
+	}
+
+	// perform a live lookup if we are racing to create the job
+	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
+}
+
+func newReleaseJob(name, namespace, toImage, toImageBase string) *batchv1.Job {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Annotations: map[string]string{},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: int32p(3),
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					ServiceAccountName: "builder",
+					RestartPolicy:      corev1.RestartPolicyNever,
+					Containers: []corev1.Container{
+						{
+							Name:  "build",
+							Image: "openshift/origin-cli:v4.0",
+							Env: []corev1.EnvVar{
+								{Name: "HOME", Value: "/tmp"},
+							},
+							Command: []string{
+								"/bin/bash", "-c", `
+								set -e
+								oc registry login
+								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
+								`, "",
+								name, name, namespace, toImage, toImageBase,
+							},
+							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func (c *Controller) pruneRelease(release *Release, pruneReleases []*imagev1.TagReference) error {
 	for _, tag := range pruneReleases {
 		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
@@ -634,11 +727,11 @@ func (c *Controller) createRelease(release *Release, now time.Time, inputHash st
 	tag := imagev1.TagReference{
 		Name: fmt.Sprintf("%s-%s", release.Config.Name, t),
 		Annotations: map[string]string{
+			"release.openshift.io/name":              release.Config.Name,
 			"release.openshift.io/source":            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 			"release.openshift.io/creationTimestamp": now.Format(time.RFC3339),
 			"release.openshift.io/phase":             "Pending",
 			"release.openshift.io/hash":              inputHash,
-			"release.openshift.io/sourceRV":          release.Source.ResourceVersion,
 		},
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
@@ -727,8 +820,9 @@ func (c *Controller) getOrCreateReleaseMirror(release *Release, name, inputHash 
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Annotations: map[string]string{
-				"release.openshift.io/source": fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-				"release.openshift.io/hash":   inputHash,
+				"release.openshift.io/source":     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+				"release.openshift.io/hash":       inputHash,
+				"release.openshift.io/generation": strconv.FormatInt(release.Target.Generation, 10),
 			},
 		},
 	}

@@ -84,7 +84,7 @@ func (o *options) Run() error {
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 
-	c := NewController(client.Core(), imageClient.Image(), imagestreams, client.Batch(), jobs, o.JobNamespace)
+	c := NewController(client.Core(), imageClient.Image(), imagestreams, client.Batch(), jobs, ns, o.JobNamespace)
 
 	factory.Start(stopCh)
 	batchFactory.Start(stopCh)
