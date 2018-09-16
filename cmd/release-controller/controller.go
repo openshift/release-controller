@@ -9,7 +9,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -58,9 +57,8 @@ type Controller struct {
 
 	imageClient       imageclient.ImageV1Interface
 	imageStreamLister *multiImageStreamLister
-
-	jobClient batchclient.JobsGetter
-	jobLister batchlisters.JobLister
+	jobClient         batchclient.JobsGetter
+	jobLister         batchlisters.JobLister
 
 	// syncs are the items that must return true before the queue can be processed
 	syncs []cache.InformerSynced
@@ -74,13 +72,19 @@ type Controller struct {
 	// own creates. Exposed only for testing.
 	expectationDelay time.Duration
 
+	// releaseNamespace is the namespace where the "release" image stream is expected
+	// to be found.
 	releaseNamespace string
-	jobNamespace     string
+	// jobNamespace is the namespace where temporary job and image stream mirror objects
+	// are created.
+	jobNamespace string
 
-	sourceCache *lru.Cache
+	// parsedReleaseConfigCache caches the parsed release config object for any release
+	// config serialized json.
+	parsedReleaseConfigCache *lru.Cache
 }
 
-// NewController instantiates a Controller
+// NewController instantiates a Controller to manage release objects.
 func NewController(
 	eventsClient kv1core.EventsGetter,
 	imageClient imageclient.ImageV1Interface,
@@ -89,13 +93,15 @@ func NewController(
 	releaseNamespace string,
 	jobNamespace string,
 ) *Controller {
+
+	// log events at v2 and send them to the server
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(glog.V(2).Infof)
-	// TODO: remove the wrapper when every clients have moved to use the clientset.
 	broadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: eventsClient.Events("")})
 	recorder := broadcaster.NewRecorder(imagescheme.Scheme, corev1.EventSource{Component: "release-controller"})
 
-	sourceCache, err := lru.New(50)
+	// we cache parsed release configs to avoid the deserialization cost
+	parsedReleaseConfigCache, err := lru.New(50)
 	if err != nil {
 		panic(err)
 	}
@@ -118,10 +124,10 @@ func NewController(
 		releaseNamespace: releaseNamespace,
 		jobNamespace:     jobNamespace,
 
-		sourceCache: sourceCache,
+		parsedReleaseConfigCache: parsedReleaseConfigCache,
 	}
 
-	// any change to a job
+	// handle job changes
 	jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processJobIfComplete,
 		DeleteFunc: c.processJob,
@@ -154,6 +160,8 @@ func (l *multiImageStreamLister) ImageStreams(ns string) imagelisters.ImageStrea
 	return l.listers[ns]
 }
 
+// AddNamespacedImageStreamInformer adds a new namespace scoped informer to the controller.
+// All namespaces are treated equally.
 func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams imageinformers.ImageStreamInformer) {
 	c.imageStreamLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
 
@@ -172,24 +180,10 @@ type queueKey struct {
 	name      string
 }
 
-func (c *Controller) processNamespace(obj interface{}) {
-	switch t := obj.(type) {
-	case metav1.Object:
-		ns := t.GetNamespace()
-		if len(ns) == 0 {
-			utilruntime.HandleError(fmt.Errorf("object %T has no namespace", obj))
-			return
-		}
-		c.queue.Add(queueKey{namespace: ns})
-	default:
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
-	}
-}
-
 func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
-		key, ok := queueKeyFor(t.Annotations["release.openshift.io/source"])
+		key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource])
 		if !ok {
 			return
 		}
@@ -224,12 +218,12 @@ func (c *Controller) processImageStream(obj interface{}) {
 		c.expectations.Clear(t.Namespace, t.Name)
 
 		// if this image stream is a mirror for releases, requeue any that it touches
-		if _, ok := t.Annotations["release.openshift.io/config"]; ok {
+		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
 			glog.V(5).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.queue.Add(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
-		if key, ok := queueKeyFor(t.Annotations["release.openshift.io/source"]); ok {
+		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
 			glog.V(5).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.queue.Add(key)
 			return
@@ -288,6 +282,8 @@ func (c *Controller) processNext() bool {
 	return true
 }
 
+// terminalError is a wrapper that indicates the error should be logged but the queue
+// key should not be requeued.
 type terminalError struct {
 	error
 }
