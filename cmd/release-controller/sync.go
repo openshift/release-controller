@@ -7,11 +7,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang/glog"
-	lru "github.com/hashicorp/golang-lru"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,328 +17,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
-	batchinformers "k8s.io/client-go/informers/batch/v1"
-	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
-	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	batchlisters "k8s.io/client-go/listers/batch/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 
 	imagev1 "github.com/openshift/api/image/v1"
-	imagescheme "github.com/openshift/client-go/image/clientset/versioned/scheme"
-	imageclient "github.com/openshift/client-go/image/clientset/versioned/typed/image/v1"
-	imageinformers "github.com/openshift/client-go/image/informers/externalversions/image/v1"
-	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 )
 
-// Controller ensures ...
-//
-// Invariants:
-//
-// 1. ...
-//
-type Controller struct {
-	eventRecorder record.EventRecorder
-
-	imageClient       imageclient.ImageV1Interface
-	imagestreamLister imagelisters.ImageStreamLister
-
-	jobClient batchclient.JobsGetter
-	jobLister batchlisters.JobLister
-
-	// syncs are the items that must return true before the queue can be processed
-	syncs []cache.InformerSynced
-
-	// queue is the list of namespace keys that must be synced.
-	queue workqueue.RateLimitingInterface
-
-	// expectations track upcoming route creations that we have not yet observed
-	expectations *expectations
-	// expectationDelay controls how long the controller waits to observe its
-	// own creates. Exposed only for testing.
-	expectationDelay time.Duration
-
-	releaseNamespace string
-	jobNamespace     string
-
-	sourceCache *lru.Cache
-}
-
-// NewController instantiates a Controller
-func NewController(
-	eventsClient kv1core.EventsGetter,
-	imageClient imageclient.ImageV1Interface,
-	imagestreams imageinformers.ImageStreamInformer,
-	jobClient batchclient.JobsGetter,
-	jobs batchinformers.JobInformer,
-	releaseNamespace string,
-	jobNamespace string,
-) *Controller {
-	broadcaster := record.NewBroadcaster()
-	broadcaster.StartLogging(glog.V(2).Infof)
-	// TODO: remove the wrapper when every clients have moved to use the clientset.
-	broadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: eventsClient.Events("")})
-	recorder := broadcaster.NewRecorder(imagescheme.Scheme, corev1.EventSource{Component: "release-controller"})
-
-	sourceCache, err := lru.New(50)
-	if err != nil {
-		panic(err)
-	}
-
-	c := &Controller{
-		eventRecorder: recorder,
-		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "release"),
-
-		expectations:     newExpectations(),
-		expectationDelay: 2 * time.Second,
-
-		imageClient:       imageClient,
-		imagestreamLister: imagestreams.Lister(),
-
-		jobClient: jobClient,
-		jobLister: jobs.Lister(),
-
-		syncs: []cache.InformerSynced{
-			imagestreams.Informer().HasSynced,
-		},
-
-		releaseNamespace: releaseNamespace,
-		jobNamespace:     jobNamespace,
-
-		sourceCache: sourceCache,
-	}
-
-	// any change to a job
-	jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.processJobIfComplete,
-		DeleteFunc: c.processJob,
-		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
-	})
-
-	// any change to a route that has the controller relationship to an ImageStream
-	// routes.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-	// 	FilterFunc: func(obj interface{}) bool {
-	// 		switch t := obj.(type) {
-	// 		case *routev1.Route:
-	// 			_, ok := hasIngressOwnerRef(t.OwnerReferences)
-	// 			return ok
-	// 		}
-	// 		return true
-	// 	},
-	// 	Handler: cache.ResourceEventHandlerFuncs{
-	// 		AddFunc:    c.processRoute,
-	// 		DeleteFunc: c.processRoute,
-	// 		UpdateFunc: func(oldObj, newObj interface{}) {
-	// 			c.processRoute(newObj)
-	// 		},
-	// 	},
-	// })
-
-	// changes to image streams
-	imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.processImageStream,
-		DeleteFunc: c.processImageStream,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			c.processImageStream(newObj)
-		},
-	})
-
-	return c
-}
-
-// expectations track an upcoming change to a named resource related
-// to a release. This is a thread safe object but callers assume
-// responsibility for ensuring expectations do not leak.
-type expectations struct {
-	lock   sync.Mutex
-	expect map[queueKey]sets.String
-}
-
-// newExpectations returns a tracking object for upcoming events
-// that the controller may expect to happen.
-func newExpectations() *expectations {
-	return &expectations{
-		expect: make(map[queueKey]sets.String),
-	}
-}
-
-// Expect that an event will happen in the future for the given release
-// and a named resource related to that release.
-func (e *expectations) Expect(namespace, parentName, name string) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	key := queueKey{namespace: namespace, name: parentName}
-	set, ok := e.expect[key]
-	if !ok {
-		set = sets.NewString()
-		e.expect[key] = set
-	}
-	set.Insert(name)
-}
-
-// Satisfied clears the expectation for the given resource name on an
-// release.
-func (e *expectations) Satisfied(namespace, parentName, name string) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	key := queueKey{namespace: namespace, name: parentName}
-	set := e.expect[key]
-	set.Delete(name)
-	if set.Len() == 0 {
-		delete(e.expect, key)
-	}
-}
-
-// Expecting returns true if the provided release is still waiting to
-// see changes.
-func (e *expectations) Expecting(namespace, parentName string) bool {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	key := queueKey{namespace: namespace, name: parentName}
-	return e.expect[key].Len() > 0
-}
-
-// Clear indicates that all expectations for the given release should
-// be cleared.
-func (e *expectations) Clear(namespace, parentName string) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	key := queueKey{namespace: namespace, name: parentName}
-	delete(e.expect, key)
-}
-
-type queueKey struct {
-	namespace string
-	name      string
-}
-
-func (c *Controller) processNamespace(obj interface{}) {
-	switch t := obj.(type) {
-	case metav1.Object:
-		ns := t.GetNamespace()
-		if len(ns) == 0 {
-			utilruntime.HandleError(fmt.Errorf("object %T has no namespace", obj))
-			return
-		}
-		c.queue.Add(queueKey{namespace: ns})
-	default:
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
-	}
-}
-
-func (c *Controller) processJob(obj interface{}) {
-	switch t := obj.(type) {
-	case *batchv1.Job:
-		key, ok := queueKeyFor(t.Annotations["release.openshift.io/source"])
-		if !ok {
-			return
-		}
-		if glog.V(4) {
-			success, complete := jobIsComplete(t)
-			glog.Infof("Job %s updated, complete=%t success=%t", t.Name, complete, success)
-		}
-		c.queue.Add(key)
-	default:
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
-	}
-}
-
-func (c *Controller) processJobIfComplete(obj interface{}) {
-	switch t := obj.(type) {
-	case *batchv1.Job:
-		if _, complete := jobIsComplete(t); !complete {
-			return
-		}
-		c.processJob(obj)
-	default:
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
-	}
-}
-
-func (c *Controller) processImageStream(obj interface{}) {
-	switch t := obj.(type) {
-	case *imagev1.ImageStream:
-		// when we see a change to an image stream, reset our expectations
-		// this also allows periodic purging of the expectation list in the event
-		// we miss one or more events.
-		c.expectations.Clear(t.Namespace, t.Name)
-
-		// if this image stream is a mirror for releases, requeue any that it touches
-		if _, ok := t.Annotations["release.openshift.io/config"]; ok {
-			glog.V(5).Infof("Image stream %s is a release input and will be queued", t.Name)
-			c.queue.Add(queueKey{namespace: t.Namespace, name: t.Name})
-			return
-		}
-		if key, ok := queueKeyFor(t.Annotations["release.openshift.io/source"]); ok {
-			glog.V(5).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
-			c.queue.Add(key)
-			return
-		}
-		if t.Name == "release" {
-			// if the release image stream is modified, just requeue everything in the event a tag
-			// has been deleted
-			glog.V(5).Infof("Image stream %s is a release target, requeue the entire namespace", t.Name)
-			c.queue.Add(queueKey{namespace: t.Namespace})
-			return
-		}
-	default:
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
-	}
-}
-
-// Run begins watching and syncing.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
-	defer c.queue.ShutDown()
-
-	glog.Infof("Starting controller")
-
-	if !cache.WaitForCacheSync(stopCh, c.syncs...) {
-		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
-		return
-	}
-
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.worker, time.Second, stopCh)
-	}
-
-	<-stopCh
-	glog.Infof("Shutting down controller")
-}
-
-func (c *Controller) worker() {
-	for c.processNext() {
-	}
-	glog.V(4).Infof("Worker stopped")
-}
-
-func (c *Controller) processNext() bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	glog.V(5).Infof("processing %v begin", key)
-	err := c.sync(key.(queueKey))
-	c.handleNamespaceErr(err, key)
-	glog.V(5).Infof("processing %v end", key)
-
-	return true
-}
-
-func (c *Controller) handleNamespaceErr(err error, key interface{}) {
-	if err == nil {
-		c.queue.Forget(key)
-		return
-	}
-
-	glog.V(4).Infof("Error syncing %v: %v", key, err)
-	c.queue.AddRateLimited(key)
-}
+const (
+	releaseImageStreamName = "release"
+)
 
 // sync expects to receive a queue key that points to a valid release image input
 // or to the entire namespace.
@@ -349,7 +32,7 @@ func (c *Controller) sync(key queueKey) error {
 	// this allows us to batch changes together when calculating which resource
 	// would be affected is inefficient
 	if len(key.name) == 0 {
-		imageStreams, err := c.imagestreamLister.ImageStreams(key.namespace).List(labels.Everything())
+		imageStreams, err := c.imageStreamLister.ImageStreams(key.namespace).List(labels.Everything())
 		if err != nil {
 			return err
 		}
@@ -370,7 +53,7 @@ func (c *Controller) sync(key queueKey) error {
 
 	// locate the release definition off the image stream, or clean up any remaining
 	// artifacts if the release no longer points to those
-	imageStream, err := c.imagestreamLister.ImageStreams(key.namespace).Get(key.name)
+	imageStream, err := c.imageStreamLister.ImageStreams(key.namespace).Get(key.name)
 	if errors.IsNotFound(err) {
 		return c.cleanupInvariants()
 	}
@@ -379,35 +62,35 @@ func (c *Controller) sync(key queueKey) error {
 	}
 	release, ok, err := c.releaseDefinition(imageStream)
 	if err != nil {
-		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "InvalidReleaseDefinition", "The release is not valid: %v", err)
-		return nil
+		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "InvalidReleaseDefinition", "%v", err)
+		return err
 	}
 	if !ok {
 		return c.cleanupInvariants()
 	}
 
 	now := time.Now()
-	pendingReleases, pruneReleases, newImages, inputHash := determineNeededActions(release, now)
+	pending, toPrune, hasNewImages, inputHash := determineNeededActions(release, now)
 
 	if glog.V(4) {
-		glog.Infof("name=%s newImages=%t imageHash=%s prune=%v pending=%v", release.Source.Name, newImages, inputHash, tagNames(pruneReleases), tagNames(pendingReleases))
+		glog.Infof("name=%s hasNewImages=%t imageHash=%s prune=%v pending=%v", release.Source.Name, hasNewImages, inputHash, tagNames(toPrune), tagNames(pending))
 	}
 
-	if len(pruneReleases) > 0 {
+	if len(toPrune) > 0 {
 		c.queue.AddAfter(key, time.Second)
-		return c.pruneRelease(release, pruneReleases)
+		return c.pruneRelease(release, toPrune)
 	}
 
-	if len(pendingReleases) == 0 && newImages {
-		pending, err := c.createRelease(release, now, inputHash)
+	if len(pending) == 0 && hasNewImages {
+		releaseTag, err := c.createReleaseTag(release, now, inputHash)
 		if err != nil {
 			c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToCreateRelease", "%v", err)
 			return err
 		}
-		pendingReleases = []*imagev1.TagReference{pending}
+		pending = []*imagev1.TagReference{releaseTag}
 	}
 
-	verifiedReleases, readyReleases, err := c.syncPending(release, pendingReleases, inputHash)
+	verifiedReleases, readyReleases, err := c.syncPending(release, pending, inputHash)
 	if err != nil {
 		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
 		return err
@@ -420,17 +103,6 @@ func (c *Controller) sync(key queueKey) error {
 	return nil
 }
 
-type Release struct {
-	Source  *imagev1.ImageStream
-	Target  *imagev1.ImageStream
-	Config  *ReleaseConfig
-	Expires time.Duration
-}
-
-type ReleaseConfig struct {
-	Name string `json:"name"`
-}
-
 func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool, error) {
 	src, ok := is.Annotations["release.openshift.io/config"]
 	if !ok {
@@ -438,16 +110,17 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 	cfg, err := c.parseReleaseConfig(src)
 	if err != nil {
-		return nil, false, fmt.Errorf("the release config annotation for %s is invalid: %v", is.Name, err)
+		return nil, false, fmt.Errorf("the release.openshift.io/config annotation for %s is invalid: %v", is.Name, err)
 	}
 
-	targetImageStream, err := c.imagestreamLister.ImageStreams(is.Namespace).Get("release")
+	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
 	if errors.IsNotFound(err) {
 		// TODO: something special here?
-		return nil, false, fmt.Errorf("unable to locate target image stream %s for release %s: %v", "release", is.Name, err)
+		glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, releaseImageStreamName)
+		return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", releaseImageStreamName, is.Name)}
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)
 	}
 
 	if len(is.Status.Tags) == 0 {
@@ -485,7 +158,7 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 }
 
 func (c *Controller) cleanupInvariants() error {
-	is, err := c.imagestreamLister.ImageStreams(c.releaseNamespace).Get("release")
+	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -519,7 +192,7 @@ func (c *Controller) cleanupInvariants() error {
 	}
 
 	// all image mirrors created for a release that no longer exists should be deleted
-	mirrors, err := c.imagestreamLister.List(labels.Everything())
+	mirrors, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
@@ -599,16 +272,16 @@ func determineNeededActions(release *Release, now time.Time) (pending []*imagev1
 	return pending, prune, pendingImages, inputHash
 }
 
-func (c *Controller) syncPending(release *Release, pendingReleases []*imagev1.TagReference, inputHash string) (verified []*imagev1.TagReference, ready []*imagev1.TagReference, err error) {
-	if len(pendingReleases) > 1 {
-		if err := c.markReleaseFailed(release, "Aborted", "Multiple releases were found simultaneously running.", tagNames(pendingReleases[1:])...); err != nil {
+func (c *Controller) syncPending(release *Release, pending []*imagev1.TagReference, inputHash string) (verified []*imagev1.TagReference, ready []*imagev1.TagReference, err error) {
+	if len(pending) > 1 {
+		if err := c.markReleaseFailed(release, "Aborted", "Multiple releases were found simultaneously running.", tagNames(pending[1:])...); err != nil {
 			return nil, nil, err
 		}
 	}
 
-	if len(pendingReleases) > 0 {
-		tag := pendingReleases[0]
-		mirror, err := c.getOrCreateReleaseMirror(release, tag.Name, inputHash)
+	if len(pending) > 0 {
+		tag := pending[0]
+		mirror, err := c.ensureReleaseMirror(release, tag.Name, inputHash)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -616,7 +289,7 @@ func (c *Controller) syncPending(release *Release, pendingReleases []*imagev1.Ta
 			return nil, nil, fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
 
-		job, err := c.getOrCreateReleaseJob(release, tag.Name, mirror)
+		job, err := c.ensureReleaseJob(release, tag.Name, mirror)
 		success, complete := jobIsComplete(job)
 		switch {
 		case !complete:
@@ -643,7 +316,7 @@ func (c *Controller) syncPending(release *Release, pendingReleases []*imagev1.Ta
 	return nil, ready, nil
 }
 
-func (c *Controller) getOrCreateReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	job, err := c.jobLister.Jobs(c.jobNamespace).Get(name)
 	if err == nil {
 		return job, nil
@@ -708,8 +381,8 @@ func newReleaseJob(name, namespace, toImage, toImageBase string) *batchv1.Job {
 	}
 }
 
-func (c *Controller) pruneRelease(release *Release, pruneReleases []*imagev1.TagReference) error {
-	for _, tag := range pruneReleases {
+func (c *Controller) pruneRelease(release *Release, toPrune []*imagev1.TagReference) error {
+	for _, tag := range toPrune {
 		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
 			if !errors.IsNotFound(err) {
 				return err
@@ -720,7 +393,7 @@ func (c *Controller) pruneRelease(release *Release, pruneReleases []*imagev1.Tag
 	return nil
 }
 
-func (c *Controller) createRelease(release *Release, now time.Time, inputHash string) (*imagev1.TagReference, error) {
+func (c *Controller) createReleaseTag(release *Release, now time.Time, inputHash string) (*imagev1.TagReference, error) {
 	target := release.Target.DeepCopy()
 	now = now.UTC().Truncate(time.Second)
 	t := now.Format("20060102150405")
@@ -807,8 +480,8 @@ func (c *Controller) markReleaseFailed(release *Release, reason, message string,
 	return nil
 }
 
-func (c *Controller) getOrCreateReleaseMirror(release *Release, name, inputHash string) (*imagev1.ImageStream, error) {
-	is, err := c.imagestreamLister.ImageStreams(c.jobNamespace).Get(name)
+func (c *Controller) ensureReleaseMirror(release *Release, name, inputHash string) (*imagev1.ImageStream, error) {
+	is, err := c.imageStreamLister.ImageStreams(c.jobNamespace).Get(name)
 	if err == nil {
 		return is, nil
 	}

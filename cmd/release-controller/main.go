@@ -41,7 +41,7 @@ func main() {
 	}
 	flag := cmd.Flags()
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
-	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace to look for release image streams in, will default to the current namespace.")
+	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the releases will be published to.")
 	flag.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
@@ -50,14 +50,11 @@ func main() {
 }
 
 func (o *options) Run() error {
-	config, ns, _, err := loadClusterConfig()
+	config, _, _, err := loadClusterConfig()
 	if err != nil {
 		return fmt.Errorf("unable to load client configuration: %v", err)
 	}
-	if len(o.ReleaseNamespace) > 0 {
-		ns = o.ReleaseNamespace
-	}
-	if len(ns) == 0 {
+	if len(o.ReleaseNamespace) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
 	}
 	if len(o.JobNamespace) == 0 {
@@ -68,28 +65,51 @@ func (o *options) Run() error {
 	if err != nil {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
-	namespace, err := client.Core().Namespaces().Get(ns, metav1.GetOptions{})
-	if err != nil {
+	if _, err := client.Core().Namespaces().Get(o.ReleaseNamespace, metav1.GetOptions{}); err != nil {
 		return fmt.Errorf("unable to find release namespace: %v", err)
 	}
-	glog.Infof("Using namespace %s for release namespace", namespace.Name)
+	if o.JobNamespace != o.ReleaseNamespace {
+		if _, err := client.Core().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
+			return fmt.Errorf("unable to find job namespace: %v", err)
+		}
+		glog.Infof("Releases will be published to image stream %s/%s, jobs and mirrors will be created in namespace %s", o.ReleaseNamespace, "release", o.JobNamespace)
+	} else {
+		glog.Infof("Release will be published to image stream %s/%s and jobs will be in the same namespace", o.ReleaseNamespace, "release")
+	}
+
 	imageClient, err := imageclientset.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 
 	stopCh := wait.NeverStop
-	factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
-	imagestreams := factory.Image().V1().ImageStreams()
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 
-	c := NewController(client.Core(), imageClient.Image(), imagestreams, client.Batch(), jobs, ns, o.JobNamespace)
+	c := NewController(
+		client.Core(),
+		imageClient.Image(),
+		client.Batch(),
+		jobs,
+		o.ReleaseNamespace,
+		o.JobNamespace,
+	)
 
-	factory.Start(stopCh)
 	batchFactory.Start(stopCh)
-	factory.WaitForCacheSync(stopCh)
 	batchFactory.WaitForCacheSync(stopCh)
+
+	// register image streams
+	factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(o.ReleaseNamespace))
+	c.AddNamespacedImageStreamInformer(o.ReleaseNamespace, factory.Image().V1().ImageStreams())
+	factory.Start(stopCh)
+	factory.WaitForCacheSync(stopCh)
+	if o.JobNamespace != o.ReleaseNamespace {
+		factory = imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(o.JobNamespace))
+		c.AddNamespacedImageStreamInformer(c.jobNamespace, factory.Image().V1().ImageStreams())
+		factory.Start(stopCh)
+		factory.WaitForCacheSync(stopCh)
+	}
+
 	glog.Infof("Caches synced")
 
 	c.Run(3, stopCh)
