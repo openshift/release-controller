@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -20,7 +21,9 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 	cfg, err := c.parseReleaseConfig(src)
 	if err != nil {
-		return nil, false, fmt.Errorf("the %s annotation for %s is invalid: %v", releaseAnnotationConfig, is.Name, err)
+		err = fmt.Errorf("the %s annotation for %s is invalid: %v", releaseAnnotationConfig, is.Name, err)
+		c.eventRecorder.Eventf(is, corev1.EventTypeWarning, "InvalidReleaseDefinition", "%v", err)
+		return nil, false, terminalError{err}
 	}
 
 	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
@@ -61,6 +64,16 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 	}
 	if len(cfg.Name) == 0 {
 		return nil, fmt.Errorf("release config must have a valid name")
+	}
+	for name, verify := range cfg.Verify {
+		if len(name) == 0 {
+			return nil, fmt.Errorf("verify config has no name")
+		}
+		if verify.ProwJob != nil {
+			if len(verify.ProwJob.Name) == 0 {
+				return nil, fmt.Errorf("prow job for %s has no name", name)
+			}
+		}
 	}
 	copied := *cfg
 	c.parsedReleaseConfigCache.Add(data, copied)

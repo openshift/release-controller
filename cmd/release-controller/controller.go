@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
 
@@ -12,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	batchinformers "k8s.io/client-go/informers/batch/v1"
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -25,6 +28,8 @@ import (
 	imageclient "github.com/openshift/client-go/image/clientset/versioned/typed/image/v1"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions/image/v1"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
+
+	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -78,6 +83,12 @@ type Controller struct {
 	// jobNamespace is the namespace where temporary job and image stream mirror objects
 	// are created.
 	jobNamespace string
+	// prowNamespace is the namespace where ProwJobs are created.
+	prowNamespace string
+
+	prowConfigLoader ProwConfigLoader
+	prowClient       dynamic.ResourceInterface
+	prowLister       cache.Indexer
 
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
@@ -90,6 +101,8 @@ func NewController(
 	imageClient imageclient.ImageV1Interface,
 	jobClient batchclient.JobsGetter,
 	jobs batchinformers.JobInformer,
+	prowConfigLoader ProwConfigLoader,
+	prowClient dynamic.ResourceInterface,
 	releaseNamespace string,
 	jobNamespace string,
 ) *Controller {
@@ -121,6 +134,9 @@ func NewController(
 
 		syncs: []cache.InformerSynced{},
 
+		prowConfigLoader: prowConfigLoader,
+		prowClient:       prowClient,
+
 		releaseNamespace: releaseNamespace,
 		jobNamespace:     jobNamespace,
 
@@ -135,6 +151,10 @@ func NewController(
 	})
 
 	return c
+}
+
+type ProwConfigLoader interface {
+	Config() *prowapiv1.Config
 }
 
 // multiImageStreamLister uses multiple independent namespace listers
@@ -175,6 +195,21 @@ func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams im
 	})
 }
 
+// AddProwInformer sets the controller up to watch for changes to prow jobs created by the
+// controller.
+func (c *Controller) AddProwInformer(ns string, informer cache.SharedIndexInformer) {
+	c.syncs = append(c.syncs, informer.HasSynced)
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.processProwJob,
+		DeleteFunc: c.processProwJob,
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			c.processProwJob(newObj)
+		},
+	})
+	c.prowNamespace = ns
+	c.prowLister = informer.GetIndexer()
+}
+
 type queueKey struct {
 	namespace string
 	name      string
@@ -204,6 +239,19 @@ func (c *Controller) processJobIfComplete(obj interface{}) {
 			return
 		}
 		c.processJob(obj)
+	default:
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
+	}
+}
+
+func (c *Controller) processProwJob(obj interface{}) {
+	switch t := obj.(type) {
+	case *unstructured.Unstructured:
+		key, ok := queueKeyFor(t.GetAnnotations()[releaseAnnotationSource])
+		if !ok {
+			return
+		}
+		c.queue.Add(key)
 	default:
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
 	}

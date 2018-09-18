@@ -1,0 +1,56 @@
+jobs:
+- job: release-openshift-origin-installer-e2e-aws-master
+  type: periodic
+  agent: kubernetes
+  cluster: default
+  refs: {}
+  decorate: true
+  decoration_config:
+    gcs_configuration:
+      bucket: origin-ci-test
+      default_org: openshift
+      default_repo: origin
+      path_strategy: single
+    gcs_credentials_secret: gcs-publisher-credentials
+    grace_period: 15000000000
+    skip_cloning: true
+    timeout: 14400000000000
+    utility_images:
+      clonerefs: clonerefs:latest
+      entrypoint: entrypoint:latest
+      initupload: initupload:latest
+      sidecar: sidecar:latest
+  pod_spec:
+    containers:
+    - name: echo
+      image: centos:7
+      command: 
+      - echo
+      - "SUCCESS"
+- job: release-openshift-origin-installer-e2e-gcp-master
+  type: periodic
+  agent: kubernetes
+  cluster: default
+  refs: {}
+  decorate: true
+  decoration_config:
+    gcs_configuration:
+      bucket: origin-ci-test
+      default_org: openshift
+      default_repo: origin
+      path_strategy: single
+    gcs_credentials_secret: gcs-publisher-credentials
+    grace_period: 15000000000
+    skip_cloning: true
+    timeout: 14400000000000
+    utility_images:
+      clonerefs: clonerefs:latest
+      entrypoint: entrypoint:latest
+      initupload: initupload:latest
+      sidecar: sidecar:latest
+  pod_spec:
+    containers:
+    - name: echo
+      image: centos:7
+      command: 
+      - /bin/false

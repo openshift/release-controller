@@ -29,6 +29,17 @@ type ReleaseConfig struct {
 	// Name is a required field and is used to associate release tags back to the input.
 	// TODO: determining how naming should work.
 	Name string `json:"name"`
+
+	Verify map[string]ReleaseVerification `json:"verify"`
+}
+
+type ReleaseVerification struct {
+	ProwJob *ProwJobVerification `json:"prowJob"`
+}
+
+type ProwJobVerification struct {
+	// Name of the prow job to verify
+	Name string `json:"name"`
 }
 
 const (
@@ -42,13 +53,8 @@ const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
 	//
-	// This phase may transition to Aborted, Failed, or Ready
+	// This phase may transition to Failed or Ready.
 	releasePhasePending = "Pending"
-	// releasePhaseAborted is for when multiple release tags are pending at once - all
-	// but the newest release tag will be marked aborted.
-	//
-	// This phase is a terminal phase. Pending is the only input phase.
-	releasePhaseAborted = "Aborted"
 	// releasePhaseFailed occurs when an update payload image cannot be created for
 	// a given set of image mirrors.
 	//
@@ -56,13 +62,21 @@ const (
 	releasePhaseFailed = "Failed"
 	// releasePhaseReady represents an image tag that has a valid update payload image
 	// created and pushed to the release image stream. It may not have completed all
-	// possible validation.
+	// possible verification.
 	//
-	// This phase is currently a terminal phase. Pending is the only input phase.
-	// TODO: transition to Verified.
+	// This phase may transition to Accepted or Rejected. Pending is the only input phase.
 	releasePhaseReady = "Ready"
-	// TODO: must implement
-	releasePhaseVerified = "Verified"
+	// releasePhaseAccepted represents an image tag that has passed its verification
+	// criteria and can safely be promoted to an external location.
+	//
+	// This phase is a terminal phase. Ready is the only input phase.
+	releasePhaseAccepted = "Accepted"
+	// releasePhaseRejected represents an image tag that has failed one or more of the
+	// verification criteria.
+	//
+	// The controller will take no more action in this phase, but a human may set the
+	// phase back to Ready to retry and the controller will attempt verification again.
+	releasePhaseRejected = "Rejected"
 
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation
@@ -75,6 +89,7 @@ const (
 	releaseAnnotationImageHash         = "release.openshift.io/hash"
 	releaseAnnotationPhase             = "release.openshift.io/phase"
 	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
+	releaseAnnotationVerifyURLs        = "release.openshift.io/verifyURLs"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"

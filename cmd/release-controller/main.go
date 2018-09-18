@@ -5,13 +5,23 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"k8s.io/client-go/dynamic"
+
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
 	informers "k8s.io/client-go/informers"
@@ -19,11 +29,14 @@ import (
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
+	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
 type options struct {
 	ReleaseNamespace string
 	JobNamespace     string
+	ProwNamespace    string
+	ProwConfigPath   string
 }
 
 func main() {
@@ -42,6 +55,8 @@ func main() {
 	flag := cmd.Flags()
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the releases will be published to.")
+	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
+	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the jobs to run against releases.")
 	flag.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
@@ -59,6 +74,9 @@ func (o *options) Run() error {
 	}
 	if len(o.JobNamespace) == 0 {
 		return fmt.Errorf("no job namespace set, use --job-namespace")
+	}
+	if len(o.ProwNamespace) == 0 {
+		o.ProwNamespace = o.JobNamespace
 	}
 
 	client, err := clientset.NewForConfig(config)
@@ -82,15 +100,30 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("unable to create prow client: %v", err)
+	}
+	prowClient := dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"})
+
 	stopCh := wait.NeverStop
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
+
+	configAgent := &prowapiv1.Agent{}
+	if len(o.ProwConfigPath) > 0 {
+		if err := configAgent.Start(o.ProwConfigPath); err != nil {
+			return err
+		}
+	}
 
 	c := NewController(
 		client.Core(),
 		imageClient.Image(),
 		client.Batch(),
 		jobs,
+		configAgent,
+		prowClient.Namespace(o.ProwNamespace),
 		o.ReleaseNamespace,
 		o.JobNamespace,
 	)
@@ -110,27 +143,17 @@ func (o *options) Run() error {
 		factory.WaitForCacheSync(stopCh)
 	}
 
+	if len(o.ProwConfigPath) > 0 {
+		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
+		c.AddProwInformer(o.ProwNamespace, prowInformers)
+		go prowInformers.Run(stopCh)
+		cache.WaitForCacheSync(stopCh, prowInformers.HasSynced)
+	}
+
 	glog.Infof("Caches synced")
 
 	c.Run(3, stopCh)
 	return nil
-	// load flag
-	// parse config
-	// check inputs
-	// start informers
-	//   for each Release
-	//     watch for changes to image stream
-	//		 level-driven
-	//			 if new images
-	//         create an image stream tag in openshift/release:<TAG>
-	//				 create a release payload and push to that tag
-	//					 have a cooldown on changes?
-	//			 for any release payload in the image stream missing jobs
-	//				 create any necessary jobs
-	//			 for any release payload with jobs
-	//				 wait till those jobs are complete
-	//					 mirror the payload to official locations
-	//				 if any jobs are missing - ERROR HANDLING?
 }
 
 // loadClusterConfig loads connection configuration
@@ -152,4 +175,22 @@ func loadClusterConfig() (*rest.Config, string, bool, error) {
 		return nil, "", false, fmt.Errorf("could not load client namespace: %v", err)
 	}
 	return clusterConfig, ns, isSet, nil
+}
+
+func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface, namespace string, resyncPeriod time.Duration, selector labels.Selector) cache.SharedIndexInformer {
+	return cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = selector.String()
+				return client.Namespace(namespace).List(options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = selector.String()
+				return client.Namespace(namespace).Watch(options)
+			},
+		},
+		&unstructured.Unstructured{},
+		resyncPeriod,
+		cache.Indexers{},
+	)
 }
