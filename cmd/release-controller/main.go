@@ -36,7 +36,9 @@ type options struct {
 	ReleaseNamespace string
 	JobNamespace     string
 	ProwNamespace    string
-	ProwConfigPath   string
+
+	ProwConfigPath string
+	JobConfigPath  string
 }
 
 func main() {
@@ -56,7 +58,8 @@ func main() {
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
-	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the jobs to run against releases.")
+	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
+	flag.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
 	flag.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
@@ -112,7 +115,7 @@ func (o *options) Run() error {
 
 	configAgent := &prowapiv1.Agent{}
 	if len(o.ProwConfigPath) > 0 {
-		if err := configAgent.Start(o.ProwConfigPath); err != nil {
+		if err := configAgent.Start(o.ProwConfigPath, o.JobConfigPath); err != nil {
 			return err
 		}
 	}

@@ -144,13 +144,14 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, name, jobName 
 		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, terminalError{err}
 	}
-	prowSpec, ok := hasProwJob(config, jobName)
+	periodicConfig, ok := hasProwJob(config, jobName)
 	if !ok {
 		err := fmt.Errorf("the prow job %s is not valid: no job with that name", jobName)
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, terminalError{err}
 	}
-	spec := prowSpec.DeepCopy()
+
+	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
 	mirror, _ := c.imageStreamLister.ImageStreams(c.jobNamespace).Get(releaseTag.Name)
 	if err := addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag); err != nil {
 		return nil, err
@@ -738,7 +739,7 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 		for j := range c.Env {
 			switch name := c.Env[j].Name; {
 			case name == "RELEASE_IMAGE_LATEST":
-				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + releaseTag.Name
+				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
 			case name == "IMAGE_FORMAT":
 				if mirror == nil {
 					return fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
@@ -760,10 +761,10 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 	return nil
 }
 
-func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.ProwJobSpec, bool) {
-	for i := range config.Jobs {
-		if config.Jobs[i].Job == name {
-			return &config.Jobs[i], true
+func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.PeriodicConfig, bool) {
+	for i := range config.Periodics {
+		if config.Periodics[i].Name == name {
+			return &config.Periodics[i], true
 		}
 	}
 	return nil, false
@@ -791,4 +792,25 @@ func toJSONString(data interface{}) string {
 		panic(err)
 	}
 	return string(out)
+}
+
+func prowSpecForPeriodicConfig(config *prowapiv1.PeriodicConfig, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
+	spec := &prowapiv1.ProwJobSpec{
+		Type:  prowapiv1.PeriodicJob,
+		Job:   config.Name,
+		Agent: prowapiv1.KubernetesAgent,
+
+		Refs: &prowapiv1.Refs{},
+
+		PodSpec: config.Spec.DeepCopy(),
+	}
+
+	if decorationConfig != nil {
+		spec.DecorationConfig = decorationConfig.DeepCopy()
+	} else {
+		spec.DecorationConfig = &prowapiv1.DecorationConfig{}
+	}
+	spec.DecorationConfig.SkipCloning = true
+
+	return spec
 }

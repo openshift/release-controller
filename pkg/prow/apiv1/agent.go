@@ -28,18 +28,18 @@ import (
 	"github.com/golang/glog"
 )
 
-type Config struct {
-	Jobs []ProwJobSpec `json:"jobs"`
-}
-
-func Load(path string) (*Config, error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+// Load reads the decoration_config from prowConfigPath and periodics from
+// the provided job config, or returns an error.
+func Load(prowConfigPath, jobConfigPath string) (*Config, error) {
 	c := &Config{}
-	if err := yaml.Unmarshal(data, c); err != nil {
-		return nil, err
+	for _, path := range []string{prowConfigPath, jobConfigPath} {
+		data, err := ioutil.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		if err := yaml.Unmarshal(data, c); err != nil {
+			return nil, err
+		}
 	}
 	return c, nil
 }
@@ -54,8 +54,8 @@ type Agent struct {
 // Start will begin polling the config file at the path. If the first load
 // fails, Start with return the error and abort. Future load failures will log
 // the failure message but continue attempting to load.
-func (ca *Agent) Start(jobConfig string) error {
-	c, err := Load(jobConfig)
+func (ca *Agent) Start(prowConfig, jobConfig string) error {
+	c, err := Load(prowConfig, jobConfig)
 	if err != nil {
 		return err
 	}
@@ -78,13 +78,23 @@ func (ca *Agent) Start(jobConfig string) error {
 
 				recentModTime := prowStat.ModTime()
 
+				jobConfigStat, err := os.Stat(jobConfig)
+				if err != nil {
+					glog.Errorf("Error loading job config: %v", err)
+					continue
+				}
+
+				if jobConfigStat.ModTime().After(recentModTime) {
+					recentModTime = jobConfigStat.ModTime()
+				}
+
 				if !recentModTime.After(lastModTime) {
 					skips++
 					continue // file hasn't been modified
 				}
 				lastModTime = recentModTime
 			}
-			if c, err := Load(jobConfig); err != nil {
+			if c, err := Load(prowConfig, jobConfig); err != nil {
 				glog.Errorf("Error loading config: %v", err)
 			} else {
 				skips = 0

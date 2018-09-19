@@ -27,6 +27,35 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Config loads a subset of the Prow config definition.
+type Config struct {
+	// Plank is the default plank configuration.
+	Plank PlankConfig `json:"plank"`
+
+	// Periodics uses the definitions of periodic jobs to invoke
+	// special actions. Only a subset of fields is supported.
+	Periodics []PeriodicConfig `json:"periodics"`
+}
+
+type PlankConfig struct {
+	// DecorationConfig holds configuration options for
+	// decorating PodSpecs that users provide.
+	DefaultDecorationConfig *DecorationConfig `json:"default_decoration_config,omitempty"`
+}
+
+// PeriodicConfig is a subset of the configuration of a periodic job.
+type PeriodicConfig struct {
+	Name string `json:"name"`
+	// Labels are added in prowjobs created for this job.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Agent that will take care of running this job.
+	Agent string `json:"agent"`
+	// Kubernetes pod spec.
+	Spec *corev1.PodSpec `json:"spec,omitempty"`
+	// Tags for config entries
+	Tags []string `json:"tags,omitempty"`
+}
+
 // ProwJobType specifies how the job is triggered.
 type ProwJobType string
 
@@ -130,8 +159,6 @@ type ProwJobSpec struct {
 	// PodSpec provides the basis for running the test under
 	// a Kubernetes agent
 	PodSpec *corev1.PodSpec `json:"pod_spec,omitempty"`
-
-	Decorate bool `json:"decorate,omitempty"`
 
 	// DecorationConfig holds configuration options for
 	// decorating PodSpecs that users provide
