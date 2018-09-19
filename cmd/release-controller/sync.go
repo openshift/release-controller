@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -98,75 +99,29 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	// ensure any pending tags have the necessary jobs/mirrors created
-	acceptedReleaseTags, readyReleaseTags, err := c.syncPending(release, pendingTags, inputImageHash)
+	readyReleaseTags, err := c.syncPending(release, pendingTags, inputImageHash)
 	if err != nil {
 		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
 		return err
 	}
 
-	if len(readyReleaseTags) > 0 {
-		for _, releaseTag := range readyReleaseTags {
-			var missing, urls []string
-			var failed string
-			for name, verifyType := range release.Config.Verify {
-				switch {
-				case verifyType.ProwJob != nil:
-					job, err := c.ensureProwJobForReleaseTag(release, name, verifyType.ProwJob.Name, releaseTag)
-					if err != nil {
-						return err
-					}
-					s, _, err := unstructured.NestedString(job.Object, "status", "state")
-					if err != nil {
-						return fmt.Errorf("unexpected error accessing prow job definition: %v", err)
-					}
-					url, _, _ := unstructured.NestedString(job.Object, "status", "url")
-					if len(url) > 0 {
-						urls = append(urls, url)
-					}
-					switch s {
-					case prowapiv1.SuccessState:
-						glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
-					case prowapiv1.FailureState:
-						failed = name
-						break
-					case prowapiv1.AbortedState:
-						failed = name
-						break
-					default:
-						missing = append(missing, name)
-					}
-
-				default:
-					// manual verification
-				}
-			}
-
-			if len(failed) > 0 {
-				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
-				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step %s failed", failed))
-				annotations[releaseAnnotationVerifyURLs] = toJSONString(urls)
-				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
-					return err
-				}
-				continue
-			}
-			if len(missing) > 0 {
-				glog.V(4).Infof("Verification jobs for %s still running: %v", releaseTag.Name, missing)
-				continue
-			}
-			if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerifyURLs: toJSONString(urls)}, releaseTag.Name); err != nil {
-				return err
-			}
-			glog.V(4).Infof("Release %s accepted", releaseTag.Name)
-			acceptedReleaseTags = append(acceptedReleaseTags, releaseTag)
-		}
+	if glog.V(4) {
+		glog.Infof("ready=%v", tagNames(readyReleaseTags))
 	}
 
-	// TODO: tag accepted releases
-	// TODO: promote accepted releases to external systems
+	acceptedReleaseTags, err := c.syncReady(release, readyReleaseTags)
+	if err != nil {
+		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		return err
+	}
 
 	if glog.V(4) {
-		glog.Infof("ready=%v accepted=%v", tagNames(readyReleaseTags), tagNames(acceptedReleaseTags))
+		glog.Infof("accepted=%v", tagNames(acceptedReleaseTags))
+	}
+
+	if err := c.syncAccepted(release, acceptedReleaseTags); err != nil {
+		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		return err
 	}
 
 	return nil
@@ -286,10 +241,10 @@ func calculateSyncActions(release *Release, now time.Time) (pendingTags []*image
 	return pendingTags, removeTags, hasNewImages, inputImageHash
 }
 
-func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagReference, inputImageHash string) (accepted []*imagev1.TagReference, ready []*imagev1.TagReference, err error) {
+func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagReference, inputImageHash string) (ready []*imagev1.TagReference, err error) {
 	if len(pendingTags) > 1 {
 		if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("Aborted", "Multiple releases were found simultaneously running."), tagNames(pendingTags[1:])...); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
@@ -297,25 +252,25 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		tag := pendingTags[0]
 		mirror, err := c.ensureReleaseMirror(release, tag.Name, inputImageHash)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if mirror.Annotations[releaseAnnotationImageHash] != tag.Annotations[releaseAnnotationImageHash] {
-			return nil, nil, fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
+			return nil, fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
 
 		job, err := c.ensureReleaseJob(release, tag.Name, mirror)
 		success, complete := jobIsComplete(job)
 		switch {
 		case !complete:
-			return nil, nil, nil
+			return nil, nil
 		case !success:
 			// TODO: extract termination message from the job
 			if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		default:
 			if err := c.markReleaseReady(release, tag.Name); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 	}
@@ -325,12 +280,104 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		switch tag.Annotations[releaseAnnotationPhase] {
 		case releasePhaseReady:
 			ready = append(ready, tag)
-		case releasePhaseAccepted:
-			accepted = append(accepted, tag)
 		}
 	}
 
-	return accepted, ready, nil
+	return ready, nil
+}
+
+func (c *Controller) syncReady(release *Release, readyReleaseTags []*imagev1.TagReference) (acceptedReleaseTags []*imagev1.TagReference, err error) {
+	if len(readyReleaseTags) > 0 {
+		for _, releaseTag := range readyReleaseTags {
+			var missing, urls []string
+			var failed string
+			for name, verifyType := range release.Config.Verify {
+				if verifyType.Disabled {
+					glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
+					continue
+				}
+				switch {
+				case verifyType.ProwJob != nil:
+					job, err := c.ensureProwJobForReleaseTag(release, name, verifyType.ProwJob.Name, releaseTag)
+					if err != nil {
+						return nil, err
+					}
+					s, _, err := unstructured.NestedString(job.Object, "status", "state")
+					if err != nil {
+						return nil, fmt.Errorf("unexpected error accessing prow job definition: %v", err)
+					}
+					url, _, _ := unstructured.NestedString(job.Object, "status", "url")
+					if len(url) > 0 {
+						urls = append(urls, url)
+					}
+					switch s {
+					case prowapiv1.SuccessState:
+						glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
+					case prowapiv1.FailureState:
+						failed = name
+						break
+					case prowapiv1.AbortedState:
+						failed = name
+						break
+					default:
+						missing = append(missing, name)
+					}
+
+				default:
+					// manual verification
+				}
+			}
+
+			if len(failed) > 0 {
+				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
+				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step %s failed", failed))
+				annotations[releaseAnnotationVerifyURLs] = toJSONString(urls)
+				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			if len(missing) > 0 {
+				glog.V(4).Infof("Verification jobs for %s are still running: %v", releaseTag.Name, missing)
+				continue
+			}
+			if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerifyURLs: toJSONString(urls)}, releaseTag.Name); err != nil {
+				return nil, err
+			}
+			glog.V(4).Infof("Release %s accepted", releaseTag.Name)
+		}
+	}
+
+	for i := range release.Target.Spec.Tags {
+		tag := &release.Target.Spec.Tags[i]
+		switch tag.Annotations[releaseAnnotationPhase] {
+		case releasePhaseAccepted:
+			acceptedReleaseTags = append(acceptedReleaseTags, tag)
+		}
+	}
+	sort.Slice(acceptedReleaseTags, func(i, j int) bool { return acceptedReleaseTags[i].Name > acceptedReleaseTags[j].Name })
+	return acceptedReleaseTags, nil
+}
+
+func (c *Controller) syncAccepted(release *Release, acceptedReleaseTags []*imagev1.TagReference) error {
+	if len(release.Config.Publish) == 0 || len(acceptedReleaseTags) == 0 {
+		return nil
+	}
+	var errs []error
+	newestAccepted := acceptedReleaseTags[0]
+	for name, publishType := range release.Config.Publish {
+		switch {
+		case publishType.TagRef != nil:
+			if err := c.ensureTagPointsToRelease(release, publishType.TagRef.Name, newestAccepted.Name); err != nil {
+				errs = append(errs, fmt.Errorf("unable to update tag for publish step %s: %v", name, err))
+				continue
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return utilerrors.NewAggregate(errs)
+	}
+	return nil
 }
 
 func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
@@ -573,6 +620,45 @@ func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditio
 	return nil
 }
 
+func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string) error {
+	if to == from {
+		return nil
+	}
+	fromTag := findTagReference(release.Target, from)
+	toTag := findTagReference(release.Target, to)
+	if fromTag == nil {
+		// tag was deleted
+		return nil
+	}
+	if toTag != nil {
+		if toTag.From != nil && toTag.From.Kind == "ImageStreamTag" && toTag.From.Name == from && toTag.From.Namespace == "" {
+			// already set to the correct location
+			return nil
+		}
+	}
+	target := release.Target.DeepCopy()
+	toTag = findTagReference(target, to)
+	if toTag == nil {
+		target.Spec.Tags = append(target.Spec.Tags, imagev1.TagReference{
+			Name: to,
+		})
+		toTag = &target.Spec.Tags[len(target.Spec.Tags)-1]
+	}
+	toTag.From = &corev1.ObjectReference{Kind: "ImageStreamTag", Name: from}
+	toTag.ImportPolicy = imagev1.TagImportPolicy{}
+
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	glog.V(2).Infof("Updated image stream tag %s/%s:%s to point to %s", release.Target.Namespace, release.Target.Name, to, from)
+	release.Target = is
+	return nil
+}
+
 func (c *Controller) garbageCollectUnreferencedObjects() error {
 	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
 	if err != nil {
@@ -627,6 +713,7 @@ func (c *Controller) garbageCollectUnreferencedObjects() error {
 			}
 		}
 	}
+
 	return nil
 }
 

@@ -30,13 +30,44 @@ type ReleaseConfig struct {
 	// TODO: determining how naming should work.
 	Name string `json:"name"`
 
+	// Verify is a map of short names to verification steps that must succeed before the
+	// release is Accepted. Failures for some job types will cause the release to be
+	// rejected.
 	Verify map[string]ReleaseVerification `json:"verify"`
+
+	// Publish is a map of short names to publish steps that will be performed after
+	// the release is Accepted. Some publish steps are continuously maintained, others
+	// may only be performed once.
+	Publish map[string]ReleasePublish `json:"publish"`
 }
 
+// ReleasePublish defines one action to take when a release is Accepted.
+type ReleasePublish struct {
+	// TagRef updates the named tag in the release image stream to point at the release.
+	TagRef *PublishTagReference `json:"tagRef"`
+}
+
+// PublishTagReference ensures that the release image stream has a tag that points to
+// the most recent release.
+type PublishTagReference struct {
+	// Name is the name of the release image stream tag that will be updated to point to
+	// (reference) the release tag.
+	Name string `json:"name"`
+}
+
+// ReleaseVerification is a task that must be completed before a release is marked
+// as Accepted. When some tasks fail the release will be marked as Rejected.
 type ReleaseVerification struct {
+	// Disabled will prevent this verification from being considered as blocking
+	Disabled bool `json:"disabled"`
+	// ProwJob requires that the named ProwJob from the prow config pass before the
+	// release is accepted. The job is run only one time and if it fails the release
+	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
 }
 
+// ProwJobVerification identifies the name of a prow job that will be used to
+// validate the release.
 type ProwJobVerification struct {
 	// Name of the prow job to verify
 	Name string `json:"name"`

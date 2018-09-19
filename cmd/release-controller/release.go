@@ -75,6 +75,16 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 			}
 		}
 	}
+	for name, publish := range cfg.Publish {
+		if len(name) == 0 {
+			return nil, fmt.Errorf("publish config has no name")
+		}
+		if publish.TagRef != nil {
+			if len(publish.TagRef.Name) == 0 {
+				return nil, fmt.Errorf("tagRef publish for %s has no name", name)
+			}
+		}
+	}
 	copied := *cfg
 	c.parsedReleaseConfigCache.Add(data, copied)
 	return cfg, nil
@@ -87,12 +97,12 @@ func releaseGenerationFromObject(name string, annotations map[string]string) (in
 	}
 	s, ok := annotations[releaseAnnotationGeneration]
 	if !ok {
-		glog.V(4).Infof("Can't check job %s, no generation", name)
+		glog.V(4).Infof("Can't check %s, no generation", name)
 		return 0, false
 	}
 	generation, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		glog.V(4).Infof("Can't check job %s, generation is invalid: %v", name, err)
+		glog.V(4).Infof("Can't check %s, generation is invalid: %v", name, err)
 		return 0, false
 	}
 	return generation, true
