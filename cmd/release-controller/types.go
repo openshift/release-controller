@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"time"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -17,9 +19,6 @@ type Release struct {
 	Target *imagev1.ImageStream
 	// Config holds the release configuration parsed off of Source.
 	Config *ReleaseConfig
-	// Expires is the amount of time before release tags should be expired and
-	// removed.
-	Expires time.Duration
 }
 
 // ReleaseConfig is serialized in JSON as the release.openshift.io/config annotation
@@ -29,6 +28,10 @@ type ReleaseConfig struct {
 	// Name is a required field and is used to associate release tags back to the input.
 	// TODO: determining how naming should work.
 	Name string `json:"name"`
+
+	// Expires is the amount of time as a golang duration before Accepted release tags
+	// should be expired and removed. If unset, tags are not expired.
+	Expires Duration `json:"expires"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -125,3 +128,35 @@ const (
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
 )
+
+type Duration time.Duration
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	if len(data) == 4 && bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if len(data) < 2 {
+		return fmt.Errorf("invalid duration")
+	}
+	if data[0] != '"' || data[len(data)-1] != '"' {
+		return fmt.Errorf("duration must be a string")
+	}
+	value, err := time.ParseDuration(string(data[1 : len(data)-1]))
+	if err != nil {
+		return err
+	}
+	*d = Duration(value)
+	return nil
+}
+
+func (d Duration) Duration() time.Duration {
+	return time.Duration(d)
+}
+
+type tagReferencesByAge []*imagev1.TagReference
+
+func (a tagReferencesByAge) Less(i, j int) bool {
+	return a[j].Annotations[releaseAnnotationCreationTimestamp] < a[i].Annotations[releaseAnnotationCreationTimestamp]
+}
+func (a tagReferencesByAge) Len() int      { return len(a) }
+func (a tagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
