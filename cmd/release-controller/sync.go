@@ -518,7 +518,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
 	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
 
-	job = newReleaseJob(name, c.jobNamespace, toImage, toImageBase)
+	job = newReleaseJob(name, mirror.Name, mirror.Namespace, toImage, toImageBase)
 	job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
 	job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 
@@ -535,7 +535,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
 }
 
-func newReleaseJob(name, namespace, toImage, toImageBase string) *batchv1.Job {
+func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageBase string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -560,7 +560,7 @@ func newReleaseJob(name, namespace, toImage, toImageBase string) *batchv1.Job {
 								oc registry login
 								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
 								`, "",
-								name, name, namespace, toImage, toImageBase,
+								name, mirrorName, mirrorNamespace, toImage, toImageBase,
 							},
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 						},
