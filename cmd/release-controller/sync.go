@@ -388,7 +388,7 @@ func (c *Controller) syncReady(release *Release, readyReleaseTags []*imagev1.Tag
 			acceptedReleaseTags = append(acceptedReleaseTags, tag)
 		}
 	}
-	sort.Slice(acceptedReleaseTags, func(i, j int) bool { return acceptedReleaseTags[i].Name > acceptedReleaseTags[j].Name })
+	sort.Sort(tagReferencesByAge(acceptedReleaseTags))
 	return acceptedReleaseTags, nil
 }
 
