@@ -289,6 +289,9 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		}
 
 		job, err := c.ensureReleaseJob(release, tag.Name, mirror)
+		if err != nil {
+			return nil, err
+		}
 		success, complete := jobIsComplete(job)
 		switch {
 		case !complete:
