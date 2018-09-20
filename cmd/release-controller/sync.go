@@ -34,6 +34,7 @@ func (c *Controller) sync(key queueKey) error {
 		err := recover()
 		panic(err)
 	}()
+
 	// queue all release inputs in the namespace on a namespace sync
 	// this allows us to batch changes together when calculating which resource
 	// would be affected is inefficient
@@ -51,11 +52,11 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	// if we are waiting to observe the result of our previous actions, simply delay
-	if c.expectations.Expecting(key.namespace, key.name) {
-		c.queue.AddAfter(key, c.expectationDelay)
-		glog.V(5).Infof("Release %s has unsatisfied expectations", key.name)
-		return nil
-	}
+	// if c.expectations.Expecting(key.namespace, key.name) {
+	// 	c.queue.AddAfter(key, c.expectationDelay)
+	// 	glog.V(5).Infof("Release %s has unsatisfied expectations", key.name)
+	// 	return nil
+	// }
 
 	// locate the release definition off the image stream, or clean up any remaining
 	// artifacts if the release no longer points to those
@@ -204,6 +205,11 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, name, jobName 
 func calculateSyncActions(release *Release, now time.Time) (pendingTags []*imagev1.TagReference, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string) {
 	hasNewImages = true
 	inputImageHash = hashSpecTagImageDigests(release.Source)
+	var (
+		removeFailures tagReferencesByAge
+		removeAccepted tagReferencesByAge
+		removeRejected tagReferencesByAge
+	)
 	for i := range release.Target.Spec.Tags {
 		tag := &release.Target.Spec.Tags[i]
 		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
@@ -223,22 +229,45 @@ func calculateSyncActions(release *Release, now time.Time) (pendingTags []*image
 		switch phase {
 		case releasePhasePending, "":
 			pendingTags = append(pendingTags, tag)
-		default:
-			if release.Expires == 0 {
-				continue
-			}
+		case releasePhaseFailed:
+			removeFailures = append(removeFailures, tag)
+		case releasePhaseRejected:
+			removeRejected = append(removeRejected, tag)
+		case releasePhaseAccepted:
+			removeAccepted = append(removeAccepted, tag)
+		}
+	}
+
+	// only keep one failed tag
+	if len(removeFailures) > 1 {
+		sort.Sort(removeFailures)
+		removeTags = append(removeTags, removeFailures[1:]...)
+	}
+
+	// only keep two rejected tags
+	if len(removeRejected) > 2 {
+		sort.Sort(removeRejected)
+		removeTags = append(removeTags, removeRejected[2:]...)
+	}
+
+	// always keep at least one accepted tag, but remove any that are past expiration
+	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > 1 {
+		glog.V(5).Infof("Checking for tags that are more than %s old", expires)
+		sort.Sort(removeAccepted)
+		for _, tag := range removeAccepted[1:] {
 			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 			if err != nil {
 				glog.Errorf("Unparseable timestamp on release tag %s:%s: %v", release.Target.Name, tag.Name, err)
 				continue
 			}
-			if created.Add(release.Expires).Before(now) {
-				removeTags = append(removeTags)
+			if created.Add(expires).Before(now) {
+				removeTags = append(removeTags, tag)
 			}
 		}
 	}
+
 	// arrange the pendingTags in alphabetic order (which should be based on date)
-	sort.Slice(pendingTags, func(i, j int) bool { return pendingTags[i].Name > pendingTags[j].Name })
+	sort.Sort(tagReferencesByAge(pendingTags))
 	return pendingTags, removeTags, hasNewImages, inputImageHash
 }
 
@@ -413,13 +442,14 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 
 func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.TagReference) error {
 	for _, tag := range removeTags {
+		// use delete imagestreamtag so that status tags are removed as well
+		glog.V(2).Infof("Removing release tag %s", tag.Name)
 		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
 			if !errors.IsNotFound(err) {
 				return err
 			}
 		}
 	}
-	// TODO: loop over all mirror image streams in c.jobNamespace that come from a tag that doesn't exist and delete them
 	return nil
 }
 
