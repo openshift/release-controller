@@ -70,7 +70,7 @@ func main() {
 func (o *options) Run() error {
 	config, _, _, err := loadClusterConfig()
 	if err != nil {
-		return fmt.Errorf("unable to load client configuration: %v", err)
+		return err
 	}
 	if len(o.ReleaseNamespace) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
@@ -164,11 +164,7 @@ func (o *options) Run() error {
 // use in-cluster configuration if possible, but will
 // fall back to using default rules otherwise.
 func loadClusterConfig() (*rest.Config, string, bool, error) {
-	credentials, err := clientcmd.NewDefaultClientConfigLoadingRules().Load()
-	if err != nil {
-		return nil, "", false, fmt.Errorf("could not load credentials from config: %v", err)
-	}
-	cfg := clientcmd.NewDefaultClientConfig(*credentials, &clientcmd.ConfigOverrides{})
+	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
 	clusterConfig, err := cfg.ClientConfig()
 	if err != nil {
 		return nil, "", false, fmt.Errorf("could not load client configuration: %v", err)
