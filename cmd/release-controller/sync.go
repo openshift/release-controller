@@ -695,7 +695,7 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 }
 
 func (c *Controller) garbageCollectUnreferencedObjects() error {
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
+	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil

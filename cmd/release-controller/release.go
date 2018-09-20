@@ -26,11 +26,11 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		return nil, false, terminalError{err}
 	}
 
-	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseImageStreamName)
+	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
 	if errors.IsNotFound(err) {
 		// TODO: something special here?
-		glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, releaseImageStreamName)
-		return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", releaseImageStreamName, is.Name)}
+		glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, c.releaseImageStream)
+		return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseImageStream, is.Name)}
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)

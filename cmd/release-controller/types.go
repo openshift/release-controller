@@ -77,13 +77,6 @@ type ProwJobVerification struct {
 }
 
 const (
-	// releaseImageStreamName is the hardcoded image stream that release images will
-	// be pushed to.
-	// TODO: make configurable
-	releaseImageStreamName = "release"
-)
-
-const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
 	//
