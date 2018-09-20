@@ -153,7 +153,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, name, jobName 
 	}
 
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
-	mirror, _ := c.imageStreamLister.ImageStreams(c.jobNamespace).Get(releaseTag.Name)
+	mirror, _ := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseTag.Name)
 	if err := addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag); err != nil {
 		return nil, err
 	}
@@ -454,7 +454,7 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 }
 
 func (c *Controller) ensureReleaseMirror(release *Release, name, inputImageHash string) (*imagev1.ImageStream, error) {
-	is, err := c.imageStreamLister.ImageStreams(c.jobNamespace).Get(name)
+	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(name)
 	if err == nil {
 		return is, nil
 	}
@@ -464,7 +464,8 @@ func (c *Controller) ensureReleaseMirror(release *Release, name, inputImageHash 
 
 	is = &imagev1.ImageStream{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:      name,
+			Namespace: c.releaseNamespace,
 			Annotations: map[string]string{
 				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 				releaseAnnotationImageHash:  inputImageHash,
@@ -490,14 +491,14 @@ func (c *Controller) ensureReleaseMirror(release *Release, name, inputImageHash 
 			},
 		})
 	}
-	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, c.jobNamespace, is.Name)
-	is, err = c.imageClient.ImageStreams(c.jobNamespace).Create(is)
+	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
+	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return nil, err
 		}
 		// perform a live read
-		is, err = c.imageClient.ImageStreams(c.jobNamespace).Get(is.Name, metav1.GetOptions{})
+		is, err = c.imageClient.ImageStreams(is.Namespace).Get(is.Name, metav1.GetOptions{})
 	}
 	return is, err
 }
