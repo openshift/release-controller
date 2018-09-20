@@ -77,6 +77,9 @@ type Controller struct {
 	// own creates. Exposed only for testing.
 	expectationDelay time.Duration
 
+	// releaseImageStream is the name of the image stream in the release namespace where
+	// releases will be pushed to.
+	releaseImageStream string
 	// releaseNamespace is the namespace where the "release" image stream is expected
 	// to be found.
 	releaseNamespace string
@@ -103,6 +106,7 @@ func NewController(
 	jobs batchinformers.JobInformer,
 	prowConfigLoader ProwConfigLoader,
 	prowClient dynamic.ResourceInterface,
+	releaseImageStream string,
 	releaseNamespace string,
 	jobNamespace string,
 ) *Controller {
@@ -121,7 +125,7 @@ func NewController(
 
 	c := &Controller{
 		eventRecorder: recorder,
-		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), releaseImageStreamName),
+		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), releaseImageStream),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -137,8 +141,9 @@ func NewController(
 		prowConfigLoader: prowConfigLoader,
 		prowClient:       prowClient,
 
-		releaseNamespace: releaseNamespace,
-		jobNamespace:     jobNamespace,
+		releaseImageStream: releaseImageStream,
+		releaseNamespace:   releaseNamespace,
+		jobNamespace:       jobNamespace,
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 	}
@@ -276,7 +281,7 @@ func (c *Controller) processImageStream(obj interface{}) {
 			c.queue.Add(key)
 			return
 		}
-		if t.Namespace == c.releaseNamespace && t.Name == releaseImageStreamName {
+		if t.Namespace == c.releaseNamespace && t.Name == c.releaseImageStream {
 			// if the release image stream is modified, just requeue everything in the event a tag
 			// has been deleted
 			glog.V(5).Infof("Image stream %s is a release target, requeue both namespaces", t.Name)

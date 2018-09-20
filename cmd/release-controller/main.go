@@ -33,9 +33,10 @@ import (
 )
 
 type options struct {
-	ReleaseNamespace string
-	JobNamespace     string
-	ProwNamespace    string
+	ReleaseNamespace   string
+	JobNamespace       string
+	ProwNamespace      string
+	ReleaseImageStream string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -46,7 +47,9 @@ func main() {
 	original.Set("alsologtostderr", "true")
 	original.Set("v", "2")
 
-	opt := &options{}
+	opt := &options{
+		ReleaseImageStream: "release",
+	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
 			if err := opt.Run(); err != nil {
@@ -55,6 +58,7 @@ func main() {
 		},
 	}
 	flag := cmd.Flags()
+	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
@@ -127,6 +131,7 @@ func (o *options) Run() error {
 		jobs,
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
+		o.ReleaseImageStream,
 		o.ReleaseNamespace,
 		o.JobNamespace,
 	)
