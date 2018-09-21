@@ -26,6 +26,9 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		return nil, false, terminalError{err}
 	}
 
+	// TODO: require release config to point to a particular image stream, and then we should ignore image streams
+	//   that don't target c.releaseImageStream (so we can run separate controllers)
+
 	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
 	if errors.IsNotFound(err) {
 		// TODO: something special here?
