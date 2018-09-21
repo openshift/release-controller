@@ -113,6 +113,7 @@ const (
 	releaseAnnotationGeneration        = "release.openshift.io/generation"
 	releaseAnnotationSource            = "release.openshift.io/source"
 	releaseAnnotationName              = "release.openshift.io/name"
+	releaseAnnotationReleaseTag        = "release.openshift.io/releaseTag"
 	releaseAnnotationImageHash         = "release.openshift.io/hash"
 	releaseAnnotationPhase             = "release.openshift.io/phase"
 	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"

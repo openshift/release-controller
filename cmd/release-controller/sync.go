@@ -129,8 +129,8 @@ func (c *Controller) sync(key queueKey) error {
 	return nil
 }
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, name, jobName string, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
-	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, name)
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jobName string, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
+	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, name, jobName 
 	}
 
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
-	mirror, _ := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(releaseTag.Name)
+	mirror, _ := c.getMirror(release, releaseTag.Name)
 	if err := addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag); err != nil {
 		return nil, err
 	}
@@ -458,8 +458,18 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 	return nil
 }
 
-func (c *Controller) ensureReleaseMirror(release *Release, name, inputImageHash string) (*imagev1.ImageStream, error) {
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(name)
+func mirrorName(release *Release, releaseTagName string) string {
+	suffix := strings.TrimPrefix(releaseTagName, release.Config.Name)
+	return fmt.Sprintf("%s%s", release.Source.Name, suffix)
+}
+
+func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
+	return c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName(release, releaseTagName))
+}
+
+func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
+	mirrorName := mirrorName(release, releaseTagName)
+	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName)
 	if err == nil {
 		return is, nil
 	}
@@ -469,10 +479,11 @@ func (c *Controller) ensureReleaseMirror(release *Release, name, inputImageHash 
 
 	is = &imagev1.ImageStream{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      mirrorName,
 			Namespace: c.releaseNamespace,
 			Annotations: map[string]string{
 				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+				releaseAnnotationReleaseTag: releaseTagName,
 				releaseAnnotationImageHash:  inputImageHash,
 				releaseAnnotationGeneration: strconv.FormatInt(release.Target.Generation, 10),
 			},
@@ -736,7 +747,7 @@ func (c *Controller) garbageCollectUnreferencedObjects() error {
 		return err
 	}
 	for _, mirror := range mirrors {
-		if _, ok := validReleases[mirror.Name]; ok {
+		if _, ok := validReleases[mirror.Annotations[releaseAnnotationReleaseTag]]; ok {
 			continue
 		}
 		generation, ok := releaseGenerationFromObject(mirror.Name, mirror.Annotations)
