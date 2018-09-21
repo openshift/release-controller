@@ -60,7 +60,7 @@ func main() {
 	flag := cmd.Flags()
 	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
-	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the releases will be published to.")
+	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the source image streams are located and where releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flag.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
@@ -97,9 +97,9 @@ func (o *options) Run() error {
 		if _, err := client.Core().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
-		glog.Infof("Releases will be published to image stream %s/%s, jobs and mirrors will be created in namespace %s", o.ReleaseNamespace, "release", o.JobNamespace)
+		glog.Infof("Releases will be published to image stream %s/%s, jobs will be created in namespace %s", o.ReleaseNamespace, o.ReleaseImageStream, o.JobNamespace)
 	} else {
-		glog.Infof("Release will be published to image stream %s/%s and jobs will be in the same namespace", o.ReleaseNamespace, "release")
+		glog.Infof("Release will be published to image stream %s/%s and jobs will be in the same namespace", o.ReleaseNamespace, o.ReleaseImageStream)
 	}
 
 	imageClient, err := imageclientset.NewForConfig(config)
@@ -144,12 +144,6 @@ func (o *options) Run() error {
 	c.AddNamespacedImageStreamInformer(o.ReleaseNamespace, factory.Image().V1().ImageStreams())
 	factory.Start(stopCh)
 	factory.WaitForCacheSync(stopCh)
-	if o.JobNamespace != o.ReleaseNamespace {
-		factory = imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(o.JobNamespace))
-		c.AddNamespacedImageStreamInformer(c.jobNamespace, factory.Image().V1().ImageStreams())
-		factory.Start(stopCh)
-		factory.WaitForCacheSync(stopCh)
-	}
 
 	if len(o.ProwConfigPath) > 0 {
 		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))

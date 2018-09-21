@@ -45,7 +45,7 @@ func (c *Controller) sync(key queueKey) error {
 		}
 		for _, imageStream := range imageStreams {
 			if _, ok := imageStream.Annotations[releaseAnnotationConfig]; ok {
-				c.queue.Add(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
+				c.addQueueKey(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
 			}
 		}
 		return c.garbageCollectUnreferencedObjects()
@@ -60,7 +60,8 @@ func (c *Controller) sync(key queueKey) error {
 
 	// locate the release definition off the image stream, or clean up any remaining
 	// artifacts if the release no longer points to those
-	imageStream, err := c.imageStreamLister.ImageStreams(key.namespace).Get(key.name)
+	isLister := c.imageStreamLister.ImageStreams(key.namespace)
+	imageStream, err := isLister.Get(key.name)
 	if errors.IsNotFound(err) {
 		return c.garbageCollectUnreferencedObjects()
 	}
@@ -279,6 +280,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 	}
 
 	if len(pendingTags) > 0 {
+		// we only process the first tag
 		tag := pendingTags[0]
 		mirror, err := c.ensureReleaseMirror(release, tag.Name, inputImageHash)
 		if err != nil {

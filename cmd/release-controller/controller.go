@@ -220,6 +220,14 @@ type queueKey struct {
 	name      string
 }
 
+func (c *Controller) addQueueKey(key queueKey) {
+	// only image streams in the release namespace may be release inputs
+	if key.namespace != c.releaseNamespace {
+		return
+	}
+	c.queue.Add(key)
+}
+
 func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
@@ -231,7 +239,7 @@ func (c *Controller) processJob(obj interface{}) {
 			success, complete := jobIsComplete(t)
 			glog.Infof("Job %s updated, complete=%t success=%t", t.Name, complete, success)
 		}
-		c.queue.Add(key)
+		c.addQueueKey(key)
 	default:
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
 	}
@@ -256,7 +264,7 @@ func (c *Controller) processProwJob(obj interface{}) {
 		if !ok {
 			return
 		}
-		c.queue.Add(key)
+		c.addQueueKey(key)
 	default:
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %T", obj))
 	}
@@ -273,20 +281,20 @@ func (c *Controller) processImageStream(obj interface{}) {
 		// if this image stream is a mirror for releases, requeue any that it touches
 		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
 			glog.V(5).Infof("Image stream %s is a release input and will be queued", t.Name)
-			c.queue.Add(queueKey{namespace: t.Namespace, name: t.Name})
+			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
 			glog.V(5).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
-			c.queue.Add(key)
+			c.addQueueKey(key)
 			return
 		}
 		if t.Namespace == c.releaseNamespace && t.Name == c.releaseImageStream {
 			// if the release image stream is modified, just requeue everything in the event a tag
 			// has been deleted
 			glog.V(5).Infof("Image stream %s is a release target, requeue both namespaces", t.Name)
-			c.queue.Add(queueKey{namespace: c.releaseNamespace})
-			c.queue.Add(queueKey{namespace: c.jobNamespace})
+			c.addQueueKey(queueKey{namespace: c.releaseNamespace})
+			c.addQueueKey(queueKey{namespace: c.jobNamespace})
 			return
 		}
 	default:
