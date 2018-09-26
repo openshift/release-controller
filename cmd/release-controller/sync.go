@@ -324,59 +324,25 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 func (c *Controller) syncReady(release *Release, readyReleaseTags []*imagev1.TagReference) (acceptedReleaseTags []*imagev1.TagReference, err error) {
 	if len(readyReleaseTags) > 0 {
 		for _, releaseTag := range readyReleaseTags {
-			var missing, urls []string
-			var failed string
-			for name, verifyType := range release.Config.Verify {
-				if verifyType.Disabled {
-					glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
-					continue
-				}
-				switch {
-				case verifyType.ProwJob != nil:
-					job, err := c.ensureProwJobForReleaseTag(release, name, verifyType.ProwJob.Name, releaseTag)
-					if err != nil {
-						return nil, err
-					}
-					s, _, err := unstructured.NestedString(job.Object, "status", "state")
-					if err != nil {
-						return nil, fmt.Errorf("unexpected error accessing prow job definition: %v", err)
-					}
-					url, _, _ := unstructured.NestedString(job.Object, "status", "url")
-					if len(url) > 0 {
-						urls = append(urls, url)
-					}
-					switch s {
-					case prowapiv1.SuccessState:
-						glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
-					case prowapiv1.FailureState:
-						failed = name
-						break
-					case prowapiv1.AbortedState:
-						failed = name
-						break
-					default:
-						missing = append(missing, name)
-					}
-
-				default:
-					// manual verification
-				}
+			status, err := c.ensureVerificationJobs(release, releaseTag)
+			if err != nil {
+				return nil, err
 			}
 
-			if len(failed) > 0 {
+			if names, ok := status.Failures(); ok {
 				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
-				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step %s failed", failed))
-				annotations[releaseAnnotationVerifyURLs] = toJSONString(urls)
+				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
+				annotations[releaseAnnotationVerify] = toJSONString(status)
 				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
 					return nil, err
 				}
 				continue
 			}
-			if len(missing) > 0 {
-				glog.V(4).Infof("Verification jobs for %s are still running: %v", releaseTag.Name, missing)
+			if names, ok := status.Incomplete(release.Config.Verify); ok {
+				glog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
 				continue
 			}
-			if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerifyURLs: toJSONString(urls)}, releaseTag.Name); err != nil {
+			if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 				return nil, err
 			}
 			glog.V(4).Infof("Release %s accepted", releaseTag.Name)
@@ -392,6 +358,61 @@ func (c *Controller) syncReady(release *Release, readyReleaseTags []*imagev1.Tag
 	}
 	sort.Sort(tagReferencesByAge(acceptedReleaseTags))
 	return acceptedReleaseTags, nil
+}
+
+func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
+	var verifyStatus VerificationStatusMap
+	for name, verifyType := range release.Config.Verify {
+		if verifyType.Disabled {
+			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
+			continue
+		}
+
+		switch {
+		case verifyType.ProwJob != nil:
+			if verifyStatus == nil {
+				if data := releaseTag.Annotations[releaseAnnotationVerify]; len(data) > 0 {
+					verifyStatus = make(VerificationStatusMap)
+					if err := json.Unmarshal([]byte(data), verifyStatus); err != nil {
+						glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
+					}
+				}
+			}
+
+			if status, ok := verifyStatus[name]; ok {
+				switch status.State {
+				case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
+					// we've already processed this, continue
+					continue
+				default:
+					glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
+				}
+			}
+
+			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType.ProwJob.Name, releaseTag)
+			if err != nil {
+				return nil, err
+			}
+			s, _, err := unstructured.NestedString(job.Object, "status", "state")
+			if err != nil {
+				return nil, fmt.Errorf("unexpected error accessing prow job definition: %v", err)
+			}
+			url, _, _ := unstructured.NestedString(job.Object, "status", "url")
+			switch s {
+			case prowapiv1.SuccessState:
+				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
+				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateSucceeded, Url: url}
+			case prowapiv1.FailureState:
+				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateFailed, Url: url}
+			case prowapiv1.AbortedState:
+				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateFailed, Url: url}
+			}
+
+		default:
+			// manual verification
+		}
+	}
+	return verifyStatus, nil
 }
 
 func (c *Controller) syncAccepted(release *Release, acceptedReleaseTags []*imagev1.TagReference) error {
@@ -623,7 +644,11 @@ func (c *Controller) transitionReleasePhase(release *Release, preconditionPhases
 		delete(tag.Annotations, releaseAnnotationReason)
 		delete(tag.Annotations, releaseAnnotationMessage)
 		for k, v := range annotations {
-			tag.Annotations[k] = v
+			if len(v) == 0 {
+				delete(tag.Annotations, k)
+			} else {
+				tag.Annotations[k] = v
+			}
 		}
 		glog.V(2).Infof("Marking release %s %s", name, phase)
 	}
@@ -837,6 +862,9 @@ func toJSONString(data interface{}) string {
 	out, err := json.Marshal(data)
 	if err != nil {
 		panic(err)
+	}
+	if string(out) == "null" {
+		return ""
 	}
 	return string(out)
 }
