@@ -3,29 +3,27 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"time"
-
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"k8s.io/client-go/dynamic"
-
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+	informers "k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	informers "k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
@@ -40,6 +38,9 @@ type options struct {
 
 	ProwConfigPath string
 	JobConfigPath  string
+
+	DryRun     bool
+	ListenAddr string
 }
 
 func main() {
@@ -49,6 +50,7 @@ func main() {
 
 	opt := &options{
 		ReleaseImageStream: "release",
+		ListenAddr:         ":8080",
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -58,12 +60,17 @@ func main() {
 		},
 	}
 	flag := cmd.Flags()
+	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
+
 	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringVar(&opt.ReleaseNamespace, "release-namespace", opt.ReleaseNamespace, "The namespace where the source image streams are located and where releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flag.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
+
+	flag.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
+
 	flag.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
@@ -114,6 +121,7 @@ func (o *options) Run() error {
 	prowClient := dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"})
 
 	stopCh := wait.NeverStop
+
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 
@@ -136,6 +144,17 @@ func (o *options) Run() error {
 		o.JobNamespace,
 	)
 
+	if len(o.ListenAddr) > 0 {
+		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
+		http.DefaultServeMux.HandleFunc("/", c.userInterfaceHandler)
+		go func() {
+			glog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
+			if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {
+				glog.Exitf("Server exited: %v", err)
+			}
+		}()
+	}
+
 	batchFactory.Start(stopCh)
 	batchFactory.WaitForCacheSync(stopCh)
 
@@ -154,7 +173,13 @@ func (o *options) Run() error {
 
 	glog.Infof("Caches synced")
 
-	c.Run(3, stopCh)
+	if o.DryRun {
+		glog.Infof("Dry run mode (no changes will be made)")
+		<-stopCh
+	} else {
+		glog.Infof("Managing releases")
+		c.Run(3, stopCh)
+	}
 	return nil
 }
 

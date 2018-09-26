@@ -76,6 +76,33 @@ type ProwJobVerification struct {
 	Name string `json:"name"`
 }
 
+type VerificationStatus struct {
+	State string `json:"state"`
+	Url   string `json:"url"`
+}
+
+type VerificationStatusMap map[string]*VerificationStatus
+
+func (m VerificationStatusMap) Failures() ([]string, bool) {
+	var names []string
+	for name, s := range m {
+		if s.State == releaseVerificationStateFailed {
+			names = append(names, name)
+		}
+	}
+	return names, len(names) > 0
+}
+
+func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerification) ([]string, bool) {
+	var names []string
+	for name := range required {
+		if s, ok := m[name]; !ok || s.State != releaseVerificationStateSucceeded {
+			names = append(names, name)
+		}
+	}
+	return names, len(names) > 0
+}
+
 const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
@@ -105,6 +132,9 @@ const (
 	// phase back to Ready to retry and the controller will attempt verification again.
 	releasePhaseRejected = "Rejected"
 
+	releaseVerificationStateSucceeded = "Succeeded"
+	releaseVerificationStateFailed    = "Failed"
+
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation
 	// is considered an input image stream for creating releases.
@@ -117,7 +147,7 @@ const (
 	releaseAnnotationImageHash         = "release.openshift.io/hash"
 	releaseAnnotationPhase             = "release.openshift.io/phase"
 	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
-	releaseAnnotationVerifyURLs        = "release.openshift.io/verifyURLs"
+	releaseAnnotationVerify            = "release.openshift.io/verify"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"

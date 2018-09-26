@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -167,4 +168,22 @@ func findTagReference(is *imagev1.ImageStream, name string) *imagev1.TagReferenc
 		}
 	}
 	return nil
+}
+
+func tagsForRelease(release *Release) []*imagev1.TagReference {
+	tags := make([]*imagev1.TagReference, 0, len(release.Target.Spec.Tags))
+	for i := range release.Target.Spec.Tags {
+		tag := &release.Target.Spec.Tags[i]
+		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+			continue
+		}
+
+		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
+		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+	sort.Sort(tagReferencesByAge(tags))
+	return tags
 }
