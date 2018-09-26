@@ -398,6 +398,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				return nil, fmt.Errorf("unexpected error accessing prow job definition: %v", err)
 			}
 			url, _, _ := unstructured.NestedString(job.Object, "status", "url")
+
+			if verifyStatus == nil {
+				verifyStatus = make(VerificationStatusMap)
+			}
 			switch s {
 			case prowapiv1.SuccessState:
 				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
