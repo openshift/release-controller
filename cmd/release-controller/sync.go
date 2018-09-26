@@ -585,6 +585,9 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageBase strin
 						{
 							Name:  "build",
 							Image: "openshift/origin-cli:v4.0",
+
+							ImagePullPolicy: corev1.PullAlways,
+
 							Env: []corev1.EnvVar{
 								{Name: "HOME", Value: "/tmp"},
 							},
