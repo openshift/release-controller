@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -304,7 +305,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				return nil, err
 			}
 		default:
-			if err := c.markReleaseReady(release, tag.Name); err != nil {
+			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return nil, err
 			}
 		}
@@ -340,6 +341,9 @@ func (c *Controller) syncReady(release *Release, readyReleaseTags []*imagev1.Tag
 			}
 			if names, ok := status.Incomplete(release.Config.Verify); ok {
 				glog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
+				if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
@@ -373,7 +377,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if verifyStatus == nil {
 				if data := releaseTag.Annotations[releaseAnnotationVerify]; len(data) > 0 {
 					verifyStatus = make(VerificationStatusMap)
-					if err := json.Unmarshal([]byte(data), verifyStatus); err != nil {
+					if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
 						glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
 					}
 				}
@@ -384,6 +388,8 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
 					// we've already processed this, continue
 					continue
+				case releaseVerificationStatePending:
+					// we need to process this
 				default:
 					glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
 				}
@@ -402,14 +408,16 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)
 			}
-			switch s {
+			switch prowapiv1.ProwJobState(s) {
 			case prowapiv1.SuccessState:
 				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
 				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateSucceeded, Url: url}
-			case prowapiv1.FailureState:
+			case prowapiv1.FailureState, prowapiv1.ErrorState, prowapiv1.AbortedState:
 				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateFailed, Url: url}
-			case prowapiv1.AbortedState:
-				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateFailed, Url: url}
+			case prowapiv1.TriggeredState, prowapiv1.PendingState, prowapiv1.ProwJobState(""):
+				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStatePending, Url: url}
+			default:
+				glog.Errorf("Unrecognized prow job state %q on job %s", s, job.GetName())
 			}
 
 		default:
@@ -624,8 +632,8 @@ func jobIsComplete(job *batchv1.Job) (succeeded bool, complete bool) {
 	return false, false
 }
 
-func (c *Controller) markReleaseReady(release *Release, names ...string) error {
-	return c.transitionReleasePhase(release, []string{releasePhasePending}, releasePhaseReady, nil, names...)
+func (c *Controller) markReleaseReady(release *Release, annotations map[string]string, names ...string) error {
+	return c.transitionReleasePhase(release, []string{releasePhasePending, releasePhaseReady}, releasePhaseReady, annotations, names...)
 }
 
 func (c *Controller) markReleaseAccepted(release *Release, annotations map[string]string, names ...string) error {
@@ -637,6 +645,7 @@ func (c *Controller) transitionReleasePhase(release *Release, preconditionPhases
 		return nil
 	}
 
+	changes := 0
 	target := release.Target.DeepCopy()
 	for _, name := range names {
 		tag := findTagReference(target, name)
@@ -657,7 +666,19 @@ func (c *Controller) transitionReleasePhase(release *Release, preconditionPhases
 				tag.Annotations[k] = v
 			}
 		}
+
+		// if there is no change, avoid updating anything
+		if oldTag := findTagReference(release.Target, name); oldTag != nil {
+			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
+				continue
+			}
+		}
+		changes++
 		glog.V(2).Infof("Marking release %s %s", name, phase)
+	}
+
+	if changes == 0 {
+		return nil
 	}
 
 	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
