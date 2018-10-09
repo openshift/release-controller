@@ -76,7 +76,7 @@ func phaseAlert(tag imagev1.TagReference) string {
 	case releasePhasePending:
 		return ""
 	case releasePhaseReady:
-		return "alert-primary"
+		return ""
 	case releasePhaseAccepted:
 		return "alert-success"
 	case releasePhaseFailed:
