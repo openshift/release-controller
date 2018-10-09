@@ -79,15 +79,15 @@ const (
 	// TriggeredState means the job has been created but not yet scheduled.
 	TriggeredState ProwJobState = "triggered"
 	// PendingState means the job is scheduled but not yet running.
-	PendingState = "pending"
+	PendingState ProwJobState = "pending"
 	// SuccessState means the job completed without error (exit 0)
-	SuccessState = "success"
+	SuccessState ProwJobState = "success"
 	// FailureState means the job completed with errors (exit non-zero)
-	FailureState = "failure"
+	FailureState ProwJobState = "failure"
 	// AbortedState means prow killed the job early (new commit pushed, perhaps).
-	AbortedState = "aborted"
+	AbortedState ProwJobState = "aborted"
 	// ErrorState means the job could not schedule (bad config, perhaps).
-	ErrorState = "error"
+	ErrorState ProwJobState = "error"
 )
 
 // ProwJobAgent specifies the controller (such as plank or jenkins-agent) that runs the job.

@@ -134,6 +134,7 @@ const (
 
 	releaseVerificationStateSucceeded = "Succeeded"
 	releaseVerificationStateFailed    = "Failed"
+	releaseVerificationStatePending   = "Pending"
 
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation

@@ -107,10 +107,13 @@ func links(tag imagev1.TagReference, release *Release) string {
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
 			if len(s.Url) > 0 {
-				if s.State == releaseVerificationStateFailed {
+				switch s.State {
+				case releaseVerificationStateFailed:
 					buf.WriteString(" <a title=\"Failed\" class=\"text-danger\" href=\"")
-				} else {
+				case releaseVerificationStateSucceeded:
 					buf.WriteString(" <a title=\"Succeeded\" class=\"text-success\" href=\"")
+				default:
+					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
 				}
 				buf.WriteString(template.HTMLEscapeString(s.Url))
 				buf.WriteString("\">")
@@ -118,10 +121,13 @@ func links(tag imagev1.TagReference, release *Release) string {
 				buf.WriteString("</a>")
 				continue
 			}
-			if s.State == releaseVerificationStateFailed {
+			switch s.State {
+			case releaseVerificationStateFailed:
 				buf.WriteString(" <span title=\"Failed\" class=\"text-danger\">")
-			} else {
+			case releaseVerificationStateSucceeded:
 				buf.WriteString(" <span title=\"Succeeded\" class=\"text-success\">")
+			default:
+				buf.WriteString(" <span title=\"Pending\" class=\"\">")
 			}
 			buf.WriteString(template.HTMLEscapeString(key))
 			buf.WriteString("</span>")
