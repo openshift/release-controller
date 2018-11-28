@@ -29,6 +29,10 @@ type ReleaseConfig struct {
 	// TODO: determining how naming should work.
 	Name string `json:"name"`
 
+	// MirrorPrefix is the prefix applied to the release mirror image stream. If unset,
+	// MirrorPrefix is the name of the source image stream + the date.
+	MirrorPrefix string `json:"mirrorPrefix"`
+
 	// Expires is the amount of time as a golang duration before Accepted release tags
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
