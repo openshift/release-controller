@@ -31,7 +31,10 @@ const releasePageHtml = `
 {{ range .Streams }}
 	<div class="col">
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
-		<p>pull-spec: <span>{{ .Release.Target.Status.PublicDockerImageRepository }}:{{ .Release.Config.Name }}</span></p>
+		{{ $publishSpec := publishSpec . }}
+		{{ if $publishSpec }}
+		<p>pull-spec: <span>{{  $publishSpec }}</span></p>
+		{{ end }}
 		<table class="table">
 			<thead>
 				<tr><th>Tag</th><th>Phase</th><th>Started</th><th>Links</th></tr>
@@ -157,6 +160,16 @@ func (c *Controller) userInterfaceHandler(w http.ResponseWriter, req *http.Reque
 	now := time.Now()
 	var releasePage = template.Must(template.New("releasePage").Funcs(
 		template.FuncMap{
+			"publishSpec": func(r *ReleaseStream) string {
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
+						}
+					}
+				}
+				return ""
+			},
 			"phaseCell":  phaseCell,
 			"phaseAlert": phaseAlert,
 			"links":      links,
