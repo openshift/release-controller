@@ -451,7 +451,7 @@ func (c *Controller) syncAccepted(release *Release, acceptedReleaseTags []*image
 func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
 	target := release.Target.DeepCopy()
 	now = now.UTC().Truncate(time.Second)
-	t := now.Format("20060102150405")
+	t := now.Format("2006-01-02-150405")
 	tag := imagev1.TagReference{
 		Name: fmt.Sprintf("%s-%s", release.Config.Name, t),
 		Annotations: map[string]string{
@@ -493,6 +493,9 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 
 func mirrorName(release *Release, releaseTagName string) string {
 	suffix := strings.TrimPrefix(releaseTagName, release.Config.Name)
+	if len(release.Config.MirrorPrefix) > 0 {
+		return fmt.Sprintf("%s%s", release.Config.MirrorPrefix, suffix)
+	}
 	return fmt.Sprintf("%s%s", release.Source.Name, suffix)
 }
 
@@ -562,9 +565,9 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	}
 
 	toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
+	toImageCLI := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
 
-	job = newReleaseJob(name, mirror.Name, mirror.Namespace, toImage, toImageBase)
+	job = newReleaseJob(name, mirror.Name, mirror.Namespace, toImage, toImageCLI)
 	job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
 	job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 
@@ -581,7 +584,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
 }
 
-func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageBase string) *batchv1.Job {
+func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageCLI string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -596,7 +599,7 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageBase strin
 					Containers: []corev1.Container{
 						{
 							Name:  "build",
-							Image: "openshift/origin-cli:v4.0",
+							Image: toImageCLI,
 
 							ImagePullPolicy: corev1.PullAlways,
 
@@ -607,10 +610,9 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageBase strin
 								"/bin/bash", "-c", `
 								set -e
 								oc registry login
-								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
+								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4
 								`, "",
-								name, mirrorName, mirrorNamespace, toImage, toImageBase,
-							},
+								name, mirrorName, mirrorNamespace, toImage},
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 						},
 					},
