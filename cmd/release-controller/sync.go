@@ -612,9 +612,9 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImage
 								"/bin/bash", "-c", `
 								set -e
 								oc registry login
-								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4
+								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
 								`, "",
-								name, mirrorName, mirrorNamespace, toImage},
+								name, mirrorName, mirrorNamespace, toImage, toImageBase},
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 						},
 					},
