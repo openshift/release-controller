@@ -565,9 +565,11 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	}
 
 	toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-	toImageCLI := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+	// TODO: this should be the default
+	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
+	cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
 
-	job = newReleaseJob(name, mirror.Name, mirror.Namespace, toImage, toImageCLI)
+	job = newReleaseJob(name, mirror.Name, mirror.Namespace, cliImage, toImage, toImageBase)
 	job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
 	job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 
@@ -584,7 +586,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
 }
 
-func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageCLI string) *batchv1.Job {
+func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImageBase string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -599,7 +601,7 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, toImage, toImageCLI string
 					Containers: []corev1.Container{
 						{
 							Name:  "build",
-							Image: toImageCLI,
+							Image: cliImage,
 
 							ImagePullPolicy: corev1.PullAlways,
 
