@@ -46,7 +46,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		for _, tag := range s.Tags {
 			nodes = append(nodes, ReleaseNode{
 				Version: tag.Name,
-				Payload: s.Release.Source.Status.PublicDockerImageRepository + ":" + tag.Name,
+				Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
 			})
 		}
 		sort.Slice(nodes, func(i, j int) bool {
@@ -54,10 +54,14 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		})
 		for i, node := range nodes {
 			if i > 0 {
-				graph.Edges = append(graph.Edges, ReleaseEdge{
-					i - 1,
-					i,
-				})
+				graph.Edges = append(graph.Edges,
+					ReleaseEdge{i - 1, i},
+				)
+			}
+			if i > 1 {
+				graph.Edges = append(graph.Edges,
+					ReleaseEdge{i - 2, i},
+				)
 			}
 			graph.Nodes = append(graph.Nodes, node)
 		}
