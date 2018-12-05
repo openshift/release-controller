@@ -593,6 +593,7 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImage
 			Annotations: map[string]string{},
 		},
 		Spec: batchv1.JobSpec{
+			Parallelism:  int32p(1),
 			BackoffLimit: int32p(3),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
