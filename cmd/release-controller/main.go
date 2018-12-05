@@ -146,6 +146,7 @@ func (o *options) Run() error {
 
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
+		http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
 		http.DefaultServeMux.HandleFunc("/", c.userInterfaceHandler)
 		go func() {
 			glog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
