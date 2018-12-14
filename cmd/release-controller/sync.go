@@ -240,23 +240,22 @@ func calculateSyncActions(release *Release, now time.Time) (pendingTags []*image
 		}
 	}
 
-	// only keep one failed tag
-	if len(removeFailures) > 1 {
-		sort.Sort(removeFailures)
-		removeTags = append(removeTags, removeFailures[1:]...)
-	}
+	keepTagsOfType := 5
 
-	// only keep two rejected tags
-	if len(removeRejected) > 2 {
+	if len(removeFailures) > keepTagsOfType {
+		sort.Sort(removeFailures)
+		removeTags = append(removeTags, removeFailures[keepTagsOfType:]...)
+	}
+	if len(removeRejected) > keepTagsOfType {
 		sort.Sort(removeRejected)
-		removeTags = append(removeTags, removeRejected[2:]...)
+		removeTags = append(removeTags, removeRejected[keepTagsOfType:]...)
 	}
 
 	// always keep at least one accepted tag, but remove any that are past expiration
-	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > 1 {
+	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > keepTagsOfType {
 		glog.V(5).Infof("Checking for tags that are more than %s old", expires)
 		sort.Sort(removeAccepted)
-		for _, tag := range removeAccepted[1:] {
+		for _, tag := range removeAccepted[keepTagsOfType:] {
 			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 			if err != nil {
 				glog.Errorf("Unparseable timestamp on release tag %s:%s: %v", release.Target.Name, tag.Name, err)
