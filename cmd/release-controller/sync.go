@@ -420,7 +420,7 @@ func (c *Controller) syncAccepted(release *Release) error {
 		return nil
 	}
 	var errs []error
-	newestAccepted := acceptedTags[len(acceptedTags)-1]
+	newestAccepted := acceptedTags[0]
 	for name, publishType := range release.Config.Publish {
 		switch {
 		case publishType.TagRef != nil:
