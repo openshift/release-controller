@@ -187,3 +187,24 @@ func tagsForRelease(release *Release) []*imagev1.TagReference {
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
 }
+
+func stringSliceContains(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.TagReference {
+	var tags []*imagev1.TagReference
+	for i := range release.Target.Spec.Tags {
+		tag := &release.Target.Spec.Tags[i]
+		if stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
+			tags = append(tags, tag)
+		}
+	}
+	sort.Sort(tagReferencesByAge(tags))
+	return tags
+}
