@@ -99,7 +99,10 @@ func (m VerificationStatusMap) Failures() ([]string, bool) {
 
 func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerification) ([]string, bool) {
 	var names []string
-	for name := range required {
+	for name, definition := range required {
+		if definition.Disabled {
+			continue
+		}
 		if s, ok := m[name]; !ok || s.State != releaseVerificationStateSucceeded {
 			names = append(names, name)
 		}
