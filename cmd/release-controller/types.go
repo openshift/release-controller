@@ -103,7 +103,7 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 		if definition.Disabled {
 			continue
 		}
-		if s, ok := m[name]; !ok || s.State != releaseVerificationStateSucceeded {
+		if s, ok := m[name]; !ok || !stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
 			names = append(names, name)
 		}
 	}
