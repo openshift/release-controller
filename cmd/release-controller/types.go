@@ -29,6 +29,16 @@ type ReleaseConfig struct {
 	// TODO: determining how naming should work.
 	Name string `json:"name"`
 
+	// ReferenceMode describes how the release image will refer to the origin. If empty
+	// or 'public' images will be copied and no source location will be preserved. If
+	// `source` then the controller will attempt to keep the originating reference in place.
+	ReferenceMode string `json:"referenceMode"`
+
+	// PullSecretName is the name of a pull secret in the release job namespace to mount
+	// into the pod that will create the release. The secret must contain a single file
+	// config.json with a valid Docker auths array.
+	PullSecretName string `json:"pullSecretName"`
+
 	// MirrorPrefix is the prefix applied to the release mirror image stream. If unset,
 	// MirrorPrefix is the name of the source image stream + the date.
 	MirrorPrefix string `json:"mirrorPrefix"`

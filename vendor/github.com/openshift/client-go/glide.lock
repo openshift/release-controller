@@ -1,5 +1,5 @@
-hash: 45a7f40cc71c1eba5d67f1c71580775a9b825ae5ba406b191e4d50c700d5e732
-updated: 2018-07-23T16:11:42.626426-04:00
+hash: 63644647f862ec7482e1c18412fc08babd74694a38b4ca257e42a0656677f513
+updated: 2019-01-23T11:28:55.589495249-05:00
 imports:
 - name: github.com/davecgh/go-spew
   version: 782f4967f2dc4564575ca782fe2d04090b5faca8
@@ -49,7 +49,7 @@ imports:
 - name: github.com/modern-go/reflect2
   version: 05fbef0ca5da472bbf96c9322b84a53edc03c9fd
 - name: github.com/openshift/api
-  version: fc4c02c9169b85b9a80353f11ac15ce542a0944a
+  version: 74cf02537628c9ca144e7f09c8db26ee7e7f56e4
   subpackages:
   - apps/v1
   - authorization/v1
@@ -60,6 +60,7 @@ imports:
   - image/v1
   - network/v1
   - oauth/v1
+  - operator/v1
   - operator/v1alpha1
   - pkg/serialization
   - project/v1
@@ -218,10 +219,10 @@ imports:
   - util/retry
 - name: k8s.io/code-generator
   version: f8b4a111163516cf26185a0530df90263c59bcc1
-  repo: git@github.com:openshift/kubernetes-code-generator
+  repo: https://github.com/openshift/kubernetes-code-generator.git
 - name: k8s.io/gengo
   version: 01a732e01d00cb9a81bb0ca050d3e6d2b947927b
-  repo: git@github.com:openshift/kubernetes-gengo
+  repo: https://github.com/openshift/kubernetes-gengo.git
 - name: k8s.io/kube-openapi
   version: 91cfa479c814065e420cee7ed227db0f63a5854e
   subpackages:
