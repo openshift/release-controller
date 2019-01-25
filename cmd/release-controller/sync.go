@@ -24,6 +24,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	imagereference "github.com/openshift/library-go/pkg/image/reference"
 
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
@@ -513,24 +514,83 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 			},
 		},
 	}
-	for _, statusTag := range release.Source.Status.Tags {
-		if len(statusTag.Items) == 0 {
+
+	// this block is mostly identical to the logic in openshift/origin pkg/oc/cli/admin/release/new which
+	// calculates the spec tags - it preserves the desired source location of the image and errors when
+	// we can't resolve or the result might be ambiguous
+	forceExternal := release.Config.ReferenceMode == "public" || release.Config.ReferenceMode == ""
+	internal := release.Source.Status.DockerImageRepository
+	external := release.Source.Status.PublicDockerImageRepository
+	if forceExternal && len(external) == 0 {
+		return nil, fmt.Errorf("only image streams with public image repositories can be the source for releases when using the default referenceMode")
+	}
+
+	for _, tag := range release.Source.Status.Tags {
+		if len(tag.Items) == 0 {
 			continue
 		}
-		latest := statusTag.Items[0]
+		source := tag.Items[0].DockerImageReference
+		latest := tag.Items[0]
 		if len(latest.Image) == 0 {
 			continue
 		}
+		// eliminate status tag references that point to the outside
+		if len(source) > 0 {
+			if len(internal) > 0 && strings.HasPrefix(latest.DockerImageReference, internal) {
+				glog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
+				source = ""
+			}
+		}
+		ref := findSpecTag(release.Source.Spec.Tags, tag.Tag)
+		if ref == nil {
+			ref = &imagev1.TagReference{Name: tag.Tag}
+		} else {
+			// prevent unimported images from being skipped
+			if ref.Generation != nil && *ref.Generation != tag.Items[0].Generation {
+				return nil, fmt.Errorf("the tag %q in the source input stream has not been imported yet", tag.Tag)
+			}
+			// use the tag ref as the source
+			if ref.From != nil && ref.From.Kind == "DockerImage" && !strings.HasPrefix(ref.From.Name, internal) {
+				if from, err := imagereference.Parse(ref.From.Name); err == nil {
+					from.Tag = ""
+					from.ID = tag.Items[0].Image
+					source = from.Exact()
+				} else {
+					glog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
+				}
+			}
+			ref = ref.DeepCopy()
+		}
+		// default to the external registry name
+		if (forceExternal || len(source) == 0) && len(external) > 0 {
+			source = external + "@" + tag.Items[0].Image
+		}
+		if len(source) == 0 {
+			return nil, fmt.Errorf("Can't use tag %q because we cannot locate or calculate a source location", tag.Tag)
+		}
+		sourceRef, err := imagereference.Parse(source)
+		if err != nil {
+			return nil, fmt.Errorf("the tag %q points to source %q which is not valid", tag.Tag, source)
+		}
+		sourceRef.Tag = ""
+		sourceRef.ID = tag.Items[0].Image
+		source = sourceRef.Exact()
 
-		is.Spec.Tags = append(is.Spec.Tags, imagev1.TagReference{
-			Name: statusTag.Tag,
-			From: &corev1.ObjectReference{
+		if strings.HasPrefix(source, external+"@") {
+			ref.From = &corev1.ObjectReference{
 				Kind:      "ImageStreamImage",
 				Namespace: release.Source.Namespace,
 				Name:      fmt.Sprintf("%s@%s", release.Source.Name, latest.Image),
-			},
-		})
+			}
+		} else {
+			ref.From = &corev1.ObjectReference{
+				Kind: "DockerImage",
+				Name: source,
+			}
+		}
+		is.Spec.Tags = append(is.Spec.Tags, *ref)
 	}
+
 	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
 	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
 	if err != nil {
@@ -557,7 +617,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
 	cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
 
-	job = newReleaseJob(name, mirror.Name, mirror.Namespace, cliImage, toImage, toImageBase)
+	job = newReleaseJob(name, mirror.Name, mirror.Namespace, cliImage, toImage, toImageBase, release.Config.ReferenceMode, release.Config.PullSecretName)
 	job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
 	job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 
@@ -574,7 +634,63 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
 }
 
-func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImageBase string) *batchv1.Job {
+func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImageBase, referenceMode, pullSecretName string) *batchv1.Job {
+	if len(pullSecretName) > 0 {
+		return &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        name,
+				Annotations: map[string]string{},
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism:  int32p(1),
+				BackoffLimit: int32p(3),
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						ServiceAccountName: "builder",
+						RestartPolicy:      corev1.RestartPolicyNever,
+						Volumes: []corev1.Volume{
+							{
+								Name: "pull-secret",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: pullSecretName,
+									},
+								},
+							},
+						},
+						Containers: []corev1.Container{
+							{
+								Name:  "build",
+								Image: cliImage,
+
+								ImagePullPolicy: corev1.PullAlways,
+
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "pull-secret",
+										MountPath: "/tmp/pull-secret",
+									},
+								},
+								Env: []corev1.EnvVar{
+									{Name: "HOME", Value: "/tmp"},
+								},
+								Command: []string{
+									"/bin/bash", "-c", `
+									set -eu
+									mkdir $HOME/.docker/
+									cp -Lf /tmp/pull-secret/* $HOME/.docker/
+									oc registry login
+									oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--to-image-base=$5" "--reference-mode=$6"
+									`, "",
+									name, mirrorName, mirrorNamespace, toImage, toImageBase, referenceMode},
+								TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+							},
+						},
+					},
+				},
+			},
+		}
+	}
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -599,11 +715,11 @@ func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImage
 							},
 							Command: []string{
 								"/bin/bash", "-c", `
-								set -e
+								set -eu
 								oc registry login
-								oc adm release new --name $1 --from-image-stream $2 --namespace $3 --to-image $4 --to-image-base $5
+								oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--to-image-base=$5" "--reference-mode=$6"
 								`, "",
-								name, mirrorName, mirrorNamespace, toImage, toImageBase},
+								name, mirrorName, mirrorNamespace, toImage, toImageBase, referenceMode},
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 						},
 					},
@@ -909,4 +1025,14 @@ func prowSpecForPeriodicConfig(config *prowapiv1.PeriodicConfig, decorationConfi
 	spec.DecorationConfig.SkipCloning = true
 
 	return spec
+}
+
+func findSpecTag(tags []imagev1.TagReference, name string) *imagev1.TagReference {
+	for i, tag := range tags {
+		if tag.Name != name {
+			continue
+		}
+		return &tags[i]
+	}
+	return nil
 }
