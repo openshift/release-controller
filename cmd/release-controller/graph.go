@@ -10,7 +10,7 @@ import (
 
 type ReleaseNode struct {
 	Version string `json:"version"`
-	Payload string `json:"payload"`
+	Image   string `json:"image"`
 }
 
 type ReleaseEdge []int
@@ -46,7 +46,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		for _, tag := range s.Tags {
 			nodes = append(nodes, ReleaseNode{
 				Version: tag.Name,
-				Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
+				Image:   s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
 			})
 		}
 		sort.Slice(nodes, func(i, j int) bool {
