@@ -171,7 +171,8 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jo
 		},
 		Spec: *spec,
 		Status: prowapiv1.ProwJobStatus{
-			State: prowapiv1.PendingState,
+			StartTime: metav1.Now(),
+			State:     prowapiv1.TriggeredState,
 		},
 	}
 	out, err := c.prowClient.Create(objectToUnstructured(pj))
