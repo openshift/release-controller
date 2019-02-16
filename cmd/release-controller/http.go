@@ -28,8 +28,8 @@ const releasePageHtml = `
 <div class="container">
 <h1>Release Status</h1>
 <div class="row">
+<div class="col">
 {{ range .Streams }}
-	<div class="col">
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
 		{{ $publishSpec := publishSpec . }}
 		{{ if $publishSpec }}
@@ -51,9 +51,9 @@ const releasePageHtml = `
 			</tr>
 		{{ end }}
 			</tbody>
-		<table>
-	</div>
+		</table>
 {{ end }}
+</div>
 </div>
 </div>
 </body>
