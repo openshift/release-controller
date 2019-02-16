@@ -201,6 +201,10 @@ func (c *Controller) userInterfaceHandler(w http.ResponseWriter, req *http.Reque
 		page.Streams = append(page.Streams, s)
 	}
 
+	sort.Slice(page.Streams, func(i, j int) bool {
+		return page.Streams[i].Release.Config.Name < page.Streams[j].Release.Config.Name
+	})
+
 	if err := releasePage.Execute(w, page); err != nil {
 		glog.Errorf("Unable to render page: %v", err)
 	}
