@@ -589,6 +589,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 				Name: source,
 			}
 		}
+		ref.ImportPolicy.Scheduled = false
 		is.Spec.Tags = append(is.Spec.Tags, *ref)
 	}
 
