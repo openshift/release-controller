@@ -62,6 +62,8 @@ type ReleaseConfig struct {
 type ReleasePublish struct {
 	// TagRef updates the named tag in the release image stream to point at the release.
 	TagRef *PublishTagReference `json:"tagRef"`
+	// ImageStreamRef copies all images to another image stream in one transaction.
+	ImageStreamRef *PublishStreamReference `json:"imageStreamRef"`
 }
 
 // PublishTagReference ensures that the release image stream has a tag that points to
@@ -70,6 +72,16 @@ type PublishTagReference struct {
 	// Name is the name of the release image stream tag that will be updated to point to
 	// (reference) the release tag.
 	Name string `json:"name"`
+}
+
+// PublishStreamReference updates another image stream with spec tags that reference the
+// images that were verified.
+type PublishStreamReference struct {
+	// Name is the name of the release image stream to update. Required.
+	Name string `json:"name"`
+	// Namespace is the namespace of the release image stream to update. If left empty
+	// it will default to the same namespace as the release image stream.
+	Namespace string `json:"namespace"`
 }
 
 // ReleaseVerification is a task that must be completed before a release is marked
