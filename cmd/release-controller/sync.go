@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -415,7 +417,7 @@ func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := findTagReferencesByPhase(release, releasePhaseAccepted)
 
 	if glog.V(4) {
-		glog.Infof("accepted=%v", tagNames(acceptedTags))
+		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
 	}
 
 	if len(release.Config.Publish) == 0 || len(acceptedTags) == 0 {
@@ -428,6 +430,15 @@ func (c *Controller) syncAccepted(release *Release) error {
 		case publishType.TagRef != nil:
 			if err := c.ensureTagPointsToRelease(release, publishType.TagRef.Name, newestAccepted.Name); err != nil {
 				errs = append(errs, fmt.Errorf("unable to update tag for publish step %s: %v", name, err))
+				continue
+			}
+		case publishType.ImageStreamRef != nil:
+			ns := publishType.ImageStreamRef.Namespace
+			if len(ns) == 0 {
+				ns = release.Target.Namespace
+			}
+			if err := c.ensureImageStreamMatchesRelease(release, ns, publishType.ImageStreamRef.Name, newestAccepted.Name); err != nil {
+				errs = append(errs, fmt.Errorf("unable to update image stream for publish step %s: %v", name, err))
 				continue
 			}
 		}
@@ -868,6 +879,75 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 	}
 	glog.V(2).Infof("Updated image stream tag %s/%s:%s to point to %s", release.Target.Namespace, release.Target.Name, to, from)
 	release.Target = is
+	return nil
+}
+
+func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string) error {
+	glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
+	if toNamespace == release.Source.Namespace && toName == release.Source.Name {
+		return nil
+	}
+	fromTag := findTagReference(release.Target, from)
+	if fromTag == nil {
+		// tag was deleted
+		return nil
+	}
+
+	mirror, err := c.getMirror(release, from)
+	if err != nil {
+		glog.V(2).Infof("Error getting release mirror image stream: %v", err)
+		return nil
+	}
+
+	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
+	if errors.IsNotFound(err) {
+		// TODO: create it?
+		glog.V(2).Infof("Target image stream doesn't exist yet: %v", err)
+		return nil
+	}
+	if err != nil {
+		// TODO
+		glog.V(2).Infof("Error getting publish image stream: %v", err)
+		return nil
+	}
+
+	set := fmt.Sprintf("release.openshift.io/source-%s", release.Config.Name)
+	if value, ok := target.Annotations[set]; ok && value == from {
+		glog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
+		return nil
+	}
+
+	processed := sets.NewString()
+	finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
+	for _, tag := range mirror.Spec.Tags {
+		processed.Insert(tag.Name)
+		finalRefs = append(finalRefs, tag)
+	}
+	for _, tag := range target.Spec.Tags {
+		if processed.Has(tag.Name) {
+			continue
+		}
+		finalRefs = append(finalRefs, tag)
+	}
+	sort.Slice(finalRefs, func(i, j int) bool {
+		return finalRefs[i].Name < finalRefs[j].Name
+	})
+
+	target = target.DeepCopy()
+	target.Spec.Tags = finalRefs
+	if target.Annotations == nil {
+		target.Annotations = make(map[string]string)
+	}
+	target.Annotations[set] = from
+
+	_, err = c.imageClient.ImageStreams(target.Namespace).Update(target)
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	glog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
 	return nil
 }
 

@@ -88,6 +88,11 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 				return nil, fmt.Errorf("tagRef publish for %s has no name", name)
 			}
 		}
+		if publish.ImageStreamRef != nil {
+			if len(publish.ImageStreamRef.Name) == 0 {
+				return nil, fmt.Errorf("imageStreamRef publish for %s has no name", name)
+			}
+		}
 	}
 	copied := *cfg
 	c.parsedReleaseConfigCache.Add(data, copied)
@@ -201,6 +206,12 @@ func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.Tag
 	var tags []*imagev1.TagReference
 	for i := range release.Target.Spec.Tags {
 		tag := &release.Target.Spec.Tags[i]
+		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+			continue
+		}
+		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+			continue
+		}
 		if stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
 			tags = append(tags, tag)
 		}
