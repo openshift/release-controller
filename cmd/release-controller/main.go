@@ -135,6 +135,9 @@ func (o *options) Run() error {
 		}
 	}
 
+	var releaseInfo ReleaseInfo = NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream))
+	releaseInfo = NewCachingReleaseInfo(releaseInfo, 64*1024*1024)
+
 	c := NewController(
 		client.Core(),
 		imageClient.Image(),
@@ -145,12 +148,13 @@ func (o *options) Run() error {
 		o.ReleaseImageStream,
 		releaseNamespace,
 		o.JobNamespace,
+		releaseInfo,
 	)
 
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 		http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
-		http.DefaultServeMux.HandleFunc("/", c.userInterfaceHandler)
+		http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 		go func() {
 			glog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
 			if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {

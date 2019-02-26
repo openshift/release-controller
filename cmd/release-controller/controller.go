@@ -93,6 +93,8 @@ type Controller struct {
 	prowClient       dynamic.ResourceInterface
 	prowLister       cache.Indexer
 
+	releaseInfo ReleaseInfo
+
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
@@ -109,6 +111,7 @@ func NewController(
 	releaseImageStream string,
 	releaseNamespace string,
 	jobNamespace string,
+	releaseInfo ReleaseInfo,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -144,6 +147,8 @@ func NewController(
 		releaseImageStream: releaseImageStream,
 		releaseNamespace:   releaseNamespace,
 		jobNamespace:       jobNamespace,
+
+		releaseInfo: releaseInfo,
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 	}
@@ -190,7 +195,6 @@ func (l *multiImageStreamLister) ImageStreams(ns string) imagelisters.ImageStrea
 func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams imageinformers.ImageStreamInformer) {
 	c.imageStreamLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
 
-	c.syncs = append(c.syncs, imagestreams.Informer().HasSynced)
 	imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processImageStream,
 		DeleteFunc: c.processImageStream,
@@ -203,7 +207,6 @@ func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams im
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the
 // controller.
 func (c *Controller) AddProwInformer(ns string, informer cache.SharedIndexInformer) {
-	c.syncs = append(c.syncs, informer.HasSynced)
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processProwJob,
 		DeleteFunc: c.processProwJob,
