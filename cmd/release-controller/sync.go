@@ -177,7 +177,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jo
 			State:     prowapiv1.TriggeredState,
 		},
 	}
-	out, err := c.prowClient.Create(objectToUnstructured(pj))
+	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
 		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
