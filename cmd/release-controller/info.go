@@ -73,7 +73,7 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 		restConfig: restConfig,
 		namespace:  namespace,
 		name:       name,
-		image:      "registry.svc.ci.openshift.org/ocp/4.0-2019-03-02-184309:tests",
+		image:      "registry.svc.ci.openshift.org/ocp/4.0:tests",
 	}
 }
 
@@ -148,6 +148,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	spec, hash := r.specHash()
 
 	if rs != nil && rs.Annotations["release-hash"] != hash {
+		oldHash := rs.Annotations["release-hash"]
 		if glog.V(4) {
 			glog.Infof("replica set changed: %s to %s", rs.Annotations["release-hash"], hash)
 		}
@@ -174,6 +175,9 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 				}
 				if rs.Annotations["release-hash"] == hash {
 					return true, nil
+				}
+				if rs.Annotations["release-hash"] == oldHash {
+					return false, nil
 				}
 				return false, fmt.Errorf("another server was set up while we were waiting for deletion: %s", rs.Annotations["release-hash"])
 			}); err != nil {
