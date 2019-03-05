@@ -45,13 +45,10 @@ const releasePageHtml = `
 <div class="col">
 {{ range .Streams }}
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
-		{{ $publishSpec := publishSpec . }}
-		{{ if $publishSpec }}
-		<p>pull-spec: <span>{{  $publishSpec }}</span></p>
-		{{ end }}
+		{{ publishDescription . }}
 		<table class="table">
 			<thead>
-				<tr><th>Tag</th><th>Phase</th><th>Started</th><th>Links</th></tr>
+				<tr><th title="The name and version of the release image (as well as the tag it is published under)">Name</th><th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th><th>Started</th><th title="All tests must pass for a candidate to be marked accepted">Tests</th></tr>
 			</thead>
 			<tbody>
 		{{ $release := .Release }}
@@ -559,6 +556,28 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 					}
 				}
 				return ""
+			},
+			"publishDescription": func(r *ReleaseStream) string {
+				var out []string
+				out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
+
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to pull spec: <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
+						}
+					}
+				}
+				for _, target := range r.Release.Config.Publish {
+					if target.ImageStreamRef != nil {
+						out = append(out, fmt.Sprintf(`<span>promote to image stream: <code>%s/%s</code></span>`, target.ImageStreamRef.Namespace, target.ImageStreamRef.Name))
+					}
+				}
+				if len(out) == 0 {
+					return ""
+				}
+				sort.Strings(out)
+				return fmt.Sprintf("<p>%s</p>\n", strings.Join(out, ", "))
 			},
 			"phaseCell":  phaseCell,
 			"phaseAlert": phaseAlert,
