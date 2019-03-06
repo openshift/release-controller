@@ -8,15 +8,16 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/golang/groupcache"
-
 	"github.com/golang/glog"
+	"github.com/golang/groupcache"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -60,24 +61,29 @@ type ReleaseInfo interface {
 }
 
 type ExecReleaseInfo struct {
-	client     kubernetes.Interface
-	restConfig *rest.Config
-	namespace  string
-	name       string
-	image      string
-}
+	client      kubernetes.Interface
+	restConfig  *rest.Config
+	namespace   string
+	name        string
+	imageNameFn func() (string, error)
 
-func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string) *ExecReleaseInfo {
-	return &ExecReleaseInfo{
-		client:     client,
-		restConfig: restConfig,
-		namespace:  namespace,
-		name:       name,
-		image:      "registry.svc.ci.openshift.org/ocp/4.0:tests",
+	mu struct {
+		lock         sync.Mutex
+		lastResolved time.Time
 	}
 }
 
-func (r *ExecReleaseInfo) specHash() (appsv1.ReplicaSetSpec, string) {
+func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
+	return &ExecReleaseInfo{
+		client:      client,
+		restConfig:  restConfig,
+		namespace:   namespace,
+		name:        name,
+		imageNameFn: imageNameFn,
+	}
+}
+
+func (r *ExecReleaseInfo) specHash(image string) (appsv1.ReplicaSetSpec, string) {
 	spec := appsv1.ReplicaSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
@@ -93,16 +99,23 @@ func (r *ExecReleaseInfo) specHash() (appsv1.ReplicaSetSpec, string) {
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
 					{Name: "git", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
 				},
 				Containers: []corev1.Container{
 					{
 						Name:  "git",
-						Image: r.image,
+						Image: image,
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "git", MountPath: "/tmp/git/"},
+							{Name: "git-credentials", MountPath: "/tmp/.git-credentials", SubPath: ".git-credentials"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU: resource.MustParse("50m"),
+							},
 						},
 						Command: []string{
 							"/bin/bash",
@@ -111,6 +124,7 @@ func (r *ExecReleaseInfo) specHash() (appsv1.ReplicaSetSpec, string) {
 							set -euo pipefail
 							trap 'kill $(jobs -p); exit 0' TERM
 
+							git config --global credential.helper store
 							oc registry login
 							while true; do
 								sleep 180 & wait
@@ -145,7 +159,8 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	}
 
 	// increment this when you change the replica set definition
-	spec, hash := r.specHash()
+	image, err := r.imageNameFn()
+	spec, hash := r.specHash(image)
 
 	if rs != nil && rs.Annotations["release-hash"] != hash {
 		oldHash := rs.Annotations["release-hash"]
