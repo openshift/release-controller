@@ -98,7 +98,13 @@ func (r *ExecReleaseInfo) specHash(image string) (appsv1.ReplicaSetSpec, string)
 			},
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
-					{Name: "git", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					{
+						Name: "git", VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: "git-cache",
+							},
+						},
+					},
 					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
 				},
 				Containers: []corev1.Container{
