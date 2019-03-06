@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -27,6 +29,7 @@ import (
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
+	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
@@ -135,7 +138,8 @@ func (o *options) Run() error {
 		}
 	}
 
-	var releaseInfo ReleaseInfo = NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream))
+	imageCache := newLatestImageCache("tests")
+	var releaseInfo ReleaseInfo = NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream), imageCache.Get)
 	releaseInfo = NewCachingReleaseInfo(releaseInfo, 64*1024*1024)
 
 	c := NewController(
@@ -173,6 +177,7 @@ func (o *options) Run() error {
 		hasSynced = append(hasSynced, streams.Informer().HasSynced)
 		factory.Start(stopCh)
 	}
+	imageCache.SetLister(c.imageStreamLister.ImageStreams(releaseNamespace))
 
 	if len(o.ProwConfigPath) > 0 {
 		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
@@ -227,4 +232,50 @@ func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface
 		resyncPeriod,
 		cache.Indexers{},
 	)
+}
+
+type latestImageCache struct {
+	tag      string
+	interval time.Duration
+
+	lock        sync.Mutex
+	lister      imagelisters.ImageStreamNamespaceLister
+	last        string
+	lastChecked time.Time
+}
+
+func newLatestImageCache(tag string) *latestImageCache {
+	return &latestImageCache{
+		tag:      tag,
+		interval: 2 * time.Hour,
+	}
+}
+
+func (c *latestImageCache) SetLister(lister imagelisters.ImageStreamNamespaceLister) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.lister = lister
+}
+
+func (c *latestImageCache) Get() (string, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.lister == nil {
+		return "", fmt.Errorf("not yet started")
+	}
+	if len(c.last) > 0 && c.lastChecked.After(time.Now().Add(-c.interval)) {
+		return c.last, nil
+	}
+	items, _ := c.lister.List(labels.Everything())
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	for _, item := range items {
+		if _, ok := item.Annotations[releaseAnnotationConfig]; ok {
+			if spec := findImagePullSpec(item, c.tag); len(spec) > 0 {
+				c.last = spec
+				c.lastChecked = time.Now()
+				return spec, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("could not find a release image stream with :tests")
 }

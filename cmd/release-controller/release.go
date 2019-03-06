@@ -175,6 +175,24 @@ func findTagReference(is *imagev1.ImageStream, name string) *imagev1.TagReferenc
 	return nil
 }
 
+func findImagePullSpec(is *imagev1.ImageStream, name string) string {
+	for i := range is.Status.Tags {
+		tag := &is.Status.Tags[i]
+		if tag.Tag == name {
+			if len(tag.Items) == 0 {
+				if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil {
+					if from := specTag.From; from != nil && from.Kind == "DockerImage" {
+						return from.Name
+					}
+				}
+				return ""
+			}
+			return tag.Items[0].DockerImageReference
+		}
+	}
+	return ""
+}
+
 func tagsForRelease(release *Release) []*imagev1.TagReference {
 	tags := make([]*imagev1.TagReference, 0, len(release.Target.Spec.Tags))
 	for i := range release.Target.Spec.Tags {

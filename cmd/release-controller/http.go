@@ -462,7 +462,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			select {
 			case render = <-ch:
 			case <-time.After(10 * time.Second):
-				render.err = fmt.Errorf("Change log took too long to generate, retry in a few minutes")
+				render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
 			}
 			fmt.Fprintf(w, `<style>#loading{display: none;}</style>`)
 			flusher.Flush()
@@ -473,7 +473,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// if we don't get a valid result within limits, just show the simpler informational view
-		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show changelog, will show simpler view: %s", render.err))
+		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
 	}
 
 	now := time.Now()
