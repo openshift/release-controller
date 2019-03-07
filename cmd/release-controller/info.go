@@ -3,13 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/golang/glog"
 	"github.com/golang/groupcache"
@@ -19,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -66,11 +60,6 @@ type ExecReleaseInfo struct {
 	namespace   string
 	name        string
 	imageNameFn func() (string, error)
-
-	mu struct {
-		lock         sync.Mutex
-		lastResolved time.Time
-	}
 }
 
 func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
@@ -83,11 +72,108 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 	}
 }
 
-func (r *ExecReleaseInfo) specHash(image string) (appsv1.ReplicaSetSpec, string) {
-	spec := appsv1.ReplicaSetSpec{
+func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
+	if _, err := imagereference.Parse(from); err != nil {
+		return "", fmt.Errorf("%s is not an image reference: %v", from, err)
+	}
+	if _, err := imagereference.Parse(to); err != nil {
+		return "", fmt.Errorf("%s is not an image reference: %v", to, err)
+	}
+	if strings.HasPrefix(from, "-") || strings.HasPrefix(to, "-") {
+		return "", fmt.Errorf("not a valid reference")
+	}
+
+	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
+	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Container: "git",
+		Stdout:    true,
+		Stderr:    true,
+		Command:   cmd,
+	}, scheme.ParameterCodec).URL()
+
+	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
+	if err != nil {
+		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := e.Stream(remotecommand.StreamOptions{
+		Stdout: out,
+		Stdin:  nil,
+		Stderr: errOut,
+	}); err != nil {
+		glog.V(4).Infof("Failed to generate changelog:\n$ %s\n%s\n%s", strings.Join(cmd, " "), errOut.String(), out.String())
+		return "", fmt.Errorf("could not run remote command: %v", err)
+	}
+
+	return out.String(), nil
+}
+
+func (r *ExecReleaseInfo) refreshPod() error {
+	sts, err := r.client.Apps().StatefulSets(r.namespace).Get("git-cache", metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		sts = nil
+	}
+
+	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
+		glog.Infof("Another release controller is managing git-cache, ignoring")
+		return nil
+	}
+
+	image, err := r.imageNameFn()
+	if err != nil {
+		return fmt.Errorf("unable to load image for caching git: %v", err)
+	}
+	spec := r.specHash(image)
+
+	if sts == nil {
+		sts = &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "git-cache",
+				Namespace:   r.namespace,
+				Annotations: map[string]string{"release-owner": r.name},
+			},
+			Spec: spec,
+		}
+		if _, err := r.client.Apps().StatefulSets(r.namespace).Create(sts); err != nil {
+			return fmt.Errorf("can't create stateful set for cache: %v", err)
+		}
+		return nil
+	}
+
+	sts.Spec = spec
+	if _, err := r.client.Apps().StatefulSets(r.namespace).Update(sts); err != nil {
+		return fmt.Errorf("can't update stateful set for cache: %v", err)
+	}
+	return nil
+}
+
+func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
+	spec := appsv1.StatefulSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
 				"app": r.name,
+			},
+		},
+		PodManagementPolicy: appsv1.ParallelPodManagement,
+		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
+		},
+		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "git",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							"storage": resource.MustParse("20Gi"),
+						},
+					},
+				},
 			},
 		},
 		Template: corev1.PodTemplateSpec{
@@ -98,13 +184,6 @@ func (r *ExecReleaseInfo) specHash(image string) (appsv1.ReplicaSetSpec, string)
 			},
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
-					{
-						Name: "git", VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: "git-cache",
-							},
-						},
-					},
 					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
 				},
 				Containers: []corev1.Container{
@@ -142,130 +221,5 @@ func (r *ExecReleaseInfo) specHash(image string) (appsv1.ReplicaSetSpec, string)
 			},
 		},
 	}
-	data, _ := json.Marshal(spec)
-	hash := fnv.New128()
-	hash.Write(data)
-	return spec, base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
-}
-
-func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
-	if _, err := imagereference.Parse(from); err != nil {
-		return "", fmt.Errorf("%s is not an image reference: %v", from, err)
-	}
-	if _, err := imagereference.Parse(to); err != nil {
-		return "", fmt.Errorf("%s is not an image reference: %v", to, err)
-	}
-	if strings.HasPrefix(from, "-") || strings.HasPrefix(to, "-") {
-		return "", fmt.Errorf("not a valid reference")
-	}
-
-	rs, err := r.client.Apps().ReplicaSets(r.namespace).Get(r.name, metav1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		return "", err
-	}
-
-	// increment this when you change the replica set definition
-	image, err := r.imageNameFn()
-	spec, hash := r.specHash(image)
-
-	if rs != nil && rs.Annotations["release-hash"] != hash {
-		oldHash := rs.Annotations["release-hash"]
-		if glog.V(4) {
-			glog.Infof("replica set changed: %s to %s", rs.Annotations["release-hash"], hash)
-		}
-		if rs.DeletionTimestamp != nil {
-			glog.V(4).Infof("wait for replica set to be deleted")
-			wait.Poll(time.Second, time.Minute, func() (bool, error) {
-				_, err := r.client.Apps().ReplicaSets(r.namespace).Get(r.name, metav1.GetOptions{})
-				return errors.IsNotFound(err), nil
-			})
-		} else {
-			foreground := metav1.DeletePropagationForeground
-			if err := r.client.Apps().ReplicaSets(r.namespace).Delete(r.name, &metav1.DeleteOptions{PropagationPolicy: &foreground}); err != nil {
-				if !errors.IsNotFound(err) {
-					return "", err
-				}
-			}
-			if err := wait.PollImmediate(3*time.Second, time.Minute, func() (bool, error) {
-				rs, err := r.client.Apps().ReplicaSets(r.namespace).Get(r.name, metav1.GetOptions{})
-				if err != nil {
-					if !errors.IsNotFound(err) {
-						return false, err
-					}
-					return true, nil
-				}
-				if rs.Annotations["release-hash"] == hash {
-					return true, nil
-				}
-				if rs.Annotations["release-hash"] == oldHash {
-					return false, nil
-				}
-				return false, fmt.Errorf("another server was set up while we were waiting for deletion: %s", rs.Annotations["release-hash"])
-			}); err != nil {
-				return "", err
-			}
-			glog.V(4).Infof("foreground deletion completed")
-		}
-		rs = nil
-	}
-	if rs == nil {
-		_, err = r.client.Apps().ReplicaSets(r.namespace).Create(&appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: r.name,
-				Annotations: map[string]string{
-					"release-hash": hash,
-				},
-			},
-			Spec: spec,
-		})
-		if err != nil {
-			return "", err
-		}
-	}
-
-	podClient := r.client.Core()
-
-	var podName string
-	if err := wait.PollImmediate(3*time.Second, time.Minute, func() (bool, error) {
-		pods, err := podClient.Pods(r.namespace).List(metav1.ListOptions{LabelSelector: fmt.Sprintf("app=%s", r.name)})
-		if err != nil {
-			return false, err
-		}
-		for _, pod := range pods.Items {
-			if pod.ObjectMeta.DeletionTimestamp != nil {
-				continue
-			}
-			if pod.Status.Phase == corev1.PodRunning {
-				podName = pod.Name
-				return true, nil
-			}
-		}
-		return false, nil
-	}); err != nil {
-		return "", err
-	}
-
-	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
-	u := podClient.RESTClient().Post().Resource("pods").Namespace(r.namespace).Name(podName).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: "git",
-		Stdout:    true,
-		Stderr:    true,
-		Command:   cmd,
-	}, scheme.ParameterCodec).URL()
-
-	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
-	if err != nil {
-		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
-	}
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := e.Stream(remotecommand.StreamOptions{
-		Stdout: out,
-		Stdin:  nil,
-		Stderr: errOut,
-	}); err != nil {
-		glog.V(4).Infof("Failed to generate changelog:\n$ %s\n%s\n%s", strings.Join(cmd, " "), errOut.String(), out.String())
-		return "", fmt.Errorf("could not run remote command: %v", err)
-	}
-
-	return out.String(), nil
+	return spec
 }
