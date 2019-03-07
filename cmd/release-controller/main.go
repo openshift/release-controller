@@ -139,8 +139,9 @@ func (o *options) Run() error {
 	}
 
 	imageCache := newLatestImageCache("tests")
-	var releaseInfo ReleaseInfo = NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream), imageCache.Get)
-	releaseInfo = NewCachingReleaseInfo(releaseInfo, 64*1024*1024)
+	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream), imageCache.Get)
+
+	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
 	c := NewController(
 		client.Core(),
@@ -188,6 +189,23 @@ func (o *options) Run() error {
 
 	glog.Infof("Waiting for caches to sync")
 	cache.WaitForCacheSync(stopCh, hasSynced...)
+
+	go wait.Until(func() {
+		err := wait.ExponentialBackoff(wait.Backoff{
+			Steps:    3,
+			Duration: 1 * time.Second,
+			Factor:   2,
+		}, func() (bool, error) {
+			if err := execReleaseInfo.refreshPod(); err != nil {
+				glog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
+				return false, nil
+			}
+			return true, nil
+		})
+		if err != nil {
+			glog.Errorf("Unable to refresh git cache, waiting until next sync time")
+		}
+	}, 2*time.Hour, stopCh)
 
 	if o.DryRun {
 		glog.Infof("Dry run mode (no changes will be made)")
@@ -247,7 +265,7 @@ type latestImageCache struct {
 func newLatestImageCache(tag string) *latestImageCache {
 	return &latestImageCache{
 		tag:      tag,
-		interval: 2 * time.Hour,
+		interval: 10 * time.Minute,
 	}
 }
 
@@ -273,6 +291,7 @@ func (c *latestImageCache) Get() (string, error) {
 			if spec := findImagePullSpec(item, c.tag); len(spec) > 0 {
 				c.last = spec
 				c.lastChecked = time.Now()
+				glog.V(4).Infof("Using %s for the %s image", spec, c.tag)
 				return spec, nil
 			}
 		}
