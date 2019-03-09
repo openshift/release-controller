@@ -282,6 +282,9 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		if err != nil {
 			return err
 		}
+		if len(tag.Annotations[releaseAnnotationImageHash]) == 0 {
+			return c.setReleaseAnnotation(release, releasePhasePending, map[string]string{releaseAnnotationImageHash: mirror.Annotations[releaseAnnotationImageHash]}, tag.Name)
+		}
 		if mirror.Annotations[releaseAnnotationImageHash] != tag.Annotations[releaseAnnotationImageHash] {
 			return fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
@@ -460,7 +463,6 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 			releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 			releaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 			releaseAnnotationPhase:             releasePhasePending,
-			releaseAnnotationImageHash:         inputImageHash,
 		},
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
@@ -760,6 +762,52 @@ func (c *Controller) markReleaseReady(release *Release, annotations map[string]s
 
 func (c *Controller) markReleaseAccepted(release *Release, annotations map[string]string, names ...string) error {
 	return c.transitionReleasePhase(release, []string{releasePhaseReady}, releasePhaseAccepted, annotations, names...)
+}
+
+func (c *Controller) setReleaseAnnotation(release *Release, phase string, annotations map[string]string, names ...string) error {
+	if len(names) == 0 {
+		return nil
+	}
+
+	changes := 0
+	target := release.Target.DeepCopy()
+	for _, name := range names {
+		tag := findTagReference(target, name)
+		if tag == nil {
+			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
+		}
+
+		if current := tag.Annotations[releaseAnnotationPhase]; current != phase {
+			return fmt.Errorf("release %s is not in phase %v (%s)", name, phase, current)
+		}
+		for k, v := range annotations {
+			if len(v) == 0 {
+				delete(tag.Annotations, k)
+			} else {
+				tag.Annotations[k] = v
+			}
+		}
+
+		// if there is no change, avoid updating anything
+		if oldTag := findTagReference(release.Target, name); oldTag != nil {
+			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
+				continue
+			}
+		}
+		changes++
+		glog.V(2).Infof("Adding annotations to release %s", name)
+	}
+
+	if changes == 0 {
+		return nil
+	}
+
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	if err != nil {
+		return err
+	}
+	release.Target = is
+	return nil
 }
 
 func (c *Controller) transitionReleasePhase(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
