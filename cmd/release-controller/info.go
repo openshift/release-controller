@@ -101,8 +101,8 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		glog.V(4).Infof("Failed to generate changelog:\n$ %s\n%s\n%s", strings.Join(cmd, " "), errOut.String(), out.String())
-		return "", fmt.Errorf("could not run remote command: %v", err)
+		glog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+		return "", fmt.Errorf("could not generate a changelog: %v", err)
 	}
 
 	return out.String(), nil
@@ -192,6 +192,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 						Image: image,
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
+							{Name: "GIT_COMMITTER_NAME", Value: "test"},
+							{Name: "GIT_COMMITTER_EMAIL", Value: "test@test.com"},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "git", MountPath: "/tmp/git/"},
@@ -210,6 +212,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							trap 'kill $(jobs -p); exit 0' TERM
 
 							git config --global credential.helper store
+							git config --global user.name test
+							git config --global user.email test@test.com
 							oc registry login
 							while true; do
 								sleep 180 & wait
