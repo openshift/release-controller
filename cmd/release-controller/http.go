@@ -55,7 +55,11 @@ const releasePageHtml = `
 		{{ range .Tags }}
 			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
 			<tr class="{{ phaseAlert . }}">
+				{{ if canLink . }}
 				<td><a href="/releasestream/{{ $release.Config.Name }}/release/{{ .Name }}">{{ .Name }}</a></td>
+				{{ else }}
+				<td>{{ .Name }}</td>
+				{{ end }}
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
 				<td>{{ links . $release }}</td>
@@ -104,6 +108,10 @@ func phaseAlert(tag imagev1.TagReference) string {
 	default:
 		return "alert-danger"
 	}
+}
+
+func canLink(tag imagev1.TagReference) bool {
+	return tag.Annotations[releaseAnnotationPhase] != releasePhasePending
 }
 
 func links(tag imagev1.TagReference, release *Release) string {
@@ -487,6 +495,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			},
 			"phaseCell":  phaseCell,
 			"phaseAlert": phaseAlert,
+			"canLink":    canLink,
 			"links":      links,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
@@ -581,6 +590,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"phaseCell":  phaseCell,
 			"phaseAlert": phaseAlert,
+			"canLink":    canLink,
 			"links":      links,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
