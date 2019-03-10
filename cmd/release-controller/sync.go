@@ -151,8 +151,44 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jo
 
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-	if err := addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag); err != nil {
+	var previousReleasePullSpec string
+	var previousTag string
+	if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
+		previousTag = tags[0].Name
+		previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+	}
+	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
+	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		now := metav1.Now()
+		// return a synthetic job to indicate that this test is impossible to run (no spec, or
+		// this is an upgrade job and no upgrade is possible)
+		return objectToUnstructured(&prowapiv1.ProwJob{
+			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: prowJobName,
+				Annotations: map[string]string{
+					releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+
+					"prow.k8s.io/job": spec.Job,
+				},
+				Labels: map[string]string{
+					"release.openshift.io/verify": "true",
+
+					"prow.k8s.io/type": string(spec.Type),
+					"prow.k8s.io/job":  spec.Job,
+				},
+			},
+			Spec: *spec,
+			Status: prowapiv1.ProwJobStatus{
+				StartTime:      now,
+				CompletionTime: &now,
+				Description:    "Job was not defined or does not have any inputs",
+				State:          prowapiv1.SuccessState,
+			},
+		}), nil
 	}
 
 	pj := &prowapiv1.ProwJob{
@@ -176,6 +212,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jo
 			StartTime: metav1.Now(),
 			State:     prowapiv1.TriggeredState,
 		},
+	}
+	pj.Annotations["release.openshift.io/tag"] = releaseTag.Name
+	if len(previousTag) > 0 {
+		pj.Annotations["release.openshift.io/from-tag"] = previousTag
 	}
 	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
@@ -306,6 +346,13 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
+			if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
+				go func() {
+					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
+						glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+					}
+				}()
+			}
 		}
 	}
 
@@ -334,13 +381,17 @@ func (c *Controller) syncReady(release *Release) error {
 		}
 
 		if names, ok := status.Failures(); ok {
-			glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
-			annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
-			annotations[releaseAnnotationVerify] = toJSONString(status)
-			if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
-				return err
+			if allOptional(release.Config.Verify, names...) {
+				glog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
+			} else {
+				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
+				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
+				annotations[releaseAnnotationVerify] = toJSONString(status)
+				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 
 		// if all jobs are complete and there are no failures, this is accepted
@@ -1069,9 +1120,10 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference) error {
+func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
 	if spec.PodSpec == nil {
-		return nil
+		// Jenkins jobs cannot be parameterized
+		return true, nil
 	}
 	for i := range spec.PodSpec.Containers {
 		c := &spec.PodSpec.Containers[i]
@@ -1079,9 +1131,14 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 			switch name := c.Env[j].Name; {
 			case name == "RELEASE_IMAGE_LATEST":
 				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
+			case name == "RELEASE_IMAGE_INITIAL":
+				if len(previousReleasePullSpec) == 0 {
+					return false, nil
+				}
+				c.Env[j].Value = previousReleasePullSpec
 			case name == "IMAGE_FORMAT":
 				if mirror == nil {
-					return fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
+					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
 				}
 				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":${component}"
 			case strings.HasPrefix(name, "IMAGE_"):
@@ -1090,14 +1147,14 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 					break
 				}
 				if mirror == nil {
-					return fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
+					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
 				}
 				suffix = strings.ToLower(strings.Replace(suffix, "_", "-", -1))
 				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":" + suffix
 			}
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.PeriodicConfig, bool) {
