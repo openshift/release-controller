@@ -89,6 +89,9 @@ type PublishStreamReference struct {
 type ReleaseVerification struct {
 	// Disabled will prevent this verification from being considered as blocking
 	Disabled bool `json:"disabled"`
+	// Optional verifications are run, but failures will not cause the release to
+	// be rejected.
+	Optional bool `json:"optional"`
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
@@ -98,8 +101,10 @@ type ReleaseVerification struct {
 // ProwJobVerification identifies the name of a prow job that will be used to
 // validate the release.
 type ProwJobVerification struct {
-	// Name of the prow job to verify
+	// Name of the prow job to verify.
 	Name string `json:"name"`
+	// Upgrade is true if this test should be used to verify upgrades.
+	Upgrade bool `json:"upgrade"`
 }
 
 type VerificationStatus struct {
@@ -130,6 +135,15 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 		}
 	}
 	return names, len(names) > 0
+}
+
+func allOptional(all map[string]ReleaseVerification, names ...string) bool {
+	for _, name := range names {
+		if v, ok := all[name]; ok && !v.Optional {
+			return false
+		}
+	}
+	return true
 }
 
 const (
