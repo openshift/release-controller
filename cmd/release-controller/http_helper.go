@@ -52,11 +52,10 @@ func phaseCell(tag imagev1.TagReference) string {
 	phase := tag.Annotations[releaseAnnotationPhase]
 	switch phase {
 	case releasePhaseRejected:
-		return fmt.Sprintf("<td class=\"%s\" title=\"%s\">%s (%s)</td>",
+		return fmt.Sprintf("<td class=\"%s\" title=\"%s\">%s</td>",
 			phaseAlert(tag),
 			template.HTMLEscapeString(tag.Annotations[releaseAnnotationMessage]),
 			template.HTMLEscapeString(phase),
-			template.HTMLEscapeString(tag.Annotations[releaseAnnotationReason]),
 		)
 	}
 	return fmt.Sprintf("<td class=\"%s\">", phaseAlert(tag)) + template.HTMLEscapeString(phase) + "</td>"
