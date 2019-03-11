@@ -102,11 +102,11 @@ const releasePageHtml = `
 		{{ $release := .Release }}
 		{{ range $index, $tag := .Tags }}
 			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
-			<tr class="{{ phaseAlert . }}">
+			<tr>
 				{{ if canLink . }}
-				<td><a href="/releasestream/{{ $release.Config.Name }}/release/{{ .Name }}">{{ .Name }}</a></td>
+				<td class="text-monospace"><a class="{{ phaseAlert . }}" href="/releasestream/{{ $release.Config.Name }}/release/{{ .Name }}">{{ .Name }}</a></td>
 				{{ else }}
-				<td>{{ .Name }}</td>
+				<td class="{{ phaseAlert . }}">{{ .Name }}</td>
 				{{ end }}
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
@@ -123,7 +123,6 @@ const releasePageHtml = `
 
 const releaseInfoPageHtml = `
 <h1>{{ .Tag.Name }}</h1>
-<p>Pull spec: <code>{{ publishSpec }}</code></p>
 {{ $created := index .Tag.Annotations "release.openshift.io/creationTimestamp" }}
 <p>Created: <span>{{ since $created }}</span></p>
 `
@@ -169,6 +168,7 @@ func (c *Controller) findReleaseStreamTags(tags ...string) (map[string]*ReleaseS
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
+	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
@@ -250,7 +250,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	info := tags[tag]
-	if info.Release.Config.Name != release {
+	if len(release) > 0 && info.Release.Config.Name != release {
 		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
 		return
 	}
@@ -263,12 +263,14 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		flusher = nopFlusher{}
 	}
+	var skipHeader bool
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	fmt.Fprintf(w, htmlPageStart, fmt.Sprintf("Release %s", tag))
 	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
 
-	if pull := info.Release.Target.Status.PublicDockerImageRepository; info.Previous != nil && len(pull) > 0 {
+	pull := info.Release.Target.Status.PublicDockerImageRepository
+	if info.Previous != nil && len(pull) > 0 {
 		type renderResult struct {
 			out string
 			err error
@@ -308,42 +310,93 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			flusher.Flush()
 		}
 		if render.err == nil {
+			skipHeader = true
 			renderChangelog(w, render.out, pull, tag, info)
-			return
+		} else {
+			// if we don't get a valid result within limits, just show the simpler informational view
+			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
 		}
-
-		// if we don't get a valid result within limits, just show the simpler informational view
-		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
 	}
 
-	now := time.Now()
-	var releasePage = template.Must(template.New("releaseInfoPage").Funcs(
-		template.FuncMap{
-			"publishSpec": func() string {
-				if len(info.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					return info.Release.Target.Status.PublicDockerImageRepository + ":" + tag
-				}
-				return ""
-			},
-			"phaseCell":    phaseCell,
-			"phaseAlert":   phaseAlert,
-			"canLink":      canLink,
-			"links":        links,
-			"inc":          func(i int) int { return i + 1 },
-			"upgradeCells": upgradeCells,
-			"since": func(utcDate string) string {
-				t, err := time.Parse(time.RFC3339, utcDate)
-				if err != nil {
+	if !skipHeader {
+		now := time.Now()
+		var releasePage = template.Must(template.New("releaseInfoPage").Funcs(
+			template.FuncMap{
+				"publishSpec": func() string {
+					if len(info.Release.Target.Status.PublicDockerImageRepository) > 0 {
+						return info.Release.Target.Status.PublicDockerImageRepository + ":" + tag
+					}
 					return ""
-				}
-				return humanize.RelTime(t, now, "ago", "from now")
+				},
+				"phaseCell":    phaseCell,
+				"phaseAlert":   phaseAlert,
+				"canLink":      canLink,
+				"links":        links,
+				"inc":          func(i int) int { return i + 1 },
+				"upgradeCells": upgradeCells,
+				"since": func(utcDate string) string {
+					t, err := time.Parse(time.RFC3339, utcDate)
+					if err != nil {
+						return ""
+					}
+					return humanize.RelTime(t, now, "ago", "from now")
+				},
 			},
-		},
-	).Parse(releaseInfoPageHtml))
+		).Parse(releaseInfoPageHtml))
 
-	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-	if err := releasePage.Execute(w, info); err != nil {
-		glog.Errorf("Unable to render page: %v", err)
+		fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
+		if err := releasePage.Execute(w, info); err != nil {
+			glog.Errorf("Unable to render page: %v", err)
+		}
+	}
+
+	fmt.Fprintln(w, "<hr>")
+	if len(pull) > 0 {
+		fmt.Fprintf(w, `<p>Pull spec: <code>%s:%s</code></p>`, pull, tag)
+	}
+
+	fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, extendedLinks(*info.Tag, info.Release))
+
+	if upgradesTo := c.graph.SummarizeUpgradesTo(tag); len(upgradesTo) > 0 {
+		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
+		fmt.Fprintf(w, `<p>Upgrades from:</p><ul>`)
+		for _, upgrade := range upgradesTo {
+			var style string
+			if upgrade.Success == 0 && upgrade.Failure > 0 {
+				style = "text-danger"
+			}
+			if upgrade.From == from {
+				fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.From, upgrade.From, upgrade.Success, upgrade.Failure)
+			} else {
+				fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> (<a href="?from=%s">changes</a>) - %d success, %d failures`, style, upgrade.From, upgrade.From, upgrade.From, upgrade.Success, upgrade.Failure)
+			}
+		}
+		fmt.Fprintf(w, `</ul>`)
+	}
+
+	if upgradesFrom := c.graph.SummarizeUpgradesFrom(tag); len(upgradesFrom) > 0 {
+		sort.Sort(newNewestSemVerToSummaries(upgradesFrom))
+		fmt.Fprintf(w, `<p>Upgrades to:</p><ul>`)
+		for _, upgrade := range upgradesFrom {
+			var style string
+			if upgrade.Success == 0 && upgrade.Failure > 0 {
+				style = "text-danger"
+			}
+			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.To, upgrade.To, upgrade.Success, upgrade.Failure)
+		}
+		fmt.Fprintf(w, `</ul>`)
+	}
+
+	if len(info.Older) > 0 {
+		var options []string
+		for _, tag := range info.Older {
+			var selected string
+			if tag.Name == info.Previous.Name {
+				selected = `selected="true"`
+			}
+			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
+		}
+		fmt.Fprintf(w, `<p><form class="form-inline" method="GET"><a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label><select id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare"></form></p>`, info.Previous.Name, info.Tag.Name, strings.Join(options, ""))
 	}
 }
 

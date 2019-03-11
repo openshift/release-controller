@@ -65,6 +65,26 @@ func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeSummary {
 	return summaries
 }
 
+func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []UpgradeSummary {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	summaries := make([]UpgradeSummary, 0, len(fromNames)*2)
+	for _, from := range fromNames {
+		for to := range g.from[from] {
+			for _, h := range g.to[to] {
+				summaries = append(summaries, UpgradeSummary{
+					From:    from,
+					To:      to,
+					Success: h.Success,
+					Failure: h.Failure,
+					Total:   len(h.History),
+				})
+			}
+		}
+	}
+	return summaries
+}
+
 func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 	if len(results) == 0 || len(fromTag) == 0 || len(toTag) == 0 {
 		return

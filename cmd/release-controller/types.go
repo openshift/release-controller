@@ -92,6 +92,8 @@ type ReleaseVerification struct {
 	// Optional verifications are run, but failures will not cause the release to
 	// be rejected.
 	Optional bool `json:"optional"`
+	// Upgrade is true if this verification should be used to verify upgrades.
+	Upgrade bool `json:"upgrade"`
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
@@ -103,8 +105,6 @@ type ReleaseVerification struct {
 type ProwJobVerification struct {
 	// Name of the prow job to verify.
 	Name string `json:"name"`
-	// Upgrade is true if this test should be used to verify upgrades.
-	Upgrade bool `json:"upgrade"`
 }
 
 type VerificationStatus struct {
@@ -197,7 +197,7 @@ const (
 	releaseAnnotationMessage = "release.openshift.io/message"
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
-	releaseAnnotationToTag   = "release.openshift.io/to-tag"
+	releaseAnnotationToTag   = "release.openshift.io/tag"
 )
 
 type Duration time.Duration
