@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 	"text/template"
 
 	"github.com/blang/semver"
@@ -53,13 +52,14 @@ func phaseCell(tag imagev1.TagReference) string {
 	phase := tag.Annotations[releaseAnnotationPhase]
 	switch phase {
 	case releasePhaseRejected:
-		return fmt.Sprintf("<td title=\"%s\">%s (%s)</td>",
+		return fmt.Sprintf("<td class=\"%s\" title=\"%s\">%s (%s)</td>",
+			phaseAlert(tag),
 			template.HTMLEscapeString(tag.Annotations[releaseAnnotationMessage]),
 			template.HTMLEscapeString(phase),
 			template.HTMLEscapeString(tag.Annotations[releaseAnnotationReason]),
 		)
 	}
-	return "<td>" + template.HTMLEscapeString(phase) + "</td>"
+	return fmt.Sprintf("<td class=\"%s\">", phaseAlert(tag)) + template.HTMLEscapeString(phase) + "</td>"
 }
 
 func phaseAlert(tag imagev1.TagReference) string {
@@ -70,13 +70,13 @@ func phaseAlert(tag imagev1.TagReference) string {
 	case releasePhaseReady:
 		return ""
 	case releasePhaseAccepted:
-		return "alert-success"
+		return "text-success"
 	case releasePhaseFailed:
-		return "alert-danger"
+		return "text-danger"
 	case releasePhaseRejected:
-		return "alert-danger"
+		return "text-danger"
 	default:
-		return "alert-danger"
+		return "text-danger"
 	}
 }
 
@@ -140,7 +140,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 	}
 	keys := make([]string, 0, len(release.Config.Verify))
 	for k, v := range release.Config.Verify {
-		if v.ProwJob != nil && v.ProwJob.Upgrade {
+		if v.Upgrade {
 			continue
 		}
 		keys = append(keys, k)
@@ -177,9 +177,12 @@ func links(tag imagev1.TagReference, release *Release) string {
 			buf.WriteString("</span>")
 			continue
 		}
-		buf.WriteString(" <span title=\"Pending\">")
-		buf.WriteString(template.HTMLEscapeString(key))
-		buf.WriteString("</span>")
+		final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
+		if !release.Config.Verify[key].Disabled && !final {
+			buf.WriteString(" <span title=\"Pending\">")
+			buf.WriteString(template.HTMLEscapeString(key))
+			buf.WriteString("</span>")
+		}
 	}
 	return buf.String()
 }
@@ -253,9 +256,12 @@ func extendedLinks(tag imagev1.TagReference, release *Release) string {
 			}
 			continue
 		}
-		buf.WriteString("<li><span title=\"Pending\">")
-		buf.WriteString(template.HTMLEscapeString(key))
-		buf.WriteString("</span>")
+		final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
+		if !release.Config.Verify[key].Disabled && !final {
+			buf.WriteString("<li><span title=\"Pending\">")
+			buf.WriteString(template.HTMLEscapeString(key))
+			buf.WriteString("</span>")
+		}
 	}
 	return buf.String()
 }
@@ -314,23 +320,6 @@ func renderChangelog(w io.Writer, markdown string, pull, tag string, info *Relea
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	w.Write(result)
-
-	fmt.Fprintln(w, "<hr>")
-	fmt.Fprintf(w, `<p>Pull spec: <code>%s:%s</code></p>`, pull, tag)
-
-	fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, extendedLinks(*info.Tag, info.Release))
-
-	if len(info.Older) > 0 {
-		var options []string
-		for _, tag := range info.Older {
-			var selected string
-			if tag.Name == info.Previous.Name {
-				selected = `selected="true"`
-			}
-			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
-		}
-		fmt.Fprintf(w, `<p><form class="form-inline" method="GET"><a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label><select id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare"></form></p>`, info.Previous.Name, info.Tag.Name, strings.Join(options, ""))
-	}
 }
 
 func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph) *ReleaseUpgrades {
@@ -491,3 +480,37 @@ func (s newestSemVerFromSummaries) Swap(i, j int) {
 	s.versions[i], s.versions[j] = s.versions[j], s.versions[i]
 }
 func (s newestSemVerFromSummaries) Len() int { return len(s.summaries) }
+
+type newestSemVerToSummaries struct {
+	versions  []semver.Version
+	summaries []UpgradeSummary
+}
+
+func newNewestSemVerToSummaries(summaries []UpgradeSummary) newestSemVerToSummaries {
+	versions := make([]semver.Version, len(summaries))
+	for i, summary := range summaries {
+		if v, err := semver.Parse(summary.To); err != nil {
+			versions[i] = v
+		}
+	}
+	return newestSemVerToSummaries{
+		versions:  versions,
+		summaries: summaries,
+	}
+}
+
+func (s newestSemVerToSummaries) Less(i, j int) bool {
+	c := s.versions[i].Compare(s.versions[j])
+	if c > 0 {
+		return true
+	}
+	if c < 0 {
+		return false
+	}
+	return s.summaries[i].To > s.summaries[j].To
+}
+func (s newestSemVerToSummaries) Swap(i, j int) {
+	s.summaries[i], s.summaries[j] = s.summaries[j], s.summaries[i]
+	s.versions[i], s.versions[j] = s.versions[j], s.versions[i]
+}
+func (s newestSemVerToSummaries) Len() int { return len(s.summaries) }

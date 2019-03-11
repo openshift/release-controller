@@ -213,7 +213,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		},
 	}
 	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
-	if verifyType.ProwJob.Upgrade && len(previousTag) > 0 {
+	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
 	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
