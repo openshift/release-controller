@@ -77,9 +77,11 @@ const releasePageHtml = `
 	height: 16px;
 	display: block;
 }
-.upgrade-track {
-	width: 20px;
+td.upgrade-track {
+	width: 16px;
 	position: relative;
+	padding-left: 2px;
+	padding-right: 2px;
 }
 </style>
 <div class="row">
