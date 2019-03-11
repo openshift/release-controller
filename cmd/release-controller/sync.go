@@ -10,20 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-
 	"github.com/golang/glog"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
@@ -125,7 +123,8 @@ func (c *Controller) sync(key queueKey) error {
 	return nil
 }
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jobName string, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
+	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {
@@ -213,9 +212,9 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName, jo
 			State:     prowapiv1.TriggeredState,
 		},
 	}
-	pj.Annotations["release.openshift.io/tag"] = releaseTag.Name
-	if len(previousTag) > 0 {
-		pj.Annotations["release.openshift.io/from-tag"] = previousTag
+	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
+	if verifyType.ProwJob.Upgrade && len(previousTag) > 0 {
+		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
 	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
@@ -435,30 +434,21 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 			}
 
-			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType.ProwJob.Name, releaseTag)
+			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType, releaseTag)
 			if err != nil {
 				return nil, err
 			}
-			s, _, err := unstructured.NestedString(job.Object, "status", "state")
-			if err != nil {
-				return nil, fmt.Errorf("unexpected error accessing prow job definition: %v", err)
+			status, ok := prowJobVerificationStatus(job)
+			if !ok {
+				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
-			url, _, _ := unstructured.NestedString(job.Object, "status", "url")
-
+			if status.State == releaseVerificationStateSucceeded {
+				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.Url)
+			}
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)
 			}
-			switch prowapiv1.ProwJobState(s) {
-			case prowapiv1.SuccessState:
-				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, url)
-				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateSucceeded, Url: url}
-			case prowapiv1.FailureState, prowapiv1.ErrorState, prowapiv1.AbortedState:
-				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStateFailed, Url: url}
-			case prowapiv1.TriggeredState, prowapiv1.PendingState, prowapiv1.ProwJobState(""):
-				verifyStatus[name] = &VerificationStatus{State: releaseVerificationStatePending, Url: url}
-			default:
-				glog.Errorf("Unrecognized prow job state %q on job %s", s, job.GetName())
-			}
+			verifyStatus[name] = status
 
 		default:
 			// manual verification

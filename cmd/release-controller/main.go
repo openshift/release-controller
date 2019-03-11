@@ -143,6 +143,8 @@ func (o *options) Run() error {
 
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
+	graph := NewUpgradeGraph()
+
 	c := NewController(
 		client.Core(),
 		imageClient.Image(),
@@ -154,6 +156,7 @@ func (o *options) Run() error {
 		releaseNamespace,
 		o.JobNamespace,
 		releaseInfo,
+		graph,
 	)
 
 	if len(o.ListenAddr) > 0 {
@@ -185,6 +188,32 @@ func (o *options) Run() error {
 		hasSynced = append(hasSynced, prowInformers.HasSynced)
 		c.AddProwInformer(o.ProwNamespace, prowInformers)
 		go prowInformers.Run(stopCh)
+
+		go func() {
+			index := prowInformers.GetIndexer()
+			cache.WaitForCacheSync(stopCh, prowInformers.HasSynced)
+			wait.Until(func() {
+				for _, item := range index.List() {
+					job, ok := item.(*unstructured.Unstructured)
+					if !ok {
+						continue
+					}
+					from, ok := job.GetAnnotations()[releaseAnnotationFromTag]
+					if !ok {
+						continue
+					}
+					to, ok := job.GetAnnotations()[releaseAnnotationToTag]
+					if !ok {
+						continue
+					}
+					status, ok := prowJobVerificationStatus(job)
+					if !ok {
+						continue
+					}
+					graph.Add(from, to, UpgradeResult(*status))
+				}
+			}, 2*time.Minute, stopCh)
+		}()
 	}
 
 	glog.Infof("Waiting for caches to sync")

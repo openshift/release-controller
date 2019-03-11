@@ -195,6 +195,9 @@ const (
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
+
+	releaseAnnotationFromTag = "release.openshift.io/from-tag"
+	releaseAnnotationToTag   = "release.openshift.io/to-tag"
 )
 
 type Duration time.Duration
