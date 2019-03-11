@@ -81,13 +81,14 @@ func phaseAlert(tag imagev1.TagReference) string {
 }
 
 func styleForUpgrade(upgrade *UpgradeSummary) string {
-	if upgrade.Total == 0 {
-		return ""
-	}
-	if upgrade.Success > 0 {
+	switch upgradeSummaryState(upgrade) {
+	case releaseVerificationStateFailed:
+		return "border-color: #dc3545"
+	case releaseVerificationStateSucceeded:
 		return "border-color: #28a745"
+	default:
+		return "border-color: #007bff"
 	}
-	return "border-color: #dc3545"
 }
 
 func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
@@ -371,8 +372,10 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 					continue
 				}
 				// don't join columns of different status
-				if last := row.End; last != nil && (last.Success > 0) != (internal[i].Success > 0) {
-					continue
+				if last := row.End; last != nil {
+					if upgradeSummaryState(last) != upgradeSummaryState(&internal[i]) {
+						continue
+					}
 				}
 				visual[j].Begin = &internal[i]
 				continue Internal
@@ -412,6 +415,16 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 		Width: maxWidth,
 		Tags:  tagUpgrades,
 	}
+}
+
+func upgradeSummaryState(summary *UpgradeSummary) string {
+	if summary.Success > 0 {
+		return releaseVerificationStateSucceeded
+	}
+	if summary.Failure > 0 {
+		return releaseVerificationStateFailed
+	}
+	return releaseVerificationStatePending
 }
 
 // takeUpgradesTo returns all leading summaries with To equal to tag, and the rest of the
