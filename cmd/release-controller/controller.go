@@ -95,6 +95,8 @@ type Controller struct {
 
 	releaseInfo ReleaseInfo
 
+	graph *UpgradeGraph
+
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
@@ -112,6 +114,7 @@ func NewController(
 	releaseNamespace string,
 	jobNamespace string,
 	releaseInfo ReleaseInfo,
+	graph *UpgradeGraph,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -149,6 +152,8 @@ func NewController(
 		jobNamespace:       jobNamespace,
 
 		releaseInfo: releaseInfo,
+
+		graph: graph,
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 	}
