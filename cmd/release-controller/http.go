@@ -116,7 +116,7 @@ td.upgrade-track {
 				{{ if canLink . }}
 				<td class="text-monospace"><a class="{{ phaseAlert . }}" href="/releasestream/{{ $release.Config.Name }}/release/{{ .Name }}">{{ .Name }}</a></td>
 				{{ else }}
-				<td class="{{ phaseAlert . }}">{{ .Name }}</td>
+				<td class="text-monospace {{ phaseAlert . }}">{{ .Name }}</td>
 				{{ end }}
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
