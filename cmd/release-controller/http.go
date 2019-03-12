@@ -24,6 +24,14 @@ const htmlPageStart = `
 <meta charset="UTF-8"><title>%s</title>
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<style>
+@media (max-width: 992px) {
+  .container {
+    width: 100%%;
+    max-width: none;
+  }
+}
+</style>
 </head>
 <body>
 <div class="container">
@@ -90,7 +98,7 @@ td.upgrade-track {
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
 		{{ publishDescription . }}
 		{{ $upgrades := .Upgrades }}
-		<table class="table">
+		<table class="table text-nowrap">
 			<thead>
 				<tr>
 					<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
@@ -228,7 +236,7 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	if isHtml {
 		result := blackfriday.Run([]byte(out))
 		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
-		fmt.Fprintf(w, htmlPageStart, fmt.Sprintf("Change log for %s", to))
+		fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Change log for %s", to)))
 		w.Write(result)
 		fmt.Fprintln(w, htmlPageEnd)
 		return
@@ -268,7 +276,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	var skipHeader bool
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
-	fmt.Fprintf(w, htmlPageStart, fmt.Sprintf("Release %s", tag))
+	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tag)))
 	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
 
 	pull := info.Release.Target.Status.PublicDockerImageRepository
