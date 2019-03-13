@@ -301,7 +301,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				ch <- renderResult{err: err}
 				return
 			}
-			out = rePrevious.ReplaceAllString(out, fmt.Sprintf("$1[%s](/releasetag/%s)$2", info.Previous.Name, info.Release.Config.Name, info.Previous.Name))
+			out = rePrevious.ReplaceAllString(out, fmt.Sprintf("$1[%s](/releasetag/%s)$2", info.Previous.Name, info.Previous.Name))
 			ch <- renderResult{out: out}
 		}()
 
