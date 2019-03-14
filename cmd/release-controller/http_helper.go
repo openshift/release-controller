@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"text/template"
 
 	"github.com/blang/semver"
@@ -355,7 +356,9 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 			tagUpgrade.Internal = internal
 		}
 		if len(external) > 0 {
-			tagUpgrade.External = external
+			// ensure that any older tags owned by this stream that may have been pruned
+			// are not displayed
+			tagUpgrade.External = filterWithPrefix(external, release.Config.Name+"-")
 		}
 
 		// mark the end of any current row
@@ -462,6 +465,27 @@ func takeUpgradesFromNames(summaries []UpgradeSummary, names map[string]int) (wi
 		return left, right
 	}
 	return summaries, nil
+}
+
+// filterWithPrefix removes any summary from summaries that has a From that starts with
+// prefix.
+func filterWithPrefix(summaries []UpgradeSummary, prefix string) []UpgradeSummary {
+	if len(prefix) == 0 {
+		return summaries
+	}
+	for i := range summaries {
+		if !strings.HasPrefix(summaries[i].From, prefix) {
+			continue
+		}
+		valid := make([]UpgradeSummary, 0, len(summaries)-i)
+		for _, summary := range summaries {
+			if !strings.HasPrefix(summary.From, prefix) {
+				valid = append(valid, summary)
+			}
+		}
+		return valid
+	}
+	return summaries
 }
 
 type newestSemVerFromSummaries struct {
