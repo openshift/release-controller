@@ -372,9 +372,13 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `<p>Upgrades from:</p><ul>`)
 		for _, upgrade := range upgradesTo {
 			var style string
-			if upgrade.Success == 0 && upgrade.Failure > 0 {
+			switch {
+			case upgrade.Success == 0 && upgrade.Failure > 0:
 				style = "text-danger"
+			case upgrade.Success > 0:
+				style = "text-success"
 			}
+
 			if upgrade.From == from {
 				fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.From, upgrade.From, upgrade.Success, upgrade.Failure)
 			} else {
@@ -389,8 +393,11 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `<p>Upgrades to:</p><ul>`)
 		for _, upgrade := range upgradesFrom {
 			var style string
-			if upgrade.Success == 0 && upgrade.Failure > 0 {
+			switch {
+			case upgrade.Success == 0 && upgrade.Failure > 0:
 				style = "text-danger"
+			case upgrade.Success > 0:
+				style = "text-success"
 			}
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.To, upgrade.To, upgrade.Success, upgrade.Failure)
 		}
