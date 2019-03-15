@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 	"text/template"
@@ -40,13 +41,13 @@ type ReleaseUpgrades struct {
 }
 
 type ReleaseTagUpgrade struct {
-	Internal []UpgradeSummary
-	External []UpgradeSummary
+	Internal []UpgradeHistory
+	External []UpgradeHistory
 	Visual   []ReleaseTagUpgradeVisual
 }
 
 type ReleaseTagUpgradeVisual struct {
-	Begin, Current, End *UpgradeSummary
+	Begin, Current, End *UpgradeHistory
 }
 
 func phaseCell(tag imagev1.TagReference) string {
@@ -80,7 +81,7 @@ func phaseAlert(tag imagev1.TagReference) string {
 	}
 }
 
-func styleForUpgrade(upgrade *UpgradeSummary) string {
+func styleForUpgrade(upgrade *UpgradeHistory) string {
 	switch upgradeSummaryState(upgrade) {
 	case releaseVerificationStateFailed:
 		return "border-color: #dc3545"
@@ -93,6 +94,7 @@ func styleForUpgrade(upgrade *UpgradeSummary) string {
 
 func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 	buf := &bytes.Buffer{}
+	u := url.URL{}
 	for _, visual := range upgrades.Tags[index].Visual {
 		buf.WriteString(`<td class="upgrade-track">`)
 		switch {
@@ -101,15 +103,21 @@ func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 			fmt.Fprintf(buf, `<span title="%s" style="%s" class="upgrade-track-line middle"></span>`, fmt.Sprintf("%d/%d succeeded", visual.Current.Success, visual.Current.Total), style)
 		case visual.Begin != nil && visual.End != nil:
 			style := styleForUpgrade(visual.Begin)
-			fmt.Fprintf(buf, `<span title="%s" style="%s" class="upgrade-track-dot"></span>`, fmt.Sprintf("%d/%d succeeded", visual.Begin.Success, visual.Begin.Total), style)
+			u.Path = visual.Begin.To
+			u.RawQuery = url.Values{"from": []string{visual.Begin.From}}.Encode()
+			fmt.Fprintf(buf, `<a href="/releasetag/%s" title="%s" style="%s" class="upgrade-track-dot"></a>`, template.HTMLEscapeString(u.String()), fmt.Sprintf("%d/%d succeeded", visual.Begin.Success, visual.Begin.Total), style)
 			fmt.Fprintf(buf, `<span style="%s" class="upgrade-track-line middle"></span>`, style)
 		case visual.Begin != nil:
 			style := styleForUpgrade(visual.Begin)
-			fmt.Fprintf(buf, `<span title="%s" style="%s" class="upgrade-track-dot"></span>`, fmt.Sprintf("%d/%d succeeded", visual.Begin.Success, visual.Begin.Total), style)
+			u.Path = visual.Begin.To
+			u.RawQuery = url.Values{"from": []string{visual.Begin.From}}.Encode()
+			fmt.Fprintf(buf, `<a href="/releasetag/%s" title="%s" style="%s" class="upgrade-track-dot"></a>`, template.HTMLEscapeString(u.String()), fmt.Sprintf("%d/%d succeeded", visual.Begin.Success, visual.Begin.Total), style)
 			fmt.Fprintf(buf, `<span style="%s" class="upgrade-track-line start"></span>`, style)
 		case visual.End != nil:
 			style := styleForUpgrade(visual.End)
-			fmt.Fprintf(buf, `<span title="%s" style="%s" class="upgrade-track-dot"></span>`, fmt.Sprintf("%d/%d succeeded", visual.End.Success, visual.End.Total), style)
+			u.Path = visual.End.To
+			u.RawQuery = url.Values{"from": []string{visual.End.From}}.Encode()
+			fmt.Fprintf(buf, `<a href="/releasetag/%s" title="%s" style="%s" class="upgrade-track-dot"></a>`, template.HTMLEscapeString(u.String()), fmt.Sprintf("%d/%d succeeded", visual.End.Success, visual.End.Total), style)
 			fmt.Fprintf(buf, `<span style="%s" class="upgrade-track-line end"></span>`, style)
 		}
 		buf.WriteString(`</td>`)
@@ -324,7 +332,6 @@ func renderChangelog(w io.Writer, markdown string, pull, tag string, info *Relea
 </style>
 `)
 
-	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	w.Write(result)
 }
 
@@ -344,7 +351,7 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 	var visual []ReleaseTagUpgradeVisual
 	summaries := graph.SummarizeUpgradesTo(tagNames...)
 	for _, name := range tagNames {
-		var internal, external []UpgradeSummary
+		var internal, external []UpgradeHistory
 		internal, summaries = takeUpgradesTo(summaries, name)
 		internal, external = takeUpgradesFromNames(internal, internalTags)
 		sort.Slice(internal, func(i, j int) bool {
@@ -424,7 +431,7 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 	}
 }
 
-func upgradeSummaryState(summary *UpgradeSummary) string {
+func upgradeSummaryState(summary *UpgradeHistory) string {
 	if summary.Success > 0 {
 		return releaseVerificationStateSucceeded
 	}
@@ -436,7 +443,7 @@ func upgradeSummaryState(summary *UpgradeSummary) string {
 
 // takeUpgradesTo returns all leading summaries with To equal to tag, and the rest of the
 // slice.
-func takeUpgradesTo(summaries []UpgradeSummary, tag string) ([]UpgradeSummary, []UpgradeSummary) {
+func takeUpgradesTo(summaries []UpgradeHistory, tag string) ([]UpgradeHistory, []UpgradeHistory) {
 	for i, summary := range summaries {
 		if summary.To == tag {
 			continue
@@ -448,13 +455,13 @@ func takeUpgradesTo(summaries []UpgradeSummary, tag string) ([]UpgradeSummary, [
 
 // takeUpgradesFromNames splits the provided summaries slice into two slices - those with Froms
 // in names and those without.
-func takeUpgradesFromNames(summaries []UpgradeSummary, names map[string]int) (withNames []UpgradeSummary, withoutNames []UpgradeSummary) {
+func takeUpgradesFromNames(summaries []UpgradeHistory, names map[string]int) (withNames []UpgradeHistory, withoutNames []UpgradeHistory) {
 	for i := range summaries {
 		if _, ok := names[summaries[i].From]; ok {
 			continue
 		}
-		left := make([]UpgradeSummary, 0, len(summaries)-i)
-		var right []UpgradeSummary
+		left := make([]UpgradeHistory, 0, len(summaries)-i)
+		var right []UpgradeHistory
 		for _, summary := range summaries[i:] {
 			if _, ok := names[summaries[i].From]; ok {
 				left = append(left, summary)
@@ -469,7 +476,7 @@ func takeUpgradesFromNames(summaries []UpgradeSummary, names map[string]int) (wi
 
 // filterWithPrefix removes any summary from summaries that has a From that starts with
 // prefix.
-func filterWithPrefix(summaries []UpgradeSummary, prefix string) []UpgradeSummary {
+func filterWithPrefix(summaries []UpgradeHistory, prefix string) []UpgradeHistory {
 	if len(prefix) == 0 {
 		return summaries
 	}
@@ -477,7 +484,7 @@ func filterWithPrefix(summaries []UpgradeSummary, prefix string) []UpgradeSummar
 		if !strings.HasPrefix(summaries[i].From, prefix) {
 			continue
 		}
-		valid := make([]UpgradeSummary, 0, len(summaries)-i)
+		valid := make([]UpgradeHistory, 0, len(summaries)-i)
 		for _, summary := range summaries {
 			if !strings.HasPrefix(summary.From, prefix) {
 				valid = append(valid, summary)
@@ -490,10 +497,10 @@ func filterWithPrefix(summaries []UpgradeSummary, prefix string) []UpgradeSummar
 
 type newestSemVerFromSummaries struct {
 	versions  []semver.Version
-	summaries []UpgradeSummary
+	summaries []UpgradeHistory
 }
 
-func newNewestSemVerFromSummaries(summaries []UpgradeSummary) newestSemVerFromSummaries {
+func newNewestSemVerFromSummaries(summaries []UpgradeHistory) newestSemVerFromSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
 		if v, err := semver.Parse(summary.From); err != nil {
@@ -524,10 +531,10 @@ func (s newestSemVerFromSummaries) Len() int { return len(s.summaries) }
 
 type newestSemVerToSummaries struct {
 	versions  []semver.Version
-	summaries []UpgradeSummary
+	summaries []UpgradeHistory
 }
 
-func newNewestSemVerToSummaries(summaries []UpgradeSummary) newestSemVerToSummaries {
+func newNewestSemVerToSummaries(summaries []UpgradeHistory) newestSemVerToSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
 		if v, err := semver.Parse(summary.To); err != nil {
