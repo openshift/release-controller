@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -273,14 +274,94 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		flusher = nopFlusher{}
 	}
-	var skipHeader bool
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tag)))
 	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
 
+	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
+	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
+
 	pull := info.Release.Target.Status.PublicDockerImageRepository
+
+	if len(pull) > 0 {
+		fmt.Fprintf(w, `<p>Pull spec: <code>%s:%s</code></p>`, pull, tag)
+	}
+
+	fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, extendedLinks(*info.Tag, info.Release))
+
+	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
+		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
+		fmt.Fprintf(w, `<p>Upgrades from:</p><ul>`)
+		for _, upgrade := range upgradesTo {
+			var style string
+			switch {
+			case upgrade.Success == 0 && upgrade.Failure > 0:
+				style = "text-danger"
+			case upgrade.Success > 0:
+				style = "text-success"
+			}
+
+			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
+			if info.Previous == nil || upgrade.From != info.Previous.Name {
+				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
+			}
+			var url string
+			for k := range upgrade.History {
+				url = k
+				break
+			}
+			switch {
+			case upgrade.Success == 1 && upgrade.Failure == 0 && len(upgrade.History) > 0:
+				fmt.Fprintf(w, ` - <a href="%s">%d success</a>, %d failures`, template.HTMLEscapeString(url), upgrade.Success, upgrade.Failure)
+			case upgrade.Success == 0 && upgrade.Failure == 1:
+				fmt.Fprintf(w, ` - %d success, <a href="%s">%d failure</a>`, upgrade.Success, template.HTMLEscapeString(url), upgrade.Failure)
+			case upgrade.Total == 0:
+				fmt.Fprintf(w, ` - pending`)
+			default:
+				fmt.Fprintf(w, ` - %d success, %d failures`, upgrade.Success, upgrade.Failure)
+			}
+		}
+		fmt.Fprintf(w, `</ul>`)
+	}
+
+	if upgradesFrom := c.graph.UpgradesFrom(tag); len(upgradesFrom) > 0 {
+		sort.Sort(newNewestSemVerToSummaries(upgradesFrom))
+		fmt.Fprintf(w, `<p>Upgrades to:</p><ul>`)
+		for _, upgrade := range upgradesFrom {
+			var style string
+			switch {
+			case upgrade.Success == 0 && upgrade.Failure > 0:
+				style = "text-danger"
+			case upgrade.Success > 0:
+				style = "text-success"
+			}
+
+			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, template.HTMLEscapeString(upgrade.To), upgrade.To)
+			fmt.Fprintf(w, ` (<a href="/releasetag/%s">changes</a>)`, template.HTMLEscapeString((&url.URL{Path: upgrade.To, RawQuery: url.Values{"from": []string{upgrade.From}}.Encode()}).String()))
+			var url string
+			for k := range upgrade.History {
+				url = k
+				break
+			}
+			switch {
+			case upgrade.Success == 1 && upgrade.Failure == 0 && len(upgrade.History) > 0:
+				fmt.Fprintf(w, ` - <a href="%s">%d success</a>, %d failures`, template.HTMLEscapeString(url), upgrade.Success, upgrade.Failure)
+			case upgrade.Success == 0 && upgrade.Failure == 1:
+				fmt.Fprintf(w, ` - %d success, <a href="%s">%d failure</a>`, upgrade.Success, template.HTMLEscapeString(url), upgrade.Failure)
+			case upgrade.Total == 0:
+				fmt.Fprintf(w, ` - pending`)
+			default:
+				fmt.Fprintf(w, ` - %d success, %d failures`, upgrade.Success, upgrade.Failure)
+			}
+		}
+		fmt.Fprintf(w, `</ul>`)
+	}
+
 	if info.Previous != nil && len(pull) > 0 {
+		fmt.Fprintln(w, "<hr>")
+		flusher.Flush()
+
 		type renderResult struct {
 			out string
 			err error
@@ -301,6 +382,11 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				ch <- renderResult{err: err}
 				return
 			}
+			// do a best effort replacement to change out the headers
+			out = strings.Replace(out, fmt.Sprintf(`# %s`, info.Tag.Name), "", -1)
+			if changed := strings.Replace(out, fmt.Sprintf(`## Changes from %s`, info.Previous.Name), "", -1); len(changed) != len(out) {
+				out = fmt.Sprintf("## Changes from %s\n%s", info.Previous.Name, changed)
+			}
 			out = rePrevious.ReplaceAllString(out, fmt.Sprintf("$1[%s](/releasetag/%s)$2", info.Previous.Name, info.Previous.Name))
 			ch <- renderResult{out: out}
 		}()
@@ -320,88 +406,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			flusher.Flush()
 		}
 		if render.err == nil {
-			skipHeader = true
 			renderChangelog(w, render.out, pull, tag, info)
+			fmt.Fprintln(w, "<hr>")
 		} else {
 			// if we don't get a valid result within limits, just show the simpler informational view
 			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
 		}
-	}
-
-	if !skipHeader {
-		now := time.Now()
-		var releasePage = template.Must(template.New("releaseInfoPage").Funcs(
-			template.FuncMap{
-				"publishSpec": func() string {
-					if len(info.Release.Target.Status.PublicDockerImageRepository) > 0 {
-						return info.Release.Target.Status.PublicDockerImageRepository + ":" + tag
-					}
-					return ""
-				},
-				"phaseCell":    phaseCell,
-				"phaseAlert":   phaseAlert,
-				"canLink":      canLink,
-				"links":        links,
-				"inc":          func(i int) int { return i + 1 },
-				"upgradeCells": upgradeCells,
-				"since": func(utcDate string) string {
-					t, err := time.Parse(time.RFC3339, utcDate)
-					if err != nil {
-						return ""
-					}
-					return humanize.RelTime(t, now, "ago", "from now")
-				},
-			},
-		).Parse(releaseInfoPageHtml))
-
-		fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-		if err := releasePage.Execute(w, info); err != nil {
-			glog.Errorf("Unable to render page: %v", err)
-		}
-	}
-
-	fmt.Fprintln(w, "<hr>")
-	if len(pull) > 0 {
-		fmt.Fprintf(w, `<p>Pull spec: <code>%s:%s</code></p>`, pull, tag)
-	}
-
-	fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, extendedLinks(*info.Tag, info.Release))
-
-	if upgradesTo := c.graph.SummarizeUpgradesTo(tag); len(upgradesTo) > 0 {
-		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
-		fmt.Fprintf(w, `<p>Upgrades from:</p><ul>`)
-		for _, upgrade := range upgradesTo {
-			var style string
-			switch {
-			case upgrade.Success == 0 && upgrade.Failure > 0:
-				style = "text-danger"
-			case upgrade.Success > 0:
-				style = "text-success"
-			}
-
-			if upgrade.From == from {
-				fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.From, upgrade.From, upgrade.Success, upgrade.Failure)
-			} else {
-				fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> (<a href="?from=%s">changes</a>) - %d success, %d failures`, style, upgrade.From, upgrade.From, upgrade.From, upgrade.Success, upgrade.Failure)
-			}
-		}
-		fmt.Fprintf(w, `</ul>`)
-	}
-
-	if upgradesFrom := c.graph.SummarizeUpgradesFrom(tag); len(upgradesFrom) > 0 {
-		sort.Sort(newNewestSemVerToSummaries(upgradesFrom))
-		fmt.Fprintf(w, `<p>Upgrades to:</p><ul>`)
-		for _, upgrade := range upgradesFrom {
-			var style string
-			switch {
-			case upgrade.Success == 0 && upgrade.Failure > 0:
-				style = "text-danger"
-			case upgrade.Success > 0:
-				style = "text-success"
-			}
-			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a> - %d success, %d failures`, style, upgrade.To, upgrade.To, upgrade.Success, upgrade.Failure)
-		}
-		fmt.Fprintf(w, `</ul>`)
 	}
 
 	if len(info.Older) > 0 {
