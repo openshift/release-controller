@@ -321,17 +321,6 @@ func (_ nopFlusher) Flush() {}
 func renderChangelog(w io.Writer, markdown string, pull, tag string, info *ReleaseStreamTag) {
 	result := blackfriday.Run([]byte(markdown))
 
-	// minor changelog styling tweaks
-	fmt.Fprintf(w, `
-<style>
-	h1 { font-size: 2rem; margin-bottom: 1rem }
-	h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem  }
-	h3 { font-size: 1.35rem; margin-top: 2rem; margin-bottom: 1rem  }
-	h4 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 1rem  }
-	h3 a { text-transform: uppercase; font-size: 1rem; }
-</style>
-`)
-
 	w.Write(result)
 }
 
