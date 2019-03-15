@@ -73,6 +73,9 @@ const releasePageHtml = `
 	border: 2px solid #000;
 	border-radius: 50%;
 }
+.upgrade-track-dot:hover {
+	border-width: 6px;
+}
 .upgrade-track-line.start {
 	top: 18px;
 	height: 31px;
@@ -278,6 +281,17 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tag)))
 	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
+
+	// minor changelog styling tweaks
+	fmt.Fprintf(w, `
+		<style>
+			h1 { font-size: 2rem; margin-bottom: 1rem }
+			h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem  }
+			h3 { font-size: 1.35rem; margin-top: 2rem; margin-bottom: 1rem  }
+			h4 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 1rem  }
+			h3 a { text-transform: uppercase; font-size: 1rem; }
+		</style>
+		`)
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
