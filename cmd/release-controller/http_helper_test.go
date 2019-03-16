@@ -2,11 +2,11 @@ package main
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 
-	"k8s.io/apimachinery/pkg/util/diff"
-
 	imagev1 "github.com/openshift/api/image/v1"
+	"k8s.io/apimachinery/pkg/util/diff"
 )
 
 func Test_calculateReleaseUpgrades(t *testing.T) {
@@ -58,7 +58,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
-				internal0 := []UpgradeSummary{{From: "4.0.0", To: "4.0.1", Success: 0, Failure: 1, Total: 1}}
+				internal0 := []UpgradeHistory{{From: "4.0.0", To: "4.0.1", Success: 0, Failure: 1, Total: 1}}
 				u := &ReleaseUpgrades{
 					Width: 1,
 					Tags: []ReleaseTagUpgrade{
@@ -95,7 +95,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
-				internal0 := []UpgradeSummary{
+				internal0 := []UpgradeHistory{
 					{From: "4.0.4", To: "4.0.5", Success: 0, Failure: 1, Total: 1},
 					{From: "4.0.3", To: "4.0.5", Success: 1, Failure: 0, Total: 1},
 				}
@@ -122,7 +122,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 							},
 						},
 						{
-							External: []UpgradeSummary{{From: "4.0.0", To: "4.0.2", Success: 1, Total: 1}},
+							External: []UpgradeHistory{{From: "4.0.0", To: "4.0.2", Success: 1, Total: 1}},
 						},
 						{},
 					},
@@ -136,8 +136,46 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			if tt.wantFn != nil {
 				tt.want = tt.wantFn()
 			}
+			if tt.release == nil {
+				tt.release = &Release{
+					Config: &ReleaseConfig{},
+				}
+			}
 			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph()); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("%s", diff.ObjectReflectDiff(tt.want, got))
+			}
+		})
+	}
+}
+
+func TestSemanticVersions_Tags(t *testing.T) {
+	tests := []struct {
+		name string
+		v    SemanticVersions
+		want []*imagev1.TagReference
+	}{
+		{
+			v: NewSemanticVersions([]*imagev1.TagReference{
+				{Name: "4.0.0"}, {Name: "4.0.1"}, {Name: "4.0.0-2"}, {Name: "4.0.0-1-a"},
+			}),
+			want: []*imagev1.TagReference{
+				{Name: "4.0.1"}, {Name: "4.0.0"}, {Name: "4.0.0-1-a"}, {Name: "4.0.0-2"},
+			},
+		},
+		{
+			v: NewSemanticVersions([]*imagev1.TagReference{
+				{Name: "4.0.0-0.9"}, {Name: "4.0.0-0.2"}, {Name: "4.0.0-0.2.a"},
+			}),
+			want: []*imagev1.TagReference{
+				{Name: "4.0.0-0.9"}, {Name: "4.0.0-0.2.a"}, {Name: "4.0.0-0.2"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sort.Sort(tt.v)
+			if got := tt.v.Tags(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SemanticVersions.Tags() = %v, want %v", tagNames(got), tagNames(tt.want))
 			}
 		})
 	}

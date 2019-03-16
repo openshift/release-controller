@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/blang/semver"
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -30,27 +31,36 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	// TODO: require release config to point to a particular image stream, and then we should ignore image streams
 	//   that don't target c.releaseImageStream (so we can run separate controllers)
 
-	targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
-	if errors.IsNotFound(err) {
-		// TODO: something special here?
-		glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, c.releaseImageStream)
-		return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseImageStream, is.Name)}
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)
-	}
-
 	if len(is.Status.Tags) == 0 {
 		glog.V(4).Infof("The release input has no status tags, waiting")
 		return nil, false, nil
 	}
 
-	r := &Release{
-		Source: is,
-		Target: targetImageStream,
-		Config: cfg,
+	switch cfg.As {
+	case releaseConfigModeStable:
+		r := &Release{
+			Source: is,
+			Target: is,
+			Config: cfg,
+		}
+		return r, true, nil
+	default:
+		targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
+		if errors.IsNotFound(err) {
+			// TODO: something special here?
+			glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, c.releaseImageStream)
+			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseImageStream, is.Name)}
+		}
+		if err != nil {
+			return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)
+		}
+		r := &Release{
+			Source: is,
+			Target: targetImageStream,
+			Config: cfg,
+		}
+		return r, true, nil
 	}
-	return r, true, nil
 }
 
 func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
@@ -175,6 +185,31 @@ func findTagReference(is *imagev1.ImageStream, name string) *imagev1.TagReferenc
 	return nil
 }
 
+func findImageIDForTag(is *imagev1.ImageStream, name string) string {
+	for i := range is.Status.Tags {
+		tag := &is.Status.Tags[i]
+		if tag.Tag == name {
+			if len(tag.Items) == 0 {
+				return ""
+			}
+			if len(tag.Conditions) > 0 {
+				for _, condition := range tag.Conditions {
+					if condition.Type == imagev1.ImportSuccess {
+						if condition.Status == corev1.ConditionFalse {
+							return ""
+						}
+					}
+				}
+			}
+			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil && (specTag.Generation == nil || *specTag.Generation > tag.Items[0].Generation) {
+				return ""
+			}
+			return tag.Items[0].Image
+		}
+	}
+	return ""
+}
+
 func findImagePullSpec(is *imagev1.ImageStream, name string) string {
 	for i := range is.Status.Tags {
 		tag := &is.Status.Tags[i]
@@ -193,22 +228,75 @@ func findImagePullSpec(is *imagev1.ImageStream, name string) string {
 	return ""
 }
 
-func tagsForRelease(release *Release) []*imagev1.TagReference {
-	tags := make([]*imagev1.TagReference, 0, len(release.Target.Spec.Tags))
-	for i := range release.Target.Spec.Tags {
-		tag := &release.Target.Spec.Tags[i]
-		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
-			continue
+func findPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
+	for i := range is.Status.Tags {
+		tag := &is.Status.Tags[i]
+		if tag.Tag == name {
+			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil {
+				if from := specTag.From; from != nil && from.Kind == "DockerImage" {
+					if len(tag.Items) == 0 || (specTag.Generation != nil && *specTag.Generation >= tag.Items[0].Generation) {
+						return from.Name
+					}
+				}
+			}
+			if len(tag.Items) == 0 {
+				return ""
+			}
+			if len(is.Status.PublicDockerImageRepository) > 0 {
+				return fmt.Sprintf("%s:%s", is.Status.PublicDockerImageRepository, name)
+			}
+			if strings.HasPrefix(tag.Items[0].DockerImageReference, is.Status.DockerImageRepository) {
+				return ""
+			}
+			return tag.Items[0].DockerImageReference
 		}
-
-		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
-			continue
-		}
-		tags = append(tags, tag)
 	}
-	sort.Sort(tagReferencesByAge(tags))
-	return tags
+	return ""
+}
+
+func tagsForRelease(release *Release) []*imagev1.TagReference {
+	is := release.Target
+	sourceName := fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
+	switch release.Config.As {
+	case releaseConfigModeStable:
+		versions := make(SemanticVersions, 0, len(is.Spec.Tags))
+		for i := range is.Spec.Tags {
+			tag := &is.Spec.Tags[i]
+			if tag.Annotations[releaseAnnotationSource] != sourceName {
+				continue
+			}
+
+			// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
+			if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+				continue
+			}
+			if version, err := semver.Parse(tag.Name); err == nil {
+				versions = append(versions, SemanticVersion{Tag: tag, Version: &version})
+			} else {
+				versions = append(versions, SemanticVersion{Tag: tag})
+			}
+		}
+		sort.Sort(versions)
+		return versions.Tags()
+	default:
+		tags := make([]*imagev1.TagReference, 0, len(release.Target.Spec.Tags))
+		for i := range is.Spec.Tags {
+			tag := &is.Spec.Tags[i]
+
+			if tag.Annotations[releaseAnnotationSource] != sourceName {
+				continue
+			}
+
+			// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
+			if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+				continue
+			}
+
+			tags = append(tags, tag)
+		}
+		sort.Sort(tagReferencesByAge(tags))
+		return tags
+	}
 }
 
 func stringSliceContains(slice []string, s string) bool {

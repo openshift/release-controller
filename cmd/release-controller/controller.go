@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	batchinformers "k8s.io/client-go/informers/batch/v1"
@@ -65,11 +66,15 @@ type Controller struct {
 	jobClient         batchclient.JobsGetter
 	jobLister         batchlisters.JobLister
 
+	podClient kv1core.PodsGetter
+
 	// syncs are the items that must return true before the queue can be processed
 	syncs []cache.InformerSynced
 
 	// queue is the list of namespace keys that must be synced.
 	queue workqueue.RateLimitingInterface
+	// qcQueue is a trigger to performing cleanup for deleted resources.
+	gcQueue workqueue.RateLimitingInterface
 
 	// expectations track upcoming changes that we have not yet observed
 	expectations *expectations
@@ -93,6 +98,9 @@ type Controller struct {
 	prowClient       dynamic.ResourceInterface
 	prowLister       cache.Indexer
 
+	// onlySources if set controls which image stream names can be synced
+	onlySources sets.String
+
 	releaseInfo ReleaseInfo
 
 	graph *UpgradeGraph
@@ -108,6 +116,7 @@ func NewController(
 	imageClient imageclient.ImageV1Interface,
 	jobClient batchclient.JobsGetter,
 	jobs batchinformers.JobInformer,
+	podClient kv1core.PodsGetter,
 	prowConfigLoader ProwConfigLoader,
 	prowClient dynamic.ResourceInterface,
 	releaseImageStream string,
@@ -132,6 +141,7 @@ func NewController(
 	c := &Controller{
 		eventRecorder: recorder,
 		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), releaseImageStream),
+		gcQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gc"),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -141,6 +151,8 @@ func NewController(
 
 		jobClient: jobClient,
 		jobLister: jobs.Lister(),
+
+		podClient: podClient,
 
 		syncs: []cache.InformerSynced{},
 
@@ -166,6 +178,10 @@ func NewController(
 	})
 
 	return c
+}
+
+func (c *Controller) LimitSources(names ...string) {
+	c.onlySources = sets.NewString(names...)
 }
 
 type ProwConfigLoader interface {
@@ -326,6 +342,8 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
 
+	go wait.Until(c.gcWorker, time.Second, stopCh)
+
 	<-stopCh
 	glog.Infof("Shutting down controller")
 }
@@ -345,6 +363,27 @@ func (c *Controller) processNext() bool {
 
 	glog.V(5).Infof("processing %v begin", key)
 	err := c.sync(key.(queueKey))
+	c.handleNamespaceErr(err, key)
+	glog.V(5).Infof("processing %v end", key)
+
+	return true
+}
+
+func (c *Controller) gcWorker() {
+	for c.processNextGC() {
+	}
+	glog.V(4).Infof("Worker stopped")
+}
+
+func (c *Controller) processNextGC() bool {
+	key, quit := c.gcQueue.Get()
+	if quit {
+		return false
+	}
+	defer c.gcQueue.Done(key)
+
+	glog.V(5).Infof("processing %v begin", key)
+	err := c.garbageCollectSync()
 	c.handleNamespaceErr(err, key)
 	glog.V(5).Infof("processing %v end", key)
 

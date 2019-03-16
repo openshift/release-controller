@@ -26,8 +26,19 @@ type Release struct {
 // how the release is calculated.
 type ReleaseConfig struct {
 	// Name is a required field and is used to associate release tags back to the input.
-	// TODO: determining how naming should work.
 	Name string `json:"name"`
+
+	// Message is a markdown string that is injected at the top of the release listing
+	// to describe the purpose of this stream.
+	Message string `json:"message"`
+
+	// Input defines what this image stream provides. The default value is "Integration"
+	// and the images in the image stream will be used to build payloads. An optional
+	// mode is "Stable" and tags are assumed to be release payloads that should be promoted
+	// and published elsewhere. When choosing Stable, a user will tag a candidate release
+	// image in as a new tag to this image stream and the controller will rebuild and
+	// update the image with the appropriate name, metadata, and content.
+	As string `json:"as"`
 
 	// ReferenceMode describes how the release image will refer to the origin. If empty
 	// or 'public' images will be copied and no source location will be preserved. If
@@ -42,6 +53,11 @@ type ReleaseConfig struct {
 	// MirrorPrefix is the prefix applied to the release mirror image stream. If unset,
 	// MirrorPrefix is the name of the source image stream + the date.
 	MirrorPrefix string `json:"mirrorPrefix"`
+
+	// OverrideCLIImage may be used to override the location where the CLI image is
+	// located for actions on this image stream. It is useful when a bug prevents a
+	// historical image from being used with newer functionality.
+	OverrideCLIImage string `json:"overrideCLIImage"`
 
 	// Expires is the amount of time as a golang duration before Accepted release tags
 	// should be expired and removed. If unset, tags are not expired.
@@ -179,6 +195,8 @@ const (
 	releaseVerificationStateFailed    = "Failed"
 	releaseVerificationStatePending   = "Pending"
 
+	releaseConfigModeStable = "Stable"
+
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation
 	// is considered an input image stream for creating releases.
@@ -186,12 +204,15 @@ const (
 
 	releaseAnnotationGeneration        = "release.openshift.io/generation"
 	releaseAnnotationSource            = "release.openshift.io/source"
+	releaseAnnotationTarget            = "release.openshift.io/target"
 	releaseAnnotationName              = "release.openshift.io/name"
 	releaseAnnotationReleaseTag        = "release.openshift.io/releaseTag"
 	releaseAnnotationImageHash         = "release.openshift.io/hash"
 	releaseAnnotationPhase             = "release.openshift.io/phase"
 	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
 	releaseAnnotationVerify            = "release.openshift.io/verify"
+	// if true, the release controller should rewrite this release tagged
+	releaseAnnotationRewrite = "release.openshift.io/rewrite"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"

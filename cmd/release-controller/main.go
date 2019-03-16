@@ -42,8 +42,9 @@ type options struct {
 	ProwConfigPath string
 	JobConfigPath  string
 
-	DryRun     bool
-	ListenAddr string
+	DryRun       bool
+	LimitSources []string
+	ListenAddr   string
 }
 
 func main() {
@@ -64,6 +65,7 @@ func main() {
 	}
 	flag := cmd.Flags()
 	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
+	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
 
 	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
@@ -150,6 +152,7 @@ func (o *options) Run() error {
 		imageClient.Image(),
 		client.Batch(),
 		jobs,
+		client.Core(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
 		o.ReleaseImageStream,

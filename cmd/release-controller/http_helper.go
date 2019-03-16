@@ -12,8 +12,6 @@ import (
 
 	"github.com/blang/semver"
 
-	blackfriday "gopkg.in/russross/blackfriday.v2"
-
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
@@ -29,10 +27,87 @@ type ReleaseStream struct {
 }
 
 type ReleaseStreamTag struct {
+	Release *Release
+	Tag     *imagev1.TagReference
+
+	PreviousRelease *Release
+	Previous        *imagev1.TagReference
+
+	Older  []*imagev1.TagReference
+	Stable *StableReferences
+}
+
+type StableReferences struct {
+	Releases StableReleases
+}
+
+type StableReleases []StableRelease
+
+func (v StableReleases) Less(i, j int) bool {
+	c := v[i].Version.Compare(v[j].Version)
+	if c > 0 {
+		return true
+	}
+	return false
+}
+
+func (v StableReleases) Len() int      { return len(v) }
+func (v StableReleases) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
+
+type StableRelease struct {
 	Release  *Release
-	Tag      *imagev1.TagReference
-	Previous *imagev1.TagReference
-	Older    []*imagev1.TagReference
+	Version  semver.Version
+	Versions SemanticVersions
+}
+
+type SemanticVersions []SemanticVersion
+
+func NewSemanticVersions(tags []*imagev1.TagReference) SemanticVersions {
+	v := make(SemanticVersions, 0, len(tags))
+	for _, tag := range tags {
+		if version, err := semver.Parse(tag.Name); err == nil {
+			v = append(v, SemanticVersion{Version: &version, Tag: tag})
+		} else {
+			v = append(v, SemanticVersion{Tag: tag})
+		}
+	}
+	return v
+}
+
+func (v SemanticVersions) Tags() []*imagev1.TagReference {
+	tags := make([]*imagev1.TagReference, 0, len(v))
+	for _, version := range v {
+		tags = append(tags, version.Tag)
+	}
+	return tags
+}
+
+func (v SemanticVersions) Less(i, j int) bool {
+	a, b := v[i].Version, v[j].Version
+	if a == nil && b != nil {
+		return false
+	}
+	if a != nil && b == nil {
+		return true
+	}
+	if a != nil {
+		c := a.Compare(*b)
+		if c > 0 {
+			return true
+		}
+		if c < 0 {
+			return false
+		}
+	}
+	return v[i].Tag.Name > v[j].Tag.Name
+}
+
+func (v SemanticVersions) Len() int      { return len(v) }
+func (v SemanticVersions) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
+
+type SemanticVersion struct {
+	Version *semver.Version
+	Tag     *imagev1.TagReference
 }
 
 type ReleaseUpgrades struct {
@@ -201,15 +276,18 @@ func links(tag imagev1.TagReference, release *Release) string {
 	return buf.String()
 }
 
-func extendedLinks(tag imagev1.TagReference, release *Release) string {
+func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
 	links := tag.Annotations[releaseAnnotationVerify]
 	if len(links) == 0 {
-		return ""
+		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+		return
 	}
 	var status VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
-		return "error"
+		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load test info</em>`)
+		return
 	}
+
 	keys := make([]string, 0, len(release.Config.Verify))
 	for k := range release.Config.Verify {
 		keys = append(keys, k)
@@ -277,7 +355,12 @@ func extendedLinks(tag imagev1.TagReference, release *Release) string {
 			buf.WriteString("</span>")
 		}
 	}
-	return buf.String()
+
+	if out := buf.String(); len(out) > 0 {
+		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
+	} else {
+		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+	}
 }
 
 func hasPublishTag(config *ReleaseConfig) (string, bool) {
@@ -317,12 +400,6 @@ func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReferenc
 type nopFlusher struct{}
 
 func (_ nopFlusher) Flush() {}
-
-func renderChangelog(w io.Writer, markdown string, pull, tag string, info *ReleaseStreamTag) {
-	result := blackfriday.Run([]byte(markdown))
-
-	w.Write(result)
-}
 
 func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))
@@ -551,3 +628,38 @@ func (s newestSemVerToSummaries) Swap(i, j int) {
 	s.versions[i], s.versions[j] = s.versions[j], s.versions[i]
 }
 func (s newestSemVerToSummaries) Len() int { return len(s.summaries) }
+
+func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *imagev1.TagReference, tagPull, userAgent string) {
+	if len(tagPull) == 0 {
+		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
+		return
+	}
+
+	var installerPull string
+	if mirror != nil {
+		installerPull = findPublicImagePullSpec(mirror, "installer")
+	}
+	switch agent := strings.ToLower(userAgent); agent {
+	case "windows", "android", "mobile":
+		// add a specific message
+		fallthrough
+	case "mac os":
+		// add a specific message
+	default:
+		if len(installerPull) == 0 {
+			fmt.Fprintf(w, `<p>To install this release on Linux, download the appropriate installer binary and run the following command:`)
+			fmt.Fprintf(w, `<pre class="ml-4">
+OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=%[1]s ./openshift-install create cluster
+</pre>`, tagPull)
+			return
+		}
+
+		fmt.Fprintf(w, `<p>To install this release on Linux, run the following commands:`)
+		fmt.Fprintf(w, `<pre class="ml-4">
+oc image extract %[1]s --file=/usr/bin/openshift-install
+chmod ug+x ./openshift-install
+OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=%[2]s ./openshift-install \
+  create cluster
+</pre>`, installerPull, tagPull)
+	}
+}
