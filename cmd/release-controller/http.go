@@ -184,11 +184,12 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		for i, tag := range releaseTags {
 			if needs, ok := needed[tag.Name]; ok && needs == nil {
 				needed[tag.Name] = &ReleaseStreamTag{
-					Release:  r,
-					Tag:      tag,
-					Previous: findPreviousRelease(tag, releaseTags[i+1:], r),
-					Older:    releaseTags[i+1:],
-					Stable:   stable,
+					Release:         r,
+					Tag:             tag,
+					Previous:        findPreviousRelease(tag, releaseTags[i+1:], r),
+					PreviousRelease: r,
+					Older:           releaseTags[i+1:],
+					Stable:          stable,
 				}
 				remaining--
 				if !includeStableTags && remaining == 0 {
@@ -296,21 +297,24 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if previous := tags[from]; previous != nil {
 		info.Previous = previous.Tag
 		info.PreviousRelease = previous.Release
-	} else {
+	}
+	if info.Previous == nil && len(info.Older) > 0 {
+		info.Previous = info.Older[0]
+		info.PreviousRelease = info.Release
+	}
+	if info.Previous == nil {
 		if version, err := semver.Parse(info.Tag.Name); err == nil {
 			for _, release := range info.Stable.Releases {
 				if release.Version.Major == version.Major && release.Version.Minor == version.Minor && len(release.Versions) > 0 {
 					info.Previous = release.Versions[0].Tag
 					info.PreviousRelease = release.Release
-					if info.PreviousRelease == nil {
-						panic(fmt.Sprintf("%s", release.Version))
-					}
 					break
 				}
 			}
 		}
 	}
 
+	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
 	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
 	var previousTagPull string
 	if info.Previous != nil {
