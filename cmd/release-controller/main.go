@@ -4,9 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
+
+	_ "net/http/pprof" // until openshift/library-go#309 merges
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -30,6 +33,7 @@ import (
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
+	"github.com/openshift/library-go/pkg/serviceability"
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
@@ -48,6 +52,9 @@ type options struct {
 }
 
 func main() {
+	serviceability.StartProfiler()
+	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
+
 	original := flag.CommandLine
 	original.Set("alsologtostderr", "true")
 	original.Set("v", "2")
