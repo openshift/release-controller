@@ -239,7 +239,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 	buf := &bytes.Buffer{}
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
-			if len(s.Url) > 0 {
+			if len(s.URL) > 0 {
 				switch s.State {
 				case releaseVerificationStateFailed:
 					buf.WriteString(" <a title=\"Failed\" class=\"text-danger\" href=\"")
@@ -248,7 +248,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 				default:
 					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
 				}
-				buf.WriteString(template.HTMLEscapeString(s.Url))
+				buf.WriteString(template.HTMLEscapeString(s.URL))
 				buf.WriteString("\">")
 				buf.WriteString(template.HTMLEscapeString(key))
 				buf.WriteString("</a>")
@@ -297,7 +297,7 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	buf := &bytes.Buffer{}
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
-			if len(s.Url) > 0 {
+			if len(s.URL) > 0 {
 				switch s.State {
 				case releaseVerificationStateFailed:
 					buf.WriteString("<li><a class=\"text-danger\" href=\"")
@@ -306,7 +306,7 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 				default:
 					buf.WriteString("<li><a class=\"\" href=\"")
 				}
-				buf.WriteString(template.HTMLEscapeString(s.Url))
+				buf.WriteString(template.HTMLEscapeString(s.URL))
 				buf.WriteString("\">")
 				buf.WriteString(template.HTMLEscapeString(key))
 				switch s.State {

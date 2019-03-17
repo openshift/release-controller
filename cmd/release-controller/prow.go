@@ -15,11 +15,11 @@ func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 	url, _, _ := unstructured.NestedString(obj.Object, "status", "url")
 	switch prowapiv1.ProwJobState(s) {
 	case prowapiv1.SuccessState:
-		return &VerificationStatus{State: releaseVerificationStateSucceeded, Url: url}, true
+		return &VerificationStatus{State: releaseVerificationStateSucceeded, URL: url}, true
 	case prowapiv1.FailureState, prowapiv1.ErrorState, prowapiv1.AbortedState:
-		return &VerificationStatus{State: releaseVerificationStateFailed, Url: url}, true
+		return &VerificationStatus{State: releaseVerificationStateFailed, URL: url}, true
 	case prowapiv1.TriggeredState, prowapiv1.PendingState, prowapiv1.ProwJobState(""):
-		return &VerificationStatus{State: releaseVerificationStatePending, Url: url}, true
+		return &VerificationStatus{State: releaseVerificationStatePending, URL: url}, true
 	default:
 		glog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())
 		return nil, false

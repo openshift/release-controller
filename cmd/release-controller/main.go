@@ -229,6 +229,10 @@ func (o *options) Run() error {
 	glog.Infof("Waiting for caches to sync")
 	cache.WaitForCacheSync(stopCh, hasSynced...)
 
+	// keep the graph in a more persistent form
+	ns, name := releaseNamespace, fmt.Sprintf("%s-upgrades", o.ReleaseImageStream)
+	go syncGraphToSecret(graph, o.DryRun, client.CoreV1().Secrets(ns), ns, name, stopCh)
+
 	go wait.Until(func() {
 		err := wait.ExponentialBackoff(wait.Backoff{
 			Steps:    3,
