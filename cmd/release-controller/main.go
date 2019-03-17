@@ -4,9 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
+
+	_ "net/http/pprof" // until openshift/library-go#309 merges
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -30,6 +33,7 @@ import (
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
+	"github.com/openshift/library-go/pkg/serviceability"
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
@@ -42,11 +46,15 @@ type options struct {
 	ProwConfigPath string
 	JobConfigPath  string
 
-	DryRun     bool
-	ListenAddr string
+	DryRun       bool
+	LimitSources []string
+	ListenAddr   string
 }
 
 func main() {
+	serviceability.StartProfiler()
+	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
+
 	original := flag.CommandLine
 	original.Set("alsologtostderr", "true")
 	original.Set("v", "2")
@@ -64,6 +72,7 @@ func main() {
 	}
 	flag := cmd.Flags()
 	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
+	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
 
 	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
@@ -150,6 +159,7 @@ func (o *options) Run() error {
 		imageClient.Image(),
 		client.Batch(),
 		jobs,
+		client.Core(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
 		o.ReleaseImageStream,

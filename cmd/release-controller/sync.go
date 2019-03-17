@@ -1,32 +1,24 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/blang/semver"
 	"github.com/golang/glog"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/openshift/api/image/docker10"
 	imagev1 "github.com/openshift/api/image/v1"
-	imagereference "github.com/openshift/library-go/pkg/image/reference"
-
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
 // sync expects to receive a queue key that points to a valid release image input
@@ -50,7 +42,13 @@ func (c *Controller) sync(key queueKey) error {
 				c.addQueueKey(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
 			}
 		}
-		return c.garbageCollectUnreferencedObjects()
+		c.gcQueue.AddAfter("", 10*time.Second)
+		return nil
+	}
+
+	if c.onlySources.Len() > 0 && !c.onlySources.Has(key.name) {
+		glog.V(4).Infof("Ignored %s", key.name)
+		return nil
 	}
 
 	// if we are waiting to observe the result of our previous actions, simply delay
@@ -65,7 +63,8 @@ func (c *Controller) sync(key queueKey) error {
 	isLister := c.imageStreamLister.ImageStreams(key.namespace)
 	imageStream, err := isLister.Get(key.name)
 	if errors.IsNotFound(err) {
-		return c.garbageCollectUnreferencedObjects()
+		c.gcQueue.AddAfter("", 10*time.Second)
+		return nil
 	}
 	if err != nil {
 		return err
@@ -75,14 +74,20 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 	if !ok {
-		return c.garbageCollectUnreferencedObjects()
+		c.gcQueue.AddAfter("", 10*time.Second)
+		return nil
 	}
 
 	now := time.Now()
-	pendingTags, removeTags, hasNewImages, inputImageHash := calculateSyncActions(release, now)
+	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash := calculateSyncActions(release, now)
 
 	if glog.V(4) {
-		glog.Infof("name=%s hasNewImages=%t inputImageHash=%s removeTags=%v pendingTags=%v", release.Source.Name, hasNewImages, inputImageHash, tagNames(removeTags), tagNames(pendingTags))
+		glog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v", release.Source.Name, hasNewImages, inputImageHash, tagNames(adoptTags), tagNames(removeTags), tagNames(pendingTags))
+	}
+
+	// take any tags that need to be given annotations now
+	if len(adoptTags) > 0 {
+		return c.syncAdopted(release, adoptTags, now)
 	}
 
 	// ensure old or unneeded tags are removed
@@ -104,142 +109,36 @@ func (c *Controller) sync(key queueKey) error {
 
 	// ensure any pending tags have the necessary jobs/mirrors created
 	if err := c.syncPending(release, pendingTags, inputImageHash); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
 		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
 		return err
 	}
 
 	// ensure verification steps are run on the ready tags
 	if err := c.syncReady(release); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
 		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
 		return err
 	}
 
 	// ensure publish steps are run on the accepted tags
 	if err := c.syncAccepted(release); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
 		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
 		return err
 	}
 
+	c.gcQueue.AddAfter("", 15*time.Second)
 	return nil
 }
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
-	jobName := verifyType.ProwJob.Name
-	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
-	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		// TODO: check metadata on object
-		return obj.(*unstructured.Unstructured), nil
-	}
-
-	config := c.prowConfigLoader.Config()
-	if config == nil {
-		err := fmt.Errorf("the prow job %s is not valid: no prow jobs have been defined", jobName)
-		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
-	}
-	periodicConfig, ok := hasProwJob(config, jobName)
-	if !ok {
-		err := fmt.Errorf("the prow job %s is not valid: no job with that name", jobName)
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
-	}
-
-	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
-	mirror, _ := c.getMirror(release, releaseTag.Name)
-	var previousReleasePullSpec string
-	var previousTag string
-	if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
-		previousTag = tags[0].Name
-		previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-	}
-	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		now := metav1.Now()
-		// return a synthetic job to indicate that this test is impossible to run (no spec, or
-		// this is an upgrade job and no upgrade is possible)
-		return objectToUnstructured(&prowapiv1.ProwJob{
-			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: prowJobName,
-				Annotations: map[string]string{
-					releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-
-					"prow.k8s.io/job": spec.Job,
-				},
-				Labels: map[string]string{
-					"release.openshift.io/verify": "true",
-
-					"prow.k8s.io/type": string(spec.Type),
-					"prow.k8s.io/job":  spec.Job,
-				},
-			},
-			Spec: *spec,
-			Status: prowapiv1.ProwJobStatus{
-				StartTime:      now,
-				CompletionTime: &now,
-				Description:    "Job was not defined or does not have any inputs",
-				State:          prowapiv1.SuccessState,
-			},
-		}), nil
-	}
-
-	pj := &prowapiv1.ProwJob{
-		TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: prowJobName,
-			Annotations: map[string]string{
-				releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-
-				"prow.k8s.io/job": spec.Job,
-			},
-			Labels: map[string]string{
-				"release.openshift.io/verify": "true",
-
-				"prow.k8s.io/type": string(spec.Type),
-				"prow.k8s.io/job":  spec.Job,
-			},
-		},
-		Spec: *spec,
-		Status: prowapiv1.ProwJobStatus{
-			StartTime: metav1.Now(),
-			State:     prowapiv1.TriggeredState,
-		},
-	}
-	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
-	if verifyType.Upgrade && len(previousTag) > 0 {
-		pj.Annotations[releaseAnnotationFromTag] = previousTag
-	}
-	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
-	if errors.IsAlreadyExists(err) {
-		// find a cached version or do a live call
-		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			return job.(*unstructured.Unstructured), nil
-		}
-		return c.prowClient.Get(prowJobName, metav1.GetOptions{})
-	}
-	if errors.IsInvalid(err) {
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", "the prow job %s is not valid: %v", jobName, err)
-		return nil, terminalError{err}
-	}
-	if err != nil {
-		return nil, err
-	}
-	glog.V(2).Infof("Created new prow job %s", pj.Name)
-	return out, nil
-}
-
-func calculateSyncActions(release *Release, now time.Time) (pendingTags []*imagev1.TagReference, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string) {
+func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string) {
 	hasNewImages = true
 	inputImageHash = hashSpecTagImageDigests(release.Source)
 	var (
@@ -247,17 +146,28 @@ func calculateSyncActions(release *Release, now time.Time) (pendingTags []*image
 		removeAccepted tagReferencesByAge
 		removeRejected tagReferencesByAge
 	)
-	for i := range release.Target.Spec.Tags {
-		tag := &release.Target.Spec.Tags[i]
-		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
-			continue
+	target := release.Target
+
+	shouldAdopt := release.Config.As == releaseConfigModeStable
+
+	for i := range target.Spec.Tags {
+		tag := &target.Spec.Tags[i]
+
+		if shouldAdopt {
+			if len(tag.Annotations[releaseAnnotationSource]) == 0 && len(tag.Annotations[releaseAnnotationPhase]) == 0 {
+				adoptTags = append(adoptTags, tag)
+				continue
+			}
 		}
 
+		// check annotations when using the target as tag source
+		if release.Config.As != releaseConfigModeStable && tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+			continue
+		}
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
 		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
 			continue
 		}
-
 		if tag.Annotations[releaseAnnotationImageHash] == inputImageHash {
 			hasNewImages = false
 		}
@@ -304,10 +214,131 @@ func calculateSyncActions(release *Release, now time.Time) (pendingTags []*image
 
 	// arrange the pendingTags in alphabetic order (which should be based on date)
 	sort.Sort(tagReferencesByAge(pendingTags))
-	return pendingTags, removeTags, hasNewImages, inputImageHash
+
+	switch release.Config.As {
+	case releaseConfigModeStable:
+		hasNewImages = false
+		inputImageHash = ""
+		removeTags = nil
+	}
+
+	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash
+}
+
+func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (err error) {
+	names := make([]string, 0, len(adoptTags))
+	for _, tag := range adoptTags {
+		if tag.Name == "next" {
+			// changes the list of tags, so needs to exit
+			return c.replaceReleaseTagWithNext(release, tag)
+		}
+		if _, err := semver.Parse(tag.Name); err == nil {
+			names = append(names, tag.Name)
+		}
+	}
+	return c.ensureReleaseTagPhase(
+		release,
+		[]string{"", releasePhasePending},
+		releasePhasePending,
+		map[string]string{
+			releaseAnnotationName:              release.Config.Name,
+			releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+			releaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
+		},
+		names...,
+	)
 }
 
 func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagReference, inputImageHash string) (err error) {
+	switch release.Config.As {
+	case releaseConfigModeStable:
+		for _, tag := range pendingTags {
+			// wait for import, then determine whether the requested version (tag name) matches the source version (label on image)
+			id := findImageIDForTag(release.Source, tag.Name)
+			if len(id) == 0 {
+				glog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
+				continue
+			}
+			rewriteValue := tag.Annotations[releaseAnnotationRewrite]
+			if len(rewriteValue) == 0 {
+				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				metadata := &docker10.DockerImage{}
+				if len(isi.Image.DockerImageMetadata.Raw) == 0 {
+					return fmt.Errorf("could not fetch Docker image metadata for release %s", tag.Name)
+				}
+				if err := json.Unmarshal(isi.Image.DockerImageMetadata.Raw, metadata); err != nil {
+					return fmt.Errorf("malformed Docker image metadata on ImageStreamTag: %v", err)
+				}
+				var name string
+				if metadata.Config != nil {
+					name = metadata.Config.Labels["io.openshift.release"]
+				}
+				rewriteValue = fmt.Sprintf("%t", name != tag.Name)
+				if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationRewrite: rewriteValue}, tag.Name); err != nil {
+					return err
+				}
+				continue
+			}
+			rewrite := rewriteValue == "true"
+
+			hash := fmt.Sprintf("%s-%d", tag.Name, *tag.Generation)
+			// mirror any internal images
+			// rewrite payload for internal images with metadata
+			mirror, err := c.ensureReleaseMirror(release, tag.Name, hash)
+			if err != nil {
+				return err
+			}
+			if len(tag.Annotations[releaseAnnotationImageHash]) == 0 {
+				if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationImageHash: mirror.Annotations[releaseAnnotationImageHash]}, tag.Name); err != nil {
+					return err
+				}
+				continue
+			}
+			if mirror.Annotations[releaseAnnotationImageHash] != tag.Annotations[releaseAnnotationImageHash] {
+				// delete the mirror and exit
+				return fmt.Errorf("unimplemented, should regenerate contents of tag")
+			}
+			// get metadata about the release
+			//   get upgrade graph edges
+			//   check to see any required edges are missing?  wait for latest edge?  wait for pending edges?
+			//     how do we calculate required edge set?
+			var job *batchv1.Job
+			if rewrite {
+				job, err = c.ensureRewriteJob(release, tag.Name, mirror, `{}`)
+			} else {
+				job, err = c.ensureImportJob(release, tag.Name, mirror)
+			}
+			if err != nil || job == nil {
+				return err
+			}
+			success, complete := jobIsComplete(job)
+			switch {
+			case !complete:
+				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
+			case !success:
+				// TODO: extract termination message from the job
+				if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
+					return err
+				}
+			default:
+				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+					return err
+				}
+				if tags := findTagReferencesByPhase(release, releasePhaseReady); len(tags) > 0 {
+					go func() {
+						if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
+							glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+						}
+					}()
+				}
+			}
+		}
+		return nil
+	}
+
 	if len(pendingTags) > 1 {
 		if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("Aborted", "Multiple releases were found simultaneously running."), tagNames(pendingTags[1:])...); err != nil {
 			return err
@@ -329,7 +360,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		}
 
 		job, err := c.ensureReleaseJob(release, tag.Name, mirror)
-		if err != nil {
+		if err != nil || job == nil {
 			return err
 		}
 		success, complete := jobIsComplete(job)
@@ -345,7 +376,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
-			if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
+			if tags := findTagReferencesByPhase(release, releasePhaseReady); len(tags) > 0 {
 				go func() {
 					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
 						glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
@@ -361,7 +392,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 func (c *Controller) syncReady(release *Release) error {
 	readyTags := findTagReferencesByPhase(release, releasePhaseReady)
 
-	if glog.V(4) {
+	if glog.V(4) && len(readyTags) > 0 {
 		glog.Infof("ready=%v", tagNames(readyTags))
 	}
 
@@ -403,64 +434,10 @@ func (c *Controller) syncReady(release *Release) error {
 	return nil
 }
 
-func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
-	var verifyStatus VerificationStatusMap
-	for name, verifyType := range release.Config.Verify {
-		if verifyType.Disabled {
-			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
-			continue
-		}
-
-		switch {
-		case verifyType.ProwJob != nil:
-			if verifyStatus == nil {
-				if data := releaseTag.Annotations[releaseAnnotationVerify]; len(data) > 0 {
-					verifyStatus = make(VerificationStatusMap)
-					if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
-						glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
-					}
-				}
-			}
-
-			if status, ok := verifyStatus[name]; ok {
-				switch status.State {
-				case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
-					// we've already processed this, continue
-					continue
-				case releaseVerificationStatePending:
-					// we need to process this
-				default:
-					glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
-				}
-			}
-
-			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType, releaseTag)
-			if err != nil {
-				return nil, err
-			}
-			status, ok := prowJobVerificationStatus(job)
-			if !ok {
-				return nil, fmt.Errorf("unexpected error accessing prow job definition")
-			}
-			if status.State == releaseVerificationStateSucceeded {
-				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.Url)
-			}
-			if verifyStatus == nil {
-				verifyStatus = make(VerificationStatusMap)
-			}
-			verifyStatus[name] = status
-
-		default:
-			// manual verification
-		}
-	}
-	return verifyStatus, nil
-}
-
 func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := findTagReferencesByPhase(release, releasePhaseAccepted)
 
-	if glog.V(4) {
+	if glog.V(4) && len(acceptedTags) > 0 {
 		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
 	}
 
@@ -493,669 +470,6 @@ func (c *Controller) syncAccepted(release *Release) error {
 	return nil
 }
 
-func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
-	target := release.Target.DeepCopy()
-	now = now.UTC().Truncate(time.Second)
-	t := now.Format("2006-01-02-150405")
-	tag := imagev1.TagReference{
-		Name: fmt.Sprintf("%s-%s", release.Config.Name, t),
-		Annotations: map[string]string{
-			releaseAnnotationName:              release.Config.Name,
-			releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-			releaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
-			releaseAnnotationPhase:             releasePhasePending,
-		},
-	}
-	target.Spec.Tags = append(target.Spec.Tags, tag)
-
-	glog.V(2).Infof("Starting new release %s", tag.Name)
-
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if errors.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	release.Target = is
-
-	return &is.Spec.Tags[len(is.Spec.Tags)-1], nil
-}
-
-func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.TagReference) error {
-	for _, tag := range removeTags {
-		// use delete imagestreamtag so that status tags are removed as well
-		glog.V(2).Infof("Removing release tag %s", tag.Name)
-		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
-			if !errors.IsNotFound(err) {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func mirrorName(release *Release, releaseTagName string) string {
-	suffix := strings.TrimPrefix(releaseTagName, release.Config.Name)
-	if len(release.Config.MirrorPrefix) > 0 {
-		return fmt.Sprintf("%s%s", release.Config.MirrorPrefix, suffix)
-	}
-	return fmt.Sprintf("%s%s", release.Source.Name, suffix)
-}
-
-func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
-	return c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName(release, releaseTagName))
-}
-
-func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
-	mirrorName := mirrorName(release, releaseTagName)
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName)
-	if err == nil {
-		return is, nil
-	}
-	if !errors.IsNotFound(err) {
-		return nil, err
-	}
-
-	is = &imagev1.ImageStream{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mirrorName,
-			Namespace: c.releaseNamespace,
-			Annotations: map[string]string{
-				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-				releaseAnnotationReleaseTag: releaseTagName,
-				releaseAnnotationImageHash:  inputImageHash,
-				releaseAnnotationGeneration: strconv.FormatInt(release.Target.Generation, 10),
-			},
-		},
-	}
-
-	// this block is mostly identical to the logic in openshift/origin pkg/oc/cli/admin/release/new which
-	// calculates the spec tags - it preserves the desired source location of the image and errors when
-	// we can't resolve or the result might be ambiguous
-	forceExternal := release.Config.ReferenceMode == "public" || release.Config.ReferenceMode == ""
-	internal := release.Source.Status.DockerImageRepository
-	external := release.Source.Status.PublicDockerImageRepository
-	if forceExternal && len(external) == 0 {
-		return nil, fmt.Errorf("only image streams with public image repositories can be the source for releases when using the default referenceMode")
-	}
-
-	for _, tag := range release.Source.Status.Tags {
-		if len(tag.Items) == 0 {
-			continue
-		}
-		source := tag.Items[0].DockerImageReference
-		latest := tag.Items[0]
-		if len(latest.Image) == 0 {
-			continue
-		}
-		// eliminate status tag references that point to the outside
-		if len(source) > 0 {
-			if len(internal) > 0 && strings.HasPrefix(latest.DockerImageReference, internal) {
-				glog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
-				source = ""
-			}
-		}
-		ref := findSpecTag(release.Source.Spec.Tags, tag.Tag)
-		if ref == nil {
-			ref = &imagev1.TagReference{Name: tag.Tag}
-		} else {
-			// prevent unimported images from being skipped
-			if ref.Generation != nil && *ref.Generation != tag.Items[0].Generation {
-				return nil, fmt.Errorf("the tag %q in the source input stream has not been imported yet", tag.Tag)
-			}
-			// use the tag ref as the source
-			if ref.From != nil && ref.From.Kind == "DockerImage" && !strings.HasPrefix(ref.From.Name, internal) {
-				if from, err := imagereference.Parse(ref.From.Name); err == nil {
-					from.Tag = ""
-					from.ID = tag.Items[0].Image
-					source = from.Exact()
-				} else {
-					glog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
-				}
-			}
-			ref = ref.DeepCopy()
-		}
-		// default to the external registry name
-		if (forceExternal || len(source) == 0) && len(external) > 0 {
-			source = external + "@" + tag.Items[0].Image
-		}
-		if len(source) == 0 {
-			return nil, fmt.Errorf("Can't use tag %q because we cannot locate or calculate a source location", tag.Tag)
-		}
-		sourceRef, err := imagereference.Parse(source)
-		if err != nil {
-			return nil, fmt.Errorf("the tag %q points to source %q which is not valid", tag.Tag, source)
-		}
-		sourceRef.Tag = ""
-		sourceRef.ID = tag.Items[0].Image
-		source = sourceRef.Exact()
-
-		if strings.HasPrefix(source, external+"@") {
-			ref.From = &corev1.ObjectReference{
-				Kind:      "ImageStreamImage",
-				Namespace: release.Source.Namespace,
-				Name:      fmt.Sprintf("%s@%s", release.Source.Name, latest.Image),
-			}
-		} else {
-			ref.From = &corev1.ObjectReference{
-				Kind: "DockerImage",
-				Name: source,
-			}
-		}
-		ref.ImportPolicy.Scheduled = false
-		is.Spec.Tags = append(is.Spec.Tags, *ref)
-	}
-
-	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
-	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
-	if err != nil {
-		if !errors.IsAlreadyExists(err) {
-			return nil, err
-		}
-		// perform a live read
-		is, err = c.imageClient.ImageStreams(is.Namespace).Get(is.Name, metav1.GetOptions{})
-	}
-	return is, err
-}
-
-func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
-	job, err := c.jobLister.Jobs(c.jobNamespace).Get(name)
-	if err == nil {
-		return job, nil
-	}
-	if !errors.IsNotFound(err) {
-		return nil, err
-	}
-
-	toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-	// TODO: this should be the default
-	toImageBase := fmt.Sprintf("%s:cluster-version-operator", mirror.Status.PublicDockerImageRepository)
-	cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
-
-	job = newReleaseJob(name, mirror.Name, mirror.Namespace, cliImage, toImage, toImageBase, release.Config.ReferenceMode, release.Config.PullSecretName)
-	job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
-	job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
-
-	glog.V(2).Infof("Running release creation job for %s", name)
-	job, err = c.jobClient.Jobs(c.jobNamespace).Create(job)
-	if err == nil {
-		return job, nil
-	}
-	if !errors.IsAlreadyExists(err) {
-		return nil, err
-	}
-
-	// perform a live lookup if we are racing to create the job
-	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
-}
-
-func newReleaseJob(name, mirrorName, mirrorNamespace, cliImage, toImage, toImageBase, referenceMode, pullSecretName string) *batchv1.Job {
-	if len(pullSecretName) > 0 {
-		return &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        name,
-				Annotations: map[string]string{},
-			},
-			Spec: batchv1.JobSpec{
-				Parallelism:  int32p(1),
-				BackoffLimit: int32p(3),
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						ServiceAccountName: "builder",
-						RestartPolicy:      corev1.RestartPolicyNever,
-						Volumes: []corev1.Volume{
-							{
-								Name: "pull-secret",
-								VolumeSource: corev1.VolumeSource{
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: pullSecretName,
-									},
-								},
-							},
-						},
-						Containers: []corev1.Container{
-							{
-								Name:  "build",
-								Image: cliImage,
-
-								ImagePullPolicy: corev1.PullAlways,
-
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "pull-secret",
-										MountPath: "/tmp/pull-secret",
-									},
-								},
-								Env: []corev1.EnvVar{
-									{Name: "HOME", Value: "/tmp"},
-								},
-								Command: []string{
-									"/bin/bash", "-c", `
-									set -eu
-									mkdir $HOME/.docker/
-									cp -Lf /tmp/pull-secret/* $HOME/.docker/
-									oc registry login
-									oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--to-image-base=$5" "--reference-mode=$6"
-									`, "",
-									name, mirrorName, mirrorNamespace, toImage, toImageBase, referenceMode},
-								TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-							},
-						},
-					},
-				},
-			},
-		}
-	}
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Annotations: map[string]string{},
-		},
-		Spec: batchv1.JobSpec{
-			Parallelism:  int32p(1),
-			BackoffLimit: int32p(3),
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					ServiceAccountName: "builder",
-					RestartPolicy:      corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:  "build",
-							Image: cliImage,
-
-							ImagePullPolicy: corev1.PullAlways,
-
-							Env: []corev1.EnvVar{
-								{Name: "HOME", Value: "/tmp"},
-							},
-							Command: []string{
-								"/bin/bash", "-c", `
-								set -eu
-								oc registry login
-								oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--to-image-base=$5" "--reference-mode=$6"
-								`, "",
-								name, mirrorName, mirrorNamespace, toImage, toImageBase, referenceMode},
-							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func jobIsComplete(job *batchv1.Job) (succeeded bool, complete bool) {
-	if job.Status.CompletionTime != nil {
-		return true, true
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-			return false, true
-		}
-	}
-	return false, false
-}
-
-func (c *Controller) markReleaseReady(release *Release, annotations map[string]string, names ...string) error {
-	return c.transitionReleasePhase(release, []string{releasePhasePending, releasePhaseReady}, releasePhaseReady, annotations, names...)
-}
-
-func (c *Controller) markReleaseAccepted(release *Release, annotations map[string]string, names ...string) error {
-	return c.transitionReleasePhase(release, []string{releasePhaseReady}, releasePhaseAccepted, annotations, names...)
-}
-
-func (c *Controller) setReleaseAnnotation(release *Release, phase string, annotations map[string]string, names ...string) error {
-	if len(names) == 0 {
-		return nil
-	}
-
-	changes := 0
-	target := release.Target.DeepCopy()
-	for _, name := range names {
-		tag := findTagReference(target, name)
-		if tag == nil {
-			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
-		}
-
-		if current := tag.Annotations[releaseAnnotationPhase]; current != phase {
-			return fmt.Errorf("release %s is not in phase %v (%s)", name, phase, current)
-		}
-		for k, v := range annotations {
-			if len(v) == 0 {
-				delete(tag.Annotations, k)
-			} else {
-				tag.Annotations[k] = v
-			}
-		}
-
-		// if there is no change, avoid updating anything
-		if oldTag := findTagReference(release.Target, name); oldTag != nil {
-			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
-				continue
-			}
-		}
-		changes++
-		glog.V(2).Infof("Adding annotations to release %s", name)
-	}
-
-	if changes == 0 {
-		return nil
-	}
-
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if err != nil {
-		return err
-	}
-	release.Target = is
-	return nil
-}
-
-func (c *Controller) transitionReleasePhase(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
-	if len(names) == 0 {
-		return nil
-	}
-
-	changes := 0
-	target := release.Target.DeepCopy()
-	for _, name := range names {
-		tag := findTagReference(target, name)
-		if tag == nil {
-			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
-		}
-
-		if current := tag.Annotations[releaseAnnotationPhase]; !containsString(preconditionPhases, current) {
-			return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
-		}
-		tag.Annotations[releaseAnnotationPhase] = phase
-		delete(tag.Annotations, releaseAnnotationReason)
-		delete(tag.Annotations, releaseAnnotationMessage)
-		for k, v := range annotations {
-			if len(v) == 0 {
-				delete(tag.Annotations, k)
-			} else {
-				tag.Annotations[k] = v
-			}
-		}
-
-		// if there is no change, avoid updating anything
-		if oldTag := findTagReference(release.Target, name); oldTag != nil {
-			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
-				continue
-			}
-		}
-		changes++
-		glog.V(2).Infof("Marking release %s %s", name, phase)
-	}
-
-	if changes == 0 {
-		return nil
-	}
-
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if err != nil {
-		return err
-	}
-	release.Target = is
-	return nil
-}
-
-func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
-	target := release.Target.DeepCopy()
-	changed := 0
-	for _, name := range names {
-		if tag := findTagReference(target, name); tag != nil {
-			if current := tag.Annotations[releaseAnnotationPhase]; !containsString(preconditionPhases, current) {
-				return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
-			}
-			tag.Annotations[releaseAnnotationPhase] = phase
-			for k, v := range annotations {
-				tag.Annotations[k] = v
-			}
-			glog.V(2).Infof("Marking release %s failed: %v", name, annotations)
-			changed++
-		}
-	}
-	if changed == 0 {
-		// release tags have all been deleted
-		return nil
-	}
-
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	release.Target = is
-	return nil
-}
-
-func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string) error {
-	if to == from {
-		return nil
-	}
-	fromTag := findTagReference(release.Target, from)
-	toTag := findTagReference(release.Target, to)
-	if fromTag == nil {
-		// tag was deleted
-		return nil
-	}
-	if toTag != nil {
-		if toTag.From != nil && toTag.From.Kind == "ImageStreamTag" && toTag.From.Name == from && toTag.From.Namespace == "" {
-			// already set to the correct location
-			return nil
-		}
-	}
-	target := release.Target.DeepCopy()
-	toTag = findTagReference(target, to)
-	if toTag == nil {
-		target.Spec.Tags = append(target.Spec.Tags, imagev1.TagReference{
-			Name: to,
-		})
-		toTag = &target.Spec.Tags[len(target.Spec.Tags)-1]
-	}
-	toTag.From = &corev1.ObjectReference{Kind: "ImageStreamTag", Name: from}
-	toTag.ImportPolicy = imagev1.TagImportPolicy{}
-
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	glog.V(2).Infof("Updated image stream tag %s/%s:%s to point to %s", release.Target.Namespace, release.Target.Name, to, from)
-	release.Target = is
-	return nil
-}
-
-func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string) error {
-	glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
-	if toNamespace == release.Source.Namespace && toName == release.Source.Name {
-		return nil
-	}
-	fromTag := findTagReference(release.Target, from)
-	if fromTag == nil {
-		// tag was deleted
-		return nil
-	}
-
-	mirror, err := c.getMirror(release, from)
-	if err != nil {
-		glog.V(2).Infof("Error getting release mirror image stream: %v", err)
-		return nil
-	}
-
-	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
-	if errors.IsNotFound(err) {
-		// TODO: create it?
-		glog.V(2).Infof("Target image stream doesn't exist yet: %v", err)
-		return nil
-	}
-	if err != nil {
-		// TODO
-		glog.V(2).Infof("Error getting publish image stream: %v", err)
-		return nil
-	}
-
-	set := fmt.Sprintf("release.openshift.io/source-%s", release.Config.Name)
-	if value, ok := target.Annotations[set]; ok && value == from {
-		glog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
-		return nil
-	}
-
-	processed := sets.NewString()
-	finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
-	for _, tag := range mirror.Spec.Tags {
-		processed.Insert(tag.Name)
-		finalRefs = append(finalRefs, tag)
-	}
-	for _, tag := range target.Spec.Tags {
-		if processed.Has(tag.Name) {
-			continue
-		}
-		finalRefs = append(finalRefs, tag)
-	}
-	sort.Slice(finalRefs, func(i, j int) bool {
-		return finalRefs[i].Name < finalRefs[j].Name
-	})
-
-	target = target.DeepCopy()
-	target.Spec.Tags = finalRefs
-	if target.Annotations == nil {
-		target.Annotations = make(map[string]string)
-	}
-	target.Annotations[set] = from
-
-	_, err = c.imageClient.ImageStreams(target.Namespace).Update(target)
-	if errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	glog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
-	return nil
-}
-
-func (c *Controller) garbageCollectUnreferencedObjects() error {
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	validReleases := make(map[string]struct{})
-	for _, tag := range is.Spec.Tags {
-		validReleases[tag.Name] = struct{}{}
-	}
-
-	// all jobs created for a release that no longer exists should be deleted
-	jobs, err := c.jobLister.List(labels.Everything())
-	if err != nil {
-		return err
-	}
-	for _, job := range jobs {
-		if _, ok := validReleases[job.Name]; ok {
-			continue
-		}
-		generation, ok := releaseGenerationFromObject(job.Name, job.Annotations)
-		if !ok {
-			continue
-		}
-		if generation < is.Generation {
-			glog.V(2).Infof("Removing orphaned release job %s", job.Name)
-			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
-			}
-		}
-	}
-
-	// all image mirrors created for a release that no longer exists should be deleted
-	mirrors, err := c.imageStreamLister.List(labels.Everything())
-	if err != nil {
-		return err
-	}
-	for _, mirror := range mirrors {
-		if _, ok := validReleases[mirror.Annotations[releaseAnnotationReleaseTag]]; ok {
-			continue
-		}
-		generation, ok := releaseGenerationFromObject(mirror.Name, mirror.Annotations)
-		if !ok {
-			continue
-		}
-		if generation < is.Generation {
-			glog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
-			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(mirror.Name, nil); err != nil && !errors.IsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s: %v", mirror.Name, err))
-			}
-		}
-	}
-
-	return nil
-}
-
-func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
-	buf := &bytes.Buffer{}
-	if err := unstructured.UnstructuredJSONScheme.Encode(obj, buf); err != nil {
-		panic(err)
-	}
-	u := &unstructured.Unstructured{}
-	if _, _, err := unstructured.UnstructuredJSONScheme.Decode(buf.Bytes(), nil, u); err != nil {
-		panic(err)
-	}
-	return u
-}
-
-func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
-	if spec.PodSpec == nil {
-		// Jenkins jobs cannot be parameterized
-		return true, nil
-	}
-	for i := range spec.PodSpec.Containers {
-		c := &spec.PodSpec.Containers[i]
-		for j := range c.Env {
-			switch name := c.Env[j].Name; {
-			case name == "RELEASE_IMAGE_LATEST":
-				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
-			case name == "RELEASE_IMAGE_INITIAL":
-				if len(previousReleasePullSpec) == 0 {
-					return false, nil
-				}
-				c.Env[j].Value = previousReleasePullSpec
-			case name == "IMAGE_FORMAT":
-				if mirror == nil {
-					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
-				}
-				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":${component}"
-			case strings.HasPrefix(name, "IMAGE_"):
-				suffix := strings.TrimPrefix(name, "IMAGE_")
-				if len(suffix) == 0 {
-					break
-				}
-				if mirror == nil {
-					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
-				}
-				suffix = strings.ToLower(strings.Replace(suffix, "_", "-", -1))
-				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":" + suffix
-			}
-		}
-	}
-	return true, nil
-}
-
-func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.PeriodicConfig, bool) {
-	for i := range config.Periodics {
-		if config.Periodics[i].Name == name {
-			return &config.Periodics[i], true
-		}
-	}
-	return nil, false
-}
-
 func containsString(arr []string, s string) bool {
 	for _, str := range arr {
 		if s == str {
@@ -1163,13 +477,6 @@ func containsString(arr []string, s string) bool {
 		}
 	}
 	return false
-}
-
-func reasonAndMessage(reason, message string) map[string]string {
-	return map[string]string{
-		releaseAnnotationReason:  reason,
-		releaseAnnotationMessage: message,
-	}
 }
 
 func toJSONString(data interface{}) string {
@@ -1181,27 +488,6 @@ func toJSONString(data interface{}) string {
 		return ""
 	}
 	return string(out)
-}
-
-func prowSpecForPeriodicConfig(config *prowapiv1.PeriodicConfig, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
-	spec := &prowapiv1.ProwJobSpec{
-		Type:  prowapiv1.PeriodicJob,
-		Job:   config.Name,
-		Agent: prowapiv1.KubernetesAgent,
-
-		Refs: &prowapiv1.Refs{},
-
-		PodSpec: config.Spec.DeepCopy(),
-	}
-
-	if decorationConfig != nil {
-		spec.DecorationConfig = decorationConfig.DeepCopy()
-	} else {
-		spec.DecorationConfig = &prowapiv1.DecorationConfig{}
-	}
-	spec.DecorationConfig.SkipCloning = true
-
-	return spec
 }
 
 func findSpecTag(tags []imagev1.TagReference, name string) *imagev1.TagReference {

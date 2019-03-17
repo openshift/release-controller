@@ -1,5 +1,5 @@
 hash: e4121a688283e1e44789b606e465183b7328b3d3789568740e6281fa0c1680f9
-updated: 2019-03-02T20:58:41.442043507-05:00
+updated: 2019-03-17T15:50:37.875871291-04:00
 imports:
 - name: github.com/beorn7/perks
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
@@ -7,6 +7,8 @@ imports:
   - quantile
 - name: github.com/blang/semver
   version: b38d23b8782a487059e8fc8773e9a5b228a77cb6
+- name: github.com/certifi/gocertifi
+  version: ee1a9a0726d2ae45f54118cac878c990d4016ded
 - name: github.com/davecgh/go-spew
   version: 782f4967f2dc4564575ca782fe2d04090b5faca8
   subpackages:
@@ -17,6 +19,8 @@ imports:
   - spdy
 - name: github.com/dustin/go-humanize
   version: 9f541cc9db5d55bce703bd99987c9d5cb8eea45e
+- name: github.com/getsentry/raven-go
+  version: 32a13797442ccb601b11761d74232773c1402d14
 - name: github.com/ghodss/yaml
   version: 25d852aebe32c875e9c044af3eef9c7dc6bc777f
 - name: github.com/gogo/protobuf
@@ -29,7 +33,10 @@ imports:
 - name: github.com/golang/groupcache
   version: 02826c3e79038b59d737d3b1c0a1d937f71a4433
   subpackages:
+  - consistenthash
+  - groupcachepb
   - lru
+  - singleflight
 - name: github.com/golang/protobuf
   version: b4deda0973fb4c70b50d226b1af49f3da59f5265
   subpackages:
@@ -49,7 +56,7 @@ imports:
   - compiler
   - extensions
 - name: github.com/gorilla/mux
-  version: 15a353a636720571d19e37b34a14499c3afa9991
+  version: c5c6c98bc25355028a63748a498942a6398ccd22
 - name: github.com/gregjones/httpcache
   version: 787624de3eb7bd915c329cba748687a3b22666a6
   subpackages:
@@ -73,14 +80,14 @@ imports:
 - name: github.com/modern-go/reflect2
   version: 05fbef0ca5da472bbf96c9322b84a53edc03c9fd
 - name: github.com/openshift/api
-  version: b75f8002d9873eb84986b824850058977e116e5b
+  version: bfb0ed87be3165db53680be57b13e13aadf94a0e
   subpackages:
   - image/docker10
   - image/dockerpre012
   - image/v1
   - operator/v1alpha1
 - name: github.com/openshift/client-go
-  version: 2d89985ca24a8307e4b5db2574a62d3e6c2444b4
+  version: 8ae2a9c33ba2a3d2ed5dc13d536ca935fc9625b9
   subpackages:
   - image/clientset/versioned
   - image/clientset/versioned/scheme
@@ -93,15 +100,20 @@ imports:
   - servicecertsigner/clientset/versioned/typed/servicecertsigner/v1alpha1
   - servicecertsigner/informers/externalversions/servicecertsigner/v1alpha1
 - name: github.com/openshift/library-go
-  version: 67ba562464684b95438c9dc80acedf74c701ced6
+  version: a0287b264e12953480d8e068aa161d8e8520f539
   subpackages:
   - pkg/image/internal/digest
   - pkg/image/internal/reference
   - pkg/image/reference
   - pkg/operator/v1alpha1helpers
   - pkg/operator/versioning
+  - pkg/serviceability
 - name: github.com/peterbourgon/diskv
   version: 5f041e8faa004a95c88a202771f4cc3e991971e6
+- name: github.com/pkg/errors
+  version: 645ef00459ed84a119197bfb8d8205042c6df63d
+- name: github.com/pkg/profile
+  version: 22592cc4bae3572d59be8852c6980023e4c9dec5
 - name: github.com/prometheus/client_golang
   version: e7e903064f5e9eb5da98208bae10b475d4db0f8c
   subpackages:
@@ -123,6 +135,8 @@ imports:
   - xfs
 - name: github.com/shurcooL/sanitized_anchor_name
   version: 10ef21a441db47d8b13ebcc5fd2310f636973c77
+- name: github.com/sirupsen/logrus
+  version: 89742aefa4b206dcf400792f3bd35b542998eb3b
 - name: github.com/spf13/cobra
   version: c439c4fa093711d42e1b01acb1235b52004753c1
 - name: github.com/spf13/flag

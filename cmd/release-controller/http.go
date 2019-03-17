@@ -10,6 +10,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/blang/semver"
+
 	humanize "github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
@@ -141,7 +143,7 @@ const releaseInfoPageHtml = `
 <p>Created: <span>{{ since $created }}</span></p>
 `
 
-func (c *Controller) findReleaseStreamTags(tags ...string) (map[string]*ReleaseStreamTag, bool) {
+func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
 	for _, tag := range tags {
 		if len(tag) == 0 {
@@ -155,12 +157,30 @@ func (c *Controller) findReleaseStreamTags(tags ...string) (map[string]*ReleaseS
 	if err != nil {
 		return nil, false
 	}
+
+	var stable *StableReferences
+	if includeStableTags {
+		stable = &StableReferences{}
+	}
+
 	for _, stream := range imageStreams {
 		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
 		releaseTags := tagsForRelease(r)
+		if includeStableTags {
+			if version, err := semver.ParseTolerant(r.Config.Name); err == nil {
+				stable.Releases = append(stable.Releases, StableRelease{
+					Release:  r,
+					Version:  version,
+					Versions: NewSemanticVersions(releaseTags),
+				})
+			}
+		}
+		if includeStableTags && remaining == 0 {
+			continue
+		}
 		for i, tag := range releaseTags {
 			if needs, ok := needed[tag.Name]; ok && needs == nil {
 				needed[tag.Name] = &ReleaseStreamTag{
@@ -168,13 +188,17 @@ func (c *Controller) findReleaseStreamTags(tags ...string) (map[string]*ReleaseS
 					Tag:      tag,
 					Previous: findPreviousRelease(tag, releaseTags[i+1:], r),
 					Older:    releaseTags[i+1:],
+					Stable:   stable,
 				}
 				remaining--
-				if remaining == 0 {
+				if !includeStableTags && remaining == 0 {
 					return needed, true
 				}
 			}
 		}
+	}
+	if includeStableTags {
+		sort.Sort(stable.Releases)
 	}
 	return needed, remaining == 0
 }
@@ -210,7 +234,7 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	tags, ok := c.findReleaseStreamTags(from, to)
+	tags, ok := c.findReleaseStreamTags(false, from, to)
 	if !ok {
 		for k, v := range tags {
 			if v == nil {
@@ -257,7 +281,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	tag := vars["tag"]
 	from := req.URL.Query().Get("from")
 
-	tags, ok := c.findReleaseStreamTags(tag, from)
+	tags, ok := c.findReleaseStreamTags(true, tag, from)
 	if !ok {
 		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
 		return
@@ -269,9 +293,30 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(from) > 0 {
-		info.Previous = tags[from].Tag
+	if previous := tags[from]; previous != nil {
+		info.Previous = previous.Tag
+		info.PreviousRelease = previous.Release
+	} else {
+		if version, err := semver.Parse(info.Tag.Name); err == nil {
+			for _, release := range info.Stable.Releases {
+				if release.Version.Major == version.Major && release.Version.Minor == version.Minor && len(release.Versions) > 0 {
+					info.Previous = release.Versions[0].Tag
+					info.PreviousRelease = release.Release
+					if info.PreviousRelease == nil {
+						panic(fmt.Sprintf("%s", release.Version))
+					}
+					break
+				}
+			}
+		}
 	}
+
+	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
+	var previousTagPull string
+	if info.Previous != nil {
+		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
+	}
+	mirror, _ := c.getMirror(info.Release, info.Tag.Name)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -296,13 +341,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
 
-	pull := info.Release.Target.Status.PublicDockerImageRepository
+	renderInstallInstructions(w, mirror, info.Tag, tagPull, req.UserAgent())
 
-	if len(pull) > 0 {
-		fmt.Fprintf(w, `<p>Pull spec: <code>%s:%s</code></p>`, pull, tag)
-	}
-
-	fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, extendedLinks(*info.Tag, info.Release))
+	renderVerifyLinks(w, *info.Tag, info.Release)
 
 	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
@@ -372,7 +413,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	if info.Previous != nil && len(pull) > 0 {
+	if info.Previous != nil && len(previousTagPull) > 0 && len(tagPull) > 0 {
 		fmt.Fprintln(w, "<hr>")
 		flusher.Flush()
 
@@ -384,7 +425,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 		// run the changelog in a goroutine because it may take significant time
 		go func() {
-			out, err := c.releaseInfo.ChangeLog(pull+":"+info.Previous.Name, pull+":"+info.Tag.Name)
+			out, err := c.releaseInfo.ChangeLog(previousTagPull, tagPull)
 			if err != nil {
 				ch <- renderResult{err: err}
 				return
@@ -420,7 +461,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			flusher.Flush()
 		}
 		if render.err == nil {
-			renderChangelog(w, render.out, pull, tag, info)
+			result := blackfriday.Run([]byte(render.out))
+			w.Write(result)
 			fmt.Fprintln(w, "<hr>")
 		} else {
 			// if we don't get a valid result within limits, just show the simpler informational view
@@ -428,16 +470,38 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if len(info.Older) > 0 {
-		var options []string
-		for _, tag := range info.Older {
+	var options []string
+	for _, tag := range info.Older {
+		var selected string
+		if tag.Name == info.Previous.Name {
+			selected = `selected="true"`
+		}
+		options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
+	}
+	for _, release := range info.Stable.Releases {
+		if release.Release == info.Release {
+			continue
+		}
+		for j, version := range release.Versions {
+			if j == 0 && len(options) > 0 {
+				options = append(options, `<option disabled>───</option>`)
+			}
 			var selected string
-			if tag.Name == info.Previous.Name {
+			if info.Previous != nil && version.Tag.Name == info.Previous.Name {
 				selected = `selected="true"`
 			}
-			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
+			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
 		}
-		fmt.Fprintf(w, `<p><form class="form-inline" method="GET"><a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label><select id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare"></form></p>`, info.Previous.Name, info.Tag.Name, strings.Join(options, ""))
+	}
+	if len(options) > 0 {
+		fmt.Fprint(w, `<p><form class="form-inline" method="GET">`)
+		if info.Previous != nil {
+			fmt.Fprintf(w, `<a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label>`, info.Previous.Name, info.Tag.Name)
+		} else {
+			fmt.Fprint(w, `<label for="from">change previous release:&nbsp;</label>`)
+		}
+		fmt.Fprintf(w, `<select onchange="this.form.submit()" id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare">`, strings.Join(options, ""))
+		fmt.Fprint(w, `</form></p>`)
 	}
 }
 
@@ -461,7 +525,16 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"publishDescription": func(r *ReleaseStream) string {
 				var out []string
-				out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
+				switch r.Release.Config.As {
+				case releaseConfigModeStable:
+					if len(r.Release.Config.Message) > 0 {
+						out = append(out, fmt.Sprintf(`<span>%s</span>`, template.HTMLEscapeString(r.Release.Config.Message)))
+					} else {
+						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+					}
+				default:
+					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
+				}
 
 				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
 					for _, target := range r.Release.Config.Publish {
@@ -517,7 +590,11 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 
 	sort.Slice(page.Streams, func(i, j int) bool {
-		return page.Streams[i].Release.Config.Name < page.Streams[j].Release.Config.Name
+		a, b := page.Streams[i], page.Streams[j]
+		if a.Release.Config.As != b.Release.Config.As {
+			return a.Release.Config.As != releaseConfigModeStable
+		}
+		return a.Release.Config.Name < b.Release.Config.Name
 	})
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
