@@ -1,10 +1,33 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
+	"sort"
 	"sync"
+	"time"
+
+	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 )
+
+type UpgradeResult struct {
+	State string `json:"state"`
+	URL   string `json:"url"`
+}
+
+type UpgradeRecord struct {
+	From    string          `json:"from"`
+	To      string          `json:"to"`
+	Results []UpgradeResult `json:"results"`
+}
 
 type UpgradeGraph struct {
 	lock sync.Mutex
@@ -22,11 +45,6 @@ func NewUpgradeGraph() *UpgradeGraph {
 type upgradeEdge struct {
 	From string
 	To   string
-}
-
-type UpgradeResult struct {
-	State string
-	Url   string
 }
 
 type UpgradeHistory struct {
@@ -133,7 +151,10 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 
 	g.lock.Lock()
 	defer g.lock.Unlock()
+	g.addWithLock(fromTag, toTag, results...)
+}
 
+func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResult) {
 	to, ok := g.to[toTag]
 	if !ok {
 		to = make(map[string]*UpgradeHistory)
@@ -157,12 +178,12 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 		from.History = make(map[string]UpgradeResult)
 	}
 	for _, result := range results {
-		if len(result.Url) == 0 {
+		if len(result.URL) == 0 {
 			continue
 		}
-		existing, ok := from.History[result.Url]
+		existing, ok := from.History[result.URL]
 		if !ok || existing.State == releaseVerificationStatePending && result.State != releaseVerificationStatePending {
-			from.History[result.Url] = result
+			from.History[result.URL] = result
 			switch result.State {
 			case releaseVerificationStateFailed:
 				from.Failure++
@@ -171,4 +192,123 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 			}
 		}
 	}
+}
+
+func (g *UpgradeGraph) saveRecords() []UpgradeRecord {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	records := make([]UpgradeRecord, 0, len(g.to)*5)
+	for to, targets := range g.to {
+		for from, history := range targets {
+			record := UpgradeRecord{From: from, To: to, Results: make([]UpgradeResult, 0, len(history.History))}
+			for _, result := range history.History {
+				record.Results = append(record.Results, result)
+			}
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+func (g *UpgradeGraph) Save(w io.Writer) error {
+	records := g.saveRecords()
+
+	// put the records into a stable order
+	sort.Slice(records, func(i, j int) bool {
+		a, b := records[i], records[j]
+		if a.To == b.To {
+			return a.From < b.From
+		}
+		return a.To < b.To
+	})
+	for _, record := range records {
+		sort.Slice(record.Results, func(i, j int) bool {
+			return record.Results[i].URL < record.Results[j].URL
+		})
+	}
+
+	data, err := json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	gw := gzip.NewWriter(w)
+	if _, err := gw.Write(data); err != nil {
+		return err
+	}
+	return gw.Close()
+}
+
+func (g *UpgradeGraph) Load(r io.Reader) error {
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	var records []UpgradeRecord
+	if err := json.NewDecoder(gr).Decode(&records); err != nil {
+		return err
+	}
+
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	for _, record := range records {
+		g.addWithLock(record.From, record.To, record.Results...)
+	}
+	return err
+}
+
+func syncGraphToSecret(graph *UpgradeGraph, dryRun bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+	// read initial state
+	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
+		secret, err := secretClient.Get(name, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				glog.Errorf("No secret %s/%s exists to store upgrade state into", ns, name)
+				return false, nil
+			}
+			if errors.IsForbidden(err) {
+				glog.Errorf("Release controller doesn't have permission to get secret %s/%s to store upgrade state into", ns, name)
+				return false, nil
+			}
+			glog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
+			return false, nil
+		}
+		if data := secret.Data["latest"]; len(data) > 0 {
+			if err := graph.Load(bytes.NewReader(data)); err != nil {
+				glog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
+			}
+		}
+		return true, nil
+	}, stopCh)
+
+	if dryRun {
+		return
+	}
+
+	// wait a bit of time to let any other loops load what they can
+	time.Sleep(15 * time.Second)
+
+	// keep the secret up to date
+	buf := &bytes.Buffer{}
+	wait.Until(func() {
+		buf.Reset()
+		if err := graph.Save(buf); err != nil {
+			glog.Errorf("Unable to calculate graph state: %v", err)
+			return
+		}
+		secret, err := secretClient.Get(name, metav1.GetOptions{})
+		if err != nil {
+			glog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
+			return
+		}
+		if secret.Data == nil {
+			secret.Data = make(map[string][]byte)
+		}
+		secret.Data["latest"] = buf.Bytes()
+		if _, err := secretClient.Update(secret); err != nil {
+			glog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
+		}
+		glog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
+	}, 5*time.Minute, stopCh)
 }

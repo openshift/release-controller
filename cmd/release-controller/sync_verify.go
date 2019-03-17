@@ -49,7 +49,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
 			if status.State == releaseVerificationStateSucceeded {
-				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.Url)
+				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
 			}
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)

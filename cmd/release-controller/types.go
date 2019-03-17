@@ -125,7 +125,7 @@ type ProwJobVerification struct {
 
 type VerificationStatus struct {
 	State string `json:"state"`
-	Url   string `json:"url"`
+	URL   string `json:"url"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus

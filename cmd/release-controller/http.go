@@ -207,10 +207,19 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
+	mux.HandleFunc("/archive/graph", c.httpGraphSave)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
+}
+
+func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Encoding", "gzip")
+	if err := c.graph.Save(w); err != nil {
+		http.Error(w, fmt.Sprintf("unable to save graph: %v", err), http.StatusInternalServerError)
+	}
 }
 
 func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Request) {
