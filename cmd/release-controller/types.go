@@ -102,6 +102,8 @@ type PublishStreamReference struct {
 	// Namespace is the namespace of the release image stream to update. If left empty
 	// it will default to the same namespace as the release image stream.
 	Namespace string `json:"namespace"`
+	// Tags if set will limit the set of tags that are published.
+	Tags []string `json:"tags"`
 }
 
 // ReleaseVerification is a task that must be completed before a release is marked
