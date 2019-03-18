@@ -76,6 +76,22 @@ type ReleaseConfig struct {
 	// the release is Accepted. Some publish steps are continuously maintained, others
 	// may only be performed once.
 	Publish map[string]ReleasePublish `json:"publish"`
+
+	// Check is a map of short names to check routines that report additional information
+	// about the health or quality of this stream to the user interface.
+	Check map[string]ReleaseCheck `json:"check"`
+}
+
+type ReleaseCheck struct {
+	// ConsistentImages verifies that the images in this release have not drifted
+	// significantly from the referenced parent and that no significant disparities
+	// exist.
+	ConsistentImages *CheckConsistentImages `json:"consistentImages"`
+}
+
+type CheckConsistentImages struct {
+	// Parent is the release stream to compare against.
+	Parent string `json:"parent"`
 }
 
 // ReleasePublish defines one action to take when a release is Accepted.

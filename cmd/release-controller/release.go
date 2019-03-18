@@ -196,12 +196,8 @@ func findImageIDForTag(is *imagev1.ImageStream, name string) string {
 				return ""
 			}
 			if len(tag.Conditions) > 0 {
-				for _, condition := range tag.Conditions {
-					if condition.Type == imagev1.ImportSuccess {
-						if condition.Status == corev1.ConditionFalse {
-							return ""
-						}
-					}
+				if isTagEventConditionNotImported(tag) {
+					return ""
 				}
 			}
 			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil && (specTag.Generation == nil || *specTag.Generation > tag.Items[0].Generation) {
@@ -211,6 +207,17 @@ func findImageIDForTag(is *imagev1.ImageStream, name string) string {
 		}
 	}
 	return ""
+}
+
+func isTagEventConditionNotImported(event *imagev1.NamedTagEventList) bool {
+	for _, condition := range event.Conditions {
+		if condition.Type == imagev1.ImportSuccess {
+			if condition.Status == corev1.ConditionFalse {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func findImagePullSpec(is *imagev1.ImageStream, name string) string {

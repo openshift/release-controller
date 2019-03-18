@@ -24,6 +24,13 @@ type ReleaseStream struct {
 	Tags    []*imagev1.TagReference
 
 	Upgrades *ReleaseUpgrades
+	Checks   []ReleaseCheckResult
+}
+
+type ReleaseCheckResult struct {
+	Name     string
+	Errors   []string
+	Warnings []string
 }
 
 type ReleaseStreamTag struct {
@@ -363,6 +370,22 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	}
 }
 
+func renderAlerts(release ReleaseStream) string {
+	var msgs []string
+	for _, check := range release.Checks {
+		if len(check.Errors) > 0 {
+			sort.Strings(check.Errors)
+			msgs = append(msgs, fmt.Sprintf("<div class=\"alert alert-danger\">%s failures:\n<ul><li>%s</ul></div>", check.Name, strings.Join(check.Errors, "<li>")))
+		}
+		if len(check.Warnings) > 0 {
+			sort.Strings(check.Warnings)
+			msgs = append(msgs, fmt.Sprintf("<div class=\"alert alert-warning\">%s warnings:\n<ul><li>%s</ul></div>", check.Name, strings.Join(check.Warnings, "<li>")))
+		}
+	}
+	sort.Strings(msgs)
+	return strings.Join(msgs, "\n")
+}
+
 func hasPublishTag(config *ReleaseConfig) (string, bool) {
 	for _, v := range config.Publish {
 		if v.TagRef != nil {
@@ -661,5 +684,27 @@ chmod ug+x ./openshift-install
 OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=%[2]s ./openshift-install \
   create cluster
 </pre>`, installerPull, tagPull)
+	}
+}
+
+func checkReleasePage(page *ReleasePage) {
+	for i := range page.Streams {
+		stream := &page.Streams[i]
+		for name, check := range stream.Release.Config.Check {
+			switch {
+			case check.ConsistentImages != nil:
+				parent := findReleaseStream(page, check.ConsistentImages.Parent)
+				if parent == nil {
+					stream.Checks = append(stream.Checks, ReleaseCheckResult{
+						Name:   name,
+						Errors: []string{fmt.Sprintf("The parent stream %s could not be found.", check.ConsistentImages.Parent)},
+					})
+					continue
+				}
+				result := checkConsistentImages(stream.Release, parent.Release)
+				result.Name = name
+				stream.Checks = append(stream.Checks, result)
+			}
+		}
 	}
 }

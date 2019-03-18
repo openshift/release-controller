@@ -103,6 +103,7 @@ td.upgrade-track {
 {{ range .Streams }}
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
 		{{ publishDescription . }}
+		{{ alerts . }}
 		{{ $upgrades := .Upgrades }}
 		<table class="table text-nowrap">
 			<thead>
@@ -215,6 +216,9 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Encoding", "gzip")
 	if err := c.graph.Save(w); err != nil {
@@ -223,6 +227,9 @@ func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
 	var isHtml bool
 	switch req.URL.Query().Get("format") {
 	case "html":
@@ -285,6 +292,9 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
 	vars := mux.Vars(req)
 
 	release := vars["release"]
@@ -519,6 +529,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
 	page := &ReleasePage{}
@@ -582,6 +595,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"phaseCell":    phaseCell,
 			"phaseAlert":   phaseAlert,
+			"alerts":       renderAlerts,
 			"canLink":      canLink,
 			"links":        links,
 			"inc":          func(i int) int { return i + 1 },
@@ -614,6 +628,8 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph)
 		page.Streams = append(page.Streams, s)
 	}
+
+	checkReleasePage(page)
 
 	sort.Slice(page.Streams, func(i, j int) bool {
 		a, b := page.Streams[i], page.Streams[j]
