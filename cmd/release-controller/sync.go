@@ -78,6 +78,20 @@ func (c *Controller) sync(key queueKey) error {
 		return nil
 	}
 
+	// ensure that the target image stream always carries the annotation indicating it is
+	// a target for backreferencing from GC and other check points
+	if _, ok := release.Target.Annotations[releaseAnnotationHasReleases]; !ok {
+		target := release.Target.DeepCopy()
+		if target.Annotations == nil {
+			target.Annotations = make(map[string]string)
+		}
+		target.Annotations[releaseAnnotationHasReleases] = "true"
+		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	now := time.Now()
 	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash := calculateSyncActions(release, now)
 

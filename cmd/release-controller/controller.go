@@ -82,9 +82,6 @@ type Controller struct {
 	// own creates. Exposed only for testing.
 	expectationDelay time.Duration
 
-	// releaseImageStream is the name of the image stream in the release namespace where
-	// releases will be pushed to.
-	releaseImageStream string
 	// releaseNamespace is the namespace where the "release" image stream is expected
 	// to be found.
 	releaseNamespace string
@@ -119,7 +116,6 @@ func NewController(
 	podClient kv1core.PodsGetter,
 	prowConfigLoader ProwConfigLoader,
 	prowClient dynamic.ResourceInterface,
-	releaseImageStream string,
 	releaseNamespace string,
 	jobNamespace string,
 	releaseInfo ReleaseInfo,
@@ -140,7 +136,7 @@ func NewController(
 
 	c := &Controller{
 		eventRecorder: recorder,
-		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), releaseImageStream),
+		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "releases"),
 		gcQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gc"),
 
 		expectations:     newExpectations(),
@@ -159,9 +155,8 @@ func NewController(
 		prowConfigLoader: prowConfigLoader,
 		prowClient:       prowClient,
 
-		releaseImageStream: releaseImageStream,
-		releaseNamespace:   releaseNamespace,
-		jobNamespace:       jobNamespace,
+		releaseNamespace: releaseNamespace,
+		jobNamespace:     jobNamespace,
 
 		releaseInfo: releaseInfo,
 
@@ -313,12 +308,11 @@ func (c *Controller) processImageStream(obj interface{}) {
 			c.addQueueKey(key)
 			return
 		}
-		if t.Namespace == c.releaseNamespace && t.Name == c.releaseImageStream {
-			// if the release image stream is modified, just requeue everything in the event a tag
-			// has been deleted
-			glog.V(5).Infof("Image stream %s is a release target, requeue both namespaces", t.Name)
+		if _, ok := t.Annotations[releaseAnnotationHasReleases]; ok {
+			// if the release image stream is modified, tags might have been deleted so retrigger
+			// everything
+			glog.V(5).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
 			c.addQueueKey(queueKey{namespace: c.releaseNamespace})
-			c.addQueueKey(queueKey{namespace: c.jobNamespace})
 			return
 		}
 	default:

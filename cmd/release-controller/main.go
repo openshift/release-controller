@@ -38,10 +38,9 @@ import (
 )
 
 type options struct {
-	ReleaseNamespaces  []string
-	JobNamespace       string
-	ProwNamespace      string
-	ReleaseImageStream string
+	ReleaseNamespaces []string
+	JobNamespace      string
+	ProwNamespace     string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -60,8 +59,7 @@ func main() {
 	original.Set("v", "2")
 
 	opt := &options{
-		ReleaseImageStream: "release",
-		ListenAddr:         ":8080",
+		ListenAddr: ":8080",
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -74,7 +72,8 @@ func main() {
 	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
 	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
 
-	flag.StringVar(&opt.ReleaseImageStream, "to", opt.ReleaseImageStream, "The image stream in the release namespace to push releases to.")
+	var ignored string
+	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flag.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
@@ -117,9 +116,9 @@ func (o *options) Run() error {
 		if _, err := client.Core().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
-		glog.Infof("Releases will be published to image stream %s/%s, jobs will be created in namespace %s", releaseNamespace, o.ReleaseImageStream, o.JobNamespace)
+		glog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
 	} else {
-		glog.Infof("Release will be published to image stream %s/%s and jobs will be in the same namespace", releaseNamespace, o.ReleaseImageStream)
+		glog.Infof("Release will be published to namespace %s and jobs will be in the same namespace", releaseNamespace)
 	}
 
 	imageClient, err := imageclientset.NewForConfig(config)
@@ -148,7 +147,7 @@ func (o *options) Run() error {
 	}
 
 	imageCache := newLatestImageCache("tests")
-	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s-%s", releaseNamespace, o.ReleaseImageStream), imageCache.Get)
+	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
 
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
@@ -162,7 +161,6 @@ func (o *options) Run() error {
 		client.Core(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
-		o.ReleaseImageStream,
 		releaseNamespace,
 		o.JobNamespace,
 		releaseInfo,
@@ -230,8 +228,7 @@ func (o *options) Run() error {
 	cache.WaitForCacheSync(stopCh, hasSynced...)
 
 	// keep the graph in a more persistent form
-	ns, name := releaseNamespace, fmt.Sprintf("%s-upgrades", o.ReleaseImageStream)
-	go syncGraphToSecret(graph, o.DryRun, client.CoreV1().Secrets(ns), ns, name, stopCh)
+	go syncGraphToSecret(graph, o.DryRun, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 	go wait.Until(func() {
 		err := wait.ExponentialBackoff(wait.Backoff{

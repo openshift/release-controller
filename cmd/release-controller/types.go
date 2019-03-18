@@ -32,13 +32,17 @@ type ReleaseConfig struct {
 	// to describe the purpose of this stream.
 	Message string `json:"message"`
 
-	// Input defines what this image stream provides. The default value is "Integration"
+	// As defines what this image stream provides. The default value is "Integration"
 	// and the images in the image stream will be used to build payloads. An optional
 	// mode is "Stable" and tags are assumed to be release payloads that should be promoted
 	// and published elsewhere. When choosing Stable, a user will tag a candidate release
 	// image in as a new tag to this image stream and the controller will rebuild and
 	// update the image with the appropriate name, metadata, and content.
 	As string `json:"as"`
+
+	// To is the image stream where release tags will be created when the As field is
+	// Integration. This field is ignored when As is Stable.
+	To string `json:"to"`
 
 	// ReferenceMode describes how the release image will refer to the origin. If empty
 	// or 'public' images will be copied and no source location will be preserved. If
@@ -213,6 +217,8 @@ const (
 	releaseAnnotationVerify            = "release.openshift.io/verify"
 	// if true, the release controller should rewrite this release tagged
 	releaseAnnotationRewrite = "release.openshift.io/rewrite"
+	// an image stream with this annotation holds release tags
+	releaseAnnotationHasReleases = "release.openshift.io/hasReleases"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
