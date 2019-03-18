@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -79,6 +80,14 @@ func (c *Controller) garbageCollectSync() error {
 			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
 			}
+			continue
+		}
+		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Time.Before(time.Now().Add(-2*time.Hour)) {
+			glog.V(2).Infof("Removing old completed release job %s", job.Name)
+			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
+				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s: %v", job.Name, err))
+			}
+			continue
 		}
 	}
 

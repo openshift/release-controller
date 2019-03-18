@@ -537,12 +537,13 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				return ""
 			},
 			"publishDescription": func(r *ReleaseStream) string {
+				if len(r.Release.Config.Message) > 0 {
+					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+				}
 				var out []string
 				switch r.Release.Config.As {
 				case releaseConfigModeStable:
-					if len(r.Release.Config.Message) > 0 {
-						out = append(out, fmt.Sprintf(`<span>%s</span>`, template.HTMLEscapeString(r.Release.Config.Message)))
-					} else {
+					if len(r.Release.Config.Message) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
 				default:
@@ -552,20 +553,32 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
 					for _, target := range r.Release.Config.Publish {
 						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							out = append(out, fmt.Sprintf(`<span>promote to pull spec: <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
+							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
 						}
 					}
 				}
 				for _, target := range r.Release.Config.Publish {
 					if target.ImageStreamRef != nil {
-						out = append(out, fmt.Sprintf(`<span>promote to image stream: <code>%s/%s</code></span>`, target.ImageStreamRef.Namespace, target.ImageStreamRef.Name))
+						ns := target.ImageStreamRef.Namespace
+						if len(ns) > 0 {
+							ns += "/"
+						}
+						if len(target.ImageStreamRef.Tags) == 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to image stream <code>%s%s</code></span>`, ns, target.ImageStreamRef.Name))
+						} else {
+							var tagNames []string
+							for _, tag := range target.ImageStreamRef.Tags {
+								tagNames = append(tagNames, fmt.Sprintf("<code>%s</code>", template.HTMLEscapeString(tag)))
+							}
+							out = append(out, fmt.Sprintf(`<span>promote %s to image stream <code>%s%s</code></span>`, strings.Join(tagNames, "/"), ns, target.ImageStreamRef.Name))
+						}
 					}
 				}
-				if len(out) == 0 {
-					return ""
+				if len(out) > 0 {
+					sort.Strings(out)
+					return fmt.Sprintf("<p>%s</p>\n", strings.Join(out, ", "))
 				}
-				sort.Strings(out)
-				return fmt.Sprintf("<p>%s</p>\n", strings.Join(out, ", "))
+				return ""
 			},
 			"phaseCell":    phaseCell,
 			"phaseAlert":   phaseAlert,

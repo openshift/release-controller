@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/golang/glog"
 
@@ -52,8 +54,12 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 	return nil
 }
 
-func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string) error {
-	glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
+func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string, tags []string) error {
+	if len(tags) == 0 {
+		glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
+	} else {
+		glog.V(4).Infof("Ensure image stream %s/%s has tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
+	}
 	if toNamespace == release.Source.Namespace && toName == release.Source.Name {
 		return nil
 	}
@@ -81,34 +87,64 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		return nil
 	}
 
-	set := fmt.Sprintf("release.openshift.io/source-%s", release.Config.Name)
-	if value, ok := target.Annotations[set]; ok && value == from {
-		glog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
-		return nil
-	}
-
-	processed := sets.NewString()
-	finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
-	for _, tag := range mirror.Spec.Tags {
-		processed.Insert(tag.Name)
-		finalRefs = append(finalRefs, tag)
-	}
-	for _, tag := range target.Spec.Tags {
-		if processed.Has(tag.Name) {
-			continue
+	if len(tags) == 0 {
+		set := fmt.Sprintf("release.openshift.io/source-%s", release.Config.Name)
+		if value, ok := target.Annotations[set]; ok && value == from {
+			glog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
+			return nil
 		}
-		finalRefs = append(finalRefs, tag)
-	}
-	sort.Slice(finalRefs, func(i, j int) bool {
-		return finalRefs[i].Name < finalRefs[j].Name
-	})
 
-	target = target.DeepCopy()
-	target.Spec.Tags = finalRefs
-	if target.Annotations == nil {
-		target.Annotations = make(map[string]string)
+		processed := sets.NewString()
+		finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
+		for _, tag := range mirror.Spec.Tags {
+			processed.Insert(tag.Name)
+			finalRefs = append(finalRefs, tag)
+		}
+		for _, tag := range target.Spec.Tags {
+			if processed.Has(tag.Name) {
+				continue
+			}
+			finalRefs = append(finalRefs, tag)
+		}
+		sort.Slice(finalRefs, func(i, j int) bool {
+			return finalRefs[i].Name < finalRefs[j].Name
+		})
+
+		target = target.DeepCopy()
+		target.Spec.Tags = finalRefs
+		if target.Annotations == nil {
+			target.Annotations = make(map[string]string)
+		}
+		target.Annotations[set] = from
+
+	} else {
+		var copied *imagev1.ImageStream
+		for _, tag := range tags {
+			sourceTag := findTagReference(mirror, tag)
+			if sourceTag == nil {
+				glog.Warningf("The tag %s should be mirrored from %s to %s, but is not in the source tags", tag, release.Config.Name, toName)
+				continue
+			}
+			targetTag := findTagReference(target, tag)
+			if targetTag != nil && reflect.DeepEqual(targetTag.From, sourceTag.From) {
+				// tag is identical
+				continue
+			}
+			if copied == nil {
+				copied = target.DeepCopy()
+			}
+			if targetTag == nil {
+				copied.Spec.Tags = append(copied.Spec.Tags, *sourceTag)
+			} else {
+				targetTag = findTagReference(copied, tag)
+				*targetTag = *sourceTag
+			}
+		}
+		if copied == nil {
+			return nil
+		}
+		target = copied
 	}
-	target.Annotations[set] = from
 
 	_, err = c.imageClient.ImageStreams(target.Namespace).Update(target)
 	if errors.IsNotFound(err) {
@@ -117,6 +153,10 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 	if err != nil {
 		return err
 	}
-	glog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
+	if len(tags) == 0 {
+		glog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
+	} else {
+		glog.V(2).Infof("Updated image stream %s/%s with tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
+	}
 	return nil
 }
