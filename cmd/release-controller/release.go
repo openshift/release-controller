@@ -45,11 +45,11 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		}
 		return r, true, nil
 	default:
-		targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(c.releaseImageStream)
+		targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(cfg.To)
 		if errors.IsNotFound(err) {
 			// TODO: something special here?
-			glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, c.releaseImageStream)
-			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseImageStream, is.Name)}
+			glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, cfg.To)
+			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseNamespace, cfg.To)}
 		}
 		if err != nil {
 			return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)
@@ -78,6 +78,9 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 	}
 	if len(cfg.Name) == 0 {
 		return nil, fmt.Errorf("release config must have a valid name")
+	}
+	if len(cfg.To) == 0 && cfg.As != releaseConfigModeStable {
+		return nil, fmt.Errorf("release must specify 'to' unless 'as' is 'Stable'")
 	}
 	for name, verify := range cfg.Verify {
 		if len(name) == 0 {

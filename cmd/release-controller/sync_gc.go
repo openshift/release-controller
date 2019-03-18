@@ -37,13 +37,14 @@ func (c *Controller) garbageCollectSync() error {
 	active := sets.NewString()
 	targets := make(map[string]int64)
 	for _, imageStream := range imageStreams {
-		if imageStream.Name == c.releaseImageStream && imageStream.Namespace == c.releaseNamespace {
+		if _, ok := imageStream.Annotations[releaseAnnotationHasReleases]; ok {
 			for _, tag := range imageStream.Spec.Tags {
 				active.Insert(tag.Name)
 			}
 			targets[fmt.Sprintf("%s/%s", imageStream.Namespace, imageStream.Name)] = imageStream.Generation
 			continue
 		}
+
 		value, ok := imageStream.Annotations[releaseAnnotationConfig]
 		if !ok {
 			continue
