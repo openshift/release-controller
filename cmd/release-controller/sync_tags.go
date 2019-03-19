@@ -77,6 +77,9 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 		releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 		releaseAnnotationRewrite:           "true",
 	}
+	if value, ok := tag.Annotations[releaseAnnotationMirrorImages]; ok {
+		origin.Annotations[releaseAnnotationMirrorImages] = value
+	}
 	origin.From = tag.From
 	origin.ImportPolicy = tag.ImportPolicy
 
