@@ -48,6 +48,11 @@ const htmlPageEnd = `
 
 const releasePageHtml = `
 <h1>Release Status</h1>
+<p>Visualize upgrades in <a href="/graph">Cincinnati</a> | <a href="/graph?format=dot">dot</a> | <a href="/graph?format=svg">SVG</a> | <a href="/graph?format=png">PNG</a> format. Run the following command to make this your update server:</p>
+<pre class="ml-4">
+oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
+</pre>
+<hr>
 <style>
 .upgrade-track-line {
 	position: absolute;
@@ -535,7 +540,18 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
-	page := &ReleasePage{}
+	base := *req.URL
+	base.Scheme = "http"
+	if p := req.Header.Get("X-Forwarded-Proto"); len(p) > 0 {
+		base.Scheme = p
+	}
+	base.Host = req.Host
+	base.Path = "/"
+	base.RawQuery = ""
+	base.Fragment = ""
+	page := &ReleasePage{
+		BaseURL: base.String(),
+	}
 
 	now := time.Now()
 	var releasePage = template.Must(template.New("releasePage").Funcs(

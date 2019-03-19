@@ -16,6 +16,7 @@ import (
 )
 
 type ReleasePage struct {
+	BaseURL string
 	Streams []ReleaseStream
 }
 
