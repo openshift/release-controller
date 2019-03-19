@@ -46,7 +46,8 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 }
 
 func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *imagev1.ImageStream, metadataJSON string) (*batchv1.Job, error) {
-	generation := *findTagReference(release.Source, name).Generation
+	ref := findTagReference(release.Source, name)
+	generation := *ref.Generation
 	preconditions := map[string]string{
 		releaseAnnotationGeneration: strconv.FormatInt(generation, 10),
 	}
@@ -78,19 +79,30 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 		init1.Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release new "--name=$1" "--from-release=$2" --mirror="$3" "--to-dir=/tmp/test"
+			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3"
 			`,
 			"",
-			name, toImage, mirror.Status.PublicDockerImageRepository,
+			toImage, mirror.Name, mirror.Namespace,
 		}
 		// rebuild the payload using the provided metadata
-		job.Spec.Template.Spec.Containers[0].Command = []string{
-			"/bin/bash", "-c",
-			prefix + `
+		if _, ok := ref.Annotations[releaseAnnotationMirrorImages]; ok {
+			job.Spec.Template.Spec.Containers[0].Command = []string{
+				"/bin/bash", "-c",
+				prefix + `
+			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" --to-image="$4" "--reference-mode=$5" "--metadata=$6"
+			`,
+				"",
+				name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, metadataJSON,
+			}
+		} else {
+			job.Spec.Template.Spec.Containers[0].Command = []string{
+				"/bin/bash", "-c",
+				prefix + `
 			oc adm release new "--name=$1" "--from-release=$2" --to-image="$3" "--reference-mode=$4" "--metadata=$5"
 			`,
-			"",
-			name, toImage, toImage, release.Config.ReferenceMode, metadataJSON,
+				"",
+				name, toImage, toImage, release.Config.ReferenceMode, metadataJSON,
+			}
 		}
 
 		job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
@@ -133,10 +145,10 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release new "--name=$1" "--from-release=$2" --mirror="$3" "--to-dir=/tmp/test"
+			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3"
 			`,
 			"",
-			name, toImage, mirror.Status.PublicDockerImageRepository,
+			toImage, mirror.Name, mirror.Namespace,
 		}
 
 		job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]

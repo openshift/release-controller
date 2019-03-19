@@ -233,10 +233,12 @@ const (
 	releaseAnnotationPhase             = "release.openshift.io/phase"
 	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
 	releaseAnnotationVerify            = "release.openshift.io/verify"
-	// if true, the release controller should rewrite this release tagged
+	// if true, the release controller should rewrite this release
 	releaseAnnotationRewrite = "release.openshift.io/rewrite"
 	// an image stream with this annotation holds release tags
 	releaseAnnotationHasReleases = "release.openshift.io/hasReleases"
+	// if set, when rewriting a stable tag use the images locally
+	releaseAnnotationMirrorImages = "release.openshift.io/mirrorImages"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
