@@ -207,6 +207,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
+	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)

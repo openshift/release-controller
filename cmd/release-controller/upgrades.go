@@ -194,7 +194,22 @@ func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResu
 	}
 }
 
-func (g *UpgradeGraph) saveRecords() []UpgradeRecord {
+func (g *UpgradeGraph) Histories() []UpgradeHistory {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	results := make([]UpgradeHistory, 0, len(g.to)*5)
+	for _, targets := range g.to {
+		for _, history := range targets {
+			copied := *history
+			copied.History = nil
+			results = append(results, copied)
+		}
+	}
+	return results
+}
+
+func (g *UpgradeGraph) Records() []UpgradeRecord {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -212,7 +227,7 @@ func (g *UpgradeGraph) saveRecords() []UpgradeRecord {
 }
 
 func (g *UpgradeGraph) Save(w io.Writer) error {
-	records := g.saveRecords()
+	records := g.Records()
 
 	// put the records into a stable order
 	sort.Slice(records, func(i, j int) bool {
