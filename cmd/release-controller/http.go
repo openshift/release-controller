@@ -390,20 +390,36 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			if info.Previous == nil || upgrade.From != info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
 			}
-			var url string
-			for k := range upgrade.History {
-				url = k
-				break
-			}
-			switch {
-			case upgrade.Success == 1 && upgrade.Failure == 0 && len(upgrade.History) > 0:
-				fmt.Fprintf(w, ` - <a href="%s">%d success</a>, %d failures`, template.HTMLEscapeString(url), upgrade.Success, upgrade.Failure)
-			case upgrade.Success == 0 && upgrade.Failure == 1:
-				fmt.Fprintf(w, ` - %d success, <a href="%s">%d failure</a>`, upgrade.Success, template.HTMLEscapeString(url), upgrade.Failure)
-			case upgrade.Total == 0:
-				fmt.Fprintf(w, ` - pending`)
-			default:
-				fmt.Fprintf(w, ` - %d success, %d failures`, upgrade.Success, upgrade.Failure)
+			if upgrade.Total > 0 {
+				fmt.Fprintf(w, ` - `)
+				urls := make([]string, 0, len(upgrade.History))
+				for url := range upgrade.History {
+					urls = append(urls, url)
+				}
+				sort.Strings(urls)
+				if len(urls) > 2 {
+					for _, url := range urls {
+						switch upgrade.History[url].State {
+						case releaseVerificationStateSucceeded:
+							fmt.Fprintf(w, ` <a class="text-success" href="%s">S</a>`, template.HTMLEscapeString(url))
+						case releaseVerificationStateFailed:
+							fmt.Fprintf(w, ` <a class="text-danger" href="%s">F</a>`, template.HTMLEscapeString(url))
+						default:
+							fmt.Fprintf(w, ` <a class="" href="%s">P</a>`, template.HTMLEscapeString(url))
+						}
+					}
+				} else {
+					for _, url := range urls {
+						switch upgrade.History[url].State {
+						case releaseVerificationStateSucceeded:
+							fmt.Fprintf(w, ` <a class="text-success" href="%s">Success</a>`, template.HTMLEscapeString(url))
+						case releaseVerificationStateFailed:
+							fmt.Fprintf(w, ` <a class="text-danger" href="%s">Failed</a>`, template.HTMLEscapeString(url))
+						default:
+							fmt.Fprintf(w, ` <a class="" href="%s">Pending</a>`, template.HTMLEscapeString(url))
+						}
+					}
+				}
 			}
 		}
 		fmt.Fprintf(w, `</ul>`)
@@ -423,20 +439,36 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, template.HTMLEscapeString(upgrade.To), upgrade.To)
 			fmt.Fprintf(w, ` (<a href="/releasetag/%s">changes</a>)`, template.HTMLEscapeString((&url.URL{Path: upgrade.To, RawQuery: url.Values{"from": []string{upgrade.From}}.Encode()}).String()))
-			var url string
-			for k := range upgrade.History {
-				url = k
-				break
-			}
-			switch {
-			case upgrade.Success == 1 && upgrade.Failure == 0 && len(upgrade.History) > 0:
-				fmt.Fprintf(w, ` - <a href="%s">%d success</a>, %d failures`, template.HTMLEscapeString(url), upgrade.Success, upgrade.Failure)
-			case upgrade.Success == 0 && upgrade.Failure == 1:
-				fmt.Fprintf(w, ` - %d success, <a href="%s">%d failure</a>`, upgrade.Success, template.HTMLEscapeString(url), upgrade.Failure)
-			case upgrade.Total == 0:
-				fmt.Fprintf(w, ` - pending`)
-			default:
-				fmt.Fprintf(w, ` - %d success, %d failures`, upgrade.Success, upgrade.Failure)
+			if upgrade.Total > 0 {
+				fmt.Fprintf(w, ` - `)
+				urls := make([]string, 0, len(upgrade.History))
+				for url := range upgrade.History {
+					urls = append(urls, url)
+				}
+				sort.Strings(urls)
+				if len(urls) > 2 {
+					for _, url := range urls {
+						switch upgrade.History[url].State {
+						case releaseVerificationStateSucceeded:
+							fmt.Fprintf(w, ` <a class="text-success" href="%s">S</a>`, template.HTMLEscapeString(url))
+						case releaseVerificationStateFailed:
+							fmt.Fprintf(w, ` <a class="text-danger" href="%s">F</a>`, template.HTMLEscapeString(url))
+						default:
+							fmt.Fprintf(w, ` <a class="" href="%s">P</a>`, template.HTMLEscapeString(url))
+						}
+					}
+				} else {
+					for _, url := range urls {
+						switch upgrade.History[url].State {
+						case releaseVerificationStateSucceeded:
+							fmt.Fprintf(w, ` <a class="text-success" href="%s">Success</a>`, template.HTMLEscapeString(url))
+						case releaseVerificationStateFailed:
+							fmt.Fprintf(w, ` <a class="text-danger" href="%s">Failed</a>`, template.HTMLEscapeString(url))
+						default:
+							fmt.Fprintf(w, ` <a class="" href="%s">Pending</a>`, template.HTMLEscapeString(url))
+						}
+					}
+				}
 			}
 		}
 		fmt.Fprintf(w, `</ul>`)
