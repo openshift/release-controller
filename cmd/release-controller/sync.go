@@ -101,7 +101,13 @@ func (c *Controller) sync(key queueKey) error {
 
 	// take any tags that need to be given annotations now
 	if len(adoptTags) > 0 {
-		return c.syncAdopted(release, adoptTags, now)
+		changed, err := c.syncAdopted(release, adoptTags, now)
+		if err != nil {
+			return err
+		}
+		if changed {
+			return nil
+		}
 	}
 
 	// ensure old or unneeded tags are removed
@@ -239,18 +245,21 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash
 }
 
-func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (err error) {
+func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {
 	names := make([]string, 0, len(adoptTags))
 	for _, tag := range adoptTags {
 		if tag.Name == "next" {
 			// changes the list of tags, so needs to exit
-			return c.replaceReleaseTagWithNext(release, tag)
+			return true, c.replaceReleaseTagWithNext(release, tag)
 		}
 		if _, err := semver.Parse(tag.Name); err == nil {
 			names = append(names, tag.Name)
 		}
 	}
-	return c.ensureReleaseTagPhase(
+	if len(names) == 0 {
+		return false, nil
+	}
+	return true, c.ensureReleaseTagPhase(
 		release,
 		[]string{"", releasePhasePending},
 		releasePhasePending,
