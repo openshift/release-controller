@@ -102,7 +102,11 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 		Stderr: errOut,
 	}); err != nil {
 		glog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
-		return "", fmt.Errorf("could not generate a changelog: %v", err)
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("could not generate a changelog: %v", msg)
 	}
 
 	return out.String(), nil
