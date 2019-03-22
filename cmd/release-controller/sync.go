@@ -470,6 +470,9 @@ func (c *Controller) syncAccepted(release *Release) error {
 	var errs []error
 	newestAccepted := acceptedTags[0]
 	for name, publishType := range release.Config.Publish {
+		if publishType.Disabled {
+			continue
+		}
 		switch {
 		case publishType.TagRef != nil:
 			if err := c.ensureTagPointsToRelease(release, publishType.TagRef.Name, newestAccepted.Name); err != nil {

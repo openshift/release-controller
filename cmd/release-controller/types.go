@@ -96,6 +96,8 @@ type CheckConsistentImages struct {
 
 // ReleasePublish defines one action to take when a release is Accepted.
 type ReleasePublish struct {
+	// Disabled will prevent this publish step from being run.
+	Disabled bool `json:"disabled"`
 	// TagRef updates the named tag in the release image stream to point at the release.
 	TagRef *PublishTagReference `json:"tagRef"`
 	// ImageStreamRef copies all images to another image stream in one transaction.

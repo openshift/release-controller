@@ -614,12 +614,18 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
 					for _, target := range r.Release.Config.Publish {
+						if target.Disabled {
+							continue
+						}
 						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
 							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
 						}
 					}
 				}
 				for _, target := range r.Release.Config.Publish {
+					if target.Disabled {
+						continue
+					}
 					if target.ImageStreamRef != nil {
 						ns := target.ImageStreamRef.Namespace
 						if len(ns) > 0 {

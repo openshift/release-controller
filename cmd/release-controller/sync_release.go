@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -210,20 +211,22 @@ func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batch
 		glog.V(4).Infof("Deferring pod lookup for %s - no active pods", job.Name)
 		return nil
 	}
-	pods, err := c.podClient.Pods(c.jobNamespace).List(metav1.ListOptions{
-		FieldSelector: "status.phase=Pending",
-		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
-	})
-	if err != nil || len(pods.Items) == 0 {
-		glog.V(4).Infof("No pods for job %s: %v", job.Name, err)
+	statuses, err := findJobContainerStatus(c.podClient, job, "status.phase=Pending", "image-cli")
+	if err != nil {
 		return nil
 	}
-	status := findContainerStatus(pods.Items[0].Status.InitContainerStatuses, "image-cli")
-	if status == nil || status.State.Terminated == nil || status.State.Terminated.ExitCode != 0 || len(status.State.Terminated.Message) == 0 {
-		glog.V(4).Infof("Pod is not terminated %s: %#v", job.Name, status)
+	var imageSpec string
+	for _, status := range statuses {
+		if status.State.Terminated == nil || status.State.Terminated.ExitCode != 0 || len(status.State.Terminated.Message) == 0 {
+			continue
+		}
+		imageSpec = status.State.Terminated.Message
+		break
+	}
+	if len(imageSpec) == 0 {
+		glog.V(4).Infof("No image spec published yet for %s", job.Name)
 		return nil
 	}
-	imageSpec := status.State.Terminated.Message
 
 	mirror = mirror.DeepCopy()
 	mirror.Spec.Tags = append(mirror.Spec.Tags, imagev1.TagReference{
@@ -235,6 +238,29 @@ func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batch
 		return fmt.Errorf("unable to save \"cli\" image %q to the mirror: %v", imageSpec, err)
 	}
 	return nil
+}
+
+func findJobContainerStatus(podClient kv1core.PodsGetter, job *batchv1.Job, fieldSelector string, containerName string) ([]*corev1.ContainerStatus, error) {
+	pods, err := podClient.Pods(job.Namespace).List(metav1.ListOptions{
+		FieldSelector: fieldSelector,
+		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
+	})
+	if err != nil || len(pods.Items) == 0 {
+		glog.V(4).Infof("No pods for job %s: %v", job.Name, err)
+		return nil, err
+	}
+	containerStatus := make([]*corev1.ContainerStatus, 0, len(pods.Items))
+	for _, item := range pods.Items {
+		if status := findContainerStatus(item.Status.InitContainerStatuses, containerName); status != nil {
+			containerStatus = append(containerStatus, status)
+			continue
+		}
+		if status := findContainerStatus(item.Status.ContainerStatuses, containerName); status != nil {
+			containerStatus = append(containerStatus, status)
+			continue
+		}
+	}
+	return containerStatus, nil
 }
 
 func findContainerStatus(statuses []corev1.ContainerStatus, name string) *corev1.ContainerStatus {
