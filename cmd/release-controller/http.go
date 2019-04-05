@@ -370,7 +370,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
 
-	renderInstallInstructions(w, mirror, info.Tag, tagPull, req.UserAgent())
+	renderInstallInstructions(w, mirror, info.Tag, tagPull, c.artifactsHost)
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
 

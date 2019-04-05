@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/intstr"
+
 	"github.com/golang/glog"
 	"github.com/golang/groupcache"
 
@@ -224,6 +226,220 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							done
 							`,
 						},
+					},
+				},
+			},
+		},
+	}
+	return spec
+}
+
+type ExecReleaseFiles struct {
+	client      kubernetes.Interface
+	restConfig  *rest.Config
+	namespace   string
+	name        string
+	imageNameFn func() (string, error)
+}
+
+func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseFiles {
+	return &ExecReleaseFiles{
+		client:      client,
+		restConfig:  restConfig,
+		namespace:   namespace,
+		name:        name,
+		imageNameFn: imageNameFn,
+	}
+}
+
+func (r *ExecReleaseFiles) refreshPod() error {
+	sts, err := r.client.Apps().StatefulSets(r.namespace).Get("files-cache", metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		sts = nil
+	}
+
+	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
+		glog.Infof("Another release controller is managing git-cache, ignoring")
+		return nil
+	}
+
+	image, err := r.imageNameFn()
+	if err != nil {
+		return fmt.Errorf("unable to load image for caching git: %v", err)
+	}
+	spec := r.specHash(image)
+
+	if sts == nil {
+		sts = &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "files-cache",
+				Namespace:   r.namespace,
+				Annotations: map[string]string{"release-owner": r.name},
+			},
+			Spec: spec,
+		}
+		if _, err := r.client.Apps().StatefulSets(r.namespace).Create(sts); err != nil {
+			return fmt.Errorf("can't create stateful set for cache: %v", err)
+		}
+		return nil
+	}
+
+	sts.Spec = spec
+	if _, err := r.client.Apps().StatefulSets(r.namespace).Update(sts); err != nil {
+		return fmt.Errorf("can't update stateful set for cache: %v", err)
+	}
+	return nil
+}
+
+func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
+	one := int64(1)
+
+	probe := &corev1.Probe{
+		Handler: corev1.Handler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path:   "/",
+				Port:   intstr.FromInt(8080),
+				Scheme: corev1.URISchemeHTTP,
+			},
+		},
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       10,
+		SuccessThreshold:    1,
+		TimeoutSeconds:      1,
+	}
+
+	isTrue := true
+	spec := appsv1.StatefulSetSpec{
+		Selector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"app":     "files-cache",
+				"release": r.name,
+			},
+		},
+		PodManagementPolicy: appsv1.ParallelPodManagement,
+		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
+		},
+		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app":     "files-cache",
+					"release": r.name,
+				},
+			},
+			Spec: corev1.PodSpec{
+				Volumes: []corev1.Volume{
+					{Name: "cache", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "files-pull-secret", Optional: &isTrue}}},
+				},
+				TerminationGracePeriodSeconds: &one,
+				Containers: []corev1.Container{
+					{
+						Name:       "files",
+						Image:      image,
+						WorkingDir: "/srv/cache",
+						Env: []corev1.EnvVar{
+							{Name: "HOME", Value: "/tmp"},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "cache", MountPath: "/srv/cache/"},
+							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("200Mi"),
+							},
+						},
+
+						Command: []string{"/bin/bash", "-c"},
+						Args: []string{
+							`
+#!/bin/bash
+
+set -euo pipefail
+trap 'kill $(jobs -p); exit 0' TERM
+
+# ensure we are logged in to our registry
+mkdir -p /tmp/.docker/
+cp /tmp/pull-secret/* /tmp/.docker/ || true
+oc registry login
+
+cat <<END >>/tmp/serve.py
+import re, os, subprocess, time, threading, socket, SocketServer, BaseHTTPServer, SimpleHTTPServer
+
+# Create socket
+addr = ('', 8080)
+sock = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(addr)
+sock.listen(5)
+
+class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
+  def do_GET(self):
+    path = self.path.strip("/")
+    segments = path.split("/")
+    if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
+      name = segments[0]
+      if os.path.isfile(os.path.join(name, "sha256sum.txt.asc")):
+        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        return
+      if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        return
+
+      try:
+        os.mkdir(name)
+      except OSError:
+        pass
+      with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
+        file.write("Downloading %s" % (name))
+      try:
+        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        subprocess.check_output(["oc","adm","release","extract","--tools","--to",name,"--command-os","*","registry.svc.ci.openshift.org/ocp/release:%s" % (name)], stderr=subprocess.STDOUT)
+        os.remove(os.path.join(name, "DOWNLOADING.md"))
+
+      except Exception as e:
+        with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
+          file.write("Unable to get release tools: %s" % e.output)
+      return
+
+    SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+
+# Launch multiple listeners as threads
+class Thread(threading.Thread):
+	def __init__(self, i):
+		threading.Thread.__init__(self)
+		self.i = i
+		self.daemon = True
+		self.start()
+	def run(self):
+		server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
+		server.extensions_map = {".md": "text/plain", ".asc": "text/plain", "": "application/octet-stream"}
+		httpd = BaseHTTPServer.HTTPServer(addr, server, False)
+
+		# Prevent the HTTP server from re-binding every handler.
+		# https://stackoverflow.com/questions/46210672/
+		httpd.socket = sock
+		httpd.server_bind = self.server_close = lambda self: None
+
+		httpd.serve_forever()
+[Thread(i) for i in range(100)]
+time.sleep(9e9)
+END
+python /tmp/serve.py
+							`,
+						},
+						Ports: []corev1.ContainerPort{{
+							ContainerPort: 8080,
+							Protocol:      corev1.ProtocolTCP,
+						}},
+						ReadinessProbe: probe,
+						LivenessProbe:  probe,
 					},
 				},
 			},

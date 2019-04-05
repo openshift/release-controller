@@ -653,39 +653,16 @@ func (s newestSemVerToSummaries) Swap(i, j int) {
 }
 func (s newestSemVerToSummaries) Len() int { return len(s.summaries) }
 
-func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *imagev1.TagReference, tagPull, userAgent string) {
+func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *imagev1.TagReference, tagPull, artifactsHost string) {
 	if len(tagPull) == 0 {
 		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
 		return
 	}
-
-	var installerPull string
-	if mirror != nil {
-		installerPull = findPublicImagePullSpec(mirror, "installer")
+	if len(artifactsHost) == 0 {
+		fmt.Fprintf(w, `<p>Download installer and client with:<pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(tagPull))
+		return
 	}
-	switch agent := strings.ToLower(userAgent); agent {
-	case "windows", "android", "mobile":
-		// add a specific message
-		fallthrough
-	case "mac os":
-		// add a specific message
-	default:
-		if len(installerPull) == 0 {
-			fmt.Fprintf(w, `<p>To install this release on Linux, download the appropriate installer binary and run the following command:`)
-			fmt.Fprintf(w, `<pre class="ml-4">
-OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=%[1]s ./openshift-install create cluster
-</pre>`, tagPull)
-			return
-		}
-
-		fmt.Fprintf(w, `<p>To install this release on Linux, run the following commands:`)
-		fmt.Fprintf(w, `<pre class="ml-4">
-oc image extract %[1]s --file=/usr/bin/openshift-install
-chmod ug+x ./openshift-install
-OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=%[2]s ./openshift-install \
-  create cluster
-</pre>`, installerPull, tagPull)
-	}
+	fmt.Fprintf(w, `<p><a href="%s">Download the installer</a> for your operating system or run <pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(fmt.Sprintf("https://%s/%s", artifactsHost, tag.Name)), template.HTMLEscapeString(tagPull))
 }
 
 func checkReleasePage(page *ReleasePage) {
