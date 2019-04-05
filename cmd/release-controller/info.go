@@ -389,7 +389,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
         return
       if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s ...</p></body></html>" % name).encode("UTF-8")
+        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
         self.send_response(200, "OK")
         self.send_header("Content-Type", "text/html;charset=UTF-8")
         self.send_header("Content-Length", str(len(out)))
@@ -405,7 +405,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
       with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
         file.write("Downloading %s" % (name))
       try:
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s ...</p></body></html>" % name).encode("UTF-8")
+        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
         self.send_response(200, "OK")
         self.send_header("Content-Type", "text/html;charset=UTF-8")
         self.send_header("Content-Length", str(len(out)))
