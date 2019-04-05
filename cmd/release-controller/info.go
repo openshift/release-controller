@@ -214,17 +214,17 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							"/bin/bash",
 							"-c",
 							`#!/bin/bash
-							set -euo pipefail
-							trap 'kill $(jobs -p); exit 0' TERM
+              set -euo pipefail
+              trap 'kill $(jobs -p); exit 0' TERM
 
-							git config --global credential.helper store
-							git config --global user.name test
-							git config --global user.email test@test.com
-							oc registry login
-							while true; do
-								sleep 180 & wait
-							done
-							`,
+              git config --global credential.helper store
+              git config --global user.name test
+              git config --global user.email test@test.com
+              oc registry login
+              while true; do
+                sleep 180 & wait
+              done
+              `,
 						},
 					},
 				},
@@ -305,7 +305,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 				Scheme: corev1.URISchemeHTTP,
 			},
 		},
-		InitialDelaySeconds: 5,
+		InitialDelaySeconds: 3,
 		PeriodSeconds:       10,
 		SuccessThreshold:    1,
 		TimeoutSeconds:      1,
@@ -389,7 +389,13 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
         return
       if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s ...</p></body></html>" % name).encode("UTF-8")
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+        self.wfile.close()
         return
 
       try:
@@ -399,7 +405,14 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
       with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
         file.write("Downloading %s" % (name))
       try:
-        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s ...</p></body></html>" % name).encode("UTF-8")
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+        self.wfile.close()
+
         subprocess.check_output(["oc","adm","release","extract","--tools","--to",name,"--command-os","*","registry.svc.ci.openshift.org/ocp/release:%s" % (name)], stderr=subprocess.STDOUT)
         os.remove(os.path.join(name, "DOWNLOADING.md"))
 
@@ -412,27 +425,27 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
 # Launch multiple listeners as threads
 class Thread(threading.Thread):
-	def __init__(self, i):
-		threading.Thread.__init__(self)
-		self.i = i
-		self.daemon = True
-		self.start()
-	def run(self):
-		server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
-		server.extensions_map = {".md": "text/plain", ".asc": "text/plain", "": "application/octet-stream"}
-		httpd = BaseHTTPServer.HTTPServer(addr, server, False)
+  def __init__(self, i):
+    threading.Thread.__init__(self)
+    self.i = i
+    self.daemon = True
+    self.start()
+  def run(self):
+    server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
+    server.extensions_map = {".md": "text/plain", ".asc": "text/plain", "": "application/octet-stream"}
+    httpd = BaseHTTPServer.HTTPServer(addr, server, False)
 
-		# Prevent the HTTP server from re-binding every handler.
-		# https://stackoverflow.com/questions/46210672/
-		httpd.socket = sock
-		httpd.server_bind = self.server_close = lambda self: None
+    # Prevent the HTTP server from re-binding every handler.
+    # https://stackoverflow.com/questions/46210672/
+    httpd.socket = sock
+    httpd.server_bind = self.server_close = lambda self: None
 
-		httpd.serve_forever()
+    httpd.serve_forever()
 [Thread(i) for i in range(100)]
 time.sleep(9e9)
 END
 python /tmp/serve.py
-							`,
+              `,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
