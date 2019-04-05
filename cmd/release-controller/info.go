@@ -385,7 +385,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
     segments = path.split("/")
     if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
       name = segments[0]
-      if os.path.isfile(os.path.join(name, "sha256sum.txt.asc")):
+      if os.path.isfile(os.path.join(name, "sha256sum.txt.asc")) or os.path.isfile(os.path.join(name, "sha256sum.txt")):
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
         return
       if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
