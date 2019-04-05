@@ -45,6 +45,8 @@ type options struct {
 	ProwConfigPath string
 	JobConfigPath  string
 
+	ArtifactsHost string
+
 	DryRun       bool
 	LimitSources []string
 	ListenAddr   string
@@ -79,6 +81,8 @@ func main() {
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flag.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
+
+	flag.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
 
 	flag.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
 
@@ -148,8 +152,9 @@ func (o *options) Run() error {
 
 	imageCache := newLatestImageCache("tests")
 	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
-
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
+
+	execReleaseFiles := NewExecReleaseFiles(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
 
 	graph := NewUpgradeGraph()
 
@@ -163,6 +168,7 @@ func (o *options) Run() error {
 		prowClient.Namespace(o.ProwNamespace),
 		releaseNamespace,
 		o.JobNamespace,
+		o.ArtifactsHost,
 		releaseInfo,
 		graph,
 	)
@@ -236,11 +242,16 @@ func (o *options) Run() error {
 			Duration: 1 * time.Second,
 			Factor:   2,
 		}, func() (bool, error) {
+			success := true
 			if err := execReleaseInfo.refreshPod(); err != nil {
 				glog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
-				return false, nil
+				success = false
 			}
-			return true, nil
+			if err := execReleaseFiles.refreshPod(); err != nil {
+				glog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
+				success = false
+			}
+			return success, nil
 		})
 		if err != nil {
 			glog.Errorf("Unable to refresh git cache, waiting until next sync time")
