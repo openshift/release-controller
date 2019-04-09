@@ -125,11 +125,7 @@ td.upgrade-track {
 		{{ range $index, $tag := .Tags }}
 			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
 			<tr>
-				{{ if canLink . }}
-				<td class="text-monospace"><a class="{{ phaseAlert . }}" href="/releasestream/{{ $release.Config.Name }}/release/{{ .Name }}">{{ .Name }}</a></td>
-				{{ else }}
-				<td class="text-monospace {{ phaseAlert . }}">{{ .Name }}</td>
-				{{ end }}
+				{{ tableLink $release.Config . }}
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
 				<td>{{ links . $release }}</td>
@@ -648,10 +644,10 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
+			"tableLink":    tableLink,
 			"phaseCell":    phaseCell,
 			"phaseAlert":   phaseAlert,
 			"alerts":       renderAlerts,
-			"canLink":      canLink,
 			"links":        links,
 			"inc":          func(i int) int { return i + 1 },
 			"upgradeCells": upgradeCells,
