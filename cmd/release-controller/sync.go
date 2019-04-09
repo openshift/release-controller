@@ -180,6 +180,10 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 			}
 		}
 
+		// always skip pinned tags
+		if _, ok := tag.Annotations[releaseAnnotationKeep]; ok {
+			continue
+		}
 		// check annotations when using the target as tag source
 		if release.Config.As != releaseConfigModeStable && tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue

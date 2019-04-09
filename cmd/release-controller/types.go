@@ -226,6 +226,7 @@ const (
 	// is considered an input image stream for creating releases.
 	releaseAnnotationConfig = "release.openshift.io/config"
 
+	releaseAnnotationKeep              = "release.openshift.io/keep"
 	releaseAnnotationGeneration        = "release.openshift.io/generation"
 	releaseAnnotationSource            = "release.openshift.io/source"
 	releaseAnnotationTarget            = "release.openshift.io/target"
@@ -273,6 +274,7 @@ func (d Duration) Duration() time.Duration {
 	return time.Duration(d)
 }
 
+// tagReferencesByAge returns the newest tag first, the oldest tag last
 type tagReferencesByAge []*imagev1.TagReference
 
 func (a tagReferencesByAge) Less(i, j int) bool {
