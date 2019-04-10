@@ -170,9 +170,14 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 
 	shouldAdopt := release.Config.As == releaseConfigModeStable
 
+	tags := make([]*imagev1.TagReference, 0, len(target.Spec.Tags))
 	for i := range target.Spec.Tags {
-		tag := &target.Spec.Tags[i]
+		tags = append(tags, &target.Spec.Tags[i])
+	}
+	sort.Sort(tagReferencesByAge(tags))
 
+	removeFailuresAfter, removeRejectedAfter := -1, -1
+	for _, tag := range tags {
 		if shouldAdopt {
 			if len(tag.Annotations[releaseAnnotationSource]) == 0 && len(tag.Annotations[releaseAnnotationPhase]) == 0 {
 				adoptTags = append(adoptTags, tag)
@@ -206,24 +211,33 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 			removeRejected = append(removeRejected, tag)
 		case releasePhaseAccepted:
 			removeAccepted = append(removeAccepted, tag)
+			removeRejectedAfter = len(removeRejected)
+			removeFailuresAfter = len(removeFailures)
 		}
 	}
 
-	keepTagsOfType := 5
+	// remove failures and rejections after the last accepted
+	if removeRejectedAfter != -1 {
+		removeTags = append(removeTags, removeRejected[removeRejectedAfter:]...)
+		removeRejected = removeRejected[:removeRejectedAfter]
+	}
+	if removeFailuresAfter != -1 {
+		removeTags = append(removeTags, removeFailures[removeFailuresAfter:]...)
+		removeFailures = removeFailures[:removeFailuresAfter]
+	}
 
+	// keep only five failures and five rejections
+	keepTagsOfType := 5
 	if len(removeFailures) > keepTagsOfType {
-		sort.Sort(removeFailures)
 		removeTags = append(removeTags, removeFailures[keepTagsOfType:]...)
 	}
 	if len(removeRejected) > keepTagsOfType {
-		sort.Sort(removeRejected)
 		removeTags = append(removeTags, removeRejected[keepTagsOfType:]...)
 	}
 
 	// always keep at least one accepted tag, but remove any that are past expiration
 	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > keepTagsOfType {
 		glog.V(5).Infof("Checking for tags that are more than %s old", expires)
-		sort.Sort(removeAccepted)
 		for _, tag := range removeAccepted[keepTagsOfType:] {
 			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 			if err != nil {
@@ -235,9 +249,6 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 			}
 		}
 	}
-
-	// arrange the pendingTags in alphabetic order (which should be based on date)
-	sort.Sort(tagReferencesByAge(pendingTags))
 
 	switch release.Config.As {
 	case releaseConfigModeStable:
