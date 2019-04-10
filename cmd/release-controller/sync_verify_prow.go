@@ -183,7 +183,7 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 	return true, nil
 }
 
-func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.PeriodicConfig, bool) {
+func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.Periodic, bool) {
 	for i := range config.Periodics {
 		if config.Periodics[i].Name == name {
 			return &config.Periodics[i], true
@@ -192,7 +192,7 @@ func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.PeriodicConfi
 	return nil, false
 }
 
-func prowSpecForPeriodicConfig(config *prowapiv1.PeriodicConfig, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
+func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
 	spec := &prowapiv1.ProwJobSpec{
 		Type:  prowapiv1.PeriodicJob,
 		Job:   config.Name,
@@ -208,7 +208,8 @@ func prowSpecForPeriodicConfig(config *prowapiv1.PeriodicConfig, decorationConfi
 	} else {
 		spec.DecorationConfig = &prowapiv1.DecorationConfig{}
 	}
-	spec.DecorationConfig.SkipCloning = true
+	isTrue := true
+	spec.DecorationConfig.SkipCloning = &isTrue
 
 	return spec
 }
