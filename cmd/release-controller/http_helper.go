@@ -34,6 +34,12 @@ type ReleaseCheckResult struct {
 	Warnings []string
 }
 
+// LatestAccepted contains information about the latest accepted release in a stream.
+type LatestAccepted struct {
+	Name     string `json:"name"`
+	PullSpec string `json:"pullSpec"`
+}
+
 type ReleaseStreamTag struct {
 	Release *Release
 	Tag     *imagev1.TagReference

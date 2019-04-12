@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -213,6 +214,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
+	mux.HandleFunc("/releasestream/{release}/latestaccepted", c.httpLatestAccepted)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
 }
@@ -560,6 +562,51 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `<select onchange="this.form.submit()" id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare">`, strings.Join(options, ""))
 		fmt.Fprint(w, `</form></p>`)
 	}
+}
+
+func (c *Controller) httpLatestAccepted(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+
+	stream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(streamName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	r, ok, err := c.releaseDefinition(stream)
+	if err != nil || !ok {
+		if err == nil {
+			err = fmt.Errorf("did not find release config for '%s'", streamName)
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tags := tagsForRelease(r)
+	if len(tags) == 0 {
+		err = fmt.Errorf("no tags found for stream '%s'", streamName)
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	latestTag := tags[0]
+	resp := LatestAccepted{
+		Name:     latestTag.Name,
+		PullSpec: findPublicImagePullSpec(r.Target, latestTag.Name),
+	}
+
+	data, err := json.Marshal(&resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
 }
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
