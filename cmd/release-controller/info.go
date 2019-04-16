@@ -385,7 +385,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
     segments = path.split("/")
     if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
       name = segments[0]
-      if os.path.isfile(os.path.join(name, "sha256sum.txt.asc")) or os.path.isfile(os.path.join(name, "sha256sum.txt")):
+      if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
         return
       if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
@@ -393,6 +393,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.send_response(200, "OK")
         self.send_header("Content-Type", "text/html;charset=UTF-8")
         self.send_header("Content-Length", str(len(out)))
+        self.send_header("Retry-After", "5")
         self.end_headers()
         self.wfile.write(out)
         self.wfile.close()
@@ -409,6 +410,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.send_response(200, "OK")
         self.send_header("Content-Type", "text/html;charset=UTF-8")
         self.send_header("Content-Length", str(len(out)))
+        self.send_header("Retry-After", "5")
         self.end_headers()
         self.wfile.write(out)
         self.wfile.close()
@@ -417,6 +419,11 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         os.remove(os.path.join(name, "DOWNLOADING.md"))
 
       except Exception as e:
+        if e.output and ("no such image" in e.output or "image does not exist" in e.output):
+          with open(os.path.join(name, "FAILED.md"), "w") as file:
+            file.write("Unable to get release tools: %s" % e.output)
+          os.remove(os.path.join(name, "DOWNLOADING.md"))
+          return
         with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
           file.write("Unable to get release tools: %s" % e.output)
       return
@@ -432,7 +439,7 @@ class Thread(threading.Thread):
     self.start()
   def run(self):
     server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
-    server.extensions_map = {".md": "text/plain", ".asc": "text/plain", "": "application/octet-stream"}
+    server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
     httpd = BaseHTTPServer.HTTPServer(addr, server, False)
 
     # Prevent the HTTP server from re-binding every handler.
