@@ -42,6 +42,7 @@ const htmlPageStart = `
 `
 
 const htmlPageEnd = `
+<p class="small">Source code for this page located on <a href="https://github.com/openshift/release-controller">github</a></p>
 </div>
 </body>
 </html>
