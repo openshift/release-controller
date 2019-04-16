@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/blang/semver"
+	imagev1 "github.com/openshift/api/image/v1"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/golang/glog"
@@ -213,11 +214,53 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
+	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
-	mux.HandleFunc("/releasestream/{release}/latestaccepted", c.httpLatestAccepted)
+	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
+	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
+	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
+}
+
+func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
+	if len(c.artifactsHost) == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("https://%s/%s", c.artifactsHost, url.PathEscape(tagName)), true
+}
+
+func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+
+	r, latest, err := c.latestForStream(streamName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	downloadURL, _ := c.urlForArtifacts(latest.Name)
+
+	resp := LatestAccepted{
+		Name:        latest.Name,
+		PullSpec:    findPublicImagePullSpec(r.Target, latest.Name),
+		DownloadURL: downloadURL,
+	}
+
+	data, err := json.MarshalIndent(&resp, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
@@ -296,12 +339,39 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	fmt.Fprintln(w, out)
 }
 
+func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	release := vars["release"]
+	tag := vars["tag"]
+
+	tags, ok := c.findReleaseStreamTags(true, tag)
+	if !ok {
+		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
+		return
+	}
+
+	info := tags[tag]
+	if len(release) > 0 && info.Release.Config.Name != release {
+		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
+		return
+	}
+
+	u, ok := c.urlForArtifacts(tag)
+	if !ok {
+		http.Error(w, "No artifacts download URL is configured, cannot show download link", http.StatusNotFound)
+		return
+	}
+	http.Redirect(w, req, u, http.StatusFound)
+}
+
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
-
 	release := vars["release"]
 	tag := vars["tag"]
 	from := req.URL.Query().Get("from")
@@ -565,49 +635,64 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) httpLatestAccepted(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) latestForStream(streamName string) (*Release, *imagev1.TagReference, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.Name != streamName {
+			continue
+		}
+		tags := findTagReferencesByPhase(r, releasePhaseAccepted)
+		if len(tags) == 0 {
+			return nil, nil, fmt.Errorf("no accepted tags found for stream '%s'", streamName)
+		}
+		return r, tags[0], nil
+	}
+	if err == nil {
+		err = fmt.Errorf("did not find release config for '%s'", streamName)
+	}
+	return nil, nil, err
+}
+
+func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
 
-	stream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(streamName)
+	_, latest, err := c.latestForStream(streamName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	http.Redirect(w, req, fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(streamName), url.PathEscape(latest.Name)), http.StatusFound)
+}
 
-	r, ok, err := c.releaseDefinition(stream)
-	if err != nil || !ok {
-		if err == nil {
-			err = fmt.Errorf("did not find release config for '%s'", streamName)
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	tags := tagsForRelease(r)
-	if len(tags) == 0 {
-		err = fmt.Errorf("no tags found for stream '%s'", streamName)
+	vars := mux.Vars(req)
+	streamName := vars["release"]
 
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	latestTag := tags[0]
-	resp := LatestAccepted{
-		Name:     latestTag.Name,
-		PullSpec: findPublicImagePullSpec(r.Target, latestTag.Name),
-	}
-
-	data, err := json.Marshal(&resp)
+	_, latest, err := c.latestForStream(streamName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Write(data)
+	u, ok := c.urlForArtifacts(latest.Name)
+	if !ok {
+		http.Error(w, "No artifacts download URL is configured, cannot show download link", http.StatusNotFound)
+		return
+	}
+	http.Redirect(w, req, u, http.StatusFound)
 }
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {

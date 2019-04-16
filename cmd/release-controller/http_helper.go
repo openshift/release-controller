@@ -36,8 +36,9 @@ type ReleaseCheckResult struct {
 
 // LatestAccepted contains information about the latest accepted release in a stream.
 type LatestAccepted struct {
-	Name     string `json:"name"`
-	PullSpec string `json:"pullSpec"`
+	Name        string `json:"name"`
+	PullSpec    string `json:"pullSpec"`
+	DownloadURL string `json:"downloadURL"`
 }
 
 type ReleaseStreamTag struct {
