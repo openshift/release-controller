@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
+	"golang.org/x/time/rate"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -31,6 +31,7 @@ import (
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	"github.com/openshift/release-controller/pkg/signer"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -68,13 +69,28 @@ type Controller struct {
 
 	podClient kv1core.PodsGetter
 
+	performGC bool
+
 	// syncs are the items that must return true before the queue can be processed
 	syncs []cache.InformerSynced
+	// syncFn is the function that the controller loop will handle
+	syncFn func(queueKey) error
 
 	// queue is the list of namespace keys that must be synced.
 	queue workqueue.RateLimitingInterface
 	// qcQueue is a trigger to performing cleanup for deleted resources.
 	gcQueue workqueue.RateLimitingInterface
+	// auditQueue is inputs that must be audited
+	auditQueue workqueue.RateLimitingInterface
+
+	// auditTracker keeps track of when tags were audited
+	auditTracker *AuditTracker
+	// auditStore holds metadata on releases
+	auditStore AuditStore
+	// signer, if set, will be used against audited releases
+	signer signer.Interface
+	// cliImageForAudit tightly controls which tooling image to use to verify releases
+	cliImageForAudit string
 
 	// expectations track upcoming changes that we have not yet observed
 	expectations *expectations
@@ -142,6 +158,12 @@ func NewController(
 		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "releases"),
 		gcQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gc"),
 
+		// rate limit the audit queue severely
+		auditQueue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 2*time.Hour),
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Every(5), 2)},
+		), "audit"),
+
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
 
@@ -169,6 +191,8 @@ func NewController(
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 	}
+
+	c.auditTracker = NewAuditTracker(c.auditQueue)
 
 	// handle job changes
 	jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -255,6 +279,14 @@ func (c *Controller) addQueueKey(key queueKey) {
 func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
+		// this job should wake the audit queue
+		if t.Annotations[releaseAnnotationJobPurpose] == "audit" {
+			if name, ok := t.Annotations[releaseAnnotationReleaseTag]; ok {
+				c.auditQueue.Add(name)
+			}
+			return
+		}
+
 		key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource])
 		if !ok {
 			return
@@ -325,8 +357,19 @@ func (c *Controller) processImageStream(obj interface{}) {
 	}
 }
 
-// Run begins watching and syncing.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
+func (c *Controller) RunSync(workers int, stopCh <-chan struct{}) {
+	c.syncFn = c.sync
+	c.performGC = c.onlySources.Len() == 0
+	c.run(workers, stopCh)
+}
+
+func (c *Controller) RunAudit(workers int, stopCh <-chan struct{}) {
+	c.syncFn = c.syncAudit
+	c.run(workers, stopCh)
+}
+
+// run begins watching and syncing.
+func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
@@ -343,6 +386,10 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	go wait.Until(c.gcWorker, time.Second, stopCh)
 
+	for i := 0; i < workers; i++ {
+		go wait.Until(c.auditWorker, time.Second, stopCh)
+	}
+
 	<-stopCh
 	glog.Infof("Shutting down controller")
 }
@@ -354,18 +401,46 @@ func (c *Controller) worker() {
 }
 
 func (c *Controller) processNext() bool {
-	key, quit := c.queue.Get()
+	obj, quit := c.queue.Get()
 	if quit {
 		return false
 	}
-	defer c.queue.Done(key)
+	defer c.queue.Done(obj)
+
+	// queue all release inputs in the namespace on a namespace sync
+	// this allows us to batch changes together when calculating which resource
+	// would be affected is inefficient
+	key := obj.(queueKey)
+	if len(key.name) == 0 {
+		err := c.processNextNamespace(key.namespace)
+		c.handleNamespaceErr(c.queue, err, key)
+		return true
+	}
+	if c.onlySources.Len() > 0 && !c.onlySources.Has(key.name) {
+		glog.V(4).Infof("Ignored %s", key.name)
+		return true
+	}
 
 	glog.V(5).Infof("processing %v begin", key)
-	err := c.sync(key.(queueKey))
-	c.handleNamespaceErr(err, key)
+	err := c.syncFn(key)
+	c.handleNamespaceErr(c.queue, err, key)
 	glog.V(5).Infof("processing %v end", key)
 
 	return true
+}
+
+func (c *Controller) processNextNamespace(ns string) error {
+	imageStreams, err := c.imageStreamLister.ImageStreams(ns).List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, imageStream := range imageStreams {
+		if _, ok := imageStream.Annotations[releaseAnnotationConfig]; ok {
+			c.addQueueKey(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
+		}
+	}
+	c.gcQueue.AddAfter("", 10*time.Second)
+	return nil
 }
 
 func (c *Controller) gcWorker() {
@@ -383,7 +458,28 @@ func (c *Controller) processNextGC() bool {
 
 	glog.V(5).Infof("processing %v begin", key)
 	err := c.garbageCollectSync()
-	c.handleNamespaceErr(err, key)
+	c.handleNamespaceErr(c.gcQueue, err, key)
+	glog.V(5).Infof("processing %v end", key)
+
+	return true
+}
+
+func (c *Controller) auditWorker() {
+	for c.processNextAudit() {
+	}
+	glog.V(4).Infof("Worker stopped")
+}
+
+func (c *Controller) processNextAudit() bool {
+	key, quit := c.auditQueue.Get()
+	if quit {
+		return false
+	}
+	defer c.auditQueue.Done(key)
+
+	glog.V(5).Infof("processing %v begin", key)
+	err := c.syncAuditTag(key.(string))
+	c.handleNamespaceErr(c.auditQueue, err, key)
 	glog.V(5).Infof("processing %v end", key)
 
 	return true
@@ -395,9 +491,9 @@ type terminalError struct {
 	error
 }
 
-func (c *Controller) handleNamespaceErr(err error, key interface{}) {
+func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, err error, key interface{}) {
 	if err == nil {
-		c.queue.Forget(key)
+		queue.Forget(key)
 		return
 	}
 
@@ -407,5 +503,5 @@ func (c *Controller) handleNamespaceErr(err error, key interface{}) {
 	}
 
 	glog.V(2).Infof("Error syncing %v: %v", key, err)
-	c.queue.AddRateLimited(key)
+	queue.AddRateLimited(key)
 }

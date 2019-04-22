@@ -1,18 +1,23 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	goruntime "runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	_ "net/http/pprof" // until openshift/library-go#309 merges
 
-	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
+	"k8s.io/klog"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,17 +29,18 @@ import (
 	"k8s.io/client-go/dynamic"
 	informers "k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+
+	"github.com/openshift/release-controller/pkg/signer"
 )
 
 type options struct {
@@ -45,11 +51,16 @@ type options struct {
 	ProwConfigPath string
 	JobConfigPath  string
 
+	ListenAddr    string
 	ArtifactsHost string
+
+	AuditStorage           string
+	AuditGCSServiceAccount string
+	SigningKeyring         string
+	CLIImageForAudit       string
 
 	DryRun       bool
 	LimitSources []string
-	ListenAddr   string
 }
 
 func main() {
@@ -57,6 +68,7 @@ func main() {
 	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
 
 	original := flag.CommandLine
+	klog.InitFlags(original)
 	original.Set("alsologtostderr", "true")
 	original.Set("v", "2")
 
@@ -65,14 +77,21 @@ func main() {
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
+			if f := cmd.Flags().Lookup("audit"); f.Changed && len(f.Value.String()) == 0 {
+				klog.Exitf("error: --audit must include a location to store audit logs")
+			}
 			if err := opt.Run(); err != nil {
-				glog.Exitf("error: %v", err)
+				klog.Exitf("error: %v", err)
 			}
 		},
 	}
 	flag := cmd.Flags()
 	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
+	flag.StringVar(&opt.AuditStorage, "audit", opt.AuditStorage, "A storage location to report audit logs to, if specified. The location may be a file://path or gs:// GCS bucket and path.")
+	flag.StringVar(&opt.AuditGCSServiceAccount, "audit-gcs-service-account", opt.AuditGCSServiceAccount, "An optional path to a service account file that should be used for uploading audit information to GCS.")
 	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
+	flag.StringVar(&opt.SigningKeyring, "sign", opt.SigningKeyring, "The OpenPGP keyring to sign releases with. Only releases that can be verified will be signed.")
+	flag.StringVar(&opt.CLIImageForAudit, "audit-cli-image", opt.CLIImageForAudit, "The command line image pullspec to use for audit and signing. This should be set to a digest under the signers control to prevent attackers from forging verification.")
 
 	var ignored string
 	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
@@ -89,15 +108,11 @@ func main() {
 	flag.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
-		glog.Exitf("error: %v", err)
+		klog.Exitf("error: %v", err)
 	}
 }
 
 func (o *options) Run() error {
-	config, _, _, err := loadClusterConfig()
-	if err != nil {
-		return err
-	}
 	if len(o.ReleaseNamespaces) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
 	}
@@ -107,6 +122,23 @@ func (o *options) Run() error {
 	if len(o.ProwNamespace) == 0 {
 		o.ProwNamespace = o.JobNamespace
 	}
+
+	config, _, _, err := loadClusterConfig()
+	if err != nil {
+		return err
+	}
+	var mode string
+	switch {
+	case o.DryRun:
+		mode = "dry-run"
+	case len(o.AuditStorage) > 0:
+		mode = "audit"
+	case len(o.LimitSources) > 0:
+		mode = "manage"
+	default:
+		mode = "manage"
+	}
+	config.UserAgent = fmt.Sprintf("release-controller/%s (%s/%s) %s", version.Get().GitVersion, goruntime.GOOS, goruntime.GOARCH, mode)
 
 	client, err := clientset.NewForConfig(config)
 	if err != nil {
@@ -120,9 +152,9 @@ func (o *options) Run() error {
 		if _, err := client.Core().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
-		glog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
+		klog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
 	} else {
-		glog.Infof("Release will be published to namespace %s and jobs will be in the same namespace", releaseNamespace)
+		klog.Infof("Release will be published to namespace %s and jobs will be in the same namespace", releaseNamespace)
 	}
 
 	imageClient, err := imageclientset.NewForConfig(config)
@@ -173,14 +205,62 @@ func (o *options) Run() error {
 		graph,
 	)
 
+	if len(o.AuditStorage) > 0 {
+		u, err := url.Parse(o.AuditStorage)
+		if err != nil {
+			return fmt.Errorf("--audit must be a valid file:// or gs:// URL: %v", err)
+		}
+		switch u.Scheme {
+		case "file":
+			path := u.Path
+			if !strings.HasSuffix(path, "/") {
+				path += "/"
+			}
+			store, err := NewFileAuditStore(path)
+			if err != nil {
+				return err
+			}
+			if err := store.Refresh(context.Background()); err != nil {
+				return err
+			}
+			c.auditStore = store
+		case "gs":
+			path := u.Path
+			if !strings.HasSuffix(path, "/") {
+				path += "/"
+			}
+			store, err := NewGCSAuditStore(u.Host, path, config.UserAgent, o.AuditGCSServiceAccount)
+			if err != nil {
+				return err
+			}
+			if err := store.Refresh(context.Background()); err != nil {
+				return err
+			}
+			c.auditStore = store
+		default:
+			return fmt.Errorf("--audit must be a valid file:// or gs:// URL")
+		}
+	}
+
+	if len(o.CLIImageForAudit) > 0 {
+		c.cliImageForAudit = o.CLIImageForAudit
+	}
+	if len(o.SigningKeyring) > 0 {
+		signer, err := signer.NewFromKeyring(o.SigningKeyring)
+		if err != nil {
+			return err
+		}
+		c.signer = signer
+	}
+
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 		http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
 		http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 		go func() {
-			glog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
+			klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
 			if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {
-				glog.Exitf("Server exited: %v", err)
+				klog.Exitf("Server exited: %v", err)
 			}
 		}()
 	}
@@ -230,42 +310,33 @@ func (o *options) Run() error {
 		}()
 	}
 
-	glog.Infof("Waiting for caches to sync")
+	klog.Infof("Waiting for caches to sync")
 	cache.WaitForCacheSync(stopCh, hasSynced...)
 
-	// keep the graph in a more persistent form
-	go syncGraphToSecret(graph, o.DryRun, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
-
-	go wait.Until(func() {
-		err := wait.ExponentialBackoff(wait.Backoff{
-			Steps:    3,
-			Duration: 1 * time.Second,
-			Factor:   2,
-		}, func() (bool, error) {
-			success := true
-			if err := execReleaseInfo.refreshPod(); err != nil {
-				glog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
-				success = false
-			}
-			if err := execReleaseFiles.refreshPod(); err != nil {
-				glog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
-				success = false
-			}
-			return success, nil
-		})
-		if err != nil {
-			glog.Errorf("Unable to refresh git cache, waiting until next sync time")
-		}
-	}, 2*time.Hour, stopCh)
-
-	if o.DryRun {
-		glog.Infof("Dry run mode (no changes will be made)")
+	switch {
+	case o.DryRun:
+		klog.Infof("Dry run mode (no changes will be made)")
 		<-stopCh
-	} else {
-		glog.Infof("Managing releases")
-		c.Run(3, stopCh)
+		return nil
+	case len(o.AuditStorage) > 0:
+		klog.Infof("Auditing releases to %s", o.AuditStorage)
+		c.RunAudit(2, stopCh)
+		return nil
+	case len(o.LimitSources) > 0:
+		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)
+		c.RunSync(3, stopCh)
+		return nil
+	default:
+		klog.Infof("Managing releases")
+
+		// keep the graph in a more persistent form
+		go syncGraphToSecret(graph, o.DryRun, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		// maintain the release pods
+		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
+
+		c.RunSync(3, stopCh)
+		return nil
 	}
-	return nil
 }
 
 // loadClusterConfig loads connection configuration
@@ -342,10 +413,34 @@ func (c *latestImageCache) Get() (string, error) {
 			if spec := findImagePullSpec(item, c.tag); len(spec) > 0 {
 				c.last = spec
 				c.lastChecked = time.Now()
-				glog.V(4).Infof("Using %s for the %s image", spec, c.tag)
+				klog.V(4).Infof("Using %s for the %s image", spec, c.tag)
 				return spec, nil
 			}
 		}
 	}
 	return "", fmt.Errorf("could not find a release image stream with :tests")
+}
+
+func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *ExecReleaseInfo, execReleaseFiles *ExecReleaseFiles, stopCh <-chan struct{}) {
+	wait.Until(func() {
+		err := wait.ExponentialBackoff(wait.Backoff{
+			Steps:    3,
+			Duration: 1 * time.Second,
+			Factor:   2,
+		}, func() (bool, error) {
+			success := true
+			if err := execReleaseInfo.refreshPod(); err != nil {
+				klog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
+				success = false
+			}
+			if err := execReleaseFiles.refreshPod(); err != nil {
+				klog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
+				success = false
+			}
+			return success, nil
+		})
+		if err != nil {
+			klog.Errorf("Unable to refresh git cache, waiting until next sync time")
+		}
+	}, interval, stopCh)
 }

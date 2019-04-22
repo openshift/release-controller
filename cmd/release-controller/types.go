@@ -242,6 +242,8 @@ const (
 	releaseAnnotationHasReleases = "release.openshift.io/hasReleases"
 	// if set, when rewriting a stable tag use the images locally
 	releaseAnnotationMirrorImages = "release.openshift.io/mirrorImages"
+	// when set on a job, controls which queue the job is notified on
+	releaseAnnotationJobPurpose = "release.openshift.io/purpose"
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
