@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -79,32 +80,45 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		return nil
 	}
 
-	if count, ok := c.countAuditVerifyJobs(); !ok || count > 2 {
-		glog.V(4).Infof("Throttling verify jobs to max 2")
-		c.auditQueue.AddAfter(releaseName, 10*time.Second)
-		return nil
-	}
-
-	job, err := c.ensureAuditVerifyJob(release, record)
-	if err != nil || job == nil {
-		return fmt.Errorf("unable to verify release before signing: %v", err)
-	}
-
-	success, complete := jobIsComplete(job)
-	switch {
-	case !complete:
-		c.auditQueue.AddAfter(releaseName, 10*time.Second)
-		return nil
-
-	case !success:
-		failureMsg := "Unable to verify release for unknown reason"
-		if message, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "verify", false); len(message) > 0 {
-			failureMsg = fmt.Sprintf("Unable to verify release:\n\n%s", message)
+	if image == "local" {
+		out, err := exec.Command("oc", "adm", "release", "info", "--verify", record.Location).CombinedOutput()
+		if err != nil {
+			failureMsg := fmt.Sprintf("Unable to verify release:\n%s", strings.TrimSpace(string(out)))
+			glog.V(4).Infof("Release verification command failed: %s", failureMsg)
+			c.auditTracker.SetFailure(record.Name, failureMsg)
+			return nil
 		}
-		glog.V(4).Infof("Release verification job failed: %s", failureMsg)
-		c.auditTracker.SetFailure(record.Name, failureMsg)
-		return nil
 
+	} else {
+		if count, ok := c.countAuditVerifyJobs(); !ok || count > 2 {
+			glog.V(4).Infof("Throttling verify jobs to max 2")
+			c.auditQueue.AddAfter(releaseName, 10*time.Second)
+			return nil
+		}
+
+		job, err := c.ensureAuditVerifyJob(release, record)
+		if err != nil || job == nil {
+			return fmt.Errorf("unable to verify release before signing: %v", err)
+		}
+
+		success, complete := jobIsComplete(job)
+		switch {
+		case !complete:
+			c.auditQueue.AddAfter(releaseName, 10*time.Second)
+			return nil
+
+		case !success:
+			failureMsg := "Unable to verify release for unknown reason"
+			if message, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "verify", false); len(message) > 0 {
+				failureMsg = fmt.Sprintf("Unable to verify release:\n\n%s", message)
+			}
+			glog.V(4).Infof("Release verification job failed: %s", failureMsg)
+			c.auditTracker.SetFailure(record.Name, failureMsg)
+			return nil
+		}
+	}
+
+	switch {
 	case c.signer == nil:
 		glog.V(4).Infof("Completed audit of %s at %s without signing", releaseName, release.Source.ResourceVersion)
 		return nil
