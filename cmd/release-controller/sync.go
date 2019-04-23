@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/openshift/api/image/docker10"
@@ -29,28 +28,6 @@ func (c *Controller) sync(key queueKey) error {
 		panic(err)
 	}()
 
-	// queue all release inputs in the namespace on a namespace sync
-	// this allows us to batch changes together when calculating which resource
-	// would be affected is inefficient
-	if len(key.name) == 0 {
-		imageStreams, err := c.imageStreamLister.ImageStreams(key.namespace).List(labels.Everything())
-		if err != nil {
-			return err
-		}
-		for _, imageStream := range imageStreams {
-			if _, ok := imageStream.Annotations[releaseAnnotationConfig]; ok {
-				c.addQueueKey(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
-			}
-		}
-		c.gcQueue.AddAfter("", 10*time.Second)
-		return nil
-	}
-
-	if c.onlySources.Len() > 0 && !c.onlySources.Has(key.name) {
-		glog.V(4).Infof("Ignored %s", key.name)
-		return nil
-	}
-
 	// if we are waiting to observe the result of our previous actions, simply delay
 	// if c.expectations.Expecting(key.namespace, key.name) {
 	// 	c.queue.AddAfter(key, c.expectationDelay)
@@ -58,24 +35,9 @@ func (c *Controller) sync(key queueKey) error {
 	// 	return nil
 	// }
 
-	// locate the release definition off the image stream, or clean up any remaining
-	// artifacts if the release no longer points to those
-	isLister := c.imageStreamLister.ImageStreams(key.namespace)
-	imageStream, err := isLister.Get(key.name)
-	if errors.IsNotFound(err) {
-		c.gcQueue.AddAfter("", 10*time.Second)
-		return nil
-	}
-	if err != nil {
+	release, err := c.loadReleaseForSync(key.namespace, key.name)
+	if err != nil || release == nil {
 		return err
-	}
-	release, ok, err := c.releaseDefinition(imageStream)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		c.gcQueue.AddAfter("", 10*time.Second)
-		return nil
 	}
 
 	// ensure that the target image stream always carries the annotation indicating it is
@@ -121,7 +83,7 @@ func (c *Controller) sync(key queueKey) error {
 	if len(pendingTags) == 0 && hasNewImages {
 		releaseTag, err := c.createReleaseTag(release, now, inputImageHash)
 		if err != nil {
-			c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToCreateRelease", "%v", err)
+			c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToCreateRelease", "%v", err)
 			return err
 		}
 		pendingTags = []*imagev1.TagReference{releaseTag}
@@ -132,7 +94,7 @@ func (c *Controller) sync(key queueKey) error {
 		if errors.IsConflict(err) {
 			return nil
 		}
-		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
 		return err
 	}
 
@@ -141,7 +103,7 @@ func (c *Controller) sync(key queueKey) error {
 		if errors.IsConflict(err) {
 			return nil
 		}
-		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
 		return err
 	}
 
@@ -150,7 +112,7 @@ func (c *Controller) sync(key queueKey) error {
 		if errors.IsConflict(err) {
 			return nil
 		}
-		c.eventRecorder.Eventf(imageStream, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
 		return err
 	}
 
@@ -509,6 +471,29 @@ func (c *Controller) syncAccepted(release *Release) error {
 		return utilerrors.NewAggregate(errs)
 	}
 	return nil
+}
+
+func (c *Controller) loadReleaseForSync(namespace, name string) (*Release, error) {
+	// locate the release definition off the image stream, or clean up any remaining
+	// artifacts if the release no longer points to those
+	isLister := c.imageStreamLister.ImageStreams(namespace)
+	imageStream, err := isLister.Get(name)
+	if errors.IsNotFound(err) {
+		c.gcQueue.AddAfter("", 10*time.Second)
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	release, ok, err := c.releaseDefinition(imageStream)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		c.gcQueue.AddAfter("", 10*time.Second)
+		return nil, nil
+	}
+	return release, nil
 }
 
 func containsString(arr []string, s string) bool {

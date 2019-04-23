@@ -1,7 +1,6 @@
 package: github.com/openshift/release-controller
 import:
 - package: github.com/blang/semver
-- package: github.com/golang/glog
 - package: github.com/openshift/api
   subpackages:
   - operator/v1alpha1
@@ -32,3 +31,20 @@ import:
   - kubernetes/typed/rbac/v1
   - tools/cache
   - util/workqueue
+
+# pin glog because of flag.Parse error
+- package: github.com/golang/glog
+  version: 3c92600d7533018d216b534fe894ad60a1e6d5bf
+  repo: https://github.com/openshift/golang-glog.git
+
+# pick old versions of these APIs that are compatible with 1.13 Kube's grpc
+- package: cloud.google.com/go
+  version: 3b1ae45394a234c385be014e9a488f2bb6eef821
+  subpackages:
+  - storage
+- package: google.golang.org/api
+  version: adba394bac5800ff2e620d040e9401528f5b7615
+- package: golang.org/x/oauth2
+  version: e0f2c55a7fc7d04742e0eef7918aa2389b0e1919
+- package: google.golang.org/grpc
+  version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
