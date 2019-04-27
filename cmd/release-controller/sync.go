@@ -369,7 +369,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			return nil
 		case !success:
 			// try to get the last termination message
-			log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "build", false)
+			log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
 			if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
 				return err
 			}
