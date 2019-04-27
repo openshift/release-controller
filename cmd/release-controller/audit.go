@@ -109,7 +109,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 
 		case !success:
 			failureMsg := "Unable to verify release for unknown reason"
-			if message, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "verify", false); len(message) > 0 {
+			if message, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "verify", false); len(message) > 0 {
 				failureMsg = fmt.Sprintf("Unable to verify release:\n\n%s", message)
 			}
 			glog.V(4).Infof("Release verification job failed: %s", failureMsg)
@@ -201,12 +201,12 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 	})
 }
 
-func ensureJobTerminationMessageRetrieved(podClient kv1core.PodsGetter, job *batchv1.Job, containerName string, onlySuccess bool) (string, int, bool) {
+func ensureJobTerminationMessageRetrieved(podClient kv1core.PodsGetter, job *batchv1.Job, podFieldSelector, containerName string, onlySuccess bool) (string, int, bool) {
 	if job.Status.Active == 0 {
 		glog.V(4).Infof("Deferring pod lookup for %s - no active pods", job.Name)
 		return "", 0, false
 	}
-	statuses, err := findJobContainerStatus(podClient, job, "status.phase=Pending", containerName)
+	statuses, err := findJobContainerStatus(podClient, job, podFieldSelector, containerName)
 	if err != nil {
 		return "", 0, false
 	}
