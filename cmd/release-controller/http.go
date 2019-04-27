@@ -443,7 +443,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	case releasePhaseFailed:
 		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(info.Tag.Annotations[releaseAnnotationMessage]))
 		if log := info.Tag.Annotations[releaseAnnotationLog]; len(log) > 0 {
-			fmt.Fprintf(w, `<pre>%s</pre>`, template.HTMLEscapeString(log))
+			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
 		} else {
 			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
 		}
