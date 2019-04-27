@@ -273,6 +273,13 @@ func reasonAndMessage(reason, message string) map[string]string {
 	}
 }
 
+func withLog(annotations map[string]string, log string) map[string]string {
+	if len(log) > 0 {
+		annotations[releaseAnnotationLog] = log
+	}
+	return annotations
+}
+
 func updateReleaseTarget(release *Release, is *imagev1.ImageStream) {
 	if release.Config.As == releaseConfigModeStable {
 		release.Source = is

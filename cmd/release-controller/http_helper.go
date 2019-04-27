@@ -226,7 +226,7 @@ func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 
 func canLink(tag imagev1.TagReference) bool {
 	switch tag.Annotations[releaseAnnotationPhase] {
-	case releasePhasePending, releasePhaseFailed:
+	case releasePhasePending:
 		return false
 	default:
 		return true

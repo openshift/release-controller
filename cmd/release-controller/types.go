@@ -247,6 +247,7 @@ const (
 
 	releaseAnnotationReason  = "release.openshift.io/reason"
 	releaseAnnotationMessage = "release.openshift.io/message"
+	releaseAnnotationLog     = "release.openshift.io/log"
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
