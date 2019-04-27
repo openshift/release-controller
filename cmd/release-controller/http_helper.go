@@ -236,18 +236,11 @@ func canLink(tag imagev1.TagReference) bool {
 func tableLink(config *ReleaseConfig, tag imagev1.TagReference) string {
 	if canLink(tag) {
 		if value, ok := tag.Annotations[releaseAnnotationKeep]; ok {
-			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span title="%s">*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
 		return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 	}
 	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
-}
-
-func pinned(tag imagev1.TagReference) string {
-	if _, ok := tag.Annotations[releaseAnnotationKeep]; ok {
-		return fmt.Sprintf(" <span title=\"%s\">*</span>", template.HTMLEscapeString(tag.Annotations[releaseAnnotationKeep]))
-	}
-	return ""
 }
 
 func links(tag imagev1.TagReference, release *Release) string {
