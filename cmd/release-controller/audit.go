@@ -202,8 +202,8 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 }
 
 func ensureJobTerminationMessageRetrieved(podClient kv1core.PodsGetter, job *batchv1.Job, podFieldSelector, containerName string, onlySuccess bool) (string, int, bool) {
-	if job.Status.Active == 0 {
-		glog.V(4).Infof("Deferring pod lookup for %s - no active pods", job.Name)
+	if job.Status.Active == 0 && job.Status.Failed == 0 && job.Status.Succeeded == 0 {
+		glog.V(4).Infof("Deferring pod lookup for %s - no pods observed", job.Name)
 		return "", 0, false
 	}
 	statuses, err := findJobContainerStatus(podClient, job, podFieldSelector, containerName)
