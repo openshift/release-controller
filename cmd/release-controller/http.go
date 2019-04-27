@@ -439,6 +439,18 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
 
+	switch info.Tag.Annotations[releaseAnnotationPhase] {
+	case releasePhaseFailed:
+		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(info.Tag.Annotations[releaseAnnotationMessage]))
+		if log := info.Tag.Annotations[releaseAnnotationLog]; len(log) > 0 {
+			fmt.Fprintf(w, `<pre>%s</pre>`, template.HTMLEscapeString(log))
+		} else {
+			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
+		}
+		fmt.Fprintf(w, `</div>`)
+		return
+	}
+
 	renderInstallInstructions(w, mirror, info.Tag, tagPull, c.artifactsHost)
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
