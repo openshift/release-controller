@@ -62,10 +62,17 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		for _, s := range streams {
 			for _, tag := range s.Tags {
 				nodesByName[tag.Name] = len(nodes)
-				nodes = append(nodes, ReleaseNode{
-					Version: tag.Name,
-					Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
-				})
+				if id := findImageIDForTag(s.Release.Target, tag.Name); len(id) > 0 {
+					nodes = append(nodes, ReleaseNode{
+						Version: tag.Name,
+						Payload: s.Release.Target.Status.PublicDockerImageRepository + "@" + id,
+					})
+				} else {
+					nodes = append(nodes, ReleaseNode{
+						Version: tag.Name,
+						Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
+					})
+				}
 			}
 		}
 
