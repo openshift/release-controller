@@ -79,13 +79,31 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		edges := make([]ReleaseEdge, 0, len(histories))
 		for _, history := range histories {
 			switch {
-			case channel == "", channel == "stable", strings.HasPrefix(channel, "stable-"):
+			case channel == "", channel == "stable":
 				if history.Success == 0 {
 					continue
 				}
 			case channel == "prerelease", channel == "nightly":
+			case strings.HasPrefix(channel, "stable-"):
+				if history.Success == 0 {
+					continue
+				}
+				branch := channel[len("stable-"):] + "."
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
+			case strings.HasPrefix(channel, "prerelease-"):
+				branch := channel[len("prerelease-"):] + "."
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
+			case strings.HasPrefix(channel, "nightly-"):
+				branch := channel[len("nightly-"):] + ".0-0.nightly-"
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
 			default:
-				http.Error(w, "Unsupported ?channel, must be '', 'prerelease', 'nightly', 'stable', or 'stable-*", http.StatusBadRequest)
+				http.Error(w, "Unsupported ?channel, must be '', 'prerelease', 'prerelease-*', 'nightly', 'nightly-*', 'stable', or 'stable-*", http.StatusBadRequest)
 				return
 			}
 			to, ok := nodesByName[history.To]
