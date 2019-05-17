@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -231,35 +232,54 @@ func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
 	return fmt.Sprintf("https://%s/%s", c.artifactsHost, url.PathEscape(tagName)), true
 }
 
-func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) {
-	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
-
+func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*Release, *imagev1.TagReference, bool) {
 	vars := mux.Vars(req)
 	streamName := vars["release"]
 	var constraint semver.Range
-	inString := req.URL.Query().Get("in")
-	if len(inString) > 0 {
+	if inString := req.URL.Query().Get("in"); len(inString) > 0 {
 		r, err := semver.ParseRange(inString)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
-			return
+			return nil, nil, false
 		}
 		constraint = r
 	}
+	var relativeIndex int
+	if relativeIndexString := req.URL.Query().Get("rel"); len(relativeIndexString) > 0 {
+		i, err := strconv.Atoi(relativeIndexString)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error: ?rel must be non-negative integer: %v", err), http.StatusBadRequest)
+			return nil, nil, false
+		}
+		if i < 0 {
+			http.Error(w, "error: ?rel must be non-negative integer", http.StatusBadRequest)
+			return nil, nil, false
+		}
+		relativeIndex = i
+	}
 
-	r, latest, err := c.latestForStream(streamName, constraint)
+	r, latest, err := c.latestForStream(streamName, constraint, relativeIndex)
 	if err != nil {
 		code := http.StatusInternalServerError
 		if err == errStreamNotFound || err == errStreamTagNotFound {
 			code = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), code)
+		return nil, nil, false
+	}
+	return r, latest, true
+}
+
+func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	r, latest, ok := c.locateLatest(w, req)
+	if !ok {
 		return
 	}
 
 	downloadURL, _ := c.urlForArtifacts(latest.Name)
-
 	resp := LatestAccepted{
 		Name:        latest.Name,
 		PullSpec:    findPublicImagePullSpec(r.Target, latest.Name),
@@ -680,7 +700,7 @@ var (
 	errStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
 )
 
-func (c *Controller) latestForStream(streamName string, constraint semver.Range) (*Release, *imagev1.TagReference, error) {
+func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
 	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -704,6 +724,10 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range)
 			if ver.Version == nil || !constraint(*ver.Version) {
 				continue
 			}
+			if relativeIndex > 0 {
+				relativeIndex--
+				continue
+			}
 			return r, ver.Tag, nil
 		}
 		return nil, nil, errStreamTagNotFound
@@ -715,56 +739,20 @@ func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request)
 	start := time.Now()
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	vars := mux.Vars(req)
-	streamName := vars["release"]
-	var constraint semver.Range
-	inString := req.URL.Query().Get("in")
-	if len(inString) > 0 {
-		r, err := semver.ParseRange(inString)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
-			return
-		}
-		constraint = r
-	}
-
-	_, latest, err := c.latestForStream(streamName, constraint)
-	if err != nil {
-		code := http.StatusInternalServerError
-		if err == errStreamNotFound || err == errStreamTagNotFound {
-			code = http.StatusNotFound
-		}
-		http.Error(w, err.Error(), code)
+	r, latest, ok := c.locateLatest(w, req)
+	if !ok {
 		return
 	}
 
-	http.Redirect(w, req, fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(streamName), url.PathEscape(latest.Name)), http.StatusFound)
+	http.Redirect(w, req, fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(r.Config.Name), url.PathEscape(latest.Name)), http.StatusFound)
 }
 
 func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	vars := mux.Vars(req)
-	streamName := vars["release"]
-	var constraint semver.Range
-	inString := req.URL.Query().Get("in")
-	if len(inString) > 0 {
-		r, err := semver.ParseRange(inString)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
-			return
-		}
-		constraint = r
-	}
-
-	_, latest, err := c.latestForStream(streamName, constraint)
-	if err != nil {
-		code := http.StatusInternalServerError
-		if err == errStreamNotFound || err == errStreamTagNotFound {
-			code = http.StatusNotFound
-		}
-		http.Error(w, err.Error(), code)
+	_, latest, ok := c.locateLatest(w, req)
+	if !ok {
 		return
 	}
 
