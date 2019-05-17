@@ -237,10 +237,24 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
+	var constraint semver.Range
+	inString := req.URL.Query().Get("in")
+	if len(inString) > 0 {
+		r, err := semver.ParseRange(inString)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
+			return
+		}
+		constraint = r
+	}
 
-	r, latest, err := c.latestForStream(streamName)
+	r, latest, err := c.latestForStream(streamName, constraint)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if err == errStreamNotFound || err == errStreamTagNotFound {
+			code = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 
@@ -661,7 +675,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) latestForStream(streamName string) (*Release, *imagev1.TagReference, error) {
+var (
+	errStreamNotFound    = fmt.Errorf("no release configuration exists with the requested name")
+	errStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
+)
+
+func (c *Controller) latestForStream(streamName string, constraint semver.Range) (*Release, *imagev1.TagReference, error) {
 	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -674,16 +693,22 @@ func (c *Controller) latestForStream(streamName string) (*Release, *imagev1.TagR
 		if r.Config.Name != streamName {
 			continue
 		}
+		// find all accepted tags, then sort by semantic version
 		tags := findTagReferencesByPhase(r, releasePhaseAccepted)
-		if len(tags) == 0 {
-			return nil, nil, fmt.Errorf("no accepted tags found for stream '%s'", streamName)
+		semVers := NewSemanticVersions(tags)
+		sort.Sort(semVers)
+		for _, ver := range semVers {
+			if constraint == nil {
+				return r, ver.Tag, nil
+			}
+			if ver.Version == nil || !constraint(*ver.Version) {
+				continue
+			}
+			return r, ver.Tag, nil
 		}
-		return r, tags[0], nil
+		return nil, nil, errStreamTagNotFound
 	}
-	if err == nil {
-		err = fmt.Errorf("did not find release config for '%s'", streamName)
-	}
-	return nil, nil, err
+	return nil, nil, errStreamNotFound
 }
 
 func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request) {
@@ -692,12 +717,27 @@ func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request)
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
+	var constraint semver.Range
+	inString := req.URL.Query().Get("in")
+	if len(inString) > 0 {
+		r, err := semver.ParseRange(inString)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
+			return
+		}
+		constraint = r
+	}
 
-	_, latest, err := c.latestForStream(streamName)
+	_, latest, err := c.latestForStream(streamName, constraint)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if err == errStreamNotFound || err == errStreamTagNotFound {
+			code = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
+
 	http.Redirect(w, req, fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(streamName), url.PathEscape(latest.Name)), http.StatusFound)
 }
 
@@ -707,12 +747,27 @@ func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
+	var constraint semver.Range
+	inString := req.URL.Query().Get("in")
+	if len(inString) > 0 {
+		r, err := semver.ParseRange(inString)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error: ?in must be a valid semantic version range: %v", err), http.StatusBadRequest)
+			return
+		}
+		constraint = r
+	}
 
-	_, latest, err := c.latestForStream(streamName)
+	_, latest, err := c.latestForStream(streamName, constraint)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if err == errStreamNotFound || err == errStreamTagNotFound {
+			code = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
+
 	u, ok := c.urlForArtifacts(latest.Name)
 	if !ok {
 		http.Error(w, "No artifacts download URL is configured, cannot show download link", http.StatusNotFound)
