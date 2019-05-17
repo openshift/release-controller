@@ -252,15 +252,29 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 		DownloadURL: downloadURL,
 	}
 
-	data, err := json.MarshalIndent(&resp, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	switch req.URL.Query().Get("format") {
+	case "pullSpec":
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, resp.PullSpec)
+	case "downloadURL":
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, resp.DownloadURL)
+	case "name":
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, resp.Name)
+	case "", "json":
+		data, err := json.MarshalIndent(&resp, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
-	fmt.Fprintln(w)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+		fmt.Fprintln(w)
+	default:
+		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+	}
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
