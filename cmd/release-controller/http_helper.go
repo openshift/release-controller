@@ -39,6 +39,7 @@ type LatestAccepted struct {
 	Name        string `json:"name"`
 	PullSpec    string `json:"pullSpec"`
 	DownloadURL string `json:"downloadURL"`
+	Digest      string `json:"digest"`
 }
 
 type ReleaseStreamTag struct {

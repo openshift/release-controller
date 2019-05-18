@@ -280,10 +280,12 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	}
 
 	downloadURL, _ := c.urlForArtifacts(latest.Name)
+	digest, _ := c.digestForArtifacts(latest.Name)
 	resp := LatestAccepted{
 		Name:        latest.Name,
 		PullSpec:    findPublicImagePullSpec(r.Target, latest.Name),
 		DownloadURL: downloadURL,
+		Digest:      digest,
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -296,6 +298,9 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	case "name":
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, resp.Name)
+	case "digest":
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, resp.Digest)
 	case "", "json":
 		data, err := json.MarshalIndent(&resp, "", "  ")
 		if err != nil {
@@ -307,7 +312,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 		w.Write(data)
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', 'downloadURL', or 'digest'")), http.StatusBadRequest)
 	}
 }
 
