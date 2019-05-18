@@ -718,10 +718,7 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 		semVers := NewSemanticVersions(tags)
 		sort.Sort(semVers)
 		for _, ver := range semVers {
-			if constraint == nil {
-				return r, ver.Tag, nil
-			}
-			if ver.Version == nil || !constraint(*ver.Version) {
+			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
 				continue
 			}
 			if relativeIndex > 0 {
