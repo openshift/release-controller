@@ -585,8 +585,8 @@ func takeUpgradesFromNames(summaries []UpgradeHistory, names map[string]int) (wi
 		left := make([]UpgradeHistory, i, len(summaries))
 		copy(left, summaries[:i])
 		var right []UpgradeHistory
-		for _, summary := range summaries[i:] {
-			if _, ok := names[summaries[i].From]; ok {
+		for j, summary := range summaries[i:] {
+			if _, ok := names[summaries[i+j].From]; ok {
 				left = append(left, summary)
 			} else {
 				right = append(right, summary)
