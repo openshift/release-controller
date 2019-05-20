@@ -218,7 +218,14 @@ func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 	}
 	buf.WriteString(`<td>`)
 	for _, external := range upgrades.Tags[index].External {
-		buf.WriteString(fmt.Sprintf(`<span>%s</span> `, external.From))
+		switch {
+		case external.Success > 0:
+			buf.WriteString(fmt.Sprintf(`<span class="text-success">%s</span> `, external.From))
+		case external.Failure > 0:
+			buf.WriteString(fmt.Sprintf(`<span class="text-danger">%s</span> `, external.From))
+		default:
+			buf.WriteString(fmt.Sprintf(`<span>%s</span> `, external.From))
+		}
 	}
 	buf.WriteString(`</td>`)
 	return buf.String()
