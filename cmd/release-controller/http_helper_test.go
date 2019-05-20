@@ -275,6 +275,19 @@ func Test_takeUpgradesFromNames(t *testing.T) {
 				{From: "b", To: "c"},
 			},
 		},
+		{
+			summaries: []UpgradeHistory{
+				{From: "a", To: "c"},
+				{From: "b", To: "c"},
+			},
+			names: map[string]int{"b": 2, "c": 3},
+			wantWithNames: []UpgradeHistory{
+				{From: "b", To: "c"},
+			},
+			wantWithoutNames: []UpgradeHistory{
+				{From: "a", To: "c"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
