@@ -442,6 +442,14 @@ type nopFlusher struct{}
 
 func (_ nopFlusher) Flush() {}
 
+func upgradeSummaryToString(history []UpgradeHistory) string {
+	var out []string
+	for _, h := range history {
+		out = append(out, fmt.Sprintf("%s->%s", h.From, h.To))
+	}
+	return strings.Join(out, ",")
+}
+
 func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))
 	internalTags := make(map[string]int)
@@ -567,7 +575,8 @@ func takeUpgradesFromNames(summaries []UpgradeHistory, names map[string]int) (wi
 		if _, ok := names[summaries[i].From]; ok {
 			continue
 		}
-		left := make([]UpgradeHistory, 0, len(summaries)-i)
+		left := make([]UpgradeHistory, i, len(summaries))
+		copy(left, summaries[:i])
 		var right []UpgradeHistory
 		for _, summary := range summaries[i:] {
 			if _, ok := names[summaries[i].From]; ok {
