@@ -176,7 +176,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		}
 		releaseTags := tagsForRelease(r)
 		if includeStableTags {
-			if version, err := semver.ParseTolerant(r.Config.Name); err == nil {
+			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
 					Release:  r,
 					Version:  version,
@@ -208,6 +208,20 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		sort.Sort(stable.Releases)
 	}
 	return needed, remaining == 0
+}
+
+// semverParseTolerant works around https://github.com/blang/semver/issues/55 until
+// it is resolved.
+func semverParseTolerant(v string) (semver.Version, error) {
+	ver, err := semver.ParseTolerant(v)
+	if err == nil {
+		return ver, nil
+	}
+	ver, strictErr := semver.Parse(v)
+	if strictErr == nil {
+		return ver, nil
+	}
+	return semver.Version{}, err
 }
 
 func (c *Controller) userInterfaceHandler() http.Handler {
