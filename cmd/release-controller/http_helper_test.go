@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
 	"k8s.io/apimachinery/pkg/util/diff"
 )
@@ -54,7 +55,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			},
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph()
-				g.Add("4.0.0", "4.0.1", UpgradeResult{State: releaseVerificationStateFailed, Url: "https://test.com/1"})
+				g.Add("4.0.0", "4.0.1", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
@@ -89,9 +90,9 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			},
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph()
-				g.Add("4.0.4", "4.0.5", UpgradeResult{State: releaseVerificationStateFailed, Url: "https://test.com/1"})
-				g.Add("4.0.3", "4.0.5", UpgradeResult{State: releaseVerificationStateSucceeded, Url: "https://test.com/2"})
-				g.Add("4.0.0", "4.0.2", UpgradeResult{State: releaseVerificationStateSucceeded, Url: "https://test.com/2"})
+				g.Add("4.0.4", "4.0.5", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
+				g.Add("4.0.3", "4.0.5", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
+				g.Add("4.0.0", "4.0.2", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
@@ -179,4 +180,12 @@ func TestSemanticVersions_Tags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSemVer(t *testing.T) {
+	x, err := semver.Parse("4.1.0-0.nightly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s", x.String())
 }
