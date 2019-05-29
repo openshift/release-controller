@@ -519,7 +519,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
-		fmt.Fprintf(w, `<p>Upgrades from:</p><ul>`)
+		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p><ul>`)
 		for _, upgrade := range upgradesTo {
 			var style string
 			switch {
@@ -570,7 +570,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	if upgradesFrom := c.graph.UpgradesFrom(tag); len(upgradesFrom) > 0 {
 		sort.Sort(newNewestSemVerToSummaries(upgradesFrom))
-		fmt.Fprintf(w, `<p>Upgrades to:</p><ul>`)
+		fmt.Fprintf(w, `<p id="upgrades-to">Upgrades to:</p><ul>`)
 		for _, upgrade := range upgradesFrom {
 			var style string
 			switch {
