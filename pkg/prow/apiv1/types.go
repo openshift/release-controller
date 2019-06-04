@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"mime"
 	"net/url"
 	"strings"
 	"time"
@@ -301,11 +302,11 @@ const (
 	// PresubmitJob means it runs on unmerged PRs.
 	PresubmitJob ProwJobType = "presubmit"
 	// PostsubmitJob means it runs on each new commit.
-	PostsubmitJob = "postsubmit"
+	PostsubmitJob ProwJobType = "postsubmit"
 	// Periodic job means it runs on a time-basis, unrelated to git changes.
-	PeriodicJob = "periodic"
+	PeriodicJob ProwJobType = "periodic"
 	// BatchJob tests multiple unmerged PRs at the same time.
-	BatchJob = "batch"
+	BatchJob ProwJobType = "batch"
 )
 
 // ProwJobState specifies whether the job is running
@@ -334,9 +335,11 @@ const (
 	// KubernetesAgent means prow will create a pod to run this job.
 	KubernetesAgent ProwJobAgent = "kubernetes"
 	// JenkinsAgent means prow will schedule the job on jenkins.
-	JenkinsAgent = "jenkins"
+	JenkinsAgent ProwJobAgent = "jenkins"
 	// KnativeBuildAgent means prow will schedule the job via a build-crd resource.
-	KnativeBuildAgent = "knative-build"
+	KnativeBuildAgent ProwJobAgent = "knative-build"
+	// TektonAgent means prow will schedule the job via a tekton PipelineRun CRD resource.
+	TektonAgent = "tekton-pipeline"
 )
 
 const (
@@ -371,6 +374,8 @@ type ProwJobSpec struct {
 	// to run the job, only applicable for that
 	// specific agent
 	Cluster string `json:"cluster,omitempty"`
+	// Namespace defines where to create pods/resources.
+	Namespace string `json:"namespace,omitempty"`
 	// Job is the name of the job
 	Job string `json:"job,omitempty"`
 	// Refs is the code under test, determined at
@@ -378,8 +383,7 @@ type ProwJobSpec struct {
 	Refs *Refs `json:"refs,omitempty"`
 	// ExtraRefs are auxiliary repositories that
 	// need to be cloned, determined from config
-	ExtraRefs []*Refs `json:"extra_refs,omitempty"`
-
+	ExtraRefs []Refs `json:"extra_refs,omitempty"`
 	// Report determines if the result of this job should
 	// be posted as a status on GitHub
 	Report bool `json:"report,omitempty"`
@@ -392,18 +396,54 @@ type ProwJobSpec struct {
 	// MaxConcurrency restricts the total number of instances
 	// of this job that can run in parallel at once
 	MaxConcurrency int `json:"max_concurrency,omitempty"`
+	// ErrorOnEviction indicates that the ProwJob should be completed and given
+	// the ErrorState status if the pod that is executing the job is evicted.
+	// If this field is unspecified or false, a new pod will be created to replace
+	// the evicted one.
+	ErrorOnEviction bool `json:"error_on_eviction,omitempty"`
 
 	// PodSpec provides the basis for running the test under
 	// a Kubernetes agent
 	PodSpec *corev1.PodSpec `json:"pod_spec,omitempty"`
 
+	// JenkinsSpec holds configuration specific to Jenkins jobs
+	JenkinsSpec *JenkinsSpec `json:"jenkins_spec,omitempty"`
+
 	// DecorationConfig holds configuration options for
 	// decorating PodSpecs that users provide
 	DecorationConfig *DecorationConfig `json:"decoration_config,omitempty"`
+}
 
-	// RunAfterSuccess are jobs that should be triggered if
-	// this job runs and does not fail
-	RunAfterSuccess []ProwJobSpec `json:"run_after_success,omitempty"`
+// Duration is a wrapper around time.Duration that parses times in either
+// 'integer number of nanoseconds' or 'duration string' formats and serializes
+// to 'duration string' format.
+type Duration struct {
+	time.Duration
+}
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	if err := json.Unmarshal(b, &d.Duration); err == nil {
+		// b was an integer number of nanoseconds.
+		return nil
+	}
+	// b was not an integer. Assume that it is a duration string.
+
+	var str string
+	err := json.Unmarshal(b, &str)
+	if err != nil {
+		return err
+	}
+
+	pd, err := time.ParseDuration(str)
+	if err != nil {
+		return err
+	}
+	d.Duration = pd
+	return nil
+}
+
+func (d *Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Duration.String())
 }
 
 // DecorationConfig specifies how to augment pods.
@@ -413,11 +453,12 @@ type ProwJobSpec struct {
 type DecorationConfig struct {
 	// Timeout is how long the pod utilities will wait
 	// before aborting a job with SIGINT.
-	Timeout Duration `json:"timeout,omitempty"`
+	Timeout *Duration `json:"timeout,omitempty"`
 	// GracePeriod is how long the pod utilities will wait
 	// after sending SIGINT to send SIGKILL when aborting
 	// a job. Only applicable if decorating the PodSpec.
-	GracePeriod Duration `json:"grace_period,omitempty"`
+	GracePeriod *Duration `json:"grace_period,omitempty"`
+
 	// UtilityImages holds pull specs for utility container
 	// images used to decorate a PodSpec.
 	UtilityImages *UtilityImages `json:"utility_images,omitempty"`
@@ -460,10 +501,10 @@ func (d *DecorationConfig) ApplyDefault(def *DecorationConfig) *DecorationConfig
 	merged.UtilityImages = merged.UtilityImages.ApplyDefault(def.UtilityImages)
 	merged.GCSConfiguration = merged.GCSConfiguration.ApplyDefault(def.GCSConfiguration)
 
-	if merged.Timeout.Duration == 0 {
+	if merged.Timeout == nil {
 		merged.Timeout = def.Timeout
 	}
-	if merged.GracePeriod.Duration == 0 {
+	if merged.GracePeriod == nil {
 		merged.GracePeriod = def.GracePeriod
 	}
 	if merged.GCSCredentialsSecret == "" {
@@ -519,6 +560,26 @@ func (d *DecorationConfig) Validate() error {
 	return nil
 }
 
+func (d *Duration) Get() time.Duration {
+	if d == nil {
+		return 0
+	}
+	return d.Duration
+}
+
+// UtilityImages holds pull specs for the utility images
+// to be used for a job
+type UtilityImages struct {
+	// CloneRefs is the pull spec used for the clonerefs utility
+	CloneRefs string `json:"clonerefs,omitempty"`
+	// InitUpload is the pull spec used for the initupload utility
+	InitUpload string `json:"initupload,omitempty"`
+	// Entrypoint is the pull spec used for the entrypoint utility
+	Entrypoint string `json:"entrypoint,omitempty"`
+	// sidecar is the pull spec used for the sidecar utility
+	Sidecar string `json:"sidecar,omitempty"`
+}
+
 // ApplyDefault applies the defaults for the UtilityImages decorations. If a field has a zero value,
 // it replaces that with the value set in def.
 func (u *UtilityImages) ApplyDefault(def *UtilityImages) *UtilityImages {
@@ -544,20 +605,7 @@ func (u *UtilityImages) ApplyDefault(def *UtilityImages) *UtilityImages {
 	return &merged
 }
 
-// UtilityImages holds pull specs for the utility images
-// to be used for a job
-type UtilityImages struct {
-	// CloneRefs is the pull spec used for the clonerefs utility
-	CloneRefs string `json:"clonerefs,omitempty"`
-	// InitUpload is the pull spec used for the initupload utility
-	InitUpload string `json:"initupload,omitempty"`
-	// Entrypoint is the pull spec used for the entrypoint utility
-	Entrypoint string `json:"entrypoint,omitempty"`
-	// sidecar is the pull spec used for the sidecar utility
-	Sidecar string `json:"sidecar,omitempty"`
-}
-
-// PathStrategy specifies minutia about how to contruct the url.
+// PathStrategy specifies minutia about how to construct the url.
 // Usually consumed by gubernator/testgrid.
 const (
 	PathStrategyLegacy   = "legacy"
@@ -582,6 +630,10 @@ type GCSConfiguration struct {
 	// DefaultRepo is omitted from GCS paths when using the
 	// legacy or simple strategy
 	DefaultRepo string `json:"default_repo,omitempty"`
+	// MediaTypes holds additional extension media types to add to Go's
+	// builtin's and the local system's defaults.  This maps extensions
+	// to media types, for example: MediaTypes["log"] = "text/plain"
+	MediaTypes map[string]string `json:"mediaTypes,omitempty"`
 }
 
 // ApplyDefault applies the defaults for GCSConfiguration decorations. If a field has a zero value,
@@ -615,11 +667,24 @@ func (g *GCSConfiguration) ApplyDefault(def *GCSConfiguration) *GCSConfiguration
 	if merged.DefaultRepo == "" {
 		merged.DefaultRepo = def.DefaultRepo
 	}
+
+	for extension, mediaType := range def.MediaTypes {
+		merged.MediaTypes[extension] = mediaType
+	}
+	for extension, mediaType := range g.MediaTypes {
+		merged.MediaTypes[extension] = mediaType
+	}
+
 	return &merged
 }
 
 // Validate ensures all the values set in the GCSConfiguration are valid.
 func (g *GCSConfiguration) Validate() error {
+	for _, mediaType := range g.MediaTypes {
+		if _, _, err := mime.ParseMediaType(mediaType); err != nil {
+			return fmt.Errorf("invalid extension media type %q: %v", mediaType, err)
+		}
+	}
 	if g.PathStrategy != PathStrategyLegacy && g.PathStrategy != PathStrategyExplicit && g.PathStrategy != PathStrategySingle {
 		return fmt.Errorf("gcs_path_strategy must be one of %q, %q, or %q", PathStrategyLegacy, PathStrategyExplicit, PathStrategySingle)
 	}
@@ -656,9 +721,9 @@ type ProwJobStatus struct {
 	// ProwJob.
 	JenkinsBuildID string `json:"jenkins_build_id,omitempty"`
 
-	// PrevReportState stores the previous reported prowjob state
+	// PrevReportStates stores the previous reported prowjob state per reporter
 	// So crier won't make duplicated report attempt
-	PrevReportState ProwJobState `json:"prev_report_state, omitempty"`
+	PrevReportStates map[string]ProwJobState `json:"prev_report_states,omitempty"`
 }
 
 // Complete returns true if the prow job has finished
@@ -685,26 +750,37 @@ func (j *ProwJob) ClusterAlias() string {
 
 // Pull describes a pull request at a particular point in time.
 type Pull struct {
-	Number int    `json:"number,omitempty"`
-	Author string `json:"author,omitempty"`
-	SHA    string `json:"sha,omitempty"`
+	Number int    `json:"number"`
+	Author string `json:"author"`
+	SHA    string `json:"sha"`
+	Title  string `json:"title,omitempty"`
 
 	// Ref is git ref can be checked out for a change
 	// for example,
 	// github: pull/123/head
 	// gerrit: refs/changes/00/123/1
 	Ref string `json:"ref,omitempty"`
+	// Link links to the pull request itself.
+	Link string `json:"link,omitempty"`
+	// CommitLink links to the commit identified by the SHA.
+	CommitLink string `json:"commit_link,omitempty"`
+	// AuthorLink links to the author of the pull request.
+	AuthorLink string `json:"author_link,omitempty"`
 }
 
 // Refs describes how the repo was constructed.
 type Refs struct {
 	// Org is something like kubernetes or k8s.io
-	Org string `json:"org,omitempty"`
+	Org string `json:"org"`
 	// Repo is something like test-infra
-	Repo string `json:"repo,omitempty"`
+	Repo string `json:"repo"`
+	// RepoLink links to the source for Repo.
+	RepoLink string `json:"repo_link,omitempty"`
 
 	BaseRef string `json:"base_ref,omitempty"`
 	BaseSHA string `json:"base_sha,omitempty"`
+	// BaseLink is a link to the commit identified by BaseSHA.
+	BaseLink string `json:"base_link,omitempty"`
 
 	Pulls []Pull `json:"pulls,omitempty"`
 
@@ -717,10 +793,19 @@ type Refs struct {
 	// repository. If unset, will default to
 	// `https://github.com/org/repo.git`.
 	CloneURI string `json:"clone_uri,omitempty"`
+	// SkipSubmodules determines if submodules should be
+	// cloned when the job is run. Defaults to true.
+	SkipSubmodules bool `json:"skip_submodules,omitempty"`
 }
 
 func (r Refs) String() string {
-	rs := []string{fmt.Sprintf("%s:%s", r.BaseRef, r.BaseSHA)}
+	rs := []string{}
+	if r.BaseSHA != "" {
+		rs = append(rs, fmt.Sprintf("%s:%s", r.BaseRef, r.BaseSHA))
+	} else {
+		rs = append(rs, r.BaseRef)
+	}
+
 	for _, pull := range r.Pulls {
 		ref := fmt.Sprintf("%d:%s", pull.Number, pull.SHA)
 
@@ -733,6 +818,13 @@ func (r Refs) String() string {
 	return strings.Join(rs, ",")
 }
 
+// JenkinsSpec is optional parameters for Jenkins jobs.
+// Currently, the only parameter supported is for telling
+// jenkins-operator that the job is generated by the https://go.cloudbees.com/docs/plugins/github-branch-source/#github-branch-source plugin
+type JenkinsSpec struct {
+	GitHubBranchSourceJob bool `json:"github_branch_source_job,omitempty"`
+}
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ProwJobList is a list of ProwJob resources
@@ -741,36 +833,4 @@ type ProwJobList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []ProwJob `json:"items"`
-}
-
-// Duration is a wrapper around time.Duration that parses times in either
-// 'integer number of nanoseconds' or 'duration string' formats and serializes
-// to 'duration string' format.
-type Duration struct {
-	time.Duration
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	if err := json.Unmarshal(b, &d.Duration); err == nil {
-		// b was an integer number of nanoseconds.
-		return nil
-	}
-	// b was not an integer. Assume that it is a duration string.
-
-	var str string
-	err := json.Unmarshal(b, &str)
-	if err != nil {
-		return err
-	}
-
-	pd, err := time.ParseDuration(str)
-	if err != nil {
-		return err
-	}
-	d.Duration = pd
-	return nil
-}
-
-func (d *Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.Duration.String())
 }
