@@ -115,21 +115,39 @@ func (g *UpgradeGraph) UpgradesTo(toNames ...string) []UpgradeHistory {
 	return summaries
 }
 
+type historyEdgeReference struct {
+	from string
+	to   string
+}
+
 func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
+	refs := make(map[historyEdgeReference]*UpgradeHistory)
 	for _, from := range fromNames {
 		for to := range g.from[from] {
-			for _, h := range g.to[to] {
+			history := g.to[to][from]
+			if history == nil {
+				continue
+			}
+			key := historyEdgeReference{from, to}
+			ref, ok := refs[key]
+			if !ok {
 				summaries = append(summaries, UpgradeHistory{
 					From:    from,
 					To:      to,
-					Success: h.Success,
-					Failure: h.Failure,
-					Total:   len(h.History),
-					History: copyHistory(h.History),
+					History: make(map[string]UpgradeResult),
 				})
+				ref = &summaries[len(summaries)-1]
+				refs[key] = ref
+			}
+
+			ref.Success += history.Success
+			ref.Failure += history.Failure
+			ref.Total += len(history.History)
+			for k, v := range history.History {
+				ref.History[k] = v
 			}
 		}
 	}
@@ -273,7 +291,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	return err
 }
 
-func syncGraphToSecret(graph *UpgradeGraph, dryRun bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(name, metav1.GetOptions{})
@@ -297,7 +315,7 @@ func syncGraphToSecret(graph *UpgradeGraph, dryRun bool, secretClient kv1core.Se
 		return true, nil
 	}, stopCh)
 
-	if dryRun {
+	if !update {
 		return
 	}
 
