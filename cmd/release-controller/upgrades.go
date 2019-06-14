@@ -273,7 +273,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	return err
 }
 
-func syncGraphToSecret(graph *UpgradeGraph, dryRun bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(name, metav1.GetOptions{})
@@ -297,7 +297,7 @@ func syncGraphToSecret(graph *UpgradeGraph, dryRun bool, secretClient kv1core.Se
 		return true, nil
 	}, stopCh)
 
-	if dryRun {
+	if !update {
 		return
 	}
 
