@@ -237,6 +237,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
+	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
+	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
 }
