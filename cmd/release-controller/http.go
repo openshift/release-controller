@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -869,7 +870,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				if err != nil {
 					return ""
 				}
-				return humanize.RelTime(t, now, "ago", "from now")
+				return relTime(t, now, "ago", "from now")
 			},
 		},
 	).Parse(releasePageHtml))
@@ -908,4 +909,19 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		glog.Errorf("Unable to render page: %v", err)
 	}
 	fmt.Fprintln(w, htmlPageEnd)
+}
+
+var extendedRelTime = []humanize.RelTimeMagnitude{
+	{time.Second, "now", time.Second},
+	{2 * time.Minute, "%d seconds %s", time.Second},
+	{2 * time.Hour, "%d minutes %s", time.Minute},
+	{2 * humanize.Day, "%d hours %s", time.Hour},
+	{3 * humanize.Week, "%d days %s", humanize.Day},
+	{3 * humanize.Month, "%d weeks %s", humanize.Week},
+	{3 * humanize.Year, "%d months %s", humanize.Month},
+	{math.MaxInt64, "a long while %s", 1},
+}
+
+func relTime(a, b time.Time, albl, blbl string) string {
+	return humanize.CustomRelTime(a, b, albl, blbl, extendedRelTime)
 }
