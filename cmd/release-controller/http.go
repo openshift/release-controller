@@ -22,6 +22,9 @@ import (
 	blackfriday "gopkg.in/russross/blackfriday.v2"
 
 	"k8s.io/apimachinery/pkg/labels"
+	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 )
 
 const htmlPageStart = `
@@ -150,6 +153,93 @@ const releaseInfoPageHtml = `
 <p>Created: <span>{{ since $created }}</span></p>
 `
 
+const candidatePageHtml = `
+{{ range $stream, $list := . }}
+<h1>Release Candidates for {{ nextReleaseName $list }}</h1>
+<hr>
+<style>
+.upgrade-track-line {
+	position: absolute;
+	top: 0;
+	bottom: -1px;
+	left: 7px;
+	width: 0;
+	display: inline-block;
+	border-left: 2px solid #000;
+	display: none;
+	z-index: 200;
+}
+.upgrade-track-dot {
+	display: inline-block;
+	position: absolute;
+	top: 15px;
+	left: 2px;
+	width: 12px;
+	height: 12px;
+	background: #fff;
+	z-index: 300;
+	cursor: pointer;
+}
+.upgrade-track-dot {
+	border: 2px solid #000;
+	border-radius: 50%;
+}
+.upgrade-track-dot:hover {
+	border-width: 6px;
+}
+.upgrade-track-line.start {
+	top: 18px;
+	height: 31px;
+	display: block;
+}
+.upgrade-track-line.middle {
+	display: block;
+}
+.upgrade-track-line.end {
+	top: -1px;
+	height: 16px;
+	display: block;
+}
+td.upgrade-track {
+	width: 16px;
+	position: relative;
+	padding-left: 2px;
+	padding-right: 2px;
+}
+</style>
+<div class="row">
+<div class="col">
+	<table class="table text-nowrap">
+		<thead>
+			<tr>
+				<th title="Candidate tag for next release">Name</th>
+				<th title="Tag(s) of release this can upgrade FROM">Upgrades</th>
+				<th title="Creation time">Creation time</th>
+			</tr>
+		</thead>
+		<tbody>
+		{{ range $candidate := $list.Items }}
+			<tr>
+				<td> <a href="/releasestream/releasetag/{{ $candidate.FromTag }}" >{{ $candidate.FromTag }} </a></td>
+				<td>{{ range $prev := $candidate.UpgradeFrom }}
+					<a href="/releasestream/{{ $prev }}/release/{{ $prev }}"> {{ $prev }} </a>, 
+					{{ end }}
+				</td>
+				<td>{{ toTimestamp $candidate.CreationTime }}</td>
+			</tr>
+		{{ end }}
+		</tbody>
+	</table>
+</div>
+</div>
+{{ end }}
+`
+
+var rePromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
+// z-stream and timestamp
+var rePreviousReleaseName = regexp.MustCompile("(?P<STREAM>.*)-(?P<TIMESTAMP>[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})")
+const releaseTimestampFormat = "2006-01-02-150405"
+
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
 	for _, tag := range tags {
@@ -236,6 +326,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
+	mux.HandleFunc("/candidate/{release}/list", c.httpReleaseCandidateList)
+	mux.HandleFunc("/candidate/{release}", c.httpReleaseCandidate)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
 }
@@ -924,4 +1016,327 @@ var extendedRelTime = []humanize.RelTimeMagnitude{
 
 func relTime(a, b time.Time, albl, blbl string) string {
 	return humanize.CustomRelTime(a, b, albl, blbl, extendedRelTime)
+}
+
+func (c *Controller) getReleaseCandidateList(releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
+	releaseCandidates := make(map[string]*ReleaseCandidateList)
+	if len(releaseStreams) == 0 {
+		return releaseCandidates, nil
+	}
+
+	releaseStreamTagMap, ok := c.findReleaseByName(true, releaseStreams...)
+	if !ok || len(releaseStreamTagMap) == 0 {
+		return releaseCandidates, fmt.Errorf("Unable to find all release streams: %s", strings.Join(releaseStreams, ","))
+	}
+
+	// next release version name for each release stream
+	next := make(map[string]*semver.Version)
+	// creation time of nightly/image that latest stable release in release stream was promoted from
+	latestPromotedTime := make(map[string]int64)
+	type stableRef struct {
+		from string
+		name string
+		time int64
+	}
+	stableReleases := make([]stableRef, 0)
+	for _, stableRelease := range releaseStreamTagMap {
+		for _, r := range stableRelease.Stable.Releases {
+			if r.Release.Config.As == releaseConfigModeStable {
+				for _, tag := range r.Release.Source.Spec.Tags {
+					if tag.Annotations[releaseAnnotationSource] == fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
+						if _, err := semverParseTolerant(tag.Name); err == nil {
+							t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+							stableReleases = append(stableReleases, stableRef{from: tag.From.Name, name:tag.Name, time: t.Unix()})
+						}
+					}
+				}
+			}
+		}
+		break
+	}
+	sort.Slice(stableReleases, func(i, j int) bool {
+		return stableReleases[i].time > stableReleases[j].time
+	})
+
+	remaining := len(releaseStreams)
+	for _, r := range(stableReleases) {
+		if remaining == 0 {
+			break
+		}
+		op, err := c.releaseInfo.GetReleaseInfo(r.from)
+		if err != nil {
+			glog.Errorf("Could not get release info for tag %s: %v", r.from, err)
+			continue
+		}
+		releaseInfo := ReleaseInfoShort{}
+		if err := json.Unmarshal([]byte(op), &releaseInfo); err != nil {
+			glog.Errorf("Could not unmarshal release info for tag %s: %v", r.from, err)
+			continue
+		}
+		latestPromotedFrom := releaseInfo.References.Annotations[releaseAnnotationFromRelease]
+		if idx := strings.LastIndex(latestPromotedFrom, ":"); idx != -1 {
+			latestPromotedFrom = latestPromotedFrom[idx+1:]
+		}
+		if next[latestPromotedFrom] == nil {
+			var timeFormat, timeString, stream string
+			prevTags, _ := c.findReleaseStreamTags(false, latestPromotedFrom)
+			if prevTags[latestPromotedFrom] != nil &&
+					prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+				// Use previous release stream tags, if available
+				timeFormat = time.RFC3339
+				stream = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationName]
+				timeString = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp]
+			} else if rePreviousReleaseName.MatchString(latestPromotedFrom) {
+				// Try to use name format of previous nightly to find release stream and timestamp
+				timeFormat = releaseTimestampFormat
+				stream = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${STREAM}")
+				timeString = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${TIMESTAMP}")
+			} else {
+				glog.Errorf("Could not find tag %s , tag may have been deleted", latestPromotedFrom)
+				continue
+			}
+			remaining--
+			pt, err := time.Parse(timeFormat, timeString)
+			if err != nil {
+				glog.Errorf("Unable to parse timestamp %s for %s: %v", timeString, latestPromotedFrom, err)
+				continue
+			}
+			latestPromotedTime[stream] = pt.Unix()
+			v, _ := semverParseTolerant(r.name)
+			next[stream] = &v
+		}
+	}
+
+	// Get list of successful upgrade jobs for all image tags
+	upgradeSuccess := make(map[string]map[string]int64)
+	upgradeFail := make(map[string]map[string]int64)
+	upgradePending := make(map[string]map[string]int64)
+	for _, i := range c.prowLister.List() {
+		job := i.(*unstructured.Unstructured)
+		verificationState,_ := prowJobVerificationStatus(job)
+		annotations := job.GetAnnotations()
+		if annotations != nil {
+			if strings.HasPrefix(annotations[prowapiv1.ProwJobAnnotation], releaseUpgradeJob) {
+				jobTime := job.GetCreationTimestamp().Unix()
+				var upgradeStatusMap *(map[string]map[string]int64)
+				switch(verificationState.State) {
+					case releaseVerificationStateSucceeded:
+						upgradeStatusMap = &upgradeSuccess
+					case releaseVerificationStatePending:
+						upgradeStatusMap = &upgradePending
+					case releaseVerificationStateFailed:
+						upgradeStatusMap = &upgradeFail
+				}
+				if upgradeStatusMap != nil {
+					// Remove a version from another category if a later job belongs to a different one
+					// If a job succeeds after it fails once for same version, move that version to
+					// success list, delete from failed list
+					skip := false
+					for _, upgradeList := range [](*map[string]map[string]int64){&upgradeSuccess, &upgradeFail, &upgradePending} {
+						if (*upgradeList)[annotations[releaseAnnotationToTag]] != nil {
+							if jobTime < (*upgradeList)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] {
+								skip = true
+								break
+							}
+							delete((*upgradeList)[annotations[releaseAnnotationToTag]], annotations[releaseAnnotationFromTag])
+						}
+					}
+					if skip {
+						continue
+					}
+					if (*upgradeStatusMap)[annotations[releaseAnnotationToTag]] == nil {
+						(*upgradeStatusMap)[annotations[releaseAnnotationToTag]] = map[string]int64{annotations[releaseAnnotationFromTag]:jobTime}
+					} else if (*upgradeStatusMap)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] < jobTime {
+						(*upgradeStatusMap)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] = jobTime
+					}					
+				}
+			}
+		}
+	}
+
+	upgradeSuccessPercentThreshold := 0.0
+
+	for _, stream := range releaseStreams {
+		nextReleaseName := ""
+		if next[stream] != nil {
+			nextVersion, err := incrementSemanticVersion(*next[stream])
+			if err == nil {
+				nextReleaseName = nextVersion.String()
+			} else {
+				glog.Errorf("Unable to increment semantic version %s", next[stream].String())
+			}
+		}
+		candidates := make([]ReleaseCandidate, 0)
+		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)
+		for _, tag := range releaseTags {
+			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
+					tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+				ts := t.Unix()
+				if ts > latestPromotedTime[stream] {
+					upgradeTotal := len(upgradeSuccess[tag.Name])+len(upgradeFail[tag.Name])+len(upgradePending[tag.Name])
+					upgradeSuccessPercent := 0.0
+					if upgradeTotal != 0 {
+						upgradeSuccessPercent = float64(100 * len(upgradeSuccess[tag.Name]))/float64(upgradeTotal)
+					}
+					if upgradeSuccessPercent >= upgradeSuccessPercentThreshold {
+						upgradeSuccessList := make([]string, 0)
+						for i := range upgradeSuccess[tag.Name] {
+							upgradeSuccessList = append(upgradeSuccessList, i)
+						}
+						sort.Strings(upgradeSuccessList)
+						candidates = append(candidates, ReleaseCandidate{
+							ReleasePromoteJobParameters {
+								FromTag:tag.Name,
+								Name:nextReleaseName,
+								UpgradeFrom: upgradeSuccessList,
+							},
+							ts,
+						})
+					}
+				}
+			}
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].CreationTime > candidates[j].CreationTime
+		})
+		releaseCandidates[stream] = &ReleaseCandidateList{Items:candidates}
+	}
+	return releaseCandidates, nil
+}
+
+
+func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	vars := mux.Vars(req)
+	releaseStreamName := vars["release"]
+	releaseCandidateList, err := c.getReleaseCandidateList(strings.Split(releaseStreamName, ",")...)
+	if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+	}
+
+	switch req.URL.Query().Get("format") {
+	case "json":
+		data, err := json.MarshalIndent(&releaseCandidateList, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, string(data))
+	default:
+		fmt.Fprintf(w, htmlPageStart, "Release Status")
+		page := template.Must(template.New("candidatePage").Funcs(
+			template.FuncMap{
+				"toTimestamp": func (ts int64) string {
+					return time.Unix(ts,0).Format(time.RFC3339)
+				},
+				"nextReleaseName": func (list *ReleaseCandidateList) string {
+					if list == nil || list.Items == nil || len(list.Items) == 0 {
+						return "next release"
+					}
+					return list.Items[0].Name
+				},
+			},
+		).Parse(candidatePageHtml))
+
+		if err := page.Execute(w, releaseCandidateList); err != nil {
+			glog.Errorf("Unable to render page: %v", err)
+		}
+		fmt.Fprintln(w, htmlPageEnd)
+	}
+}
+
+func (c *Controller) httpReleaseCandidate(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	vars := mux.Vars(req)
+	releaseStreamName := vars["release"]
+	releaseCandidateList, err := c.getReleaseCandidateList(strings.Split(releaseStreamName, ",")...)
+	if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+	}
+
+	switch req.URL.Query().Get("format") {
+	default:
+		topCandidates := make(map[string]*ReleasePromoteJobParameters)
+		for stream, candidates := range releaseCandidateList {
+			if candidates == nil || len(candidates.Items)== 0 {
+				topCandidates[stream] = nil
+			} else {
+				topCandidates[stream] = &(candidates.Items[0].ReleasePromoteJobParameters)
+			}
+		}
+		data, err := json.MarshalIndent(&topCandidates, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, string(data))
+	}
+}
+
+func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) (map[string]*ReleaseStreamTag, bool) {
+	needed := make(map[string]*ReleaseStreamTag)
+	for _, name := range names {
+		if len(name) == 0 {
+			continue
+		}
+		needed[name] = nil
+	}
+	remaining := len(needed)
+
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, false
+	}
+
+	var stable *StableReferences
+	if includeStableTags {
+		stable = &StableReferences{}
+	}
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+
+		if includeStableTags {
+			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
+				stable.Releases = append(stable.Releases, StableRelease{
+					Release:  r,
+					Version:  version,
+				})
+			}
+		}
+		if includeStableTags && remaining == 0 {
+			continue
+		}
+
+		matched := false
+		for _, name := range names {
+			if r.Config.Name == name {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		needed[r.Config.Name] = &ReleaseStreamTag{
+			Release:         r,
+			Stable:          stable,
+		}
+		remaining--
+		if !includeStableTags && remaining == 0 {
+			return needed, true
+		}
+	}
+	if includeStableTags {
+		sort.Sort(stable.Releases)
+	}
+	return needed, remaining == 0
 }

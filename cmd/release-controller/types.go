@@ -154,6 +154,31 @@ type VerificationStatus struct {
 
 type VerificationStatusMap map[string]*VerificationStatus
 
+type ReleaseInfoShort struct {
+	Image         string                              `json:"image"`
+	References *imagev1.ImageStream             `json:"references"`
+}
+
+type ReleasePromoteJobParameters struct {
+	// Parameters for promotion job described at
+	// https://github.com/openshift/aos-cd-jobs/blob/master/jobs/build/release/Jenkinsfile#L20-L81
+	// Imagestream tag which is to be promoted to the new release
+	FromTag string `json:"fromTag"`
+	// Name of new release to be created by the promote job
+	Name string `json:"name"`
+	// Optional: Tag(s) (comma separated) of release this can upgrade from
+	UpgradeFrom []string `json:"upgradeFrom,omitempty"`
+}
+
+type ReleaseCandidate struct {
+	ReleasePromoteJobParameters
+	CreationTime int64 `json:"creationTime,omitempty"`
+}
+
+type ReleaseCandidateList struct {
+	Items []ReleaseCandidate `json:"items"`
+}
+
 func (m VerificationStatusMap) Failures() ([]string, bool) {
 	var names []string
 	for name, s := range m {
@@ -251,6 +276,10 @@ const (
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
+
+	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+	releaseAnnotationFromRelease = "release.openshift.io/from-release"
+	releaseUpgradeJob = "release-openshift-origin-installer-e2e-aws-upgrade"
 )
 
 type Duration time.Duration
