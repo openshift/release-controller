@@ -22,8 +22,6 @@ import (
 	blackfriday "gopkg.in/russross/blackfriday.v2"
 
 	"k8s.io/apimachinery/pkg/labels"
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 )
 
@@ -1059,10 +1057,26 @@ func (c *Controller) getReleaseCandidateList(releaseStreams ...string) (map[stri
 	})
 
 	remaining := len(releaseStreams)
-	for _, r := range(stableReleases) {
+	for _, r := range stableReleases {
 		if remaining == 0 {
 			break
 		}
+		v, _ := semverParseTolerant(r.name)
+
+		// Check if the stable version's <MAJOR>.<MINOR> matches any release stream that we are processing
+		found := false
+		for _, stream := range releaseStreams {
+			streamVersion, _ := semverParseTolerant(stream)
+			if next[stream] == nil && streamVersion.Major == v.Major && streamVersion.Minor == v.Minor {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		// Call oc adm release info to get previous nightly info for the stable release
 		op, err := c.releaseInfo.GetReleaseInfo(r.from)
 		if err != nil {
 			glog.Errorf("Could not get release info for tag %s: %v", r.from, err)
@@ -1077,85 +1091,50 @@ func (c *Controller) getReleaseCandidateList(releaseStreams ...string) (map[stri
 		if idx := strings.LastIndex(latestPromotedFrom, ":"); idx != -1 {
 			latestPromotedFrom = latestPromotedFrom[idx+1:]
 		}
-		if next[latestPromotedFrom] == nil {
-			var timeFormat, timeString, stream string
-			prevTags, _ := c.findReleaseStreamTags(false, latestPromotedFrom)
-			if prevTags[latestPromotedFrom] != nil &&
-					prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
-				// Use previous release stream tags, if available
-				timeFormat = time.RFC3339
-				stream = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationName]
-				timeString = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp]
-			} else if rePreviousReleaseName.MatchString(latestPromotedFrom) {
-				// Try to use name format of previous nightly to find release stream and timestamp
-				timeFormat = releaseTimestampFormat
-				stream = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${STREAM}")
-				timeString = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${TIMESTAMP}")
-			} else {
-				glog.Errorf("Could not find tag %s , tag may have been deleted", latestPromotedFrom)
-				continue
-			}
-			remaining--
-			pt, err := time.Parse(timeFormat, timeString)
-			if err != nil {
-				glog.Errorf("Unable to parse timestamp %s for %s: %v", timeString, latestPromotedFrom, err)
-				continue
-			}
-			latestPromotedTime[stream] = pt.Unix()
-			v, _ := semverParseTolerant(r.name)
-			next[stream] = &v
-		}
-	}
 
-	// Get list of successful upgrade jobs for all image tags
-	upgradeSuccess := make(map[string]map[string]int64)
-	upgradeFail := make(map[string]map[string]int64)
-	upgradePending := make(map[string]map[string]int64)
-	for _, i := range c.prowLister.List() {
-		job := i.(*unstructured.Unstructured)
-		verificationState,_ := prowJobVerificationStatus(job)
-		annotations := job.GetAnnotations()
-		if annotations != nil {
-			if strings.HasPrefix(annotations[prowapiv1.ProwJobAnnotation], releaseUpgradeJob) {
-				jobTime := job.GetCreationTimestamp().Unix()
-				var upgradeStatusMap *(map[string]map[string]int64)
-				switch(verificationState.State) {
-					case releaseVerificationStateSucceeded:
-						upgradeStatusMap = &upgradeSuccess
-					case releaseVerificationStatePending:
-						upgradeStatusMap = &upgradePending
-					case releaseVerificationStateFailed:
-						upgradeStatusMap = &upgradeFail
-				}
-				if upgradeStatusMap != nil {
-					// Remove a version from another category if a later job belongs to a different one
-					// If a job succeeds after it fails once for same version, move that version to
-					// success list, delete from failed list
-					skip := false
-					for _, upgradeList := range [](*map[string]map[string]int64){&upgradeSuccess, &upgradeFail, &upgradePending} {
-						if (*upgradeList)[annotations[releaseAnnotationToTag]] != nil {
-							if jobTime < (*upgradeList)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] {
-								skip = true
-								break
-							}
-							delete((*upgradeList)[annotations[releaseAnnotationToTag]], annotations[releaseAnnotationFromTag])
-						}
-					}
-					if skip {
-						continue
-					}
-					if (*upgradeStatusMap)[annotations[releaseAnnotationToTag]] == nil {
-						(*upgradeStatusMap)[annotations[releaseAnnotationToTag]] = map[string]int64{annotations[releaseAnnotationFromTag]:jobTime}
-					} else if (*upgradeStatusMap)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] < jobTime {
-						(*upgradeStatusMap)[annotations[releaseAnnotationToTag]][annotations[releaseAnnotationFromTag]] = jobTime
-					}					
-				}
+		// Find the creation time and the stream for the nightly this stable release was promoted from
+		var timeFormat, timeString, stream string
+		prevTags, _ := c.findReleaseStreamTags(false, latestPromotedFrom)
+		if prevTags[latestPromotedFrom] != nil &&
+				prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+			// Use previous release stream tags, if available
+			timeFormat = time.RFC3339
+			stream = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationName]
+			timeString = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp]
+		} else if rePreviousReleaseName.MatchString(latestPromotedFrom) {
+			// Try to use name format of previous nightly to find release stream and timestamp
+			timeFormat = releaseTimestampFormat
+			stream = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${STREAM}")
+			timeString = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${TIMESTAMP}")
+		} else {
+			glog.Errorf("Could not find tag %s , tag may have been deleted", latestPromotedFrom)
+			continue
+		}
+
+		// Check if selected stream belongs to any we are interested in
+		found = false
+		for _, s := range releaseStreams {
+			if stream == s {
+				found = true
+				break
 			}
 		}
+		if !found {
+			// The stable release belongs to a release stream we are not processing
+			continue
+		}
+
+		pt, err := time.Parse(timeFormat, timeString)
+		if err != nil {
+			glog.Errorf("Unable to parse timestamp %s for %s: %v", timeString, latestPromotedFrom, err)
+			continue
+		}
+		remaining--
+		latestPromotedTime[stream] = pt.Unix()
+		next[stream] = &v
 	}
 
 	upgradeSuccessPercentThreshold := 0.0
-
 	for _, stream := range releaseStreams {
 		nextReleaseName := ""
 		if next[stream] != nil {
@@ -1174,26 +1153,25 @@ func (c *Controller) getReleaseCandidateList(releaseStreams ...string) (map[stri
 				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 				ts := t.Unix()
 				if ts > latestPromotedTime[stream] {
-					upgradeTotal := len(upgradeSuccess[tag.Name])+len(upgradeFail[tag.Name])+len(upgradePending[tag.Name])
-					upgradeSuccessPercent := 0.0
-					if upgradeTotal != 0 {
-						upgradeSuccessPercent = float64(100 * len(upgradeSuccess[tag.Name]))/float64(upgradeTotal)
-					}
-					if upgradeSuccessPercent >= upgradeSuccessPercentThreshold {
-						upgradeSuccessList := make([]string, 0)
-						for i := range upgradeSuccess[tag.Name] {
-							upgradeSuccessList = append(upgradeSuccessList, i)
+					upgradeSuccess := make([]string, 0)
+					upgrades := c.graph.UpgradesTo(tag.Name)
+					for _, u := range upgrades {
+						if u.Total > 0 {
+							if float64(100*u.Success)/float64(u.Total) > upgradeSuccessPercentThreshold {
+								upgradeSuccess = append(upgradeSuccess, u.From)
+							}
 						}
-						sort.Strings(upgradeSuccessList)
-						candidates = append(candidates, ReleaseCandidate{
-							ReleasePromoteJobParameters {
-								FromTag:tag.Name,
-								Name:nextReleaseName,
-								UpgradeFrom: upgradeSuccessList,
-							},
-							ts,
-						})
 					}
+
+					sort.Strings(upgradeSuccess)
+					candidates = append(candidates, ReleaseCandidate{
+						ReleasePromoteJobParameters {
+							FromTag:tag.Name,
+							Name:nextReleaseName,
+							UpgradeFrom: upgradeSuccess,
+						},
+						ts,
+					})
 				}
 			}
 		}
