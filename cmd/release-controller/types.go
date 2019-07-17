@@ -172,11 +172,12 @@ type ReleasePromoteJobParameters struct {
 
 type ReleaseCandidate struct {
 	ReleasePromoteJobParameters
-	CreationTime int64 `json:"creationTime,omitempty"`
+	CreationTime string `json:"creationTime,omitempty"`
+	Tag *imagev1.TagReference `json:"tag,omitempty"`
 }
 
 type ReleaseCandidateList struct {
-	Items []ReleaseCandidate `json:"items"`
+	Items []*ReleaseCandidate `json:"items"`
 }
 
 func (m VerificationStatusMap) Failures() ([]string, bool) {
