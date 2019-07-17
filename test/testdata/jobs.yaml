@@ -36,3 +36,28 @@ periodics:
         value: https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/
       command: 
       - env
+- name: release-openshift-origin-installer-e2e-aws-upgrade-4.1
+  agent: kubernetes
+  cron: "@yearly"
+  labels:
+    prow.k8s.io/job: release-openshift-origin-installer-e2e-aws-upgrade-4.1
+    job-env: "aws"
+    job-test: "e2e"
+    job-type: "upgrade"
+    job-release: "4.1"
+  spec:
+    containers:
+    - image: centos:7
+      name: e2e-aws-upgrade-4.1
+      command:
+      - env
+      env:
+      - name: RELEASE_IMAGE_INITIAL
+        value: ""
+      - name: RELEASE_IMAGE_LATEST
+        value: ""
+      - name: NAMESPACE
+        value: ""
+      - name: CLUSTER_DURATION
+        value: ""
+    

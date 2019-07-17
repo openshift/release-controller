@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	imagev1 "github.com/openshift/api/image/v1"
-
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
@@ -47,7 +46,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	mirror, _ := c.getMirror(release, releaseTag.Name)
 	var previousReleasePullSpec string
 	var previousTag string
-	if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
+	if len(verifyType.UpgradeRef) != 0 && len(verifyType.UpgradeTag) != 0 {
+		previousTag = verifyType.UpgradeTag
+		previousReleasePullSpec = verifyType.UpgradeRef
+	} else if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
 		previousTag = tags[0].Name
 		previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 	}
@@ -213,3 +215,4 @@ func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *pro
 
 	return spec
 }
+

@@ -75,7 +75,11 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		return nil
 	}
 
-	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
+	isLister := c.imageStreamLister.ImageStreams(toNamespace)
+	if isLister == nil {
+		return nil
+	}
+	target, err := isLister.Get(toName)
 	if errors.IsNotFound(err) {
 		// TODO: create it?
 		glog.V(2).Infof("Target image stream doesn't exist yet: %v", err)

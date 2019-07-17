@@ -1,3 +1,4 @@
+pod_namespace: ci
 plank:
   default_decoration_config:
     gcs_configuration:

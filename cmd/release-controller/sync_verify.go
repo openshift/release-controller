@@ -62,3 +62,4 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	}
 	return verifyStatus, nil
 }
+

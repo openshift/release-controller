@@ -398,6 +398,7 @@ func (c *Controller) syncReady(release *Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
+		c.updateUpgradeJobs(release, releaseTag)
 		status, err := c.ensureVerificationJobs(release, releaseTag)
 		if err != nil {
 			return err
@@ -526,3 +527,81 @@ func findSpecTag(tags []imagev1.TagReference, name string) *imagev1.TagReference
 	}
 	return nil
 }
+
+func (c *Controller) updateUpgradeJobs(release *Release, releaseTag *imagev1.TagReference) error {
+	if releaseTag == nil || len(releaseTag.Annotations) == 0 || len(releaseTag.Annotations[releaseAnnotationKeep]) == 0 {
+		return  nil
+	}
+
+	releaseSemVer, err := semverParseTolerant(releaseTag.Name)
+	if err != nil {
+		return nil
+	}
+	upgradesFound := make(map[string]bool)
+	upgrades := c.graph.UpgradesTo(releaseTag.Name)
+	for _, u := range upgrades {
+		upgradesFound[u.From] = true
+	}
+
+	// Stable releases after the last rally point
+	stable, err := c.stableReleases(true)
+	if err != nil {
+		return err
+	}
+	stableReleases := make(map[string]*imagev1.TagReference)
+	for _, r := range stable.Releases {
+		if r.Release.Config.As == releaseConfigModeStable {
+			for _, tag := range r.Release.Source.Spec.Tags {
+				if tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
+						tag.Annotations[releaseAnnotationSource] == fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
+					if v, err := semverParseTolerant(tag.Name); err == nil && len(v.Pre) == 0 && len(v.Build) == 0 {
+						// Only accept stable releases of the for <Major>.<Minor>.<Patch> for upgrade tests
+						stableReleases[tag.Name] = &tag
+					}
+				}
+			}
+		}
+	}
+
+	// remove older stable upgrade tests
+	for name, verifyType := range release.Config.Verify {
+		if verifyType.Upgrade && len(verifyType.UpgradeTag) > 0 && len(verifyType.UpgradeRef) > 0 {
+			delete(release.Config.Verify, name)
+		}
+	}
+
+	for stableVersion, stableTag := range stableReleases {
+		if stableTag.From == nil {
+			fromImageStream, _ := c.findImageStreamByAnnotations(map[string]string{releaseAnnotationReleaseTag:stableVersion})
+			if fromImageStream == nil {
+				stableReleases[stableVersion].From = &corev1.ObjectReference{Name:""}
+				glog.Errorf("Unable to find image repository for %s", stableVersion)
+				continue
+			}
+			stableReleases[stableVersion].From = &corev1.ObjectReference{Name:fromImageStream.Status.PublicDockerImageRepository}
+		}
+		if len(stableTag.From.Name) == 0 || len(stableVersion) == 0 {
+			continue
+		}
+		stableSemVer, err := semverParseTolerant(stableVersion)
+		if err != nil {
+			glog.Errorf("Unable to determine version for %s", stableVersion)
+			continue
+		}
+		if stableSemVer.Major == releaseSemVer.Major && stableSemVer.Minor == releaseSemVer.Minor {
+			if !upgradesFound[stableVersion] {
+				prowJobName := fmt.Sprintf("release-openshift-origin-installer-e2e-aws-upgrade-%d.%d.%d", stableSemVer.Major, stableSemVer.Minor, stableSemVer.Patch)
+				release.Config.Verify[prowJobName] = ReleaseVerification{
+					Disabled: false,
+					Optional: true,
+					Upgrade: true,
+					UpgradeRef: stableTag.From.Name,
+					UpgradeTag: stableVersion,
+					ProwJob: &ProwJobVerification{Name: prowJobName,},
+				}
+			}
+		}
+	}
+	return nil
+}
+

@@ -134,6 +134,14 @@ type ReleaseVerification struct {
 	Optional bool `json:"optional"`
 	// Upgrade is true if this verification should be used to verify upgrades.
 	Upgrade bool `json:"upgrade"`
+	// UpgradeTag is the tag that upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeTag string `json:"upgradeTag"`
+	// UpgradeRef is the ref that the upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeRef string `json:upgradeRef`
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
