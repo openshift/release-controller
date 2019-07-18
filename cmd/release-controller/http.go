@@ -150,6 +150,8 @@ const releaseInfoPageHtml = `
 <p>Created: <span>{{ since $created }}</span></p>
 `
 
+var rePromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
+
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
 	for _, tag := range tags {
@@ -648,6 +650,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				out = fmt.Sprintf("## Changes from %s\n%s", info.Previous.Name, changed)
 			}
 			out = rePrevious.ReplaceAllString(out, fmt.Sprintf("$1[%s](/releasetag/%s)$2", info.Previous.Name, info.Previous.Name))
+
+			// add link to tag from which current version promoted from
+			out = rePromotedFrom.ReplaceAllString(out, fmt.Sprintf("Release %s was created from [$1:$2](/releasetag/$2)", info.Tag.Name))
+
 			ch <- renderResult{out: out}
 		}()
 
