@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -361,4 +362,23 @@ func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 	}
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
+}
+
+func (c *Controller) findImageStreamByAnnotations(annotations map[string]string) (*imagev1.ImageStream, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, stream := range imageStreams {
+		if stream.Annotations == nil {
+			continue
+		}
+		for k, v := range annotations {
+			if stream.Annotations[k] != v {
+				continue
+			}
+			return stream, nil
+		}
+	}
+	return nil, fmt.Errorf("no imagestream matching annotations %v", annotations)
 }

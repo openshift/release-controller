@@ -101,6 +101,10 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
 
+	// AdditionalTests is a map of short names to additional tests that are run on all releases
+	// These tests after release is in the Accepted/Rejected phase.
+	AdditionalTests map[string]ReleaseAdditionalTest `json:"additionalTests"`
+
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
 	// rejected.
@@ -193,6 +197,37 @@ type ReleaseVerification struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 }
 
+type ReleaseAdditionalTest struct {
+	ReleaseVerification
+	// UpgradeTag is the tag that upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeTag string `json:"upgradeTag"`
+	// UpgradeRef is the ref that the upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeRef string `json:"upgradeRef"`
+	// Retry policy enables retries of verification tests
+	Retry *RetryPolicy `json:"retry"`
+}
+
+type RetryPolicy struct {
+	RetryStrategy RetryStrategy `json:"retryStrategy"`
+	// Maximum number of retries
+	RetryCount int `json:"retryCount"`
+}
+
+type RetryStrategy string
+
+const (
+	// Run till RetryCount
+	RetryStrategyTillRetryCount RetryStrategy = "TillRetryCount"
+	// Run till first success, or till RetryCount limit is reached
+	RetryStrategyFirstSuccess RetryStrategy = "FirstSuccess"
+	// Run till first failure, or till RetryCount limit is reached
+	RetryStrategyFirstFailure RetryStrategy = "FirstFailure"
+)
+
 // ProwJobVerification identifies the name of a prow job that will be used to
 // validate the release.
 type ProwJobVerification struct {
@@ -208,6 +243,8 @@ type VerificationStatus struct {
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
+
+type ValidationStatusMap map[string][]*VerificationStatus
 
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
@@ -288,6 +325,33 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
+func (m ValidationStatusMap) Incomplete(required map[string]ReleaseAdditionalTest) ([]string, bool) {
+	var names []string
+	for name, definition := range required {
+		if definition.Disabled {
+			continue
+		}
+		if _, ok := m[name]; !ok {
+			names = append(names, name)
+			continue
+		}
+		completed := 0
+		for _, s := range m[name] {
+			if stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+				completed++
+			}
+		}
+		if definition.Retry == nil && completed == 0 {
+			names = append(names, name)
+			continue
+		}
+		if completed < definition.Retry.RetryCount {
+			names = append(names, name)
+		}
+	}
+	return names, len(names) > 0
+}
+
 const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
@@ -360,6 +424,8 @@ const (
 	// releaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+
+	releaseAnnotationAdditionalTests = "release.openshift.io/additional-tests"
 )
 
 type Duration time.Duration

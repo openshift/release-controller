@@ -116,9 +116,18 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
+	// ensure additional validation tests, before rejected tags are removed.
+	if err := c.syncAdditionalTesting(release); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToPerformAdditionalTesting", "%v", err)
+		return err
+	}
+
 	// if we're waiting for an interval to elapse, go ahead and queue to be woken
 	if queueAfter > 0 {
-		c.queue.AddAfter(key, queueAfter)
+			c.queue.AddAfter(key, queueAfter)
 	}
 
 	c.gcQueue.AddAfter("", 15*time.Second)
@@ -549,6 +558,30 @@ func (c *Controller) syncAccepted(release *Release) error {
 	}
 	if len(errs) > 0 {
 		return utilerrors.NewAggregate(errs)
+	}
+	return nil
+}
+
+func (c *Controller) syncAdditionalTesting(release *Release) error {
+	testTags := findTagReferencesByPhase(release, releasePhaseAccepted, releasePhaseRejected)
+	if glog.V(4) && len(testTags) > 0 {
+		glog.Infof("release=%s validation=%v", release.Config.Name, tagNames(testTags))
+	}
+	for _, tag := range testTags {
+		additionalTests, status, err := c.ensureAdditionalTests(release, tag)
+		if err != nil {
+			glog.V(4).Infof("Unable to run validation jobs for %s: %v", tag.Name, err)
+			return err
+		}
+
+		if names, ok := status.Incomplete(additionalTests); ok {
+			glog.V(4).Infof("Additional Tests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
+			continue
+		}
+
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationAdditionalTests: toJSONString(status)}, tag.Name); err != nil {
+			return err
+		}
 	}
 	return nil
 }

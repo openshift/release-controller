@@ -232,12 +232,10 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		candidates := make([]*ReleaseCandidate, 0)
 		releaseTags := sortedReleaseTags(releaseStreamTagMap[stream].Release)
 		for _, tag := range releaseTags {
-			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
-				tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted && tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
 				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 				ts := t.Unix()
 				if ts > latestPromotedTime {
-
 					upgradeSuccess := make([]string, 0)
 					upgrades := c.graph.UpgradesTo(tag.Name)
 					for _, u := range upgrades {
