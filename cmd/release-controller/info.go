@@ -30,8 +30,15 @@ type CachingReleaseInfo struct {
 
 func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 	cache := groupcache.NewGroup("release", size, groupcache.GetterFunc(func(ctx groupcache.Context, key string, sink groupcache.Sink) error {
+		var s string
+		var err error
 		parts := strings.Split(key, "\x00")
-		s, err := info.ChangeLog(parts[0], parts[1])
+		switch parts[0] {
+		case "changelog":
+			s, err = info.ChangeLog(parts[1], parts[2])
+		case "releaseinfo":
+			s, err = info.ReleaseInfo(parts[1])
+		}
 		if err != nil {
 			return err
 		}
@@ -48,12 +55,19 @@ func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
 		return "", fmt.Errorf("invalid from/to")
 	}
 	var s string
-	err := c.cache.Get(context.TODO(), strings.Join([]string{from, to}, "\x00"), groupcache.StringSink(&s))
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to}, "\x00"), groupcache.StringSink(&s))
+	return s, err
+}
+
+func (c *CachingReleaseInfo) ReleaseInfo(image string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"releaseinfo", image}, "\x00"), groupcache.StringSink(&s))
 	return s, err
 }
 
 type ReleaseInfo interface {
 	ChangeLog(from, to string) (string, error)
+	ReleaseInfo(image string) (string, error)
 }
 
 type ExecReleaseInfo struct {
@@ -72,6 +86,39 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 		name:        name,
 		imageNameFn: imageNameFn,
 	}
+}
+
+func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
+	if _, err := imagereference.Parse(image); err != nil {
+		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
+	}
+	cmd := []string{"oc", "adm", "release", "info", "-o", "json", image}
+
+	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Container: "git",
+		Stdout:    true,
+		Stderr:    true,
+		Command:   cmd,
+	}, scheme.ParameterCodec).URL()
+
+	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
+	if err != nil {
+		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := e.Stream(remotecommand.StreamOptions{
+		Stdout: out,
+		Stdin:  nil,
+		Stderr: errOut,
+	}); err != nil {
+		glog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("could not get release info for %s: %v", image, msg)
+	}
+	return out.String(), nil
 }
 
 func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
