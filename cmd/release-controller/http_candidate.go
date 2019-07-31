@@ -85,9 +85,9 @@ td.upgrade-track {
 		<tbody>
 		{{ range $candidate := $list.Items }}
 			<tr>
-				<td> <a href="/releasestream/releasetag/{{ $candidate.FromTag }}" >{{ $candidate.FromTag }} </a></td>
+				<td> <a href="/releasetag/{{ $candidate.FromTag }}" >{{ $candidate.FromTag }} </a></td>
 				<td>{{ range $prev := $candidate.UpgradeFrom }}
-					<a href="/releasestream/{{ $prev }}/release/{{ $prev }}"> {{ $prev }} </a>, 
+					<a href="/releasetag/{{ $prev }}"> {{ $prev }} </a>,
 					{{ end }}
 				</td>
 				<td>{{ $candidate.CreationTime }}</td>
