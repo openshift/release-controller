@@ -9,6 +9,7 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -161,6 +162,12 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	return verifyStatus, nil
 }
 
+type additionalTestInstance struct {
+	test  ReleaseAdditionalTest
+	name  string
+	jobNo int
+}
+
 func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, ValidationStatusMap, error) {
 	var verifyStatus ValidationStatusMap
 	if verifyStatus == nil {
@@ -186,6 +193,8 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 	for name, additionalTest := range release.Config.AdditionalTests {
 		additionalTests[name] = additionalTest
 	}
+
+	jobsToRun := make(map[string]additionalTestInstance)
 
 	for name, testType := range additionalTests {
 		if testType.Disabled {
@@ -223,29 +232,35 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 						continue
 					case releaseVerificationStatePending:
 						// Process this directly
+						jobName := fmt.Sprintf("%s-%d", name, jobNo)
+						job, err := c.ensureProwJobForAdditionalTest(release, jobName, testType, releaseTag)
+						if err != nil {
+							return nil, nil, err
+						}
+						status, ok := prowJobVerificationStatus(job)
+						if !ok {
+							return nil, nil, fmt.Errorf("unexpected error accessing prow job definition")
+						}
+						if status.State == releaseVerificationStateSucceeded {
+							glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+						}
+						if len(verifyStatus[name]) <= jobNo {
+							verifyStatus[name] = append(verifyStatus[name], status)
+						} else {
+							verifyStatus[name][jobNo] = status
+						}
+						continue
 					default:
 						glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", verifyStatus[name][jobNo].State, name, releaseTag.Name)
 						skipTest = true
 						continue
 					}
 				}
-
 				jobName := fmt.Sprintf("%s-%d", name, jobNo)
-				job, err := c.ensureProwJobForAdditionalTest(release, jobName, testType, releaseTag)
-				if err != nil {
-					return nil, nil, err
-				}
-				status, ok := prowJobVerificationStatus(job)
-				if !ok {
-					return nil, nil, fmt.Errorf("unexpected error accessing prow job definition")
-				}
-				if status.State == releaseVerificationStateSucceeded {
-					glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
-				}
-				if len(verifyStatus[name]) <= jobNo {
-					verifyStatus[name] = append(verifyStatus[name], status)
-				} else {
-					verifyStatus[name][jobNo] = status
+				jobsToRun[jobName] = additionalTestInstance{
+					test:  testType,
+					name:  name,
+					jobNo: jobNo,
 				}
 			}
 		default:
@@ -253,6 +268,70 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 	}
 
+	totalPendingJobs := 0
+	currentStreamPendingJobs := 0
+	currentTagPendingJobs := 0
+	releaseSource := release.Source.Namespace + "/" + release.Source.Name
+	for _, job := range c.prowLister.List() {
+		pj, ok := job.(*unstructured.Unstructured)
+		if !ok {
+			continue
+		}
+		status, ok := prowJobVerificationStatus(pj)
+		if !ok || status.State != releaseVerificationStatePending {
+			continue
+		}
+		totalPendingJobs++
+		annotations := pj.GetAnnotations()
+		if len(annotations) <= 0 {
+			continue
+		}
+		if annotations[releaseAnnotationSource] == releaseSource {
+			currentStreamPendingJobs++
+		}
+		if annotations[releaseAnnotationToTag] == releaseTag.Name {
+			currentTagPendingJobs++
+		}
+	}
+	maxJobs := 50
+	maxJobsPerStream := 20
+	maxJobsPerTag := 4
+
+	allowedJobCount := maxJobs - totalPendingJobs
+	if allowedJobCount > maxJobsPerTag-currentTagPendingJobs {
+		allowedJobCount = maxJobsPerTag - currentTagPendingJobs
+	}
+	if allowedJobCount > maxJobsPerStream-currentStreamPendingJobs {
+		allowedJobCount = maxJobsPerStream - currentStreamPendingJobs
+	}
+	if allowedJobCount < 0 {
+		allowedJobCount = 0
+	}
+
+	for jobName, test := range jobsToRun {
+		if allowedJobCount <= 0 {
+			break
+		}
+		job, err := c.ensureProwJobForAdditionalTest(release, jobName, test.test, releaseTag)
+		if err != nil {
+			return nil, nil, err
+		}
+		status, ok := prowJobVerificationStatus(job)
+		if !ok {
+			return nil, nil, fmt.Errorf("unexpected error accessing prow job definition")
+		}
+		if status.State == releaseVerificationStateSucceeded {
+			glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", test.name, releaseTag.Name, status.URL)
+		}
+		if len(verifyStatus[test.name]) <= test.jobNo {
+			verifyStatus[test.name] = append(verifyStatus[test.name], status)
+		} else {
+			verifyStatus[test.name][test.jobNo] = status
+		}
+		if status.State == releaseVerificationStatePending {
+			allowedJobCount--
+		}
+	}
 	return additionalTests, verifyStatus, nil
 }
 

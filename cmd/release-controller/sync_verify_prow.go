@@ -202,6 +202,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 }
 
 func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec, previousTag string) (bool, error) {
+// Generate the annotations, labels and container env for a prowjob
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
