@@ -111,7 +111,7 @@ td.upgrade-track {
 <div class="row">
 <div class="col">
 {{ range .Streams }}
-		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
+		<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
 		{{ publishDescription . }}
 		{{ alerts . }}
 		{{ $upgrades := .Upgrades }}
