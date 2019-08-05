@@ -191,6 +191,9 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 	}
 
 	for name, additionalTest := range release.Config.AdditionalTests {
+		if additionalTest.Upgrade && (len(additionalTest.UpgradeRef) == 0 || len(additionalTest.UpgradeTag) == 0) {
+			continue
+		}
 		additionalTests[name] = additionalTest
 	}
 
@@ -341,6 +344,17 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 		return upgradeTests, nil
 	}
 
+	var prowJobName string
+	if len(release.Config.AdditionalTests) > 0 && release.Config.AdditionalTests["upgrade"].ProwJob != nil {
+		prowJobName = release.Config.AdditionalTests["upgrade"].ProwJob.Name
+	} else if len(release.Config.Verify) > 0 && release.Config.Verify["upgrade"].ProwJob != nil {
+		prowJobName = release.Config.Verify["upgrade"].ProwJob.Name
+	}
+
+	if len(prowJobName) == 0 {
+		return upgradeTests, nil
+	}
+
 	releaseVersion, err := semverParseTolerant(releaseTag.Name)
 	if err != nil {
 		return upgradeTests, nil
@@ -356,7 +370,6 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 	if err != nil {
 		return upgradeTests, err
 	}
-	prowJobPrefix := "release-openshift-origin-installer-e2e-aws-upgrade-"
 
 	for _, r := range stable.Releases {
 		releaseSource := fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name)
@@ -387,8 +400,7 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 				continue
 			}
 
-			prowJobName := fmt.Sprintf("%s%d.%d", prowJobPrefix, stableVersion.Major, stableVersion.Minor)
-			testName := fmt.Sprintf("%s-%s", prowJobPrefix, namespaceSafeHash(releaseTag.Name, stableVersion.String())[:15])
+			testName := fmt.Sprintf("%s-%s", prowJobName, namespaceSafeHash(releaseTag.Name, stableVersion.String())[:15])
 
 			upgradeTests[testName] = ReleaseAdditionalTest{
 				ReleaseVerification: ReleaseVerification{
@@ -406,6 +418,5 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 			}
 		}
 	}
-
 	return upgradeTests, nil
 }

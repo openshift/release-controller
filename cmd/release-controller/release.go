@@ -102,6 +102,16 @@ func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 			}
 		}
 	}
+	for name, test := range cfg.AdditionalTests {
+		if len(name) == 0 {
+			return nil, fmt.Errorf("additionalTest config has no name")
+		}
+		if test.ProwJob != nil {
+			if len(test.ProwJob.Name) == 0 {
+				return nil, fmt.Errorf("prow job for %s has no name", name)
+			}
+		}
+	}
 	for name, publish := range cfg.Publish {
 		if len(name) == 0 {
 			return nil, fmt.Errorf("publish config has no name")
