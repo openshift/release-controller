@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"google.golang.org/api/iterator"
 	"path"
 	"strconv"
 	"strings"
@@ -54,45 +55,43 @@ func (b *GCSAuditStore) Refresh(ctx context.Context) error {
 	signatures := make(map[string][]int)
 
 	q := &storage.Query{Prefix: b.prefix}
+	objects := b.bucket.Objects(ctx, q)
 	for {
-		obj, err := b.bucket.List(ctx, q)
+		item, err := objects.Next()
 		if err != nil {
+			if err == iterator.Done {
+				break
+			}
 			return err
 		}
-		for _, item := range obj.Results {
-			path := strings.Trim(strings.TrimPrefix(item.Name, b.prefix), "/")
-			parts := strings.SplitN(path, "/", 6)
-			switch {
-			case parts[0] == "signatures":
-				if len(parts) != 5 {
-					glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
-					continue
-				}
-				if parts[1] != "openshift" || parts[2] != "release" {
-					glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
-					continue
-				}
-				if !strings.HasPrefix(parts[4], "signature-") {
-					glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
-					continue
-				}
-				digest := strings.Replace(parts[3], "=", ":", 1)
-				valueString := strings.TrimPrefix(parts[4], "signature-")
-				index, err := strconv.Atoi(valueString)
-				if err != nil {
-					glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
-					continue
-				}
-				signatures[digest] = append(signatures[digest], index)
-				glog.V(4).Infof("signature %s %d", digest, index)
-			default:
-				glog.Warningf("Unknown object in GCS at path gs://%s/%s", b.bucketName, item.Name)
+		path := strings.Trim(strings.TrimPrefix(item.Name, b.prefix), "/")
+		parts := strings.SplitN(path, "/", 6)
+		switch {
+		case parts[0] == "signatures":
+			if len(parts) != 5 {
+				glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
+				continue
 			}
+			if parts[1] != "openshift" || parts[2] != "release" {
+				glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
+				continue
+			}
+			if !strings.HasPrefix(parts[4], "signature-") {
+				glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
+				continue
+			}
+			digest := strings.Replace(parts[3], "=", ":", 1)
+			valueString := strings.TrimPrefix(parts[4], "signature-")
+			index, err := strconv.Atoi(valueString)
+			if err != nil {
+				glog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
+				continue
+			}
+			signatures[digest] = append(signatures[digest], index)
+			glog.V(4).Infof("signature %s %d", digest, index)
+		default:
+			glog.Warningf("Unknown object in GCS at path gs://%s/%s", b.bucketName, item.Name)
 		}
-		if obj.Next == nil {
-			break
-		}
-		q = obj.Next
 	}
 
 	b.lock.Lock()
@@ -126,7 +125,7 @@ func (b *GCSAuditStore) PutSignature(ctx context.Context, dgst string, signature
 		objectPath = path.Join("signatures", "openshift", "release", fmt.Sprintf("%s=%s", parts[0], parts[1]), fmt.Sprintf("signature-%d", index))
 	}
 	glog.V(4).Infof("Writing signature to gs://%s/%s", b.bucketName, objectPath)
-	obj := b.bucket.Object(objectPath).WithConditions(storage.IfGenerationMatch(0))
+	obj := b.bucket.Object(objectPath).If(storage.Conditions{GenerationNotMatch:1})
 	w := obj.NewWriter(ctx)
 	if _, err := w.Write(signature); err != nil {
 		return err
