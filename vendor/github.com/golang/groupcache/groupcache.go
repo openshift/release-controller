@@ -166,6 +166,8 @@ type Group struct {
 	// concurrent callers.
 	loadGroup flightGroup
 
+	_ int32 // force Stats to be 8-byte aligned on 32-bit platforms
+
 	// Stats are statistics on the group.
 	Stats Stats
 }
@@ -198,7 +200,7 @@ func (g *Group) Name() string {
 
 func (g *Group) initPeers() {
 	if g.peers == nil {
-		g.peers = getPeers()
+		g.peers = getPeers(g.name)
 	}
 }
 
@@ -243,7 +245,7 @@ func (g *Group) load(ctx Context, key string, dest Sink) (value ByteView, destPo
 		// be only one entry for this key.
 		//
 		// Consider the following serialized event ordering for two
-		// goroutines in which this callback gets called twice for hte
+		// goroutines in which this callback gets called twice for the
 		// same key:
 		// 1: Get("key")
 		// 2: Get("key")
