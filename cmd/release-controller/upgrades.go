@@ -19,8 +19,9 @@ import (
 )
 
 type UpgradeResult struct {
-	State string `json:"state"`
-	URL   string `json:"url"`
+	State   string `json:"state"`
+	URL     string `json:"url"`
+	Retries int    `json:"retries,omitempty"`
 }
 
 type UpgradeRecord struct {

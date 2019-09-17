@@ -163,6 +163,8 @@ type ReleaseVerification struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+	// Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
+	MaxRetries int `json:"maxRetries,omitempty"`
 }
 
 // ProwJobVerification identifies the name of a prow job that will be used to
@@ -173,8 +175,9 @@ type ProwJobVerification struct {
 }
 
 type VerificationStatus struct {
-	State string `json:"state"`
-	URL   string `json:"url"`
+	State   string `json:"state"`
+	URL     string `json:"url"`
+	Retries int    `json:"retries,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
@@ -217,6 +220,19 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 			continue
 		}
 		if s, ok := m[name]; !ok || !stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+			names = append(names, name)
+		}
+	}
+	return names, len(names) > 0
+}
+
+func (m VerificationStatusMap) retriesRemaining(jobs map[string]ReleaseVerification) ([]string, bool) {
+	var names []string
+	for name, definition := range jobs {
+		if definition.Disabled {
+			continue
+		}
+		if s, ok := m[name]; !ok || (stringSliceContains([]string{releaseVerificationStateFailed}, s.State) && s.Retries < definition.MaxRetries) {
 			names = append(names, name)
 		}
 	}

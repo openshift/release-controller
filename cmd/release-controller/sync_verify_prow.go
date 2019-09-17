@@ -20,9 +20,12 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyRetries int, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
+	if verifyRetries > 0 {
+		prowJobName = fmt.Sprintf("%s-%d", prowJobName, verifyRetries)
+	}
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {
 		return nil, err

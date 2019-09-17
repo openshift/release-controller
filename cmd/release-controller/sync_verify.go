@@ -30,11 +30,17 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 			}
 
+			jobRetries := 0
 			if status, ok := verifyStatus[name]; ok {
+				jobRetries = status.Retries
 				switch status.State {
-				case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
-					// we've already processed this, continue
+				case releaseVerificationStateSucceeded:
 					continue
+				case releaseVerificationStateFailed:
+					jobRetries++
+					if verifyType.Optional || jobRetries > verifyType.MaxRetries {
+						continue
+					}
 				case releaseVerificationStatePending:
 					// we need to process this
 				default:
@@ -92,7 +98,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 			}
 
-			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+			job, err := c.ensureProwJobForReleaseTag(release, name, jobRetries, verifyType, releaseTag, previousTag, previousReleasePullSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -106,6 +112,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)
 			}
+			status.Retries = jobRetries
 			verifyStatus[name] = status
 
 		default:
