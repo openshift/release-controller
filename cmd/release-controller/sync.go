@@ -127,7 +127,7 @@ func (c *Controller) sync(key queueKey) error {
 
 	// if we're waiting for an interval to elapse, go ahead and queue to be woken
 	if queueAfter > 0 {
-			c.queue.AddAfter(key, queueAfter)
+		c.queue.AddAfter(key, queueAfter)
 	}
 
 	c.gcQueue.AddAfter("", 15*time.Second)

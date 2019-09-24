@@ -222,47 +222,80 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		nextReleaseName := ""
 		var latestPromotedTime int64 = 0
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
-		if err != nil || nextVersion == nil {
+		if err != nil {
 			glog.Errorf("Unable to find next candidate for %s: %v", stream, err)
 			continue
 		}
-		nextReleaseName = nextVersion.String()
-		latestPromotedTime = promotedTime.Unix()
+		if nextVersion != nil {
+			// z-stream, has at least one stable release
+			nextReleaseName = nextVersion.String()
+			latestPromotedTime = promotedTime.Unix()
+		}
 
 		candidates := make([]*ReleaseCandidate, 0)
 		releaseTags := sortedReleaseTags(releaseStreamTagMap[stream].Release)
 		for _, tag := range releaseTags {
-			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted && tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
-				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
-				ts := t.Unix()
-				if ts > latestPromotedTime {
-					upgradeSuccess := make([]string, 0)
-					upgrades := c.graph.UpgradesTo(tag.Name)
-					for _, u := range upgrades {
-						if u.Total == 0 {
-							continue
-						}
-						if float64(100*u.Success)/float64(u.Total) > upgradeSuccessPercent {
-							upgradeSuccess = append(upgradeSuccess, u.From)
-						}
-					}
-					sort.Strings(upgradeSuccess)
-
-					candidates = append(candidates, &ReleaseCandidate{
-						ReleasePromoteJobParameters: ReleasePromoteJobParameters{
-							FromTag:     tag.Name,
-							Name:        nextReleaseName,
-							UpgradeFrom: upgradeSuccess,
-						},
-						CreationTime: time.Unix(ts, 0).Format(time.RFC3339),
-						Tag:          tag,
-					})
+			if tag.Annotations == nil {
+				continue
+			}
+			if tag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted {
+				continue
+			}
+			if len(tag.Annotations[releaseAnnotationCreationTimestamp]) == 0 {
+				continue
+			}
+			t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+			ts := t.Unix()
+			if ts <= latestPromotedTime {
+				continue
+			}
+			upgradeSuccess := make([]string, 0)
+			upgrades := c.graph.UpgradesTo(tag.Name)
+			for _, u := range upgrades {
+				if u.Total == 0 {
+					continue
+				}
+				if float64(100*u.Success)/float64(u.Total) > upgradeSuccessPercent {
+					upgradeSuccess = append(upgradeSuccess, u.From)
 				}
 			}
+			sort.Strings(upgradeSuccess)
+
+			name := nextReleaseName
+			if len(name) == 0 {
+				name = tag.Name
+			} else {
+				// check number of passing upgrades for z-stream
+				passingStableUpgrades := 0
+				for _, stableTag := range stableReleases {
+					if stringSliceContains(upgradeSuccess, stableTag.Name) {
+						passingStableUpgrades++
+					}
+				}
+				if passingStableUpgrades < 10 {
+					continue
+				}
+			}
+			candidates = append(candidates, &ReleaseCandidate{
+				ReleasePromoteJobParameters: ReleasePromoteJobParameters{
+					FromTag:     tag.Name,
+					Name:        name,
+					UpgradeFrom: upgradeSuccess,
+				},
+				CreationTime: time.Unix(ts, 0).Format(time.RFC3339),
+				Tag:          tag,
+			})
 		}
+
 		sort.Slice(candidates, func(i, j int) bool {
 			return candidates[i].CreationTime > candidates[j].CreationTime
 		})
+		if len(nextReleaseName) != 0 {
+			sort.Slice(candidates, func(i, j int) bool {
+				return len(candidates[i].UpgradeFrom) > len(candidates[j].UpgradeFrom)
+			})
+		}
+
 		releaseCandidates[stream] = &ReleaseCandidateList{Items: candidates}
 	}
 	return releaseCandidates, nil
@@ -412,15 +445,14 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 }
 
 func (c *Controller) nextVersionDetails(stream string, stable []imagev1.TagReference) (*semver.Version, *time.Time, error) {
+	streamVersion, err := semverParseTolerant(stream)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, tag := range stable {
 		// Check if the stable version's <MAJOR>.<MINOR> matches any release stream that we are processing
-		streamVersion, err := semverParseTolerant(stream)
-		if err != nil {
-			return nil, nil, err
-		}
-
 		stableVersion, err := semverParseTolerant(tag.Name)
-		if err != nil || streamVersion.Major != stableVersion.Major && streamVersion.Minor != stableVersion.Minor {
+		if err != nil || streamVersion.Major != stableVersion.Major || streamVersion.Minor != stableVersion.Minor {
 			continue
 		}
 

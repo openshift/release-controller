@@ -244,7 +244,7 @@ type VerificationStatus struct {
 
 type VerificationStatusMap map[string]*VerificationStatus
 
-type ValidationStatusMap map[string][]*VerificationStatus
+type VerificationStatusList map[string][]*VerificationStatus
 
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
@@ -325,7 +325,7 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
-func (m ValidationStatusMap) Incomplete(required map[string]ReleaseAdditionalTest) ([]string, bool) {
+func (m VerificationStatusList) Incomplete(required map[string]ReleaseAdditionalTest) ([]string, bool) {
 	var names []string
 	for name, definition := range required {
 		if definition.Disabled {
