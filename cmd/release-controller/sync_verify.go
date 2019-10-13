@@ -47,7 +47,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if verifyType.Upgrade {
 				upgradeType := releaseUpgradeFromPrevious
 				if release.Config.As == releaseConfigModeStable {
-					upgradeType = releaseUpgradeFromPreviousMinor
+					upgradeType = releaseUpgradeFromPreviousPatch
 				}
 				if len(verifyType.UpgradeFrom) > 0 {
 					upgradeType = verifyType.UpgradeFrom
