@@ -133,7 +133,21 @@ type ReleaseVerification struct {
 	// be rejected.
 	Optional bool `json:"optional"`
 	// Upgrade is true if this verification should be used to verify upgrades.
+	// The default UpgradeFrom for stable streams is PreviousMicro and the default
+	// for other types of streams is Previous.
 	Upgrade bool `json:"upgrade"`
+	// UpgradeFrom, if set, describes a different default upgrade source. The supported
+	// values are:
+	//
+	// Previous - selects the latest accepted tag from the current stream
+	// PreviousMicro - selects the latest accepted patch version from the current minor
+	//   version (4.2.1 will select the latest accepted 4.2.z tag).
+	// PreviousMinor - selects the latest accepted patch version from the previous minor
+	//   version (4.2.1 will select the latest accepted 4.1.z tag).
+	//
+	// If no matching target exists the job will be a no-op.
+	UpgradeFrom string `json:"upgradeFrom"`
+
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
@@ -241,6 +255,10 @@ const (
 	releaseVerificationStatePending   = "Pending"
 
 	releaseConfigModeStable = "Stable"
+
+	releaseUpgradeFromPreviousMinor = "PreviousMinor"
+	releaseUpgradeFromPreviousPatch = "PreviousPatch"
+	releaseUpgradeFromPrevious      = "Previous"
 
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation

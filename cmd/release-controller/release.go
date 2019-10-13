@@ -86,6 +86,11 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 		if len(name) == 0 {
 			return nil, fmt.Errorf("verify config has no name")
 		}
+		switch verify.UpgradeFrom {
+		case releaseUpgradeFromPreviousMinor, releaseUpgradeFromPreviousPatch, releaseUpgradeFromPrevious, "":
+		default:
+			return nil, fmt.Errorf("verify config %s has an invalid upgradeFrom: %s", name, verify.UpgradeFrom)
+		}
 		if verify.ProwJob != nil {
 			if len(verify.ProwJob.Name) == 0 {
 				return nil, fmt.Errorf("prow job for %s has no name", name)
@@ -264,46 +269,58 @@ func findPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
 	return ""
 }
 
-func tagsForRelease(release *Release) []*imagev1.TagReference {
+func semanticTagsForRelease(release *Release, phases ...string) SemanticVersions {
 	is := release.Target
 	sourceName := fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
-	switch release.Config.As {
-	case releaseConfigModeStable:
-		versions := make(SemanticVersions, 0, len(is.Spec.Tags))
-		for i := range is.Spec.Tags {
-			tag := &is.Spec.Tags[i]
-			if tag.Annotations[releaseAnnotationSource] != sourceName {
-				continue
-			}
+	versions := make(SemanticVersions, 0, len(is.Spec.Tags))
+	for i := range is.Spec.Tags {
+		tag := &is.Spec.Tags[i]
+		if tag.Annotations[releaseAnnotationSource] != sourceName {
+			continue
+		}
 
-			// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-			if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
+		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+			continue
+		}
+		if len(phases) > 0 {
+			if !stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
 				continue
-			}
-			if version, err := semver.Parse(tag.Name); err == nil {
-				versions = append(versions, SemanticVersion{Tag: tag, Version: &version})
-			} else {
-				versions = append(versions, SemanticVersion{Tag: tag})
 			}
 		}
+
+		if version, err := semver.Parse(tag.Name); err == nil {
+			versions = append(versions, SemanticVersion{Tag: tag, Version: &version})
+		} else {
+			versions = append(versions, SemanticVersion{Tag: tag})
+		}
+	}
+	return versions
+}
+
+func firstTagWithMajorMinorSemanticVersion(versions SemanticVersions, version semver.Version) *SemanticVersion {
+	for i, v := range versions {
+		if v.Version == nil {
+			continue
+		}
+		if v.Version.Major == version.Major && v.Version.Minor == version.Minor {
+			return &versions[i]
+		}
+	}
+	return nil
+}
+
+// tagsForRelease returns the tags for a given release in the most appropriate order -
+// by creation date for iterative streams, by semantic version for stable streams. If
+// phase is specified the list will be filtered.
+func tagsForRelease(release *Release, phases ...string) []*imagev1.TagReference {
+	versions := semanticTagsForRelease(release, phases...)
+	switch release.Config.As {
+	case releaseConfigModeStable:
 		sort.Sort(versions)
 		return versions.Tags()
 	default:
-		tags := make([]*imagev1.TagReference, 0, len(release.Target.Spec.Tags))
-		for i := range is.Spec.Tags {
-			tag := &is.Spec.Tags[i]
-
-			if tag.Annotations[releaseAnnotationSource] != sourceName {
-				continue
-			}
-
-			// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-			if tag.Annotations[releaseAnnotationName] != release.Config.Name {
-				continue
-			}
-
-			tags = append(tags, tag)
-		}
+		tags := versions.Tags()
 		sort.Sort(tagReferencesByAge(tags))
 		return tags
 	}
@@ -318,6 +335,9 @@ func stringSliceContains(slice []string, s string) bool {
 	return false
 }
 
+// findTagReferencesByPhase returns the tags for the given release in order of their creation
+// if they are in one of the provided phases. Use tagsForRelease if you are trying to get the
+// most appropriate recent tag.
 func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.TagReference {
 	var tags []*imagev1.TagReference
 	for i := range release.Target.Spec.Tags {
