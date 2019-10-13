@@ -18,7 +18,7 @@ import (
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
 )
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
@@ -45,12 +45,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-	var previousReleasePullSpec string
-	var previousTag string
-	if tags := findTagReferencesByPhase(release, releasePhaseAccepted); len(tags) > 0 {
-		previousTag = tags[0].Name
-		previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-	}
+
 	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
 	if err != nil {
 		return nil, err
