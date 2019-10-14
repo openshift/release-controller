@@ -43,70 +43,35 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return nil, terminalError{err}
 	}
 
-	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
+	spec := prowapiv1.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-
-	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec)
 	if err != nil {
 		return nil, err
 	}
+	pj := prowapiv1.NewProwJob(spec, map[string]string{
+		"release.openshift.io/verify": "true",
+	}, map[string]string{
+		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+	})
 	if !ok {
 		now := metav1.Now()
 		// return a synthetic job to indicate that this test is impossible to run (no spec, or
 		// this is an upgrade job and no upgrade is possible)
-		return objectToUnstructured(&prowapiv1.ProwJob{
-			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: prowJobName,
-				Annotations: map[string]string{
-					releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-
-					"prow.k8s.io/job": spec.Job,
-				},
-				Labels: map[string]string{
-					"release.openshift.io/verify": "true",
-
-					"prow.k8s.io/type": string(spec.Type),
-					"prow.k8s.io/job":  spec.Job,
-				},
-			},
-			Spec: *spec,
-			Status: prowapiv1.ProwJobStatus{
-				StartTime:      now,
-				CompletionTime: &now,
-				Description:    "Job was not defined or does not have any inputs",
-				State:          prowapiv1.SuccessState,
-			},
-		}), nil
+		pj.Status = prowapiv1.ProwJobStatus{
+			StartTime:      now,
+			CompletionTime: &now,
+			Description:    "Job was not defined or does not have any inputs",
+			State:          prowapiv1.SuccessState,
+		}
+		return objectToUnstructured(&pj), nil
 	}
 
-	pj := &prowapiv1.ProwJob{
-		TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: prowJobName,
-			Annotations: map[string]string{
-				releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-
-				"prow.k8s.io/job": spec.Job,
-			},
-			Labels: map[string]string{
-				"release.openshift.io/verify": "true",
-
-				"prow.k8s.io/type": string(spec.Type),
-				"prow.k8s.io/job":  spec.Job,
-			},
-		},
-		Spec: *spec,
-		Status: prowapiv1.ProwJobStatus{
-			StartTime: metav1.Now(),
-			State:     prowapiv1.TriggeredState,
-		},
-	}
 	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
-	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
+	out, err := c.prowClient.Create(objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
 		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
@@ -185,26 +150,4 @@ func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.Periodic, boo
 		}
 	}
 	return nil, false
-}
-
-func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
-	spec := &prowapiv1.ProwJobSpec{
-		Type:  prowapiv1.PeriodicJob,
-		Job:   config.Name,
-		Agent: prowapiv1.KubernetesAgent,
-
-		Refs: &prowapiv1.Refs{},
-
-		PodSpec: config.Spec.DeepCopy(),
-	}
-
-	if decorationConfig != nil {
-		spec.DecorationConfig = decorationConfig.DeepCopy()
-	} else {
-		spec.DecorationConfig = &prowapiv1.DecorationConfig{}
-	}
-	isTrue := true
-	spec.DecorationConfig.SkipCloning = &isTrue
-
-	return spec
 }
