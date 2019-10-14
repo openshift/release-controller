@@ -38,8 +38,6 @@ github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/me
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.2-0.20190415061611-67e450fba694 h1:7QvrdWPKiGeBcP6ZlhCgvE8obIePLXwX3Ay2MC8ikUE=
 github.com/gogo/protobuf v1.2.2-0.20190415061611-67e450fba694/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
-github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
-github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 h1:ZgQEtGgCBiWRM39fZuwSd1LwSqqSW0hOdXCYYDX0R3I=
 github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6/go.mod h1:cIg4eruTrX1D+g88fzRXU5OdNfaM+9IcxsU14FzY7Hc=
 github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
@@ -102,6 +100,8 @@ github.com/openshift/api v3.9.1-0.20190419161300-aae63d5f0f50+incompatible h1:Cm
 github.com/openshift/api v3.9.1-0.20190419161300-aae63d5f0f50+incompatible/go.mod h1:dh9o4Fs58gpFXGSYfnVxGR9PnV53I8TW84pQaJDdGiY=
 github.com/openshift/client-go v0.0.0-20190412095722-0255926f5393 h1:uwuN3el4rcvFMnEV6KCTatQEMPxYhE7EzLO7+yGv1BU=
 github.com/openshift/client-go v0.0.0-20190412095722-0255926f5393/go.mod h1:6rzn+JTr7+WYS2E1TExP4gByoABxMznR6y2SnUIkmxk=
+github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533 h1:A5VovyRu3JFIPmC20HHrsOOny0PIdHuzDdNMULru48k=
+github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533/go.mod h1:3sa6LKKRDnR1xy4Kn8htvPwqIOVwXh8fIU3LRY22q3U=
 github.com/openshift/library-go v0.0.0-20190419201117-4bae0f495ea7 h1:F4gU7M3/EAIUTsoxPQHg0rNKVZa84M1Lm5avnQLUehs=
 github.com/openshift/library-go v0.0.0-20190419201117-4bae0f495ea7/go.mod h1:NBttNjZpWwup/nthuLbPAPSYC8Qyo+BBK5bCtFoyYjo=
 github.com/peterbourgon/diskv v2.0.1+incompatible h1:UBdAOUP5p4RWqPBg048CAvpKN+vxiaj6gdUUzhl4XmI=

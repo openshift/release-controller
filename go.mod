@@ -2,6 +2,8 @@ module github.com/openshift/release-controller
 
 go 1.13
 
+replace github.com/golang/glog => github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533
+
 require (
 	cloud.google.com/go v0.38.0
 	github.com/awalterschulze/gographviz v0.0.0-20190221210632-1e9ccb565bca
