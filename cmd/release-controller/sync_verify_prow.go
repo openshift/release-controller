@@ -43,7 +43,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return nil, terminalError{err}
 	}
 
-	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
+	spec := prowapiv1.ProwSpecForPeriodicConfig(periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
 
 	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
@@ -185,26 +185,4 @@ func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.Periodic, boo
 		}
 	}
 	return nil, false
-}
-
-func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *prowapiv1.DecorationConfig) *prowapiv1.ProwJobSpec {
-	spec := &prowapiv1.ProwJobSpec{
-		Type:  prowapiv1.PeriodicJob,
-		Job:   config.Name,
-		Agent: prowapiv1.KubernetesAgent,
-
-		Refs: &prowapiv1.Refs{},
-
-		PodSpec: config.Spec.DeepCopy(),
-	}
-
-	if decorationConfig != nil {
-		spec.DecorationConfig = decorationConfig.DeepCopy()
-	} else {
-		spec.DecorationConfig = &prowapiv1.DecorationConfig{}
-	}
-	isTrue := true
-	spec.DecorationConfig.SkipCloning = &isTrue
-
-	return spec
 }
