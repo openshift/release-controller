@@ -1,0 +1,161 @@
+kind: List
+apiVersion: v1
+items:
+
+# create the release-controller image stream (update here to point at personal repos)
+- kind: ImageStream
+  apiVersion: image.openshift.io/v1
+  metadata:
+    name: release-controller
+    namespace: release-controller-test
+  spec:
+    lookupPolicy:
+      local: false
+    tags:
+      - name: latest
+        annotations: null
+        from:
+          kind: DockerImage
+          name: registry.svc.ci.openshift.org/ci/release-controller
+        generation: 1
+        importPolicy:
+          scheduled: true
+        referencePolicy:
+          type: Source
+
+# Config Map of test jobs
+- kind: ConfigMap
+  apiVersion: v1
+  metadata:
+    name: job-config
+    namespace: release-controller-test
+  data:
+    openshift-release-release-4.2-periodics.yaml: |
+      periodics:
+      - name: release-controller-test-echo-job
+        decorate: true
+        agent: kubernetes
+        cluster: api.ci
+        # TODO: set arbitarily high so as not to be run without our parameters,
+        #   add a new job type to test-infra for this use case or allow periodics to
+        #   be set to disabled.
+        cron: "@yearly"
+        spec:
+          containers:
+          - name: echo
+            image: centos:7
+            # These environment parameters are replaced by the release-controller dynamically
+            env:
+            - name: RELEASE_IMAGE_LATEST
+              value: registry.svc.ci.openshift.org/openshift/release:v4.0
+            - name: IMAGE_FORMAT
+              value: registry.svc.ci.openshift.org/openshift/origin-v4.0:${component}
+            - name: RPM_REPO
+              value: https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/
+            command:
+            - env
+
+# create the secret that holds the upgrade graph state
+- kind: Secret
+  apiVersion: v1
+  metadata:
+    name: release-upgrade-graph
+    namespace: release-controller-test-release
+
+# expose the files cache to the outside world
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: files-cache
+    namespace: release-controller-test-job
+  spec:
+    selector:
+      app: files-cache
+    ports:
+    - port: 80
+      targetPort: 8080
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: files-cache
+    namespace: release-controller-test-job
+  spec:
+    host: openshift-test-release-artifacts.svc.ci.openshift.org
+    tls:
+      termination: Edge
+      insecureEdgeTerminationPolicy: Redirect
+    to:
+      kind: Service
+      name: files-cache
+
+# deploy the controller
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: release-controller-test
+    namespace: release-controller-test
+  spec:
+    selector:
+      app: release-controller-test
+    ports:
+    - port: 80
+      targetPort: 8080
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: release-controller-test
+    namespace: release-controller-test
+  spec:
+    host: openshift-test-release.svc.ci.openshift.org
+    tls:
+      termination: Edge
+      insecureEdgeTerminationPolicy: Redirect
+    to:
+      kind: Service
+      name: release-controller-test
+- kind: Deployment
+  apiVersion: apps/v1
+  metadata:
+    name: release-controller-test
+    namespace: release-controller-test
+    annotations:
+      image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"release-controller:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"controller\")].image"}]'
+  spec:
+    selector:
+      matchLabels:
+        app: release-controller-test
+    template:
+      metadata:
+        labels:
+          app: release-controller-test
+      spec:
+        serviceAccountName: release-controller-test
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: config
+          name: config
+        - configMap:
+            defaultMode: 420
+            name: job-config
+          name: job-config
+        containers:
+        - name: controller
+          image: release-controller:latest
+          volumeMounts:
+          - mountPath: /etc/config
+            name: config
+            readOnly: true
+          - mountPath: /etc/job-config/release-controller
+            name: job-config
+            readOnly: true
+          command:
+          - /usr/bin/release-controller
+          - --release-namespace=release-controller-test-release
+          - --prow-namespace=release-controller-test-job
+          - --job-namespace=release-controller-test-job
+          - --prow-config=/etc/config/config.yaml
+          - --job-config=/etc/job-config
+          - --artifacts=openshift-test-release-artifacts.svc.ci.openshift.org
+          - --tools-image-stream-tag=4.5:tests
+          - -v=4
