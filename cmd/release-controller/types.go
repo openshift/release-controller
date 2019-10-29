@@ -122,6 +122,9 @@ type PublishStreamReference struct {
 	Namespace string `json:"namespace"`
 	// Tags if set will limit the set of tags that are published.
 	Tags []string `json:"tags"`
+	// ExcludeTags if set will explicitly not publish these tags. Is applied after the
+	// tags field is checked.
+	ExcludeTags []string `json:"excludeTags"`
 }
 
 // ReleaseVerification is a task that must be completed before a release is marked
