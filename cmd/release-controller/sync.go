@@ -462,7 +462,7 @@ func (c *Controller) syncAccepted(release *Release) error {
 			if len(ns) == 0 {
 				ns = release.Target.Namespace
 			}
-			if err := c.ensureImageStreamMatchesRelease(release, ns, publishType.ImageStreamRef.Name, newestAccepted.Name, publishType.ImageStreamRef.Tags); err != nil {
+			if err := c.ensureImageStreamMatchesRelease(release, ns, publishType.ImageStreamRef.Name, newestAccepted.Name, publishType.ImageStreamRef.Tags, publishType.ImageStreamRef.ExcludeTags); err != nil {
 				errs = append(errs, fmt.Errorf("unable to update image stream for publish step %s: %v", name, err))
 				continue
 			}

@@ -54,7 +54,7 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 	return nil
 }
 
-func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string, tags []string) error {
+func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string, tags, excludeTags []string) error {
 	if len(tags) == 0 {
 		glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
 	} else {
@@ -94,9 +94,12 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 			return nil
 		}
 
-		processed := sets.NewString()
+		processed := sets.NewString(excludeTags...)
 		finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
 		for _, tag := range mirror.Spec.Tags {
+			if processed.Has(tag.Name) {
+				continue
+			}
 			processed.Insert(tag.Name)
 			finalRefs = append(finalRefs, tag)
 		}
@@ -119,7 +122,13 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 
 	} else {
 		var copied *imagev1.ImageStream
+		processed := sets.NewString(excludeTags...)
 		for _, tag := range tags {
+			if processed.Has(tag) {
+				continue
+			}
+			processed.Insert(tag)
+
 			sourceTag := findTagReference(mirror, tag)
 			if sourceTag == nil {
 				glog.Warningf("The tag %s should be mirrored from %s to %s, but is not in the source tags", tag, release.Config.Name, toName)
