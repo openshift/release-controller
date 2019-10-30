@@ -55,10 +55,10 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	now := time.Now()
-	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash := calculateSyncActions(release, now)
+	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter := calculateSyncActions(release, now)
 
 	if glog.V(4) {
-		glog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v", release.Source.Name, hasNewImages, inputImageHash, tagNames(adoptTags), tagNames(removeTags), tagNames(pendingTags))
+		glog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v queueAfter=%s", release.Source.Name, hasNewImages, inputImageHash, tagNames(adoptTags), tagNames(removeTags), tagNames(pendingTags), queueAfter)
 	}
 
 	// take any tags that need to be given annotations now
@@ -116,11 +116,16 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
+	// if we're waiting for an interval to elapse, go ahead and queue to be woken
+	if queueAfter > 0 {
+		c.queue.AddAfter(key, queueAfter)
+	}
+
 	c.gcQueue.AddAfter("", 15*time.Second)
 	return nil
 }
 
-func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string) {
+func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
 	hasNewImages = true
 	inputImageHash = hashSpecTagImageDigests(release.Source)
 	var (
@@ -224,13 +229,14 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	default:
 		// gate creating new releases when we already are at max unready or in the cooldown interval
 		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount > release.Config.MaxUnreadyReleases {
-			glog.V(2).Infof("At max %d unready releases, will not launch new tags", release.Config.MaxUnreadyReleases)
+			glog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			pendingTags = nil
 			hasNewImages = false
 		}
 		if len(tags) > 0 {
-			delay, msg := isReleaseDelayedForInterval(release, tags[0])
+			delay, msg, interval := isReleaseDelayedForInterval(release, tags[0])
 			if delay {
+				queueAfter = interval
 				glog.V(2).Info(msg)
 				pendingTags = nil
 				hasNewImages = false
@@ -238,7 +244,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		}
 	}
 
-	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash
+	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter
 }
 
 func countUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
@@ -268,22 +274,22 @@ func countUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 	return unreadyTagCount
 }
 
-func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (bool, string) {
+func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (bool, string, time.Duration) {
 	if release.Config.MinCreationIntervalSeconds == 0 {
-		return false, ""
+		return false, "", 0
 	}
 	if tag == nil {
-		return false, ""
+		return false, "", 0
 	}
 	created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 	if err != nil {
-		return false, ""
+		return false, "", 0
 	}
 	interval, minInterval := time.Now().Sub(created), time.Duration(release.Config.MinCreationIntervalSeconds)*time.Second
 	if interval < minInterval {
-		return true, fmt.Sprintf("Release created %s ago (less than minimum interval %s), will not launch new tags", interval.Truncate(time.Second), minInterval)
+		return true, fmt.Sprintf("Release %s last tag created %s ago (less than minimum interval %s), will not launch new tags", release.Config.Name, interval.Truncate(time.Second), minInterval), minInterval - interval
 	}
-	return false, ""
+	return false, "", 0
 }
 
 func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {
