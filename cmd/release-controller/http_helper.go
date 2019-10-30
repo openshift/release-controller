@@ -24,8 +24,15 @@ type ReleaseStream struct {
 	Release *Release
 	Tags    []*imagev1.TagReference
 
+	// Delayed is set if there is a pending release
+	Delayed *ReleaseDelay
+
 	Upgrades *ReleaseUpgrades
 	Checks   []ReleaseCheckResult
+}
+
+type ReleaseDelay struct {
+	Message string
 }
 
 type ReleaseCheckResult struct {
