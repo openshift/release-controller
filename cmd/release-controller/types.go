@@ -44,6 +44,14 @@ type ReleaseConfig struct {
 	// Integration. This field is ignored when As is Stable.
 	To string `json:"to"`
 
+	// MaxUnreadyReleases blocks creating new releases if there are more than this many
+	// releases in non-terminal (Failed, Accepted, Rejected) states.
+	MaxUnreadyReleases int `json:"maxUnreadyReleases"`
+
+	// MinCreationIntervalSeconds controls how quickly multiple releases can be created.
+	// Releases will be created no more rapidly than this interval.
+	MinCreationIntervalSeconds int `json:"minCreationIntervalSeconds"`
+
 	// ReferenceMode describes how the release image will refer to the origin. If empty
 	// or 'public' images will be copied and no source location will be preserved. If
 	// `source` then the controller will attempt to keep the originating reference in place.

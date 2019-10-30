@@ -127,6 +127,12 @@ td.upgrade-track {
 			</thead>
 			<tbody>
 		{{ $release := .Release }}
+		{{ if .Delayed }}
+			<tr>
+				<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
+				<td colspan="{{ inc $upgrades.Width }}"></td>
+			</tr>
+		{{ end }}
 		{{ range $index, $tag := .Tags }}
 			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
 			<tr>
@@ -897,6 +903,18 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		s := ReleaseStream{
 			Release: r,
 			Tags:    tagsForRelease(r),
+		}
+		var delays []string
+		if r.Config.As != releaseConfigModeStable && len(s.Tags) > 0 {
+			if ok, _ := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
+				delays = append(delays, fmt.Sprintf("waiting for %s", time.Duration(r.Config.MinCreationIntervalSeconds)*time.Second))
+			}
+			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) > r.Config.MaxUnreadyReleases {
+				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
+			}
+		}
+		if len(delays) > 0 {
+			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph)
 		page.Streams = append(page.Streams, s)

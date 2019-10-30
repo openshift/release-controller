@@ -124,9 +124,10 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	hasNewImages = true
 	inputImageHash = hashSpecTagImageDigests(release.Source)
 	var (
-		removeFailures tagReferencesByAge
-		removeAccepted tagReferencesByAge
-		removeRejected tagReferencesByAge
+		removeFailures  tagReferencesByAge
+		removeAccepted  tagReferencesByAge
+		removeRejected  tagReferencesByAge
+		unreadyTagCount int
 	)
 	target := release.Target
 
@@ -166,6 +167,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		phase := tag.Annotations[releaseAnnotationPhase]
 		switch phase {
 		case releasePhasePending, "":
+			unreadyTagCount++
 			pendingTags = append(pendingTags, tag)
 		case releasePhaseFailed:
 			removeFailures = append(removeFailures, tag)
@@ -175,6 +177,8 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 			removeAccepted = append(removeAccepted, tag)
 			removeRejectedAfter = len(removeRejected)
 			removeFailuresAfter = len(removeFailures)
+		default:
+			unreadyTagCount++
 		}
 	}
 
@@ -217,9 +221,69 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		hasNewImages = false
 		inputImageHash = ""
 		removeTags = nil
+	default:
+		// gate creating new releases when we already are at max unready or in the cooldown interval
+		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount > release.Config.MaxUnreadyReleases {
+			glog.V(2).Infof("At max %d unready releases, will not launch new tags", release.Config.MaxUnreadyReleases)
+			pendingTags = nil
+			hasNewImages = false
+		}
+		if len(tags) > 0 {
+			delay, msg := isReleaseDelayedForInterval(release, tags[0])
+			if delay {
+				glog.V(2).Info(msg)
+				pendingTags = nil
+				hasNewImages = false
+			}
+		}
 	}
 
 	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash
+}
+
+func countUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
+	unreadyTagCount := 0
+	for _, tag := range tags {
+		// always skip pinned tags
+		if _, ok := tag.Annotations[releaseAnnotationKeep]; ok {
+			continue
+		}
+		// check annotations when using the target as tag source
+		if release.Config.As != releaseConfigModeStable && tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+			continue
+		}
+		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
+		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+			continue
+		}
+
+		phase := tag.Annotations[releaseAnnotationPhase]
+		switch phase {
+		case releasePhaseFailed, releasePhaseRejected, releasePhaseAccepted:
+			// terminal don't count
+		default:
+			unreadyTagCount++
+		}
+	}
+	return unreadyTagCount
+}
+
+func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (bool, string) {
+	if release.Config.MinCreationIntervalSeconds == 0 {
+		return false, ""
+	}
+	if tag == nil {
+		return false, ""
+	}
+	created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+	if err != nil {
+		return false, ""
+	}
+	interval, minInterval := time.Now().Sub(created), time.Duration(release.Config.MinCreationIntervalSeconds)*time.Second
+	if interval < minInterval {
+		return true, fmt.Sprintf("Release created %s ago (less than minimum interval %s), will not launch new tags", interval.Truncate(time.Second), minInterval)
+	}
+	return false, ""
 }
 
 func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {
