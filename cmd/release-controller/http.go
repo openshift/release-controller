@@ -906,8 +906,8 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		}
 		var delays []string
 		if r.Config.As != releaseConfigModeStable && len(s.Tags) > 0 {
-			if ok, _ := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
-				delays = append(delays, fmt.Sprintf("waiting for %s", time.Duration(r.Config.MinCreationIntervalSeconds)*time.Second))
+			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
+				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
 			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) > r.Config.MaxUnreadyReleases {
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
