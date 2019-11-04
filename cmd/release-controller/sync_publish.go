@@ -94,10 +94,11 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 			return nil
 		}
 
-		processed := sets.NewString(excludeTags...)
+		excluded := sets.NewString(excludeTags...)
+		processed := sets.NewString()
 		finalRefs := make([]imagev1.TagReference, 0, len(mirror.Spec.Tags))
 		for _, tag := range mirror.Spec.Tags {
-			if processed.Has(tag.Name) {
+			if processed.Has(tag.Name) || excluded.Has(tag.Name) {
 				continue
 			}
 			processed.Insert(tag.Name)
