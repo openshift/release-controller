@@ -6,6 +6,8 @@ import (
 	"time"
 
 	imagev1 "github.com/openshift/api/image/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Release holds information about the release used during processing.
@@ -175,9 +177,10 @@ type ProwJobVerification struct {
 }
 
 type VerificationStatus struct {
-	State   string `json:"state"`
-	URL     string `json:"url"`
-	Retries int    `json:"retries,omitempty"`
+	State          string       `json:"state"`
+	URL            string       `json:"url"`
+	Retries        int          `json:"retries,omitempty"`
+	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus

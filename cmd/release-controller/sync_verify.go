@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/blang/semver"
 	"github.com/golang/glog"
@@ -40,6 +41,25 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					jobRetries++
 					if verifyType.Optional || jobRetries > verifyType.MaxRetries {
 						continue
+					}
+					// find the next time, if ok run.
+					if status.TransitionTime != nil {
+						backoffDuration := time.Minute * 0
+						backoffCap := time.Minute * 15
+						backoffStep := time.Minute * 2
+						if jobRetries != 1 {
+							backoffDuration = backoffStep * (1 << uint(jobRetries-1))
+							if backoffDuration > backoffCap {
+								backoffDuration = backoffCap
+							}
+						}
+						backoffTime := status.TransitionTime.Add(backoffDuration)
+						currentTime := time.Now()
+						if currentTime.Before(backoffTime) {
+							glog.V(6).Infof("%s: Release verification step %s failed %d times, last failure:t %s, backoff till: %s",
+								releaseTag.Name, name, jobRetries, currentTime.Format(time.RFC3339), backoffTime.Format(time.RFC3339))
+							continue
+						}
 					}
 				case releaseVerificationStatePending:
 					// we need to process this
