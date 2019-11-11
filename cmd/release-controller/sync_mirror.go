@@ -39,6 +39,11 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 		},
 	}
 
+	builder, ok := release.Source.Annotations[releaseAnnotationBuilder]
+	if ok {
+		is.Annotations[releaseAnnotationBuilder] = builder
+	}
+
 	switch release.Config.As {
 	case releaseConfigModeStable:
 		// stream will be populated later

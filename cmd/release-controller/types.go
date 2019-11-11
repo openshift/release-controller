@@ -304,6 +304,9 @@ const (
 	// releaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+
+	// Art specified builder tag to provide the correct "cli" image to run for multi-arch support
+	releaseAnnotationBuilder = "release.openshift.io/builder"
 )
 
 type Duration time.Duration

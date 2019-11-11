@@ -20,7 +20,7 @@ import (
 func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := getCliImage(mirror)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
@@ -54,7 +54,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := getCliImage(mirror)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
@@ -123,7 +123,7 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := getCliImage(mirror)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
@@ -347,4 +347,15 @@ func jobIsComplete(job *batchv1.Job) (succeeded bool, complete bool) {
 		}
 	}
 	return false, false
+}
+
+func getCliImage(mirror *imagev1.ImageStream) string {
+	builder, ok := mirror.Annotations[releaseAnnotationBuilder]
+	if ok {
+		glog.V(4).Infof("Using builder specified cli image: %s", builder)
+		return builder
+	}
+
+	glog.V(4).Infof("Using stream specified cli image: %s:cli", mirror.Status.PublicDockerImageRepository)
+	return fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
 }
