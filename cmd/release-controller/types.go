@@ -229,17 +229,30 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 	return names, len(names) > 0
 }
 
-func (m VerificationStatusMap) retriesRemaining(jobs map[string]ReleaseVerification) ([]string, bool) {
+func verificationJobsWithRetries(jobs map[string]ReleaseVerification, result VerificationStatusMap) ([]string, bool) {
 	var names []string
+	blockingJobFailure := false
 	for name, definition := range jobs {
 		if definition.Disabled {
 			continue
 		}
-		if s, ok := m[name]; !ok || (stringSliceContains([]string{releaseVerificationStateFailed}, s.State) && s.Retries < definition.MaxRetries) {
+		s, ok := result[name]
+		if !ok {
 			names = append(names, name)
+			continue
 		}
+		if !stringSliceContains([]string{releaseVerificationStateFailed}, s.State) {
+			continue
+		}
+		if s.Retries >= definition.MaxRetries {
+			if !definition.Optional {
+				blockingJobFailure = true
+			}
+			continue
+		}
+		names = append(names, name)
 	}
-	return names, len(names) > 0
+	return names, blockingJobFailure
 }
 
 func allOptional(all map[string]ReleaseVerification, names ...string) bool {
@@ -357,3 +370,23 @@ func (a tagReferencesByAge) Less(i, j int) bool {
 }
 func (a tagReferencesByAge) Len() int      { return len(a) }
 func (a tagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+
+func calculateBackoff(retryCount int, initialTime *metav1.Time) time.Duration {
+	backoffDuration := time.Minute * 0
+	if retryCount < 1 {
+		return backoffDuration
+	}
+	backoffCap := time.Minute * 15
+	backoffStep := time.Minute * 2
+	backoffDuration = backoffStep * (1 << uint(retryCount))
+	if backoffDuration > backoffCap {
+		backoffDuration = backoffCap
+	}
+	if initialTime != nil {
+		backoffDuration += initialTime.Sub(time.Now())
+	}
+	if backoffDuration < 0 {
+		backoffDuration = 0
+	}
+	return backoffDuration
+}

@@ -14,6 +14,7 @@ import (
 
 func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
 	var verifyStatus VerificationStatusMap
+	retryQueueDelay := -1 * time.Second
 	for name, verifyType := range release.Config.Verify {
 		if verifyType.Disabled {
 			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
@@ -39,25 +40,18 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					continue
 				case releaseVerificationStateFailed:
 					jobRetries++
-					if verifyType.Optional || jobRetries > verifyType.MaxRetries {
+					if jobRetries > verifyType.MaxRetries {
 						continue
 					}
 					// find the next time, if ok run.
 					if status.TransitionTime != nil {
-						backoffDuration := time.Minute * 0
-						backoffCap := time.Minute * 15
-						backoffStep := time.Minute * 2
-						if jobRetries != 1 {
-							backoffDuration = backoffStep * (1 << uint(jobRetries-1))
-							if backoffDuration > backoffCap {
-								backoffDuration = backoffCap
+						backoffDuration := calculateBackoff(jobRetries-1, status.TransitionTime)
+						if backoffDuration > 0 {
+							glog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
+								releaseTag.Name, name, jobRetries, status.TransitionTime.Format(time.RFC3339), time.Now().Add(backoffDuration).Format(time.RFC3339))
+							if retryQueueDelay < 0 || backoffDuration < retryQueueDelay {
+								retryQueueDelay = backoffDuration
 							}
-						}
-						backoffTime := status.TransitionTime.Add(backoffDuration)
-						currentTime := time.Now()
-						if currentTime.Before(backoffTime) {
-							glog.V(6).Infof("%s: Release verification step %s failed %d times, last failure:t %s, backoff till: %s",
-								releaseTag.Name, name, jobRetries, currentTime.Format(time.RFC3339), backoffTime.Format(time.RFC3339))
 							continue
 						}
 					}
@@ -135,9 +129,29 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			status.Retries = jobRetries
 			verifyStatus[name] = status
 
+			if jobRetries >= verifyType.MaxRetries {
+				continue
+			}
+
+			if status.State == releaseVerificationStateFailed {
+				// Queue for retry if at least one retryable job at earliest interval
+				backoffDuration := calculateBackoff(jobRetries, status.TransitionTime)
+				if retryQueueDelay >= 0 && backoffDuration > retryQueueDelay {
+					continue
+				}
+				retryQueueDelay = backoffDuration
+			}
+
 		default:
 			// manual verification
 		}
+	}
+	if retryQueueDelay >= 0 {
+		key := queueKey{
+			name:      release.Source.Name,
+			namespace: release.Source.Namespace,
+		}
+		c.queue.AddAfter(key, retryQueueDelay)
 	}
 	return verifyStatus, nil
 }
