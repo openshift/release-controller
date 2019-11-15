@@ -19,7 +19,6 @@ require (
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6
-	github.com/googleapis/gax-go v2.0.2+incompatible // indirect
 	github.com/gorilla/mux v1.7.1
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
@@ -31,7 +30,6 @@ require (
 	github.com/russross/blackfriday v2.0.0+incompatible
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/spf13/cobra v0.0.5
-	github.com/spf13/flag v0.0.0-20140426202619-916eaf9e2dc5 // indirect
 	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	google.golang.org/api v0.13.0
