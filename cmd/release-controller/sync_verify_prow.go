@@ -56,6 +56,8 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	}, map[string]string{
 		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 	})
+	// Override default UUID naming of prowjob
+	pj.Name = prowJobName
 	if !ok {
 		now := metav1.Now()
 		// return a synthetic job to indicate that this test is impossible to run (no spec, or
