@@ -430,7 +430,7 @@ func (c *latestImageCache) Get() (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("could not find a release image stream with :tests")
+	return "", fmt.Errorf("could not find a release image stream with tag %q", c.tag)
 }
 
 func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *ExecReleaseInfo, execReleaseFiles *ExecReleaseFiles, stopCh <-chan struct{}) {
