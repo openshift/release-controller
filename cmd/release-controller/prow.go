@@ -4,7 +4,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	prowjobsv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 )
 
 func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationStatus, bool) {
@@ -13,12 +13,12 @@ func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 		return nil, false
 	}
 	url, _, _ := unstructured.NestedString(obj.Object, "status", "url")
-	switch prowapiv1.ProwJobState(s) {
-	case prowapiv1.SuccessState:
+	switch prowjobsv1.ProwJobState(s) {
+	case prowjobsv1.SuccessState:
 		return &VerificationStatus{State: releaseVerificationStateSucceeded, URL: url}, true
-	case prowapiv1.FailureState, prowapiv1.ErrorState, prowapiv1.AbortedState:
+	case prowjobsv1.FailureState, prowjobsv1.ErrorState, prowjobsv1.AbortedState:
 		return &VerificationStatus{State: releaseVerificationStateFailed, URL: url}, true
-	case prowapiv1.TriggeredState, prowapiv1.PendingState, prowapiv1.ProwJobState(""):
+	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.ProwJobState(""):
 		return &VerificationStatus{State: releaseVerificationStatePending, URL: url}, true
 	default:
 		glog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())

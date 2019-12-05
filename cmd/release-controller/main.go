@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
-	informers "k8s.io/client-go/informers"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
@@ -38,7 +38,7 @@ import (
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	prowconfig "k8s.io/test-infra/prow/config"
 
 	"github.com/openshift/release-controller/pkg/signer"
 )
@@ -145,11 +145,11 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 	releaseNamespace := o.ReleaseNamespaces[0]
-	if _, err := client.Core().Namespaces().Get(releaseNamespace, metav1.GetOptions{}); err != nil {
+	if _, err := client.CoreV1().Namespaces().Get(releaseNamespace, metav1.GetOptions{}); err != nil {
 		return fmt.Errorf("unable to find release namespace: %v", err)
 	}
 	if o.JobNamespace != releaseNamespace {
-		if _, err := client.Core().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
+		if _, err := client.CoreV1().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
 		klog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
@@ -175,7 +175,7 @@ func (o *options) Run() error {
 	jobs := batchFactory.Batch().V1().Jobs()
 	hasSynced = append(hasSynced, jobs.Informer().HasSynced)
 
-	configAgent := &prowapiv1.Agent{}
+	configAgent := &prowconfig.Agent{}
 	if len(o.ProwConfigPath) > 0 {
 		if err := configAgent.Start(o.ProwConfigPath, o.JobConfigPath); err != nil {
 			return err
@@ -191,11 +191,11 @@ func (o *options) Run() error {
 	graph := NewUpgradeGraph()
 
 	c := NewController(
-		client.Core(),
+		client.CoreV1(),
 		imageClient.Image(),
-		client.Batch(),
+		client.BatchV1(),
 		jobs,
-		client.Core(),
+		client.CoreV1(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
 		releaseNamespace,

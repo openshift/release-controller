@@ -15,7 +15,9 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	prowconfig "k8s.io/test-infra/prow/config"
+	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (*unstructured.Unstructured, error) {
@@ -43,70 +45,38 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return nil, terminalError{err}
 	}
 
-	spec := prowapiv1.ProwSpecForPeriodicConfig(periodicConfig)
+	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-
-	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec)
 	if err != nil {
 		return nil, err
 	}
+	pj := prowutil.NewProwJob(spec, map[string]string{
+		"release.openshift.io/verify": "true",
+	}, map[string]string{
+		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+	})
+	// Override default UUID naming of prowjob
+	pj.Name = prowJobName
 	if !ok {
 		now := metav1.Now()
 		// return a synthetic job to indicate that this test is impossible to run (no spec, or
 		// this is an upgrade job and no upgrade is possible)
-		return objectToUnstructured(&prowapiv1.ProwJob{
-			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: prowJobName,
-				Annotations: map[string]string{
-					releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-
-					"prow.k8s.io/job": spec.Job,
-				},
-				Labels: map[string]string{
-					"release.openshift.io/verify": "true",
-
-					"prow.k8s.io/type": string(spec.Type),
-					"prow.k8s.io/job":  spec.Job,
-				},
-			},
-			Spec: *spec,
-			Status: prowapiv1.ProwJobStatus{
-				StartTime:      now,
-				CompletionTime: &now,
-				Description:    "Job was not defined or does not have any inputs",
-				State:          prowapiv1.SuccessState,
-			},
-		}), nil
+		pj.Status = prowjobv1.ProwJobStatus{
+			StartTime:      now,
+			CompletionTime: &now,
+			Description:    "Job was not defined or does not have any inputs",
+			State:          prowjobv1.SuccessState,
+		}
+		return objectToUnstructured(&pj), nil
 	}
 
-	pj := &prowapiv1.ProwJob{
-		TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: prowJobName,
-			Annotations: map[string]string{
-				releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 
-				"prow.k8s.io/job": spec.Job,
-			},
-			Labels: map[string]string{
-				"release.openshift.io/verify": "true",
-
-				"prow.k8s.io/type": string(spec.Type),
-				"prow.k8s.io/job":  spec.Job,
-			},
-		},
-		Spec: *spec,
-		Status: prowapiv1.ProwJobStatus{
-			StartTime: metav1.Now(),
-			State:     prowapiv1.TriggeredState,
-		},
-	}
 	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
-	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
+	out, err := c.prowClient.Create(objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
 		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
@@ -141,7 +111,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
@@ -178,7 +148,7 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 	return true, nil
 }
 
-func hasProwJob(config *prowapiv1.Config, name string) (*prowapiv1.Periodic, bool) {
+func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, bool) {
 	for i := range config.Periodics {
 		if config.Periodics[i].Name == name {
 			return &config.Periodics[i], true

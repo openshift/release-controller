@@ -30,7 +30,7 @@ import (
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions/image/v1"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	prowconfig "k8s.io/test-infra/prow/config"
 	"github.com/openshift/release-controller/pkg/signer"
 )
 
@@ -209,7 +209,7 @@ func (c *Controller) LimitSources(names ...string) {
 }
 
 type ProwConfigLoader interface {
-	Config() *prowapiv1.Config
+	Config() *prowconfig.Config
 }
 
 // multiImageStreamLister uses multiple independent namespace listers

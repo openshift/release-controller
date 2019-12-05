@@ -162,7 +162,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 }
 
 func (r *ExecReleaseInfo) refreshPod() error {
-	sts, err := r.client.Apps().StatefulSets(r.namespace).Get("git-cache", metav1.GetOptions{})
+	sts, err := r.client.AppsV1().StatefulSets(r.namespace).Get("git-cache", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
@@ -190,14 +190,14 @@ func (r *ExecReleaseInfo) refreshPod() error {
 			},
 			Spec: spec,
 		}
-		if _, err := r.client.Apps().StatefulSets(r.namespace).Create(sts); err != nil {
+		if _, err := r.client.AppsV1().StatefulSets(r.namespace).Create(sts); err != nil {
 			return fmt.Errorf("can't create stateful set for cache: %v", err)
 		}
 		return nil
 	}
 
 	sts.Spec = spec
-	if _, err := r.client.Apps().StatefulSets(r.namespace).Update(sts); err != nil {
+	if _, err := r.client.AppsV1().StatefulSets(r.namespace).Update(sts); err != nil {
 		return fmt.Errorf("can't update stateful set for cache: %v", err)
 	}
 	return nil
@@ -300,7 +300,7 @@ func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, n
 }
 
 func (r *ExecReleaseFiles) refreshPod() error {
-	sts, err := r.client.Apps().StatefulSets(r.namespace).Get("files-cache", metav1.GetOptions{})
+	sts, err := r.client.AppsV1().StatefulSets(r.namespace).Get("files-cache", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
@@ -328,14 +328,14 @@ func (r *ExecReleaseFiles) refreshPod() error {
 			},
 			Spec: spec,
 		}
-		if _, err := r.client.Apps().StatefulSets(r.namespace).Create(sts); err != nil {
+		if _, err := r.client.AppsV1().StatefulSets(r.namespace).Create(sts); err != nil {
 			return fmt.Errorf("can't create stateful set for cache: %v", err)
 		}
 		return nil
 	}
 
 	sts.Spec = spec
-	if _, err := r.client.Apps().StatefulSets(r.namespace).Update(sts); err != nil {
+	if _, err := r.client.AppsV1().StatefulSets(r.namespace).Update(sts); err != nil {
 		return fmt.Errorf("can't update stateful set for cache: %v", err)
 	}
 	return nil
