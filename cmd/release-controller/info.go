@@ -426,6 +426,8 @@ import socket
 import BaseHTTPServer
 import SimpleHTTPServer
 
+from subprocess import CalledProcessError
+
 # Create socket
 addr = ('', 8080)
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -485,8 +487,12 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
-            except Exception as e:
-                if e.output and ("no such image" in e.output or "image does not exist" in e.output):
+            except CalledProcessError as e:
+                if e.output and ("no such image" in e.output or
+                                 "image does not exist" in e.output or
+                                 "unauthorized: access to the requested resource is not authorized" in e.output or
+                                 "some required images are missing" in e.output or
+                                 "invalid reference format" in e.output):
                     with open(os.path.join(name, "FAILED.md"), "w") as outfile:
                         outfile.write("Unable to get release tools: %s" % e.output)
                     os.remove(os.path.join(name, "DOWNLOADING.md"))
@@ -494,6 +500,10 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
                 with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
                     outfile.write("Unable to get release tools: %s" % e.output)
+
+            except Exception as e:
+                self.log_error('An unexpected error has occurred: {}'.format(e.message))
+
             return
 
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
