@@ -427,6 +427,7 @@ import BaseHTTPServer
 import SimpleHTTPServer
 
 from subprocess import CalledProcessError
+from urlparse import urlparse, parse_qs
 
 # Create socket
 addr = ('', 8080)
@@ -458,14 +459,21 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.wfile.close()
 
     def do_GET(self):
-        path = self.path.strip("/")
+        request = urlparse(self.path)
+        query_components = parse_qs(request.query)
+        path = request.path.strip("/")
         segments = path.split("/")
 
         if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
             name = segments[0]
 
             if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
-                SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+                if 'ns' in query_components and 'is' in query_components:
+                    self.send_response(307)
+                    self.send_header("Location", "/{}".format(name))
+                    self.end_headers()
+                else:
+                    SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
                 return
 
             if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
@@ -483,8 +491,12 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
             try:
                 self._present_default_content(name)
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/ocp/release:%s" % name],
-                                        stderr=subprocess.STDOUT)
+                namespace = query_components['ns'][0].strip("/") if 'ns' in query_components else 'ocp'
+                imagestream = query_components['is'][0].strip("/") if 'is' in query_components else 'release'
+
+                subprocess.check_output(
+                    ["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/%s:%s" % (namespace, imagestream, name)],
+                    stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
             except CalledProcessError as e:
