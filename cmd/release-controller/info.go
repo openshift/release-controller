@@ -417,84 +417,107 @@ cp /tmp/pull-secret/* /tmp/.docker/ || true
 oc registry login
 
 cat <<END >>/tmp/serve.py
-import re, os, subprocess, time, threading, socket, SocketServer, BaseHTTPServer, SimpleHTTPServer
+import re
+import os
+import subprocess
+import time
+import threading
+import socket
+import BaseHTTPServer
+import SimpleHTTPServer
 
 # Create socket
 addr = ('', 8080)
-sock = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(addr)
 sock.listen(5)
 
+
 class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
-  def do_GET(self):
-    path = self.path.strip("/")
-    segments = path.split("/")
-    if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
-      name = segments[0]
-      if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+    def do_GET(self):
+        path = self.path.strip("/")
+        segments = path.split("/")
+
+        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
+            name = segments[0]
+
+            if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+                SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+                return
+
+            if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+                out = (
+                            "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode(
+                    "UTF-8")
+                self.send_response(200, "OK")
+                self.send_header("Content-Type", "text/html;charset=UTF-8")
+                self.send_header("Content-Length", str(len(out)))
+                self.send_header("Retry-After", "5")
+                self.end_headers()
+                self.wfile.write(out)
+                self.wfile.close()
+                return
+
+            try:
+                os.mkdir(name)
+            except OSError:
+                pass
+
+            with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                outfile.write("Downloading %s" % name)
+
+            try:
+                out = (
+                            "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode(
+                    "UTF-8")
+                self.send_response(200, "OK")
+                self.send_header("Content-Type", "text/html;charset=UTF-8")
+                self.send_header("Content-Length", str(len(out)))
+                self.send_header("Retry-After", "5")
+                self.end_headers()
+                self.wfile.write(out)
+                self.wfile.close()
+
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/ocp/release:%s" % name],
+                                        stderr=subprocess.STDOUT)
+                os.remove(os.path.join(name, "DOWNLOADING.md"))
+
+            except Exception as e:
+                if e.output and ("no such image" in e.output or "image does not exist" in e.output):
+                    with open(os.path.join(name, "FAILED.md"), "w") as outfile:
+                        outfile.write("Unable to get release tools: %s" % e.output)
+                    os.remove(os.path.join(name, "DOWNLOADING.md"))
+                    return
+
+                with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                    outfile.write("Unable to get release tools: %s" % e.output)
+            return
+
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
-        return
-      if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
-        self.send_response(200, "OK")
-        self.send_header("Content-Type", "text/html;charset=UTF-8")
-        self.send_header("Content-Length", str(len(out)))
-        self.send_header("Retry-After", "5")
-        self.end_headers()
-        self.wfile.write(out)
-        self.wfile.close()
-        return
 
-      try:
-        os.mkdir(name)
-      except OSError:
-        pass
-      with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
-        file.write("Downloading %s" % (name))
-      try:
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
-        self.send_response(200, "OK")
-        self.send_header("Content-Type", "text/html;charset=UTF-8")
-        self.send_header("Content-Length", str(len(out)))
-        self.send_header("Retry-After", "5")
-        self.end_headers()
-        self.wfile.write(out)
-        self.wfile.close()
-
-        subprocess.check_output(["oc","adm","release","extract","--tools","--to",name,"--command-os","*","registry.svc.ci.openshift.org/ocp/release:%s" % (name)], stderr=subprocess.STDOUT)
-        os.remove(os.path.join(name, "DOWNLOADING.md"))
-
-      except Exception as e:
-        if e.output and ("no such image" in e.output or "image does not exist" in e.output):
-          with open(os.path.join(name, "FAILED.md"), "w") as file:
-            file.write("Unable to get release tools: %s" % e.output)
-          os.remove(os.path.join(name, "DOWNLOADING.md"))
-          return
-        with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
-          file.write("Unable to get release tools: %s" % e.output)
-      return
-
-    SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
 # Launch multiple listeners as threads
 class Thread(threading.Thread):
-  def __init__(self, i):
-    threading.Thread.__init__(self)
-    self.i = i
-    self.daemon = True
-    self.start()
-  def run(self):
-    server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
-    server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
-    httpd = BaseHTTPServer.HTTPServer(addr, server, False)
+    def __init__(self, index):
+        threading.Thread.__init__(self)
+        self.i = index
+        self.daemon = True
+        self.start()
 
-    # Prevent the HTTP server from re-binding every handler.
-    # https://stackoverflow.com/questions/46210672/
-    httpd.socket = sock
-    httpd.server_bind = self.server_close = lambda self: None
+    def run(self):
+        server = FileServer  # SimpleHTTPServer.SimpleHTTPRequestHandler
+        server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
+        httpd = BaseHTTPServer.HTTPServer(addr, server, False)
 
-    httpd.serve_forever()
+        # Prevent the HTTP server from re-binding every handler.
+        # https://stackoverflow.com/questions/46210672/
+        httpd.socket = sock
+        httpd.server_bind = self.server_close = lambda self: None
+
+        httpd.serve_forever()
+
+
 [Thread(i) for i in range(100)]
 time.sleep(9e9)
 END
