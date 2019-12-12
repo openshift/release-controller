@@ -698,11 +698,15 @@ func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *im
 		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
 		return
 	}
-	if len(artifactsHost) == 0 {
+	if len(artifactsHost) == 0 || strings.Contains(tagPull, "@sha256:") {
 		fmt.Fprintf(w, `<p>Download installer and client with:<pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(tagPull))
 		return
 	}
-	fmt.Fprintf(w, `<p><a href="%s">Download the installer</a> for your operating system or run <pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(fmt.Sprintf("https://%s/%s", artifactsHost, tag.Name)), template.HTMLEscapeString(tagPull))
+	pieces := strings.Split(tagPull, ":")
+	pullSpec, name := pieces[0], pieces[1]
+	pieces = strings.Split(pullSpec, "/")
+	namespace, imagestream := pieces[1], pieces[2]
+	fmt.Fprintf(w, `<p><a href="%s">Download the installer</a> for your operating system or run <pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(fmt.Sprintf("https://%s/%s?ns=%s&is=%s", artifactsHost, name, namespace, imagestream)), template.HTMLEscapeString(tagPull))
 }
 
 func checkReleasePage(page *ReleasePage) {
