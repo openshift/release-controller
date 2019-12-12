@@ -304,7 +304,10 @@ func (o *options) Run() error {
 					if !ok {
 						continue
 					}
-					graph.Add(from, to, UpgradeResult(*status))
+					graph.Add(from, to, UpgradeResult{
+						State: status.State,
+						URL:   status.URL,
+					})
 				}
 			}, 2*time.Minute, stopCh)
 		}()

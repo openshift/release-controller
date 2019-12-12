@@ -18,14 +18,14 @@ func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 	url, _, _ := unstructured.NestedString(obj.Object, "status", "url")
 	var transitionTime string
 	var status *VerificationStatus
-	switch prowapiv1.ProwJobState(s) {
-	case prowapiv1.SuccessState:
+	switch prowjobsv1.ProwJobState(s) {
+	case prowjobsv1.SuccessState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
 		status = &VerificationStatus{State: releaseVerificationStateSucceeded, URL: url}
-	case prowapiv1.FailureState, prowapiv1.ErrorState, prowapiv1.AbortedState:
+	case prowjobsv1.FailureState, prowjobsv1.ErrorState, prowjobsv1.AbortedState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
 		status = &VerificationStatus{State: releaseVerificationStateFailed, URL: url}
-	case prowapiv1.TriggeredState, prowapiv1.PendingState, prowapiv1.ProwJobState(""):
+	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.ProwJobState(""):
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "pendingTime")
 		if transitionTime == "" {
 			transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "startTime")

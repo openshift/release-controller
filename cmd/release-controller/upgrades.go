@@ -19,10 +19,8 @@ import (
 )
 
 type UpgradeResult struct {
-	State          string       `json:"state"`
-	URL            string       `json:"url"`
-	Retries        int          `json:"retries,omitempty"`
-	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
+	State string `json:"state"`
+	URL   string `json:"url"`
 }
 
 type UpgradeRecord struct {

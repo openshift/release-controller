@@ -8,6 +8,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // Release holds information about the release used during processing.
@@ -371,19 +372,24 @@ func (a tagReferencesByAge) Less(i, j int) bool {
 func (a tagReferencesByAge) Len() int      { return len(a) }
 func (a tagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
-func calculateBackoff(retryCount int, initialTime *metav1.Time) time.Duration {
-	backoffDuration := time.Minute * 0
+func calculateBackoff(retryCount int, initialTime, currentTime *metav1.Time) time.Duration {
+	var backoffDuration time.Duration
 	if retryCount < 1 {
 		return backoffDuration
 	}
-	backoffCap := time.Minute * 15
-	backoffStep := time.Minute * 2
-	backoffDuration = backoffStep * (1 << uint(retryCount))
-	if backoffDuration > backoffCap {
-		backoffDuration = backoffCap
+	backoff := wait.Backoff{
+		Duration: time.Minute * 1,
+		Factor:   2,
+		Jitter:   0,
+		Steps:    retryCount,
+		Cap:      time.Minute * 15,
 	}
+	for backoff.Steps > 0 {
+		backoff.Step()
+	}
+	backoffDuration = backoff.Duration
 	if initialTime != nil {
-		backoffDuration += initialTime.Sub(time.Now())
+		backoffDuration += initialTime.Sub(currentTime.Time)
 	}
 	if backoffDuration < 0 {
 		backoffDuration = 0
