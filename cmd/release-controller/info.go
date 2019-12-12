@@ -435,6 +435,26 @@ sock.listen(5)
 
 
 class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    def _present_default_content(self, name):
+        content = ("""<!DOCTYPE html>
+        <html>
+            <head>
+                <meta http-equiv=\"refresh\" content=\"5\">
+            </head>
+            <body>
+                <p>Extracting tools for %s, may take up to a minute ...</p>
+            </body>
+        </html>
+        """ % name).encode('UTF-8')
+
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Retry-After", "5")
+        self.end_headers()
+        self.wfile.write(content)
+        self.wfile.close()
+
     def do_GET(self):
         path = self.path.strip("/")
         segments = path.split("/")
@@ -447,16 +467,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
                 return
 
             if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-                out = (
-                            "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode(
-                    "UTF-8")
-                self.send_response(200, "OK")
-                self.send_header("Content-Type", "text/html;charset=UTF-8")
-                self.send_header("Content-Length", str(len(out)))
-                self.send_header("Retry-After", "5")
-                self.end_headers()
-                self.wfile.write(out)
-                self.wfile.close()
+                self._present_default_content(name)
                 return
 
             try:
@@ -468,16 +479,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
                 outfile.write("Downloading %s" % name)
 
             try:
-                out = (
-                            "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode(
-                    "UTF-8")
-                self.send_response(200, "OK")
-                self.send_header("Content-Type", "text/html;charset=UTF-8")
-                self.send_header("Content-Length", str(len(out)))
-                self.send_header("Retry-After", "5")
-                self.end_headers()
-                self.wfile.write(out)
-                self.wfile.close()
+                self._present_default_content(name)
 
                 subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/ocp/release:%s" % name],
                                         stderr=subprocess.STDOUT)
