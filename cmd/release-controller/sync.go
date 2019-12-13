@@ -465,7 +465,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 func (c *Controller) syncReady(release *Release) error {
 	readyTags := findTagReferencesByPhase(release, releasePhaseReady)
 
-	if glog.V(4) && len(readyTags) > 0 {
+	if glog.V(5) && len(readyTags) > 0 {
 		glog.Infof("ready=%v", tagNames(readyTags))
 	}
 
@@ -510,7 +510,7 @@ func (c *Controller) syncReady(release *Release) error {
 func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := findTagReferencesByPhase(release, releasePhaseAccepted)
 
-	if glog.V(4) && len(acceptedTags) > 0 {
+	if glog.V(5) && len(acceptedTags) > 0 {
 		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
 	}
 
