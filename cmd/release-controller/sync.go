@@ -144,6 +144,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	}
 	sort.Sort(tagReferencesByAge(tags))
 
+	var firstTag *imagev1.TagReference
 	removeFailuresAfter, removeRejectedAfter := -1, -1
 	for _, tag := range tags {
 		if shouldAdopt {
@@ -164,6 +165,9 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
 		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
 			continue
+		}
+		if firstTag == nil {
+			firstTag = tag
 		}
 		if tag.Annotations[releaseAnnotationImageHash] == inputImageHash {
 			hasNewImages = false
@@ -232,8 +236,8 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 			glog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			hasNewImages = false
 		}
-		if len(tags) > 0 {
-			delay, msg, interval := isReleaseDelayedForInterval(release, tags[0])
+		if firstTag != nil {
+			delay, msg, interval := isReleaseDelayedForInterval(release, firstTag)
 			if delay {
 				queueAfter = interval
 				glog.V(2).Info(msg)
@@ -285,7 +289,7 @@ func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (b
 	}
 	interval, minInterval := time.Now().Sub(created), time.Duration(release.Config.MinCreationIntervalSeconds)*time.Second
 	if interval < minInterval {
-		return true, fmt.Sprintf("Release %s last tag created %s ago (less than minimum interval %s), will not launch new tags", release.Config.Name, interval.Truncate(time.Second), minInterval), minInterval - interval
+		return true, fmt.Sprintf("Release %s last tag %s created %s ago (less than minimum interval %s), will not launch new tags", release.Config.Name, tag.Name, interval.Truncate(time.Second), minInterval), minInterval - interval
 	}
 	return false, "", 0
 }
@@ -461,7 +465,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 func (c *Controller) syncReady(release *Release) error {
 	readyTags := findTagReferencesByPhase(release, releasePhaseReady)
 
-	if glog.V(4) && len(readyTags) > 0 {
+	if glog.V(5) && len(readyTags) > 0 {
 		glog.Infof("ready=%v", tagNames(readyTags))
 	}
 
@@ -506,7 +510,7 @@ func (c *Controller) syncReady(release *Release) error {
 func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := findTagReferencesByPhase(release, releasePhaseAccepted)
 
-	if glog.V(4) && len(acceptedTags) > 0 {
+	if glog.V(5) && len(acceptedTags) > 0 {
 		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
 	}
 
