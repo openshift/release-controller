@@ -50,7 +50,7 @@ func (c *Controller) garbageCollectSync() error {
 		if !ok {
 			continue
 		}
-		config, err := c.parseReleaseConfig(value)
+		config, err := parseReleaseConfig(value, c.parsedReleaseConfigCache)
 		if err != nil {
 			continue
 		}

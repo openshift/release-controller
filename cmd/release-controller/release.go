@@ -10,6 +10,8 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/golang/glog"
+	lru "github.com/hashicorp/golang-lru"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -21,7 +23,7 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	if !ok {
 		return nil, false, nil
 	}
-	cfg, err := c.parseReleaseConfig(src)
+	cfg, err := parseReleaseConfig(src, c.parsedReleaseConfigCache)
 	if err != nil {
 		err = fmt.Errorf("the %s annotation for %s is invalid: %v", releaseAnnotationConfig, is.Name, err)
 		c.eventRecorder.Eventf(is, corev1.EventTypeWarning, "InvalidReleaseDefinition", "%v", err)
@@ -63,14 +65,16 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 }
 
-func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
+func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, error) {
 	if len(data) > 4*1024 {
 		return nil, fmt.Errorf("release config must be less than 4k")
 	}
-	obj, ok := c.parsedReleaseConfigCache.Get(data)
-	if ok {
-		cfg := obj.(ReleaseConfig)
-		return &cfg, nil
+	if configCache != nil {
+		obj, ok := configCache.Get(data)
+		if ok {
+			cfg := obj.(ReleaseConfig)
+			return &cfg, nil
+		}
 	}
 	cfg := &ReleaseConfig{}
 	if err := json.Unmarshal([]byte(data), cfg); err != nil {
@@ -113,7 +117,9 @@ func (c *Controller) parseReleaseConfig(data string) (*ReleaseConfig, error) {
 		}
 	}
 	copied := *cfg
-	c.parsedReleaseConfigCache.Add(data, copied)
+	if configCache != nil {
+		configCache.Add(data, copied)
+	}
 	return cfg, nil
 }
 

@@ -15,6 +15,7 @@ import (
 
 	_ "net/http/pprof" // until openshift/library-go#309 merges
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"k8s.io/klog"
@@ -34,11 +35,13 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
+	imagev1 "github.com/openshift/api/image/v1"
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowconfig "k8s.io/test-infra/prow/config"
+	"k8s.io/test-infra/prow/interrupts"
 
 	"github.com/openshift/release-controller/pkg/signer"
 )
@@ -58,6 +61,7 @@ type options struct {
 	AuditGCSServiceAccount string
 	SigningKeyring         string
 	CLIImageForAudit       string
+	ToolsImageStreamTag    string
 
 	DryRun       bool
 	LimitSources []string
@@ -66,6 +70,8 @@ type options struct {
 func main() {
 	serviceability.StartProfiler()
 	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
+	// prow registers this on init
+	interrupts.OnInterrupt(func() { os.Exit(0) })
 
 	original := flag.CommandLine
 	klog.InitFlags(original)
@@ -74,6 +80,8 @@ func main() {
 
 	opt := &options{
 		ListenAddr: ":8080",
+
+		ToolsImageStreamTag: ":tests",
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -92,6 +100,8 @@ func main() {
 	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
 	flag.StringVar(&opt.SigningKeyring, "sign", opt.SigningKeyring, "The OpenPGP keyring to sign releases with. Only releases that can be verified will be signed.")
 	flag.StringVar(&opt.CLIImageForAudit, "audit-cli-image", opt.CLIImageForAudit, "The command line image pullspec to use for audit and signing. This should be set to a digest under the signers control to prevent attackers from forging verification. If you pass 'local' the oc binary on the path will be used instead of running a job.")
+
+	flag.StringVar(&opt.ToolsImageStreamTag, "tools-image-stream-tag", opt.ToolsImageStreamTag, "An image stream tag pointing to a release stream that contains the oc command and git (usually <master>:tests).")
 
 	var ignored string
 	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
@@ -113,6 +123,10 @@ func main() {
 }
 
 func (o *options) Run() error {
+	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
+	if len(tagParts) != 2 || len(tagParts[1]) == 0 {
+		return fmt.Errorf("--tools-image-stream-tag must be STREAM:TAG or :TAG (default STREAM is the oldest release stream)")
+	}
 	if len(o.ReleaseNamespaces) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
 	}
@@ -182,7 +196,7 @@ func (o *options) Run() error {
 		}
 	}
 
-	imageCache := newLatestImageCache("tests")
+	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
@@ -386,20 +400,28 @@ func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface
 	)
 }
 
+// latestImageCache tries to find the first valid tag matching
+// the requested image stream with the matching name (or the first
+// one when looking across all lexigraphically).
 type latestImageCache struct {
-	tag      string
-	interval time.Duration
+	imageStream string
+	tag         string
+	interval    time.Duration
 
+	cache       *lru.Cache
 	lock        sync.Mutex
 	lister      imagelisters.ImageStreamNamespaceLister
 	last        string
 	lastChecked time.Time
 }
 
-func newLatestImageCache(tag string) *latestImageCache {
+func newLatestImageCache(imageStream string, tag string) *latestImageCache {
+	cache, _ := lru.New(64)
 	return &latestImageCache{
-		tag:      tag,
-		interval: 10 * time.Minute,
+		imageStream: imageStream,
+		tag:         tag,
+		interval:    10 * time.Minute,
+		cache:       cache,
 	}
 }
 
@@ -418,19 +440,57 @@ func (c *latestImageCache) Get() (string, error) {
 	if len(c.last) > 0 && c.lastChecked.After(time.Now().Add(-c.interval)) {
 		return c.last, nil
 	}
+
+	// Find the first image stream matching the desired stream name name, or the first
+	// one that isn't a stable image stream and has the requested tag. Stable image
+	// streams
+	var preferred *imagev1.ImageStream
 	items, _ := c.lister.List(labels.Everything())
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	for _, item := range items {
-		if _, ok := item.Annotations[releaseAnnotationConfig]; ok {
-			if spec := findImagePullSpec(item, c.tag); len(spec) > 0 {
-				c.last = spec
-				c.lastChecked = time.Now()
-				klog.V(4).Infof("Using %s for the %s image", spec, c.tag)
-				return spec, nil
+		if len(c.imageStream) > 0 {
+			if c.imageStream == item.Name {
+				preferred = item
+				break
 			}
+			continue
+		}
+
+		value, ok := item.Annotations[releaseAnnotationConfig]
+		if !ok {
+			continue
+		}
+		if spec := findImagePullSpec(item, c.tag); len(spec) == 0 {
+			continue
+		}
+		config, err := parseReleaseConfig(value, c.cache)
+		if err != nil {
+			continue
+		}
+		if config.As == releaseConfigModeStable {
+			continue
+		}
+
+		if preferred == nil {
+			preferred = item
+			continue
+		}
+		if len(c.imageStream) > 0 && c.imageStream == item.Name {
+			preferred = item
+			break
 		}
 	}
-	return "", fmt.Errorf("could not find a release image stream with :tests")
+
+	if preferred != nil {
+		if spec := findImagePullSpec(preferred, c.tag); len(spec) > 0 {
+			c.last = spec
+			c.lastChecked = time.Now()
+			klog.V(4).Infof("Resolved %s:%s to %s", c.imageStream, c.tag, spec)
+			return spec, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find a release image stream with :%s (tools=%s)", c.tag, c.imageStream)
 }
 
 func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *ExecReleaseInfo, execReleaseFiles *ExecReleaseFiles, stopCh <-chan struct{}) {
