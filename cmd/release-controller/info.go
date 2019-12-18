@@ -282,20 +282,22 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 }
 
 type ExecReleaseFiles struct {
-	client      kubernetes.Interface
-	restConfig  *rest.Config
-	namespace   string
-	name        string
-	imageNameFn func() (string, error)
+	client      		kubernetes.Interface
+	restConfig  		*rest.Config
+	namespace   		string
+	name        		string
+	releaseNamespace	string
+	imageNameFn 		func() (string, error)
 }
 
-func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseFiles {
+func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {
 	return &ExecReleaseFiles{
-		client:      client,
-		restConfig:  restConfig,
-		namespace:   namespace,
-		name:        name,
-		imageNameFn: imageNameFn,
+		client:      		client,
+		restConfig:  		restConfig,
+		namespace:   		namespace,
+		name:        		name,
+		releaseNamespace:	releaseNamespace,
+		imageNameFn: 		imageNameFn,
 	}
 }
 
@@ -391,6 +393,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 						WorkingDir: "/srv/cache",
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
+							{Name: "RELEASE_NAMESPACE", Value: r.releaseNamespace},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "cache", MountPath: "/srv/cache/"},
@@ -405,7 +408,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 
 						Command: []string{"/bin/bash", "-c"},
 						Args: []string{
-							`
+`
 #!/bin/bash
 
 set -euo pipefail
@@ -434,6 +437,8 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(addr)
 sock.listen(5)
+
+RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 
 
 class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
@@ -483,7 +488,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
             try:
                 self._present_default_content(name)
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/ocp/release:%s" % name],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release:%s" % (RELEASE_NAMESPACE, name)],
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
@@ -534,7 +539,7 @@ class Thread(threading.Thread):
 time.sleep(9e9)
 END
 python /tmp/serve.py
-              `,
+`,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
