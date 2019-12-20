@@ -78,6 +78,9 @@ type ExecReleaseInfo struct {
 	imageNameFn func() (string, error)
 }
 
+// NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
+// Release Status website.  The provided name will prevent other instances of the stateful set
+// from being created when created with an identical name.
 func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
 	return &ExecReleaseInfo{
 		client:      client,
@@ -207,7 +210,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 	spec := appsv1.StatefulSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"app": r.name,
+				"app": "git-cache",
+				"release": r.name,
 			},
 		},
 		PodManagementPolicy: appsv1.ParallelPodManagement,
@@ -232,7 +236,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					"app": r.name,
+					"app": "git-cache",
+					"release": r.name,
 				},
 			},
 			Spec: corev1.PodSpec{
@@ -290,6 +295,10 @@ type ExecReleaseFiles struct {
 	imageNameFn 		func() (string, error)
 }
 
+// NewExecReleaseFiles creates a stateful set, in the specified namespace, that provides cached access to downloaded
+//installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
+// from being created when created with an identical name.  The releaseNamespace is used to ensure that the tools are
+// downloaded from the correct namespace.
 func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {
 	return &ExecReleaseFiles{
 		client:      		client,

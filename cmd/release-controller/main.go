@@ -197,10 +197,10 @@ func (o *options) Run() error {
 	}
 
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
+	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, releaseNamespace, imageCache.Get)
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
-	execReleaseFiles := NewExecReleaseFiles(client, config, o.JobNamespace, fmt.Sprintf("%s", releaseNamespace), fmt.Sprintf("%s", releaseNamespace), imageCache.Get)
+	execReleaseFiles := NewExecReleaseFiles(client, config, o.JobNamespace, releaseNamespace, releaseNamespace, imageCache.Get)
 
 	graph := NewUpgradeGraph()
 
