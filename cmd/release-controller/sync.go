@@ -484,9 +484,15 @@ func (c *Controller) syncReady(release *Release) error {
 		}
 
 		if names, ok := status.Failures(); ok {
-			if allOptional(release.Config.Verify, names...) {
-				glog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
-			} else {
+			retryNames, blockingJobFailed := verificationJobsWithRetries(release.Config.Verify, status)
+			if !blockingJobFailed && len(retryNames) > 0 {
+				glog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
+				if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+					return err
+				}
+				continue
+			}
+			if !allOptional(release.Config.Verify, names...) {
 				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
 				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
 				annotations[releaseAnnotationVerify] = toJSONString(status)
@@ -495,6 +501,7 @@ func (c *Controller) syncReady(release *Release) error {
 				}
 				continue
 			}
+			glog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
 		}
 
 		// if all jobs are complete and there are no failures, this is accepted

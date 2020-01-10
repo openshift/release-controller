@@ -6,6 +6,9 @@ import (
 	"time"
 
 	imagev1 "github.com/openshift/api/image/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // Release holds information about the release used during processing.
@@ -163,6 +166,8 @@ type ReleaseVerification struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+	// Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
+	MaxRetries int `json:"maxRetries,omitempty"`
 }
 
 // ProwJobVerification identifies the name of a prow job that will be used to
@@ -173,8 +178,10 @@ type ProwJobVerification struct {
 }
 
 type VerificationStatus struct {
-	State string `json:"state"`
-	URL   string `json:"url"`
+	State          string       `json:"state"`
+	URL            string       `json:"url"`
+	Retries        int          `json:"retries,omitempty"`
+	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
@@ -221,6 +228,32 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 		}
 	}
 	return names, len(names) > 0
+}
+
+func verificationJobsWithRetries(jobs map[string]ReleaseVerification, result VerificationStatusMap) ([]string, bool) {
+	var names []string
+	blockingJobFailure := false
+	for name, definition := range jobs {
+		if definition.Disabled {
+			continue
+		}
+		s, ok := result[name]
+		if !ok {
+			names = append(names, name)
+			continue
+		}
+		if !stringSliceContains([]string{releaseVerificationStateFailed}, s.State) {
+			continue
+		}
+		if s.Retries >= definition.MaxRetries {
+			if !definition.Optional {
+				blockingJobFailure = true
+			}
+			continue
+		}
+		names = append(names, name)
+	}
+	return names, blockingJobFailure
 }
 
 func allOptional(all map[string]ReleaseVerification, names ...string) bool {
@@ -338,3 +371,28 @@ func (a tagReferencesByAge) Less(i, j int) bool {
 }
 func (a tagReferencesByAge) Len() int      { return len(a) }
 func (a tagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+
+func calculateBackoff(retryCount int, initialTime, currentTime *metav1.Time) time.Duration {
+	var backoffDuration time.Duration
+	if retryCount < 1 {
+		return backoffDuration
+	}
+	backoff := wait.Backoff{
+		Duration: time.Minute * 1,
+		Factor:   2,
+		Jitter:   0,
+		Steps:    retryCount,
+		Cap:      time.Minute * 15,
+	}
+	for backoff.Steps > 0 {
+		backoff.Step()
+	}
+	backoffDuration = backoff.Duration
+	if initialTime != nil {
+		backoffDuration += initialTime.Sub(currentTime.Time)
+	}
+	if backoffDuration < 0 {
+		backoffDuration = 0
+	}
+	return backoffDuration
+}

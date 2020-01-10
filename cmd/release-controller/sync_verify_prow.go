@@ -71,7 +71,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return objectToUnstructured(&pj), nil
 	}
 
-
 	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag

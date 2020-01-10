@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/blang/semver"
 	"github.com/golang/glog"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
 	var verifyStatus VerificationStatusMap
+	retryQueueDelay := 0 * time.Second
 	for name, verifyType := range release.Config.Verify {
 		if verifyType.Disabled {
 			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
@@ -30,11 +33,29 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 			}
 
+			var jobRetries int
 			if status, ok := verifyStatus[name]; ok {
+				jobRetries = status.Retries
 				switch status.State {
-				case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
-					// we've already processed this, continue
+				case releaseVerificationStateSucceeded:
 					continue
+				case releaseVerificationStateFailed:
+					jobRetries++
+					if jobRetries > verifyType.MaxRetries {
+						continue
+					}
+					// find the next time, if ok run.
+					if status.TransitionTime != nil {
+						backoffDuration := calculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{time.Now()})
+						if backoffDuration > 0 {
+							glog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
+								releaseTag.Name, name, jobRetries, status.TransitionTime.Format(time.RFC3339), time.Now().Add(backoffDuration).Format(time.RFC3339))
+							if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
+								retryQueueDelay = backoffDuration
+							}
+							continue
+						}
+					}
 				case releaseVerificationStatePending:
 					// we need to process this
 				default:
@@ -91,8 +112,12 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					return nil, fmt.Errorf("release %s has verify type %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
 				}
 			}
+			jobName := name
+			if jobRetries > 0 {
+				jobName = fmt.Sprintf("%s-%d", jobName, jobRetries)
+			}
 
-			job, err := c.ensureProwJobForReleaseTag(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -106,11 +131,31 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)
 			}
+			status.Retries = jobRetries
 			verifyStatus[name] = status
+
+			if jobRetries >= verifyType.MaxRetries {
+				continue
+			}
+
+			if status.State == releaseVerificationStateFailed {
+				// Queue for retry if at least one retryable job at earliest interval
+				backoffDuration := calculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{time.Now()})
+				if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
+					retryQueueDelay = backoffDuration
+				}
+			}
 
 		default:
 			// manual verification
 		}
+	}
+	if retryQueueDelay > 0 {
+		key := queueKey{
+			name:      release.Source.Name,
+			namespace: release.Source.Namespace,
+		}
+		c.queue.AddAfter(key, retryQueueDelay)
 	}
 	return verifyStatus, nil
 }
