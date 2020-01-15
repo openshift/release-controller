@@ -107,11 +107,16 @@ td.upgrade-track {
 	padding-left: 2px;
 	padding-right: 2px;
 }
+a.stream-anchor {
+	color: #999
+}
 </style>
 <div class="row">
 <div class="col">
 {{ range .Streams }}
-		<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
+		<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">
+			<a class="stream-anchor" href="#{{ .Release.Config.Name }}">{{ .Release.Config.Name }}</a>
+		</h2>
 		{{ publishDescription . }}
 		{{ alerts . }}
 		{{ $upgrades := .Upgrades }}
