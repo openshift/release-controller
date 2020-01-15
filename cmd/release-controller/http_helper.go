@@ -357,6 +357,9 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 					buf.WriteString(" Pending")
 				}
 				buf.WriteString("</a>")
+				if s.Retries > 0 {
+					buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", s.Retries))
+				}
 				if pj := release.Config.Verify[key].ProwJob; pj != nil {
 					buf.WriteString(" ")
 					buf.WriteString(pj.Name)
