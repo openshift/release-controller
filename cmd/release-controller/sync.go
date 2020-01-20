@@ -565,16 +565,16 @@ func (c *Controller) syncAccepted(release *Release) error {
 func (c *Controller) syncAdditionalTesting(release *Release) error {
 	testTags := findTagReferencesByPhase(release, releasePhaseAccepted, releasePhaseRejected)
 	if glog.V(4) && len(testTags) > 0 {
-		glog.Infof("release=%s validation=%v", release.Config.Name, tagNames(testTags))
+		glog.Infof("release=%s additionalTesting=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
 		additionalTests, status, err := c.ensureAdditionalTests(release, tag)
 		if err != nil {
-			glog.V(4).Infof("Unable to run validation jobs for %s: %v", tag.Name, err)
+			glog.V(4).Infof("Unable to run Additional Test jobs for %s: %v", tag.Name, err)
 			return err
 		}
 
-		if names, ok := status.Incomplete(additionalTests); ok {
+		if names := status.Incomplete(additionalTests); len(names) > 0 {
 			glog.V(4).Infof("Additional Tests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
 			continue
 		}

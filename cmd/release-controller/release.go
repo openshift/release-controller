@@ -12,11 +12,9 @@ import (
 	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
 
+	imagev1 "github.com/openshift/api/image/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-
-	imagev1 "github.com/openshift/api/image/v1"
 )
 
 func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool, error) {
@@ -316,16 +314,24 @@ func unsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVer
 	return versions
 }
 
-func firstTagWithMajorMinorSemanticVersion(versions SemanticVersions, version semver.Version) *SemanticVersion {
+func latestTagsWithMajorMinorSemanticVersion(versions SemanticVersions, version semver.Version, count int) []*SemanticVersion {
+	var versionList []*SemanticVersion
 	for i, v := range versions {
 		if v.Version == nil {
 			continue
 		}
 		if v.Version.Major == version.Major && v.Version.Minor == version.Minor {
-			return &versions[i]
+			if versionList == nil {
+				versionList = make([]*SemanticVersion, 0)
+			}
+			versionList = append(versionList, &versions[i])
+			count--
+		}
+		if count <= 0 {
+			break
 		}
 	}
-	return nil
+	return versionList
 }
 
 // sortedReleaseTags returns the tags for a given release in the most appropriate order -
@@ -372,23 +378,4 @@ func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 	}
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
-}
-
-func (c *Controller) findImageStreamByAnnotations(annotations map[string]string) (*imagev1.ImageStream, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, stream := range imageStreams {
-		if stream.Annotations == nil {
-			continue
-		}
-		for k, v := range annotations {
-			if stream.Annotations[k] != v {
-				continue
-			}
-			return stream, nil
-		}
-	}
-	return nil, fmt.Errorf("no imagestream matching annotations %v", annotations)
 }

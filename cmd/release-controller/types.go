@@ -185,6 +185,8 @@ type ReleaseVerification struct {
 	//   version (4.2.1 will select the latest accepted 4.2.z tag).
 	// PreviousMinor - selects the latest accepted patch version from the previous minor
 	//   version (4.2.1 will select the latest accepted 4.1.z tag).
+	// RallyPoint - selects all tags after last rally point (latest multiple of 10 patch
+	//     version) from current minor version
 	//
 	// If no matching target exists the job will be a no-op.
 	UpgradeFrom string `json:"upgradeFrom"`
@@ -206,26 +208,18 @@ type ReleaseAdditionalTest struct {
 	// UpgradeRef is the ref that the upgrade should be run from.
 	// If empty, upgrade will run from previous accepted ImageStreamTag.
 	// Ignored if Upgrade is not true
-	UpgradeRef string `json:"upgradeRef"`
-	// Retry policy enables retries of verification tests
-	Retry *RetryPolicy `json:"retry"`
-}
-
-type RetryPolicy struct {
+	UpgradeRef    string        `json:"upgradeRef"`
 	RetryStrategy RetryStrategy `json:"retryStrategy"`
-	// Maximum number of retries
-	RetryCount int `json:"retryCount"`
 }
 
 type RetryStrategy string
 
 const (
-	// Run till RetryCount
-	RetryStrategyTillRetryCount RetryStrategy = "TillRetryCount"
-	// Run till first success, or till RetryCount limit is reached
+	// Run till MaxRetries
+	RetryStrategyTillMaxRetries RetryStrategy = "TillMaxRetries"
+	// Run till first success, or till MaxRetries limit is reached
 	RetryStrategyFirstSuccess RetryStrategy = "FirstSuccess"
-	// Run till first failure, or till RetryCount limit is reached
-	RetryStrategyFirstFailure RetryStrategy = "FirstFailure"
+	DefaultRetryStrategy                    = RetryStrategyFirstSuccess
 )
 
 // ProwJobVerification identifies the name of a prow job that will be used to
@@ -325,7 +319,7 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
-func (m VerificationStatusList) Incomplete(required map[string]ReleaseAdditionalTest) ([]string, bool) {
+func (m VerificationStatusList) Incomplete(required map[string]ReleaseAdditionalTest) []string {
 	var names []string
 	for name, definition := range required {
 		if definition.Disabled {
@@ -335,21 +329,31 @@ func (m VerificationStatusList) Incomplete(required map[string]ReleaseAdditional
 			names = append(names, name)
 			continue
 		}
-		completed := 0
+		maxRetries := definition.MaxRetries
+		var completed, failed int
 		for _, s := range m[name] {
 			if stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
 				completed++
+				if s.State == releaseVerificationStateFailed {
+					failed++
+				}
 			}
 		}
-		if definition.Retry == nil && completed == 0 {
-			names = append(names, name)
+
+		if completed >= maxRetries {
 			continue
 		}
-		if completed < definition.Retry.RetryCount {
-			names = append(names, name)
+		retryStrategy := definition.RetryStrategy
+		if len(retryStrategy) == 0 {
+			retryStrategy = DefaultRetryStrategy
 		}
+		if retryStrategy == RetryStrategyFirstSuccess && completed > failed {
+			continue
+		}
+		names = append(names, name)
+
 	}
-	return names, len(names) > 0
+	return names
 }
 
 const (
@@ -390,6 +394,7 @@ const (
 	releaseUpgradeFromPreviousMinor = "PreviousMinor"
 	releaseUpgradeFromPreviousPatch = "PreviousPatch"
 	releaseUpgradeFromPrevious      = "Previous"
+	releaseUpgradeFromRallyPoint    = "RallyPoint"
 
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation

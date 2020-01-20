@@ -52,7 +52,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, "")
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -103,90 +103,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	return out, nil
 }
 
-func (c *Controller) ensureProwJobForAdditionalTest(release *Release, testName string, testType ReleaseAdditionalTest, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
-	jobName := testType.ProwJob.Name
-	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, testName)
-	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		// TODO: check metadata on object
-		return obj.(*unstructured.Unstructured), nil
-	}
-
-	config := c.prowConfigLoader.Config()
-	if config == nil {
-		err := fmt.Errorf("the prow job %s is not valid: no prow jobs have been defined", jobName)
-		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
-	}
-	periodicConfig, ok := hasProwJob(config, jobName)
-	if !ok {
-		err := fmt.Errorf("the prow job %s is not valid: no job with that name", jobName)
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
-	}
-
-	spec := prowutil.PeriodicSpec(*periodicConfig)
-	mirror, _ := c.getMirror(release, releaseTag.Name)
-	previousReleasePullSpec := ""
-	previousTag := ""
-	if testType.Upgrade {
-		previousReleasePullSpec = testType.UpgradeRef
-		previousTag = testType.UpgradeTag
-	}
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, previousTag)
-	if err != nil {
-		return nil, err
-	}
-	pj := prowutil.NewProwJob(spec, map[string]string{
-		"release.openshift.io/verify": "true",
-	}, map[string]string{
-		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-	})
-	// Override default UUID naming of prowjob
-	pj.Name = prowJobName
-	if !ok {
-		now := metav1.Now()
-		// return a synthetic job to indicate that this test is impossible to run (no spec, or
-		// this is an upgrade job and no upgrade is possible)
-		pj.Status = prowjobv1.ProwJobStatus{
-			StartTime:      now,
-			CompletionTime: &now,
-			Description:    "Job was not defined or does not have any inputs",
-			State:          prowjobv1.SuccessState,
-		}
-		return objectToUnstructured(&pj), nil
-	}
-
-	pj.Annotations[releaseAnnotationToTag] = releaseTag.Name
-	if testType.Upgrade && len(previousTag) > 0 {
-		pj.Annotations[releaseAnnotationFromTag] = previousTag
-	}
-	out, err := c.prowClient.Create(objectToUnstructured(&pj), metav1.CreateOptions{})
-	if errors.IsAlreadyExists(err) {
-		// find a cached version or do a live call
-		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			return job.(*unstructured.Unstructured), nil
-		}
-		return c.prowClient.Get(prowJobName, metav1.GetOptions{})
-	}
-	if errors.IsInvalid(err) {
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", "the prow job %s is not valid: %v", jobName, err)
-		return nil, terminalError{err}
-	}
-	if err != nil {
-		return nil, err
-	}
-	glog.V(2).Infof("Created new prow job %s", pj.Name)
-	return out, nil
-}
-
 func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	buf := &bytes.Buffer{}
 	if err := unstructured.UnstructuredJSONScheme.Encode(obj, buf); err != nil {
@@ -199,7 +115,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec, previousTag string) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
@@ -215,10 +131,6 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 					return false, nil
 				}
 				c.Env[j].Value = previousReleasePullSpec
-			case name == releaseAnnotationFromTag:
-				if len(previousTag) != 0 {
-					c.Env[j].Value = previousTag
-				}
 			case name == "IMAGE_FORMAT":
 				if mirror == nil {
 					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
