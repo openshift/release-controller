@@ -563,21 +563,21 @@ func (c *Controller) syncAccepted(release *Release) error {
 }
 
 func (c *Controller) syncCandidateTesting(release *Release) error {
-	testTags := findTagReferencesByPhase(release, releasePhaseAccepted, releasePhaseRejected)
+	testTags := sortedRawReleaseTags(release, releasePhaseAccepted, releasePhaseRejected)
 	testTagLen := len(testTags)
-	for i:=0; i<testTagLen; i++ {
+	for i := 0; i < testTagLen; i++ {
 		// Run tests only on new releases annotated with keep
 		_, hasCandidateResults := testTags[i].Annotations[releaseAnnotationCandidate]
 		if len(testTags[i].Annotations[releaseAnnotationKeep]) != 0 && !hasCandidateResults {
 			continue
 		}
-		testTags[i] = testTags[testTagLen - 1]
+		testTags[i] = testTags[testTagLen-1]
 		i--
 		testTagLen--
 	}
 	testTags = testTags[:testTagLen]
 	if glog.V(4) && len(testTags) > 0 {
-		glog.Infof("release=%s CandidateTesting=%v", release.Config.Name, tagNames(testTags))
+		glog.Infof("release=%s keep=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
 		candidateTests, status, err := c.ensureCandidateTests(release, tag)
@@ -594,7 +594,7 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 			continue
 		}
 
-		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate:""}, tag.Name); err != nil {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate: "ok"}, tag.Name); err != nil {
 			return err
 		}
 	}

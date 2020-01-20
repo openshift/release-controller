@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	"k8s.io/apimachinery/pkg/util/diff"
 )
 
 func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
@@ -55,7 +55,7 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 			got := g.UpgradesFrom(tt.fromNames...)
 			sort.Sort(newNewestSemVerFromSummaries(got))
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", cmp.Diff(tt.want, got))
+				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectReflectDiff(tt.want, got))
 			}
 		})
 	}
@@ -108,7 +108,7 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 			got := g.UpgradesTo(tt.toNames...)
 			sort.Sort(newNewestSemVerFromSummaries(got))
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", cmp.Diff(tt.want, got))
+				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectReflectDiff(tt.want, got))
 			}
 		})
 	}

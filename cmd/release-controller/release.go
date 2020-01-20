@@ -12,9 +12,10 @@ import (
 	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
 
-	imagev1 "github.com/openshift/api/image/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+
+	imagev1 "github.com/openshift/api/image/v1"
 )
 
 func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool, error) {

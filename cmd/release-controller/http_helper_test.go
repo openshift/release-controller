@@ -1,13 +1,13 @@
 package main
 
 import (
-	"k8s.io/apimachinery/pkg/util/diff"
 	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
+	"k8s.io/apimachinery/pkg/util/diff"
 )
 
 func Test_calculateReleaseUpgrades(t *testing.T) {

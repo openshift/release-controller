@@ -264,17 +264,6 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 			name := nextReleaseName
 			if len(name) == 0 {
 				name = tag.Name
-			} else {
-				// check number of passing upgrades for z-stream
-				passingStableUpgrades := 0
-				for _, stableTag := range stableReleases {
-					if stringSliceContains(upgradeSuccess, stableTag.Name) {
-						passingStableUpgrades++
-					}
-				}
-				if passingStableUpgrades < 10 {
-					continue
-				}
 			}
 			candidates = append(candidates, &ReleaseCandidate{
 				ReleasePromoteJobParameters: ReleasePromoteJobParameters{
@@ -396,13 +385,13 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 	// Call oc adm release info to get previous nightly info for the stable release
 	op, err := c.releaseInfo.ReleaseInfo(tag.From.Name)
 	if err != nil {
-		// releaseInfo not found, old tag
-		return nil, fmt.Errorf("could not get release info for tag %s: %v", tag.From.Name, err)
+		// releaseinfo not found, old tag
+		return nil, fmt.Errorf("Could not get release info for tag %s: %v", tag.From.Name, err)
 	}
 
 	releaseInfo := releaseInfoShort{}
 	if err := json.Unmarshal([]byte(op), &releaseInfo); err != nil {
-		return nil, fmt.Errorf("could not unmarshal release info for tag %s: %v", tag.From.Name, err)
+		return nil, fmt.Errorf("Could not unmarshal release info for tag %s: %v", tag.From.Name, err)
 	}
 
 	latestPromotedFrom := releaseInfo.References.Annotations[releaseAnnotationFromImageStream]
@@ -410,7 +399,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 	isTokens := strings.Split(latestPromotedFrom, "/")
 	if len(isTokens) != 2 {
 		// not of the format <namespace>/<imagestream name>
-		return nil, fmt.Errorf("unrecognized imagestream format %s", latestPromotedFrom)
+		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
 	is, err := c.imageStreamLister.ImageStreams(isTokens[0]).Get(isTokens[1])
@@ -418,17 +407,17 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, err
 	}
 	if is == nil {
-		return nil, fmt.Errorf("no such imagestream %s", isTokens[1])
+		return nil, fmt.Errorf("No such imagestream %s", isTokens[1])
 	}
 
 	if len(is.Annotations) == 0 || len(is.Annotations[releaseAnnotationReleaseTag]) == 0 || len(is.Annotations[releaseAnnotationTarget]) == 0 {
-		return nil, fmt.Errorf("required annotations missing from imagestream %s", isTokens[1])
+		return nil, fmt.Errorf("Required annotations missing from imagestream %s", isTokens[1])
 	}
 
 	fromIsTokens := strings.Split(is.Annotations[releaseAnnotationTarget], "/")
 	if len(fromIsTokens) != 2 {
 		// not of the format <namespace>/<imagestream name>
-		return nil, fmt.Errorf("unrecognized imagestream format %s", latestPromotedFrom)
+		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
 	fromStream, err := c.imageStreamLister.ImageStreams(fromIsTokens[0]).Get(fromIsTokens[1])

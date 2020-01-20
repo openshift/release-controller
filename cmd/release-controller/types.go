@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/blang/semver"
+	"strings"
 	"time"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -103,7 +105,7 @@ type ReleaseConfig struct {
 
 	// CandidateTests is a map of short names to tests that are run on all terminal releases
 	// marked with keep annotation.
-	CandidateTests map[string]ReleaseCandidateTest `json:"candidateTests"`
+	CandidateTests map[string]*ReleaseCandidateTest `json:"candidateTests"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -229,16 +231,25 @@ type ProwJobVerification struct {
 	Name string `json:"name"`
 }
 
+type VerifyJobStatus struct {
+	State string `json:"state"`
+	URL   string `json:"url"`
+}
+
 type VerificationStatus struct {
-	State          string       `json:"state"`
-	URL            string       `json:"url"`
+	VerifyJobStatus
 	Retries        int          `json:"retries,omitempty"`
 	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
 }
 
+type CandidateTestStatus struct {
+	Status         []*VerifyJobStatus
+	TransitionTime *metav1.Time
+}
+
 type VerificationStatusMap map[string]*VerificationStatus
 
-type VerificationStatusList map[string][]*VerificationStatus
+type VerificationStatusList map[string]*CandidateTestStatus
 
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
@@ -319,41 +330,86 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
-func (m VerificationStatusList) Incomplete(required map[string]ReleaseCandidateTest) []string {
+func (m VerificationStatusList) Incomplete(required map[string]*ReleaseCandidateTest) []string {
 	var names []string
 	for name, definition := range required {
 		if definition.Disabled {
 			continue
 		}
+
 		if _, ok := m[name]; !ok {
 			names = append(names, name)
 			continue
 		}
-		maxRetries := definition.MaxRetries
-		var completed, failed int
-		for _, s := range m[name] {
-			if stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
-				completed++
-				if s.State == releaseVerificationStateFailed {
-					failed++
+		testResults := make([]*CandidateTestStatus, 0)
+		if test, ok := m[name]; ok {
+			testResults = append(testResults, test)
+		} else if definition.Upgrade && definition.UpgradeFrom == releaseUpgradeFromRallyPoint {
+			// Check whether all upgrades have completed for rally point upgrades
+			for testName, test := range m {
+				if !strings.HasPrefix(testName, name+"-") {
+					continue
 				}
+				if _, err := semver.ParseTolerant(testName[len(name)+1:]); err != nil {
+					continue
+				}
+				testResults = append(testResults, test)
 			}
 		}
 
-		if completed >= maxRetries {
-			continue
-		}
+		maxRetries := definition.MaxRetries
 		retryStrategy := definition.RetryStrategy
 		if len(retryStrategy) == 0 {
 			retryStrategy = DefaultRetryStrategy
 		}
-		if retryStrategy == RetryStrategyFirstSuccess && completed > failed {
-			continue
-		}
-		names = append(names, name)
 
+		for _, result := range testResults {
+			var completed int
+			for _, s := range result.Status {
+				if !stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+					continue
+				}
+				if s.State == releaseVerificationStateSucceeded && retryStrategy == RetryStrategyFirstSuccess {
+					completed = maxRetries + 1
+					break
+				}
+				completed++
+			}
+			if completed >= maxRetries+1 {
+				continue
+			}
+			names = append(names, name)
+			break
+		}
 	}
 	return names
+}
+
+func (t *ReleaseCandidateTest) state(status ...*VerifyJobStatus) string {
+	retryStrategy := t.RetryStrategy
+	if len(retryStrategy) == 0 {
+		retryStrategy = DefaultRetryStrategy
+	}
+	if t.RetryStrategy == RetryStrategyTillMaxRetries && len(status) < t.MaxRetries+1 {
+		return releaseVerificationStatePending
+	}
+	success := 0
+	for _, s := range status {
+		switch s.State {
+		case releaseVerificationStatePending:
+			return s.State
+		case releaseVerificationStateSucceeded:
+			if t.RetryStrategy == RetryStrategyFirstSuccess {
+				return s.State
+			}
+			success++
+		}
+	}
+	if success >= len(status)/2 {
+		// TODO: add success threshold for tests
+		return releaseVerificationStateSucceeded
+	}
+	return releaseVerificationStateFailed
 }
 
 const (
@@ -432,7 +488,7 @@ const (
 
 	releaseAnnotationCandidateTests = "release.openshift.io/candidate-tests"
 	// to identify if a release has completed candidate tests
-	releaseAnnotationCandidate        = "release.openshift.io/candidate"
+	releaseAnnotationCandidate = "release.openshift.io/candidate"
 )
 
 type Duration time.Duration

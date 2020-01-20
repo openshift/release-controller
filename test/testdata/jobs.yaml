@@ -36,20 +36,3 @@ periodics:
         value: https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/
       command: 
       - env
-- name: release-openshift-origin-installer-e2e-aws-upgrade
-  agent: kubernetes
-  cron: "@yearly"
-  spec:
-    restartPolicy: Never
-    activeDeadlineSeconds: 180
-    terminationGracePeriodSeconds: 180
-    containers:
-    - command:
-      - env
-      env:
-      - name: RELEASE_IMAGE_INITIAL
-        value: registry.svc.ci.openshift.org/ocp/release:v4.0
-      - name: RELEASE_IMAGE_LATEST
-        value: registry.svc.ci.openshift.org/ocp/release:v4.0
-      image: centos:7
-      name: ''

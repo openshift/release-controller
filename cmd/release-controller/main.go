@@ -206,7 +206,7 @@ func (o *options) Run() error {
 
 	c := NewController(
 		client.CoreV1(),
-		imageClient.ImageV1(),
+		imageClient.Image(),
 		client.BatchV1(),
 		jobs,
 		client.CoreV1(),
