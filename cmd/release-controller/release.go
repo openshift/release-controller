@@ -100,9 +100,9 @@ func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 			}
 		}
 	}
-	for name, test := range cfg.AdditionalTests {
+	for name, test := range cfg.CandidateTests {
 		if len(name) == 0 {
-			return nil, fmt.Errorf("additionalTest config has no name")
+			return nil, fmt.Errorf("candidateTest config has no name")
 		}
 		if test.ProwJob != nil {
 			if len(test.ProwJob.Name) == 0 {

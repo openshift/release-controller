@@ -198,31 +198,33 @@ func (c *Controller) getUpgradeSource(release *Release, releaseTag *imagev1.TagR
 	return nil, fmt.Errorf("release %s has verify type %s which defines invalid upgradeFrom: %s", release.Config.Name, verifyName, upgradeType)
 }
 
-func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, VerificationStatusList, error) {
-	var verifyStatus VerificationStatusList
+func (c *Controller) ensureCandidateTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseCandidateTest, VerificationStatusList, error) {
+	var testStatus VerificationStatusList
 	retryQueueDelay := 0 * time.Second
 
-	if data := releaseTag.Annotations[releaseAnnotationAdditionalTests]; len(data) > 0 {
-		verifyStatus = make(VerificationStatusList)
-		if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
-			glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
+	if len(releaseTag.Annotations) > 0 {
+		if data := releaseTag.Annotations[releaseAnnotationCandidateTests]; len(data) > 0 {
+			testStatus = make(VerificationStatusList)
+			if err := json.Unmarshal([]byte(data), &testStatus); err != nil {
+				glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
+			}
 		}
 	}
 
-	// additionalTests stores expanded list of jobs that have run for testing status in sync loop
-	additionalTests := make(map[string]ReleaseAdditionalTest)
+	// candidateTests stores expanded list of jobs that have run for testing status in sync loop
+	candidateTests := make(map[string]ReleaseCandidateTest)
 
-	for name, verifyType := range release.Config.AdditionalTests {
-		if verifyType.Disabled {
-			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
+	for name, testType := range release.Config.CandidateTests {
+		if testType.Disabled {
+			glog.V(2).Infof("Release testing step %s is disabled, ignoring", name)
 			continue
 		}
 
 		switch {
-		case verifyType.ProwJob != nil:
+		case testType.ProwJob != nil:
 			// if this is an upgrade job, find the appropriate source for the upgrade job
-			if verifyType.Upgrade {
-				upgradeSource, err := c.getUpgradeSource(release, releaseTag, name, verifyType.UpgradeFrom)
+			if testType.Upgrade {
+				upgradeSource, err := c.getUpgradeSource(release, releaseTag, name, testType.UpgradeFrom)
 				if err != nil || len(upgradeSource) == 0 {
 					return nil, nil, err
 				}
@@ -232,28 +234,29 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 					if len(upgradeSource) > 1 {
 						srcName = fmt.Sprintf("%s-%s", name, src.tag)
 					}
-					additionalTests[srcName] = ReleaseAdditionalTest{
+					candidateTests[srcName] = ReleaseCandidateTest{
 						UpgradeTag:          src.tag,
 						UpgradeRef:          src.pullSpec,
-						RetryStrategy:       verifyType.RetryStrategy,
-						ReleaseVerification: verifyType.ReleaseVerification,
+						RetryStrategy:       testType.RetryStrategy,
+						ReleaseVerification: testType.ReleaseVerification,
 					}
 				}
 			} else {
-				additionalTests[name] = verifyType
+				candidateTests[name] = testType
 			}
 		default:
 			// manual verification
 		}
 	}
 
-	for name, test := range additionalTests {
-		var jobNo int
-		if status, ok := verifyStatus[name]; ok {
+	for name, test := range candidateTests {
+		var jobNo, failed int
+		if status, ok := testStatus[name]; ok {
 			for _, jobStatus := range status {
 				switch jobStatus.State {
 				case releaseVerificationStateSucceeded:
 					jobNo++
+					failed = 0
 					if test.RetryStrategy == RetryStrategyFirstSuccess {
 						jobNo = test.MaxRetries + 1
 						break
@@ -261,6 +264,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 					continue
 				case releaseVerificationStateFailed:
 					jobNo++
+					failed++
 					continue
 				case releaseVerificationStatePending:
 					// we need to process this
@@ -290,14 +294,14 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		if status.State == releaseVerificationStateSucceeded {
 			glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
 		}
-		if verifyStatus == nil {
-			verifyStatus = make(VerificationStatusList)
+		if testStatus == nil {
+			testStatus = make(VerificationStatusList)
 		}
 		status.Retries = jobNo
-		if len(verifyStatus[name]) < jobNo {
-			verifyStatus[name] = append(verifyStatus[name], status)
+		if len(testStatus[name]) < jobNo {
+			testStatus[name] = append(testStatus[name], status)
 		} else {
-			verifyStatus[name][jobNo] = status
+			testStatus[name][jobNo] = status
 		}
 		if jobNo >= test.MaxRetries {
 			continue
@@ -305,7 +309,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 
 		if status.State == releaseVerificationStateFailed {
 			// Queue for retry if at least one retryable job at earliest interval
-			backoffDuration := calculateBackoff(jobNo, status.TransitionTime, &metav1.Time{Time: time.Now()})
+			backoffDuration := calculateBackoff(failed, status.TransitionTime, &metav1.Time{Time: time.Now()})
 			if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
 				retryQueueDelay = backoffDuration
 			}
@@ -319,7 +323,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 		c.queue.AddAfter(key, retryQueueDelay)
 	}
-	return additionalTests, verifyStatus, nil
+	return candidateTests, testStatus, nil
 }
 
 func isRallyPoint(v *imagev1.TagReference) bool {

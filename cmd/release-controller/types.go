@@ -101,9 +101,9 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
 
-	// AdditionalTests is a map of short names to additional tests that are run on all releases
-	// These tests after release is in the Accepted/Rejected phase.
-	AdditionalTests map[string]ReleaseAdditionalTest `json:"additionalTests"`
+	// CandidateTests is a map of short names to tests that are run on all terminal releases
+	// marked with keep annotation.
+	CandidateTests map[string]ReleaseCandidateTest `json:"candidateTests"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -199,7 +199,7 @@ type ReleaseVerification struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 }
 
-type ReleaseAdditionalTest struct {
+type ReleaseCandidateTest struct {
 	ReleaseVerification
 	// UpgradeTag is the tag that upgrade should be run from.
 	// If empty, upgrade will run from previous accepted ImageStreamTag.
@@ -319,7 +319,7 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
-func (m VerificationStatusList) Incomplete(required map[string]ReleaseAdditionalTest) []string {
+func (m VerificationStatusList) Incomplete(required map[string]ReleaseCandidateTest) []string {
 	var names []string
 	for name, definition := range required {
 		if definition.Disabled {
@@ -430,7 +430,9 @@ const (
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
 
-	releaseAnnotationAdditionalTests = "release.openshift.io/additional-tests"
+	releaseAnnotationCandidateTests = "release.openshift.io/candidate-tests"
+	// to identify if a release has completed candidate tests
+	releaseAnnotationCandidate        = "release.openshift.io/candidate"
 )
 
 type Duration time.Duration

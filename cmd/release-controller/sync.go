@@ -116,12 +116,12 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
-	// ensure additional validation tests, before rejected tags are removed.
-	if err := c.syncAdditionalTesting(release); err != nil {
+	// ensure candidate selection tests on terminal releases annotated with keep
+	if err := c.syncCandidateTesting(release); err != nil {
 		if errors.IsConflict(err) {
 			return nil
 		}
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToPerformAdditionalTesting", "%v", err)
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
 		return err
 	}
 
@@ -562,24 +562,39 @@ func (c *Controller) syncAccepted(release *Release) error {
 	return nil
 }
 
-func (c *Controller) syncAdditionalTesting(release *Release) error {
+func (c *Controller) syncCandidateTesting(release *Release) error {
 	testTags := findTagReferencesByPhase(release, releasePhaseAccepted, releasePhaseRejected)
+	testTagLen := len(testTags)
+	for i:=0; i<testTagLen; i++ {
+		// Run tests only on new releases annotated with keep
+		_, hasCandidateResults := testTags[i].Annotations[releaseAnnotationCandidate]
+		if len(testTags[i].Annotations[releaseAnnotationKeep]) != 0 && !hasCandidateResults {
+			continue
+		}
+		testTags[i] = testTags[testTagLen - 1]
+		i--
+		testTagLen--
+	}
+	testTags = testTags[:testTagLen]
 	if glog.V(4) && len(testTags) > 0 {
-		glog.Infof("release=%s additionalTesting=%v", release.Config.Name, tagNames(testTags))
+		glog.Infof("release=%s CandidateTesting=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
-		additionalTests, status, err := c.ensureAdditionalTests(release, tag)
+		candidateTests, status, err := c.ensureCandidateTests(release, tag)
 		if err != nil {
-			glog.V(4).Infof("Unable to run Additional Test jobs for %s: %v", tag.Name, err)
+			glog.V(4).Infof("Unable to run CandidateTests for %s: %v", tag.Name, err)
 			return err
 		}
 
-		if names := status.Incomplete(additionalTests); len(names) > 0 {
-			glog.V(4).Infof("Additional Tests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
+		if names := status.Incomplete(candidateTests); len(names) > 0 {
+			glog.V(4).Infof("CandidateTests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
+			if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status)}, tag.Name); err != nil {
+				return err
+			}
 			continue
 		}
 
-		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationAdditionalTests: toJSONString(status)}, tag.Name); err != nil {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate:""}, tag.Name); err != nil {
 			return err
 		}
 	}
