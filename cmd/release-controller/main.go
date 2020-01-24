@@ -298,6 +298,7 @@ func (o *options) Run() error {
 		go prowInformers.Run(stopCh)
 
 		go func() {
+
 			index := prowInformers.GetIndexer()
 			cache.WaitForCacheSync(stopCh, prowInformers.HasSynced)
 			wait.Until(func() {

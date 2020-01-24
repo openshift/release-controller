@@ -9,8 +9,11 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/blang/semver"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -29,6 +32,9 @@ type ReleaseStream struct {
 
 	Upgrades *ReleaseUpgrades
 	Checks   []ReleaseCheckResult
+
+	// Failing is set if none of the most recent 5 payloads were accepted
+	Failing bool
 }
 
 type ReleaseDelay struct {
@@ -238,6 +244,62 @@ func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 	return buf.String()
 }
 
+func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampString string) string {
+	buf := &bytes.Buffer{}
+	buf.WriteString(`<td>`)
+	// filter out upgrade job results more than 24 hours old because we don't want
+	// buildcops looking at them.
+	cutoff := metav1.NewTime(time.Now().Add(-24 * time.Hour))
+
+	t, e := time.Parse(time.RFC3339, tagCreationTimestampString)
+	if e != nil {
+		// if we can't parse the date, assume it's current/new.
+		t = time.Now()
+	}
+	tagCreationTimestamp := metav1.NewTime(t)
+	if (&tagCreationTimestamp).Before(&cutoff) {
+		buf.WriteString(`<em>--</em></td><td><em>--</em></td><td><em>--</em></td>`)
+		return buf.String()
+	}
+
+	successCount := 0
+	otherCount := 0
+	for _, visual := range upgrades.Tags[index].Visual {
+		if visual.Begin == nil {
+			continue
+		}
+		for url, result := range visual.Begin.History {
+			switch result.State {
+			case releaseVerificationStateSucceeded:
+				successCount++
+			case releaseVerificationStateFailed:
+				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, visual.Begin.From))
+			default:
+				otherCount++
+			}
+		}
+	}
+
+	for _, external := range upgrades.Tags[index].External {
+		for url, result := range external.History {
+			switch result.State {
+			case releaseVerificationStateSucceeded:
+				successCount++
+			case releaseVerificationStateFailed:
+				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, external.From))
+			default:
+				otherCount++
+			}
+		}
+	}
+	buf.WriteString(`</td>`)
+
+	buf2 := &bytes.Buffer{}
+	buf2.WriteString(fmt.Sprintf(`<td>%d</td><td>%d</td>`, successCount, otherCount))
+	buf2.WriteString(buf.String())
+
+	return buf2.String()
+}
 func canLink(tag imagev1.TagReference) bool {
 	switch tag.Annotations[releaseAnnotationPhase] {
 	case releasePhasePending:
@@ -467,7 +529,7 @@ func upgradeSummaryToString(history []UpgradeHistory) string {
 	return strings.Join(out, ",")
 }
 
-func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph) *ReleaseUpgrades {
+func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph, fullHistory bool) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))
 	internalTags := make(map[string]int)
 	for i, tag := range tags {
@@ -481,7 +543,12 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 	// tabular form with indicators whether a row is starting, continuing, or
 	// ending
 	var visual []ReleaseTagUpgradeVisual
-	summaries := graph.SummarizeUpgradesTo(tagNames...)
+	var summaries []UpgradeHistory
+	if fullHistory {
+		summaries = graph.UpgradesTo(tagNames...)
+	} else {
+		summaries = graph.SummarizeUpgradesTo(tagNames...)
+	}
 	for _, name := range tagNames {
 		var internal, external []UpgradeHistory
 		internal, summaries = takeUpgradesTo(summaries, name)

@@ -156,6 +156,57 @@ const releaseInfoPageHtml = `
 <p>Created: <span>{{ since $created }}</span></p>
 `
 
+const releaseDashboardPageHtml = `
+<h1>Release Dashboard</h1>
+<hr>
+<div class="row">
+<div class="col">
+{{ range .Streams }}
+		{{ if ne .Release.Config.Name "4-stable" }}
+			<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
+			{{ publishDescription . }}
+			{{ $upgrades := .Upgrades }}
+			<table class="table text-nowrap">
+				<thead>
+					<tr>
+						<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
+						<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
+						<th>Started</th>
+						<th colspan="1">Successful<br>Upgrades</th>
+						<th colspan="1">Running<br>Upgrades</th>
+						<th colspan="1">Failed<br>Upgrade From</th>
+					</tr>
+				</thead>
+				<tbody>
+			{{ $release := .Release }}
+			{{ if .Delayed }}
+				<tr>
+					<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
+					<td colspan="{{ inc $upgrades.Width }}"></td>
+				</tr>
+			{{ end }}
+			{{ if .Failing }}
+				<div class="alert alert-danger">This release has no accepted payloads in the last 5 attempts, investigation required.</div>
+			{{ end }}
+			{{ range $index, $tag := .Tags }}
+				{{ if lt $index 10 }}
+						{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
+						<tr>
+							{{ tableLink $release.Config . }}
+							{{ phaseCell . }}
+							<td title="{{ $created }}">{{ since $created }}</td>
+							{{ upgradeJobs $upgrades $index $created }}  				    
+						</tr>
+				{{end}}
+			{{ end }}
+				</tbody>
+			</table>
+		{{ end }}
+{{ end }}
+</div>
+</div>
+`
+
 var rePromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
@@ -247,6 +298,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
 	mux.HandleFunc("/", c.httpReleases)
+	mux.HandleFunc("/dashboards/overview", c.httpDashboardOverview)
 	return mux
 }
 
@@ -916,7 +968,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph)
+		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 		page.Streams = append(page.Streams, s)
 	}
 
@@ -935,6 +987,164 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		glog.Errorf("Unable to render page: %v", err)
 	}
 	fmt.Fprintln(w, htmlPageEnd)
+}
+
+func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+
+	base := *req.URL
+	base.Scheme = "http"
+	if p := req.Header.Get("X-Forwarded-Proto"); len(p) > 0 {
+		base.Scheme = p
+	}
+	base.Host = req.Host
+	base.Path = "/"
+	base.RawQuery = ""
+	base.Fragment = ""
+	page := &ReleasePage{
+		BaseURL: base.String(),
+	}
+
+	now := time.Now()
+	var releasePage = template.Must(template.New("releaseDashboardPage").Funcs(
+		template.FuncMap{
+			"publishSpec": func(r *ReleaseStream) string {
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
+						}
+					}
+				}
+				return ""
+			},
+			"publishDescription": func(r *ReleaseStream) string {
+				if len(r.Release.Config.Message) > 0 {
+					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+				}
+				var out []string
+				switch r.Release.Config.As {
+				case releaseConfigModeStable:
+					if len(r.Release.Config.Message) == 0 {
+						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+					}
+				default:
+					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
+				}
+
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.Disabled {
+							continue
+						}
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
+						}
+					}
+				}
+				for _, target := range r.Release.Config.Publish {
+					if target.Disabled {
+						continue
+					}
+					if target.ImageStreamRef != nil {
+						ns := target.ImageStreamRef.Namespace
+						if len(ns) > 0 {
+							ns += "/"
+						}
+						if len(target.ImageStreamRef.Tags) == 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to image stream <code>%s%s</code></span>`, ns, target.ImageStreamRef.Name))
+						} else {
+							var tagNames []string
+							for _, tag := range target.ImageStreamRef.Tags {
+								tagNames = append(tagNames, fmt.Sprintf("<code>%s</code>", template.HTMLEscapeString(tag)))
+							}
+							out = append(out, fmt.Sprintf(`<span>promote %s to image stream <code>%s%s</code></span>`, strings.Join(tagNames, "/"), ns, target.ImageStreamRef.Name))
+						}
+					}
+				}
+				if len(out) > 0 {
+					sort.Strings(out)
+					return fmt.Sprintf("<p>%s</p>\n", strings.Join(out, ", "))
+				}
+				return ""
+			},
+			"tableLink":   tableLink,
+			"phaseCell":   phaseCell,
+			"phaseAlert":  phaseAlert,
+			"inc":         func(i int) int { return i + 1 },
+			"upgradeJobs": upgradeJobs,
+			"since": func(utcDate string) string {
+				t, err := time.Parse(time.RFC3339, utcDate)
+				if err != nil {
+					return ""
+				}
+				return relTime(t, now, "ago", "from now")
+			},
+		},
+	).Parse(releaseDashboardPageHtml))
+
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+		s := ReleaseStream{
+			Release: r,
+			Tags:    tagsForRelease(r),
+		}
+		var delays []string
+		if r.Config.As != releaseConfigModeStable && len(s.Tags) > 0 {
+			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
+				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
+			}
+			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) > r.Config.MaxUnreadyReleases {
+				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
+			}
+		}
+		if isReleaseFailing(s.Tags, r.Config.MaxUnreadyReleases) {
+			s.Failing = true
+		}
+
+		if len(delays) > 0 {
+			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+		}
+		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
+		page.Streams = append(page.Streams, s)
+	}
+
+	checkReleasePage(page)
+
+	sort.Slice(page.Streams, func(i, j int) bool {
+		a, b := page.Streams[i], page.Streams[j]
+		if a.Release.Config.As != b.Release.Config.As {
+			return a.Release.Config.As != releaseConfigModeStable
+		}
+		return a.Release.Config.Name < b.Release.Config.Name
+	})
+
+	fmt.Fprintf(w, htmlPageStart, "Release Status")
+	if err := releasePage.Execute(w, page); err != nil {
+		glog.Errorf("Unable to render page: %v", err)
+	}
+	fmt.Fprintln(w, htmlPageEnd)
+}
+
+func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
+	for i := 0; i < maxUnready && i < len(tags); i++ {
+		if tags[i].Annotations[releaseAnnotationPhase] == releasePhaseAccepted {
+			return false
+		}
+	}
+	return true
 }
 
 var extendedRelTime = []humanize.RelTimeMagnitude{
