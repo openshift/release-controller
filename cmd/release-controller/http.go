@@ -647,7 +647,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			}
 
 			// replace references to the previous version with links
-			rePrevious, err := regexp.Compile(fmt.Sprintf(`(\W)%s(\W)`, regexp.QuoteMeta(info.Previous.Name)))
+			rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(info.Previous.Name)))
 			if err != nil {
 				ch <- renderResult{err: err}
 				return
