@@ -320,7 +320,7 @@ func (r *ExecReleaseFiles) refreshPod() error {
 	}
 
 	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
-		glog.Infof("Another release controller is managing git-cache, ignoring")
+		glog.Infof("Another release controller is managing files-cache, ignoring")
 		return nil
 	}
 
