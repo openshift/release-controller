@@ -78,6 +78,9 @@ type ExecReleaseInfo struct {
 	imageNameFn func() (string, error)
 }
 
+// NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
+// Release Status website.  The provided name will prevent other instances of the stateful set
+// from being created when created with an identical name.
 func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
 	return &ExecReleaseInfo{
 		client:      client,
@@ -207,7 +210,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 	spec := appsv1.StatefulSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"app": r.name,
+				"app": "git-cache",
+				"release": r.name,
 			},
 		},
 		PodManagementPolicy: appsv1.ParallelPodManagement,
@@ -232,7 +236,8 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					"app": r.name,
+					"app": "git-cache",
+					"release": r.name,
 				},
 			},
 			Spec: corev1.PodSpec{
@@ -282,20 +287,26 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 }
 
 type ExecReleaseFiles struct {
-	client      kubernetes.Interface
-	restConfig  *rest.Config
-	namespace   string
-	name        string
-	imageNameFn func() (string, error)
+	client      		kubernetes.Interface
+	restConfig  		*rest.Config
+	namespace   		string
+	name        		string
+	releaseNamespace	string
+	imageNameFn 		func() (string, error)
 }
 
-func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseFiles {
+// NewExecReleaseFiles creates a stateful set, in the specified namespace, that provides cached access to downloaded
+//installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
+// from being created when created with an identical name.  The releaseNamespace is used to ensure that the tools are
+// downloaded from the correct namespace.
+func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {
 	return &ExecReleaseFiles{
-		client:      client,
-		restConfig:  restConfig,
-		namespace:   namespace,
-		name:        name,
-		imageNameFn: imageNameFn,
+		client:      		client,
+		restConfig:  		restConfig,
+		namespace:   		namespace,
+		name:        		name,
+		releaseNamespace:	releaseNamespace,
+		imageNameFn: 		imageNameFn,
 	}
 }
 
@@ -391,6 +402,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 						WorkingDir: "/srv/cache",
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
+							{Name: "RELEASE_NAMESPACE", Value: r.releaseNamespace},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "cache", MountPath: "/srv/cache/"},
@@ -405,7 +417,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 
 						Command: []string{"/bin/bash", "-c"},
 						Args: []string{
-							`
+`
 #!/bin/bash
 
 set -euo pipefail
@@ -417,89 +429,126 @@ cp /tmp/pull-secret/* /tmp/.docker/ || true
 oc registry login
 
 cat <<END >>/tmp/serve.py
-import re, os, subprocess, time, threading, socket, SocketServer, BaseHTTPServer, SimpleHTTPServer
+import re
+import os
+import subprocess
+import time
+import threading
+import socket
+import BaseHTTPServer
+import SimpleHTTPServer
+
+from subprocess import CalledProcessError
 
 # Create socket
 addr = ('', 8080)
-sock = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(addr)
 sock.listen(5)
 
+RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
+
+
 class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
-  def do_GET(self):
-    path = self.path.strip("/")
-    segments = path.split("/")
-    if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
-      name = segments[0]
-      if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+    def _present_default_content(self, name):
+        content = ("""<!DOCTYPE html>
+        <html>
+            <head>
+                <meta http-equiv=\"refresh\" content=\"5\">
+            </head>
+            <body>
+                <p>Extracting tools for %s, may take up to a minute ...</p>
+            </body>
+        </html>
+        """ % name).encode('UTF-8')
+
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Retry-After", "5")
+        self.end_headers()
+        self.wfile.write(content)
+        self.wfile.close()
+
+    def do_GET(self):
+        path = self.path.strip("/")
+        segments = path.split("/")
+
+        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
+            name = segments[0]
+
+            if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+                SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+                return
+
+            if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+                self._present_default_content(name)
+                return
+
+            try:
+                os.mkdir(name)
+            except OSError:
+                pass
+
+            with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                outfile.write("Downloading %s" % name)
+
+            try:
+                self._present_default_content(name)
+
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release:%s" % (RELEASE_NAMESPACE, name)],
+                                        stderr=subprocess.STDOUT)
+                os.remove(os.path.join(name, "DOWNLOADING.md"))
+
+            except CalledProcessError as e:
+                if e.output and ("no such image" in e.output or
+                                 "image does not exist" in e.output or
+                                 "unauthorized: access to the requested resource is not authorized" in e.output or
+                                 "some required images are missing" in e.output or
+                                 "invalid reference format" in e.output):
+                    with open(os.path.join(name, "FAILED.md"), "w") as outfile:
+                        outfile.write("Unable to get release tools: %s" % e.output)
+                    os.remove(os.path.join(name, "DOWNLOADING.md"))
+                    return
+
+                with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                    outfile.write("Unable to get release tools: %s" % e.output)
+
+            except Exception as e:
+                self.log_error('An unexpected error has occurred: {}'.format(e.message))
+
+            return
+
         SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
-        return
-      if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
-        self.send_response(200, "OK")
-        self.send_header("Content-Type", "text/html;charset=UTF-8")
-        self.send_header("Content-Length", str(len(out)))
-        self.send_header("Retry-After", "5")
-        self.end_headers()
-        self.wfile.write(out)
-        self.wfile.close()
-        return
 
-      try:
-        os.mkdir(name)
-      except OSError:
-        pass
-      with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
-        file.write("Downloading %s" % (name))
-      try:
-        out = ("<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"5\"></head><body><p>Extracting tools for %s, may take up to a minute ...</p></body></html>" % name).encode("UTF-8")
-        self.send_response(200, "OK")
-        self.send_header("Content-Type", "text/html;charset=UTF-8")
-        self.send_header("Content-Length", str(len(out)))
-        self.send_header("Retry-After", "5")
-        self.end_headers()
-        self.wfile.write(out)
-        self.wfile.close()
-
-        subprocess.check_output(["oc","adm","release","extract","--tools","--to",name,"--command-os","*","registry.svc.ci.openshift.org/ocp/release:%s" % (name)], stderr=subprocess.STDOUT)
-        os.remove(os.path.join(name, "DOWNLOADING.md"))
-
-      except Exception as e:
-        if e.output and ("no such image" in e.output or "image does not exist" in e.output):
-          with open(os.path.join(name, "FAILED.md"), "w") as file:
-            file.write("Unable to get release tools: %s" % e.output)
-          os.remove(os.path.join(name, "DOWNLOADING.md"))
-          return
-        with open(os.path.join(name, "DOWNLOADING.md"), "w") as file:
-          file.write("Unable to get release tools: %s" % e.output)
-      return
-
-    SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
 # Launch multiple listeners as threads
 class Thread(threading.Thread):
-  def __init__(self, i):
-    threading.Thread.__init__(self)
-    self.i = i
-    self.daemon = True
-    self.start()
-  def run(self):
-    server = FileServer #SimpleHTTPServer.SimpleHTTPRequestHandler
-    server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
-    httpd = BaseHTTPServer.HTTPServer(addr, server, False)
+    def __init__(self, index):
+        threading.Thread.__init__(self)
+        self.i = index
+        self.daemon = True
+        self.start()
 
-    # Prevent the HTTP server from re-binding every handler.
-    # https://stackoverflow.com/questions/46210672/
-    httpd.socket = sock
-    httpd.server_bind = self.server_close = lambda self: None
+    def run(self):
+        server = FileServer  # SimpleHTTPServer.SimpleHTTPRequestHandler
+        server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
+        httpd = BaseHTTPServer.HTTPServer(addr, server, False)
 
-    httpd.serve_forever()
+        # Prevent the HTTP server from re-binding every handler.
+        # https://stackoverflow.com/questions/46210672/
+        httpd.socket = sock
+        httpd.server_bind = self.server_close = lambda self: None
+
+        httpd.serve_forever()
+
+
 [Thread(i) for i in range(100)]
 time.sleep(9e9)
 END
 python /tmp/serve.py
-              `,
+`,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
