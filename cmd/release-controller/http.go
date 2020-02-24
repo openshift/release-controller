@@ -111,7 +111,7 @@ td.upgrade-track {
 <div class="row">
 <div class="col">
 {{ range .Streams }}
-		<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
+		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
 		{{ publishDescription . }}
 		{{ alerts . }}
 		{{ $upgrades := .Upgrades }}
@@ -163,7 +163,7 @@ const releaseDashboardPageHtml = `
 <div class="col">
 {{ range .Streams }}
 		{{ if ne .Release.Config.Name "4-stable" }}
-			<h2 id="{{ .Release.Config.Name }}" title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}">{{ .Release.Config.Name }}</h2>
+			<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
 			{{ publishDescription . }}
 			{{ $upgrades := .Upgrades }}
 			<table class="table text-nowrap">
@@ -186,7 +186,7 @@ const releaseDashboardPageHtml = `
 				</tr>
 			{{ end }}
 			{{ if .Failing }}
-				<div class="alert alert-danger">This release has no accepted payloads in the last 5 attempts, investigation required.</div>
+				<div class="alert alert-danger">This release has no recently accepted payloads, investigation required.</div>
 			{{ end }}
 			{{ range $index, $tag := .Tags }}
 				{{ if lt $index 10 }}
