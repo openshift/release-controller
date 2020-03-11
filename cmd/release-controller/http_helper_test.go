@@ -1,6 +1,7 @@
 package main
 
 import (
+	"k8s.io/apimachinery/pkg/util/diff"
 	"reflect"
 	"sort"
 	"testing"

@@ -21,7 +21,6 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
 			continue
 		}
-
 		switch {
 		case verifyType.ProwJob != nil:
 			if verifyStatus == nil {
@@ -55,6 +54,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 							}
 							continue
 						}
+					}
+					// Write previous run status into history before creating a new job
+					if len(status.History) == 0 || status.History[len(status.History)-1].URL != status.URL {
+						verifyStatus[name].History = append(status.History, verifyStatus[name].VerifyJobStatus)
 					}
 				case releaseVerificationStatePending:
 					// we need to process this
@@ -121,6 +124,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if err != nil {
 				return nil, err
 			}
+
 			status, ok := prowJobVerificationStatus(job)
 			if !ok {
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
@@ -132,6 +136,9 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				verifyStatus = make(VerificationStatusMap)
 			}
 			status.Retries = jobRetries
+			if s, ok := verifyStatus[name]; ok {
+				status.History = s.History
+			}
 			verifyStatus[name] = status
 
 			if jobRetries >= verifyType.MaxRetries {
