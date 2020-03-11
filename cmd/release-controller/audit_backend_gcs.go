@@ -35,7 +35,7 @@ func NewGCSAuditStore(bucket string, prefix, userAgent, serviceAccountPath strin
 		options = append(options, option.WithUserAgent(userAgent))
 	}
 	if len(serviceAccountPath) > 0 {
-		options = append(options, option.WithServiceAccountFile(serviceAccountPath))
+		options = append(options, option.WithCredentialsFile(serviceAccountPath))
 	}
 	client, err := storage.NewClient(
 		context.Background(),

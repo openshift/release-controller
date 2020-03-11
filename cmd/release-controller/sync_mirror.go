@@ -128,7 +128,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 			source = external + "@" + tag.Items[0].Image
 		}
 		if len(source) == 0 {
-			return fmt.Errorf("Can't use tag %q because we cannot locate or calculate a source location", tag.Tag)
+			return fmt.Errorf("can't use tag %q because we cannot locate or calculate a source location", tag.Tag)
 		}
 		sourceRef, err := imagereference.Parse(source)
 		if err != nil {

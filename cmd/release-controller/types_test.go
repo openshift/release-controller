@@ -25,7 +25,7 @@ func TestBackoff(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := calculateBackoff(tt.step, &metav1.Time{tt.initial}, &metav1.Time{tt.current})
+			got := calculateBackoff(tt.step, &metav1.Time{Time: tt.initial}, &metav1.Time{Time: tt.current})
 			if got != tt.want {
 				t.Errorf("calculateBackoff(%d, %d, %d): want %v, got %v", tt.step, tt.initial.Unix(), tt.current.Unix(), tt.want, got)
 			}

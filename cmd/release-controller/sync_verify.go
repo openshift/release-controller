@@ -46,7 +46,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					}
 					// find the next time, if ok run.
 					if status.TransitionTime != nil {
-						backoffDuration := calculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{time.Now()})
+						backoffDuration := calculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{Time: time.Now()})
 						if backoffDuration > 0 {
 							klog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
 								releaseTag.Name, name, jobRetries, status.TransitionTime.Format(time.RFC3339), time.Now().Add(backoffDuration).Format(time.RFC3339))
@@ -140,7 +140,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 
 			if status.State == releaseVerificationStateFailed {
 				// Queue for retry if at least one retryable job at earliest interval
-				backoffDuration := calculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{time.Now()})
+				backoffDuration := calculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{Time: time.Now()})
 				if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
 					retryQueueDelay = backoffDuration
 				}
