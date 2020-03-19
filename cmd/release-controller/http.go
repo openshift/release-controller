@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -207,7 +208,12 @@ const releaseDashboardPageHtml = `
 </div>
 `
 
-var rePromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
+var (
+	reInternalLink = regexp.MustCompile(`<a href="[^"]+">`)
+	rePromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
+	reRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+)
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
@@ -714,6 +720,71 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			// add link to tag from which current version promoted from
 			out = rePromotedFrom.ReplaceAllString(out, fmt.Sprintf("Release %s was created from [$1:$2](/releasetag/$2)", info.Tag.Name))
 
+			// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
+			//       For now, this will have to do.
+			if m := reRHCoSDiff.FindStringSubmatch(out); m != nil {
+				fromRelease := m[1]
+				fromStream := fmt.Sprintf("releases/rhcos-%s.%s", m[2], m[3])
+				fromURL := url.URL{
+					Scheme: "https",
+					Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+					Path:   "/",
+					RawQuery: (url.Values{
+						"stream":  []string{fromStream},
+						"release": []string{fromRelease},
+					}).Encode(),
+				}
+				toRelease := m[4]
+				toStream := fmt.Sprintf("releases/rhcos-%s.%s", m[5], m[6])
+				toURL := url.URL{
+					Scheme: "https",
+					Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+					Path:   "/",
+					RawQuery: (url.Values{
+						"stream":  []string{toStream},
+						"release": []string{toRelease},
+					}).Encode(),
+				}
+				diffURL := url.URL{
+					Scheme: "https",
+					Host:   "releases-rhcos.cloud.privileged.psi.redhat.com",
+					Path:   "/diff.html",
+					RawQuery: (url.Values{
+						"first_stream":   []string{fromStream},
+						"first_release":  []string{fromRelease},
+						"second_stream":  []string{toStream},
+						"second_release": []string{toRelease},
+					}).Encode(),
+				}
+				replace := fmt.Sprintf(
+					`* Red Hat Enterprise Linux CoreOS upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n",
+					fromRelease,
+					fromURL.String(),
+					toRelease,
+					toURL.String(),
+					diffURL.String(),
+				)
+				out = strings.ReplaceAll(out, m[0], replace)
+			}
+			if m := reRHCoSVersion.FindStringSubmatch(out); m != nil {
+				fromRelease := m[1]
+				fromStream := fmt.Sprintf("releases/rhcos-%s.%s", m[2], m[3])
+				fromURL := url.URL{
+					Scheme: "https",
+					Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+					Path:   "/",
+					RawQuery: (url.Values{
+						"stream":  []string{fromStream},
+						"release": []string{fromRelease},
+					}).Encode(),
+				}
+				replace := fmt.Sprintf(
+					`* Red Hat Enterprise Linux CoreOS [%s](%s)`+"\n",
+					fromRelease,
+					fromURL.String(),
+				)
+				out = strings.ReplaceAll(out, m[0], replace)
+			}
 			ch <- renderResult{out: out}
 		}()
 
@@ -733,6 +804,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 		if render.err == nil {
 			result := blackfriday.Run([]byte(render.out))
+			// make our links targets
+			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
+			})
 			w.Write(result)
 			fmt.Fprintln(w, "<hr>")
 		} else {
