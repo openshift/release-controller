@@ -35,7 +35,11 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 		parts := strings.Split(key, "\x00")
 		switch parts[0] {
 		case "changelog":
-			s, err = info.ChangeLog(parts[1], parts[2])
+			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
+				s, err = "", fmt.Errorf("invalid from/to")
+			} else {
+				s, err = info.ChangeLog(parts[1], parts[2])
+			}
 		case "releaseinfo":
 			s, err = info.ReleaseInfo(parts[1])
 		}
@@ -51,9 +55,6 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 }
 
 func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
-	if strings.Contains(from, "\x00") || strings.Contains(to, "\x00") {
-		return "", fmt.Errorf("invalid from/to")
-	}
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to}, "\x00"), groupcache.StringSink(&s))
 	return s, err
@@ -210,7 +211,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 	spec := appsv1.StatefulSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"app": "git-cache",
+				"app":     "git-cache",
 				"release": r.name,
 			},
 		},
@@ -236,7 +237,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					"app": "git-cache",
+					"app":     "git-cache",
 					"release": r.name,
 				},
 			},
@@ -287,12 +288,12 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 }
 
 type ExecReleaseFiles struct {
-	client      		kubernetes.Interface
-	restConfig  		*rest.Config
-	namespace   		string
-	name        		string
-	releaseNamespace	string
-	imageNameFn 		func() (string, error)
+	client           kubernetes.Interface
+	restConfig       *rest.Config
+	namespace        string
+	name             string
+	releaseNamespace string
+	imageNameFn      func() (string, error)
 }
 
 // NewExecReleaseFiles creates a stateful set, in the specified namespace, that provides cached access to downloaded
@@ -301,12 +302,12 @@ type ExecReleaseFiles struct {
 // downloaded from the correct namespace.
 func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {
 	return &ExecReleaseFiles{
-		client:      		client,
-		restConfig:  		restConfig,
-		namespace:   		namespace,
-		name:        		name,
-		releaseNamespace:	releaseNamespace,
-		imageNameFn: 		imageNameFn,
+		client:           client,
+		restConfig:       restConfig,
+		namespace:        namespace,
+		name:             name,
+		releaseNamespace: releaseNamespace,
+		imageNameFn:      imageNameFn,
 	}
 }
 
@@ -417,7 +418,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 
 						Command: []string{"/bin/bash", "-c"},
 						Args: []string{
-`
+							`
 #!/bin/bash
 
 set -euo pipefail
