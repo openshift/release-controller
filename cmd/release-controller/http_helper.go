@@ -721,7 +721,13 @@ func (s newestSemVerFromSummaries) Less(i, j int) bool {
 	if c < 0 {
 		return false
 	}
-	return s.summaries[i].From > s.summaries[j].From
+	if s.summaries[i].From > s.summaries[j].From {
+		return true
+	}
+	if s.summaries[i].From < s.summaries[j].From {
+		return false
+	}
+	return s.summaries[i].Total >= s.summaries[j].Total
 }
 func (s newestSemVerFromSummaries) Swap(i, j int) {
 	s.summaries[i], s.summaries[j] = s.summaries[j], s.summaries[i]
