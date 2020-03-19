@@ -6,9 +6,9 @@ image:
 	imagebuilder -t openshift/release-controller:latest .
 .PHONY: image
 
-check:
+test:
 	go test -race ./...
-.PHONY: check
+.PHONY: test
 
 test-integration: build
 	./test/integration.sh

@@ -195,7 +195,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 					Config: &ReleaseConfig{},
 				}
 			}
-			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph()); !reflect.DeepEqual(got, tt.want) {
+			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph(), false); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("%s", diff.ObjectReflectDiff(tt.want, got))
 			}
 		})
