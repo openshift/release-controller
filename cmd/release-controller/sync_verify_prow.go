@@ -56,6 +56,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	}, map[string]string{
 		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 	})
+	pj.Spec.Cluster = c.prowJobCluster
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
 	if !ok {
