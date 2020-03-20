@@ -1189,15 +1189,8 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		page.Streams = append(page.Streams, s)
 	}
 
+	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
-
-	sort.Slice(page.Streams, func(i, j int) bool {
-		a, b := page.Streams[i], page.Streams[j]
-		if a.Release.Config.As != b.Release.Config.As {
-			return a.Release.Config.As != releaseConfigModeStable
-		}
-		return a.Release.Config.Name < b.Release.Config.Name
-	})
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
 	if err := releasePage.Execute(w, page); err != nil {
