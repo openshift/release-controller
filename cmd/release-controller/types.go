@@ -35,6 +35,9 @@ type ReleaseConfig struct {
 	// to describe the purpose of this stream.
 	Message string `json:"message"`
 
+	// Hide indicates this release should be visually less important on the status pages.
+	Hide bool `json:"hide"`
+
 	// As defines what this image stream provides. The default value is "Integration"
 	// and the images in the image stream will be used to build payloads. An optional
 	// mode is "Stable" and tags are assumed to be release payloads that should be promoted

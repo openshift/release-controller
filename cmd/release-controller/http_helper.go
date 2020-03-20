@@ -328,24 +328,46 @@ func links(tag imagev1.TagReference, release *Release) string {
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
 		return "error"
 	}
-	keys := make([]string, 0, len(release.Config.Verify))
+	pending, failing := make([]string, 0, len(release.Config.Verify)), make([]string, 0, len(release.Config.Verify))
 	for k, v := range release.Config.Verify {
 		if v.Upgrade {
 			continue
 		}
-		keys = append(keys, k)
+		s, ok := status[k]
+		if !ok {
+			continue
+		}
+		switch s.State {
+		case releaseVerificationStateSucceeded:
+			continue
+		case releaseVerificationStateFailed:
+			failing = append(failing, k)
+		default:
+			pending = append(pending, k)
+		}
 	}
-	sort.Strings(keys)
+	var keys []string
+	pendingCount, failingCount := len(pending), len(failing)
+	if pendingCount <= 3 {
+		sort.Strings(pending)
+		keys = pending
+	} else {
+		keys = pending[:0]
+	}
+	if failingCount <= 3 {
+		sort.Strings(failing)
+		keys = append(keys, failing...)
+	}
 
 	buf := &bytes.Buffer{}
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
 			if len(s.URL) > 0 {
 				switch s.State {
+				case releaseVerificationStateSucceeded:
+					continue
 				case releaseVerificationStateFailed:
 					buf.WriteString(" <a title=\"Failed\" class=\"text-danger\" href=\"")
-				case releaseVerificationStateSucceeded:
-					buf.WriteString(" <a title=\"Succeeded\" class=\"text-success\" href=\"")
 				default:
 					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
 				}
@@ -356,10 +378,10 @@ func links(tag imagev1.TagReference, release *Release) string {
 				continue
 			}
 			switch s.State {
+			case releaseVerificationStateSucceeded:
+				continue
 			case releaseVerificationStateFailed:
 				buf.WriteString(" <span title=\"Failed\" class=\"text-danger\">")
-			case releaseVerificationStateSucceeded:
-				buf.WriteString(" <span title=\"Succeeded\" class=\"text-success\">")
 			default:
 				buf.WriteString(" <span title=\"Pending\" class=\"\">")
 			}
@@ -374,6 +396,21 @@ func links(tag imagev1.TagReference, release *Release) string {
 			buf.WriteString("</span>")
 		}
 	}
+	if pendingCount > 3 {
+		buf.WriteString(" <a title=\"See details page for more\" class=\"\" href=\"")
+		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(release.Config.Name), url.PathEscape(tag.Name))))
+		buf.WriteString("\">")
+		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("%d pending", len(failing))))
+		buf.WriteString("</a>")
+	}
+	if failingCount > 3 {
+		buf.WriteString(" <a title=\"See details page for more\" class=\"text-danger\" href=\"")
+		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(release.Config.Name), url.PathEscape(tag.Name))))
+		buf.WriteString("\">")
+		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("%d failed", len(failing))))
+		buf.WriteString("</a>")
+	}
+
 	return buf.String()
 }
 
@@ -694,6 +731,39 @@ func filterWithPrefix(summaries []UpgradeHistory, prefix string) []UpgradeHistor
 	}
 	return summaries
 }
+
+type preferredReleases []ReleaseStream
+
+func (r preferredReleases) Less(i, j int) bool {
+	a, b := r[i], r[j]
+	if !a.Release.Config.Hide && b.Release.Config.Hide {
+		return true
+	}
+	if a.Release.Config.Hide && !b.Release.Config.Hide {
+		return false
+	}
+	aStable, bStable := a.Release.Config.As == releaseConfigModeStable, b.Release.Config.As == releaseConfigModeStable
+	if aStable && !bStable {
+		return true
+	}
+	if !aStable && bStable {
+		return false
+	}
+	aV, _ := semver.ParseTolerant(a.Release.Config.Name)
+	bV, _ := semver.ParseTolerant(b.Release.Config.Name)
+	aV.Pre = nil
+	bV.Pre = nil
+	switch aV.Compare(bV) {
+	case 1:
+		return true
+	case -1:
+		return false
+	}
+	return a.Release.Config.Name <= b.Release.Config.Name
+}
+
+func (r preferredReleases) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
+func (r preferredReleases) Len() int      { return len(r) }
 
 type newestSemVerFromSummaries struct {
 	versions  []semver.Version

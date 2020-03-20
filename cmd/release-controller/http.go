@@ -122,7 +122,7 @@ td.upgrade-track {
 					<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
 					<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
 					<th>Started</th>
-					<th title="All tests must pass for a candidate to be marked accepted">Tests</th>
+					<th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
 					<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>
 				</tr>
 			</thead>
@@ -1047,15 +1047,8 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		page.Streams = append(page.Streams, s)
 	}
 
+	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
-
-	sort.Slice(page.Streams, func(i, j int) bool {
-		a, b := page.Streams[i], page.Streams[j]
-		if a.Release.Config.As != b.Release.Config.As {
-			return a.Release.Config.As != releaseConfigModeStable
-		}
-		return a.Release.Config.Name < b.Release.Config.Name
-	})
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
 	if err := releasePage.Execute(w, page); err != nil {
