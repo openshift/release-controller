@@ -294,7 +294,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
-	mux.HandleFunc("/api/v1/releaseInfo", c.httpReleaseInfoJson)
+	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
 	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
@@ -475,7 +475,8 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 	start := time.Now()
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	tag := req.URL.Query().Get("tag")
+	vars := mux.Vars(req)
+	tag := vars["tag"]
 	if len(tag) == 0 {
 		http.Error(w, fmt.Sprintf("tag must be specified"), http.StatusBadRequest)
 		return
@@ -483,23 +484,19 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 
 	tags, ok := c.findReleaseStreamTags(false, tag)
 	if !ok {
-		for k, v := range tags {
-			if v == nil {
-				http.Error(w, fmt.Sprintf("could not find tag: %s", k), http.StatusBadRequest)
-				return
-			}
-		}
-	}
-
-	tagBase := tags[tag].Release.Target.Status.PublicDockerImageRepository
-	if len(tagBase) == 0 {
-		http.Error(w, fmt.Sprintf("release target %s does not have a configured registry", tags[tag].Release.Target.Name), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("could not find tag: %s", tag), http.StatusBadRequest)
 		return
 	}
 
-	out, err := c.releaseInfo.ReleaseInfo(tagBase+":"+tag)
+	tagPullSpec := findPublicImagePullSpec(tags[tag].Release.Target, tag)
+	if len(tagPullSpec) == 0 {
+		http.Error(w, fmt.Sprintf("could not find pull spec for tag %s in image stream %s", tag, tags[tag].Release.Target.Name), http.StatusBadRequest)
+		return
+	}
+
+	out, err := c.releaseInfo.ReleaseInfo(tagPullSpec)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Internal error", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Internal error: %v", err), http.StatusInternalServerError)
 		return
 	}
 
