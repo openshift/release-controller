@@ -336,7 +336,7 @@ func (o *options) Run() error {
 		klog.Infof("Dry run mode (no changes will be made)")
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh, c)
 
 		<-stopCh
 		return nil
@@ -344,7 +344,7 @@ func (o *options) Run() error {
 		klog.Infof("Auditing releases to %s", o.AuditStorage)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh, c)
 
 		c.RunAudit(2, stopCh)
 		return nil
@@ -352,7 +352,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh, c)
 
 		c.RunSync(3, stopCh)
 		return nil
@@ -360,7 +360,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing releases")
 
 		// keep the graph in a more persistent form
-		go syncGraphToSecret(graph, true, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, true, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh, c)
 		// maintain the release pods
 		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
 
