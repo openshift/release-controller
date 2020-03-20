@@ -294,6 +294,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
+	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
 	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
@@ -467,6 +468,39 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintln(w, out)
+}
+
+func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	tag := vars["tag"]
+	if len(tag) == 0 {
+		http.Error(w, fmt.Sprintf("tag must be specified"), http.StatusBadRequest)
+		return
+	}
+
+	tags, ok := c.findReleaseStreamTags(false, tag)
+	if !ok {
+		http.Error(w, fmt.Sprintf("could not find tag: %s", tag), http.StatusBadRequest)
+		return
+	}
+
+	tagPullSpec := findPublicImagePullSpec(tags[tag].Release.Target, tag)
+	if len(tagPullSpec) == 0 {
+		http.Error(w, fmt.Sprintf("could not find pull spec for tag %s in image stream %s", tag, tags[tag].Release.Target.Name), http.StatusBadRequest)
+		return
+	}
+
+	out, err := c.releaseInfo.ReleaseInfo(tagPullSpec)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Internal error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintln(w, out)
 }
 
