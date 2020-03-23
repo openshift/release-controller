@@ -50,6 +50,7 @@ type options struct {
 	ReleaseNamespaces []string
 	JobNamespace      string
 	ProwNamespace     string
+	ProwJobKubeconfig string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -106,6 +107,7 @@ func main() {
 	var ignored string
 	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
+	flag.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults to the main kubeconfig if unset.")
 	flag.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
@@ -137,7 +139,7 @@ func (o *options) Run() error {
 		o.ProwNamespace = o.JobNamespace
 	}
 
-	config, _, _, err := loadClusterConfig()
+	config, err := loadClusterConfig()
 	if err != nil {
 		return err
 	}
@@ -176,12 +178,10 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(config)
+	prowClient, err := o.prowJobClient(config)
 	if err != nil {
-		return fmt.Errorf("unable to create prow client: %v", err)
+		return fmt.Errorf("failed to create prowjob client: %v", err)
 	}
-	prowClient := dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"})
-
 	stopCh := wait.NeverStop
 	var hasSynced []cache.InformerSynced
 
@@ -369,21 +369,37 @@ func (o *options) Run() error {
 	}
 }
 
+func (o *options) prowJobClient(cfg *rest.Config) (dynamic.NamespaceableResourceInterface, error) {
+	if o.ProwJobKubeconfig != "" {
+		var err error
+		cfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.ProwJobKubeconfig},
+			&clientcmd.ConfigOverrides{},
+		).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load prowjob kubeconfig from path %q: %v", o.ProwJobKubeconfig, err)
+		}
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create prow client: %v", err)
+	}
+
+	return dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"}), nil
+}
+
 // loadClusterConfig loads connection configuration
 // for the cluster we're deploying to. We prefer to
 // use in-cluster configuration if possible, but will
 // fall back to using default rules otherwise.
-func loadClusterConfig() (*rest.Config, string, bool, error) {
+func loadClusterConfig() (*rest.Config, error) {
 	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
 	clusterConfig, err := cfg.ClientConfig()
 	if err != nil {
-		return nil, "", false, fmt.Errorf("could not load client configuration: %v", err)
+		return nil, fmt.Errorf("could not load client configuration: %v", err)
 	}
-	ns, isSet, err := cfg.Namespace()
-	if err != nil {
-		return nil, "", false, fmt.Errorf("could not load client namespace: %v", err)
-	}
-	return clusterConfig, ns, isSet, nil
+	return clusterConfig, nil
 }
 
 func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface, namespace string, resyncPeriod time.Duration, selector labels.Selector) cache.SharedIndexInformer {

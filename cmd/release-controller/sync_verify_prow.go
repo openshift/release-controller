@@ -44,6 +44,11 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, terminalError{err}
 	}
+	if err := validateProwJob(periodicConfig); err != nil {
+		err := fmt.Errorf("the prowjob %s is not valid: %v", jobName, err)
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
+		return nil, terminalError{err}
+	}
 
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
@@ -154,4 +159,11 @@ func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, b
 		}
 	}
 	return nil, false
+}
+
+func validateProwJob(pj *prowconfig.Periodic) error {
+	if pj.Cluster == "" || pj.Cluster == prowjobv1.DefaultClusterAlias {
+		return fmt.Errorf("the jobs cluster must be set to a value that is not %s, was %q", prowjobv1.DefaultClusterAlias, pj.Cluster)
+	}
+	return nil
 }

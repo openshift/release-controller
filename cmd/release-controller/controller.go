@@ -30,8 +30,8 @@ import (
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions/image/v1"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 
-	prowconfig "k8s.io/test-infra/prow/config"
 	"github.com/openshift/release-controller/pkg/signer"
+	prowconfig "k8s.io/test-infra/prow/config"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
