@@ -106,8 +106,6 @@ type Controller struct {
 	jobNamespace string
 	// prowNamespace is the namespace where ProwJobs are created.
 	prowNamespace string
-	// prowJobCluster is the cluster to set on all prowJobs
-	prowJobCluster string
 	// artifactsHost if set is the location to build download links for client tools from
 	artifactsHost string
 
@@ -138,7 +136,6 @@ func NewController(
 	prowClient dynamic.ResourceInterface,
 	releaseNamespace string,
 	jobNamespace string,
-	prowJobCluster string,
 	artifactsHost string,
 	releaseInfo ReleaseInfo,
 	graph *UpgradeGraph,
@@ -185,7 +182,6 @@ func NewController(
 
 		releaseNamespace: releaseNamespace,
 		jobNamespace:     jobNamespace,
-		prowJobCluster:   prowJobCluster,
 
 		artifactsHost: artifactsHost,
 

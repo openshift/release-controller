@@ -51,7 +51,6 @@ type options struct {
 	JobNamespace      string
 	ProwNamespace     string
 	ProwJobKubeconfig string
-	ProwJobCluster    string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -108,7 +107,6 @@ func main() {
 	var ignored string
 	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
 	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
-	flag.StringVar(&opt.ProwJobCluster, "prow-job-cluster", opt.ProwJobCluster, "The cluster to configure on all created ProwJobs.")
 	flag.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults to the main kubeconfig if unset.")
 	flag.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
 	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
@@ -216,7 +214,6 @@ func (o *options) Run() error {
 		prowClient.Namespace(o.ProwNamespace),
 		releaseNamespace,
 		o.JobNamespace,
-		o.ProwJobCluster,
 		o.ArtifactsHost,
 		releaseInfo,
 		graph,
