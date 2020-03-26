@@ -11,6 +11,26 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+// APITag contains information about a release tag in a stream.
+type APITag struct {
+	// Name is the name of the tag. This is usually a semantic version.
+	Name string `json:"name"`
+	// Phase is the phase of the tag.
+	Phase string `json:"phase"`
+	// PullSpec can be used to retrieve the release image.
+	PullSpec string `json:"pullSpec"`
+	// DownloadURL is a link to the web page for downloading the tools.
+	DownloadURL string `json:"downloadURL"`
+}
+
+// APIRelease contains information about a release stream.
+type APIRelease struct {
+	// Name is the name of the release stream.
+	Name string `json:"name"`
+	// Tags is a list of all tags in the release sorted by semantic version, oldest to newest.
+	Tags []APITag `json:"tags"`
+}
+
 // Release holds information about the release used during processing.
 type Release struct {
 	// Source is the image stream that the Config was loaded from and holds all
