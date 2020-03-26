@@ -196,7 +196,7 @@ const releaseDashboardPageHtml = `
 							{{ tableLink $release.Config . }}
 							{{ phaseCell . }}
 							<td title="{{ $created }}">{{ since $created }}</td>
-							{{ upgradeJobs $upgrades $index $created }}  				    
+							{{ upgradeJobs $upgrades $index $created }}
 						</tr>
 				{{end}}
 			{{ end }}
@@ -615,25 +615,15 @@ func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Re
 	http.Redirect(w, req, u, http.StatusFound)
 }
 
-func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
-
-	vars := mux.Vars(req)
-	release := vars["release"]
-	tag := vars["tag"]
-	from := req.URL.Query().Get("from")
-
+func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStreamTag, string, string, error, int) {
 	tags, ok := c.findReleaseStreamTags(true, tag, from)
 	if !ok {
-		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
-		return
+		return nil, "", "", fmt.Errorf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound
 	}
 
 	info := tags[tag]
 	if len(release) > 0 && info.Release.Config.Name != release {
-		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
-		return
+		return nil, "", "", fmt.Errorf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound
 	}
 
 	if previous := tags[from]; previous != nil {
@@ -661,6 +651,22 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	var previousTagPull string
 	if info.Previous != nil {
 		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
+	}
+	return info, tagPull, previousTagPull, nil, 0
+}
+
+func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	release := vars["release"]
+	tag := vars["tag"]
+	from := req.URL.Query().Get("from")
+
+	info, tagPull, previousTagPull, err, httpCode := c.getReleaseTagInfo(release, tag, from)
+	if err != nil {
+		http.Error(w, err.Error(), httpCode)
 	}
 	mirror, _ := c.getMirror(info.Release, info.Tag.Name)
 

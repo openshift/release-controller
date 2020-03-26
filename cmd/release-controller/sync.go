@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/test-infra/prow/github"
 
 	"github.com/openshift/api/image/docker10"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -514,6 +517,90 @@ func (c *Controller) syncReady(release *Release) error {
 	return nil
 }
 
+type GitHubPR struct {
+	Org  string
+	Repo string
+	PR   int
+}
+
+type BugzillaPR struct {
+	bugzillaNum int
+	githubPR    GitHubPR
+}
+
+const (
+	GHRegex       = `\(https://github.com/[[:alnum:]]+/[[:alnum:]|\-]+/pull/[\d]+\)`
+	BZRegex       = `\[Bug [\d]+\]`
+	BZAssignRegex = `Assigning the QA contact for review:[[:space:]]+/assign @[[:alnum:]]+`
+)
+
+func getBugzillaPRs(input string) []BugzillaPR {
+	lineRegex := regexp.MustCompile(fmt.Sprintf(`%s.+%s`, BZRegex, GHRegex))
+	bzRegex := regexp.MustCompile(BZRegex)
+	numberRegex := regexp.MustCompile(`[\d]+`)
+	ghRegex := regexp.MustCompile(GHRegex)
+	matches := lineRegex.FindAllString(input, -1)
+	var newArr []BugzillaPR
+	for _, match := range matches {
+		bz := bzRegex.FindString(match)
+		bzID := numberRegex.FindString(bz)
+		bzInt, err := strconv.Atoi(bzID)
+		if err != nil {
+			glog.V(4).Infof("Failed to convert bugzilla ID %s to integer: %v", bzID, err)
+			continue
+		}
+		ghLink := ghRegex.FindString(match)
+		trimmedGHLink := strings.TrimPrefix(ghLink, "(https://github.com/")
+		trimmedGHLink = strings.TrimSuffix(trimmedGHLink, ")")
+		splitGHLink := strings.Split(trimmedGHLink, "/")
+		if len(splitGHLink) != 4 {
+			glog.V(4).Infof("Could not properly split github URL: %s", trimmedGHLink)
+			continue
+		}
+		ghPRInt, err := strconv.Atoi(splitGHLink[3])
+		if err != nil {
+			glog.V(4).Infof("Failed to convert github PR ID %s to integer: %v", splitGHLink[3], err)
+			continue
+		}
+		bzPR := BugzillaPR{
+			bugzillaNum: bzInt,
+			githubPR: GitHubPR{
+				Org:  splitGHLink[0],
+				Repo: splitGHLink[1],
+				PR:   ghPRInt,
+			},
+		}
+		newArr = append(newArr, bzPR)
+	}
+	return newArr
+}
+
+func prApprovedByQA(comments []github.IssueComment) bool {
+	bzRegex := regexp.MustCompile(BZAssignRegex)
+	var lgtms, qaContacts []string
+	for _, comment := range comments {
+		if strings.Contains(comment.Body, "/lgtm") {
+			lgtms = append(lgtms, comment.User.Login)
+		}
+		bz := bzRegex.FindString(comment.Body)
+		if bz != "" {
+			splitbz := strings.Split(bz, "@")
+			if len(splitbz) == 2 {
+				qaContacts = append(qaContacts, splitbz[1])
+			}
+		}
+	}
+	for _, contact := range qaContacts {
+		for _, lgtm := range lgtms {
+			if contact == lgtm {
+				glog.V(4).Infof("QA Contact %s lgmt'd this PR\n", contact)
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
 
@@ -527,6 +614,34 @@ func (c *Controller) syncAccepted(release *Release) error {
 	var errs []error
 	newestAccepted := acceptedTags[0]
 	for name, publishType := range release.Config.Publish {
+		_, tagPull, previousTagPull, err, _ := c.getReleaseTagInfo(release.Source.GetName(), newestAccepted.Name, "")
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			if changelog, err := c.releaseInfo.ChangeLog(previousTagPull, tagPull); err != nil {
+				errs = append(errs, fmt.Errorf("Unable to generate changelog from %s to %s: %v", previousTagPull, tagPull, err))
+			} else {
+				bzPRs := getBugzillaPRs(changelog)
+				fmt.Printf("Bugs fixed from %s to %s: %v\n", previousTagPull, tagPull, bzPRs)
+				for _, bzp := range bzPRs {
+					bug, err := c.bzClient.GetBug(bzp.bugzillaNum)
+					if err != nil {
+						glog.V(4).Infof("Unable to get bugzilla number %d: %v", bzp.bugzillaNum, err)
+					}
+					comments, err := c.ghClient.ListIssueComments(bzp.githubPR.Org, bzp.githubPR.Repo, bzp.githubPR.PR)
+					if err != nil {
+						glog.V(4).Infof("Unable to get comments for github pull (%s, %s, %d): %v", bzp.githubPR.Org, bzp.githubPR.Repo, bzp.githubPR.PR, err)
+					}
+					approved := prApprovedByQA(comments)
+					if approved {
+						glog.V(4).Infof("Bug %d (current status %s) should be moved to VERIFIED state", bug.ID, bug.Status)
+						// once this is proven to work correctly in-cluster, add code to update bugzilla bug state to VERIFIED
+					} else {
+						glog.V(4).Infof("Bug %d (current status %s) not approved by QA contact", bug.ID, bug.Status)
+					}
+				}
+			}
+		}
 		if publishType.Disabled {
 			continue
 		}
