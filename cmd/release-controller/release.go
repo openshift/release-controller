@@ -289,10 +289,8 @@ func semanticTagsForRelease(release *Release, phases ...string) SemanticVersions
 		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if len(phases) > 0 {
-			if !stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
-				continue
-			}
+		if len(phases) > 0 && !stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
+			continue
 		}
 
 		if version, err := semver.Parse(tag.Name); err == nil {

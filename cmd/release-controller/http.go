@@ -240,6 +240,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		if err != nil || !ok {
 			continue
 		}
+		// TODO: should be refactored to be semanticTagsForRelease
 		releaseTags := tagsForRelease(r)
 		if includeStableTags {
 			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
@@ -296,6 +297,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
 	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
+	mux.HandleFunc("/api/v1/releasestream/{release}/tags", c.apiReleaseTags)
 	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
@@ -364,10 +366,11 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	}
 
 	downloadURL, _ := c.urlForArtifacts(latest.Name)
-	resp := LatestAccepted{
+	resp := APITag{
 		Name:        latest.Name,
 		PullSpec:    findPublicImagePullSpec(r.Target, latest.Name),
 		DownloadURL: downloadURL,
+		Phase:       latest.Annotations[releaseAnnotationPhase],
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -380,6 +383,85 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	case "name":
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, resp.Name)
+	case "", "json":
+		data, err := json.MarshalIndent(&resp, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+		fmt.Fprintln(w)
+	default:
+		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+	}
+}
+
+func (c *Controller) locateStream(streamName string, phases ...string) (*ReleaseStream, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.Name != streamName {
+			continue
+		}
+		// find all accepted tags, then sort by semantic version
+		tags := semanticTagsForRelease(r, phases...)
+		return &ReleaseStream{
+			Release: r,
+			Tags:    tags.Tags(),
+		}, nil
+	}
+	return nil, errStreamNotFound
+
+}
+
+func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+
+	filterPhase := req.URL.Query()["phase"]
+
+	r, err := c.locateStream(streamName)
+	if err != nil {
+		if err == errStreamNotFound {
+			http.Error(w, fmt.Sprintf("Unable to find release %s", streamName), http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("Unable to find release %s: %v", streamName, err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var tags []APITag
+	for _, tag := range r.Tags {
+		downloadURL, _ := c.urlForArtifacts(tag.Name)
+		phase := tag.Annotations[releaseAnnotationPhase]
+		if len(filterPhase) > 0 && !containsString(filterPhase, phase) {
+			continue
+		}
+		tags = append(tags, APITag{
+			Name:        tag.Name,
+			PullSpec:    findPublicImagePullSpec(r.Release.Target, tag.Name),
+			DownloadURL: downloadURL,
+			Phase:       phase,
+		})
+	}
+
+	resp := APIRelease{
+		Name: r.Release.Config.Name,
+		Tags: tags,
+	}
+
+	switch req.URL.Query().Get("format") {
 	case "", "json":
 		data, err := json.MarshalIndent(&resp, "", "  ")
 		if err != nil {
@@ -904,10 +986,8 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 			continue
 		}
 		// find all accepted tags, then sort by semantic version
-		tags := findTagReferencesByPhase(r, releasePhaseAccepted)
-		semVers := NewSemanticVersions(tags)
-		sort.Sort(semVers)
-		for _, ver := range semVers {
+		tags := semanticTagsForRelease(r, releasePhaseAccepted)
+		for _, ver := range tags {
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
 				continue
 			}
