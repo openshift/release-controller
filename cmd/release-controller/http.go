@@ -987,6 +987,7 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 		}
 		// find all accepted tags, then sort by semantic version
 		tags := semanticTagsForRelease(r, releasePhaseAccepted)
+		sort.Sort(tags)
 		for _, ver := range tags {
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
 				continue
