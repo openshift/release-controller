@@ -44,7 +44,7 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 
 func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.TagReference) error {
 	var semanticTags []semver.Version
-	for _, tag := range tagsForRelease(release) {
+	for _, tag := range sortedReleaseTags(release) {
 		version, err := semver.Parse(tag.Name)
 		if err != nil {
 			continue

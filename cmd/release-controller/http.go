@@ -240,8 +240,8 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		if err != nil || !ok {
 			continue
 		}
-		// TODO: should be refactored to be semanticTagsForRelease
-		releaseTags := tagsForRelease(r)
+		// TODO: should be refactored to be unsortedSemanticReleaseTags
+		releaseTags := sortedReleaseTags(r)
 		if includeStableTags {
 			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
@@ -412,7 +412,8 @@ func (c *Controller) locateStream(streamName string, phases ...string) (*Release
 			continue
 		}
 		// find all accepted tags, then sort by semantic version
-		tags := semanticTagsForRelease(r, phases...)
+		tags := unsortedSemanticReleaseTags(r, phases...)
+		sort.Sort(tags)
 		return &ReleaseStream{
 			Release: r,
 			Tags:    tags.Tags(),
@@ -986,7 +987,7 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 			continue
 		}
 		// find all accepted tags, then sort by semantic version
-		tags := semanticTagsForRelease(r, releasePhaseAccepted)
+		tags := unsortedSemanticReleaseTags(r, releasePhaseAccepted)
 		sort.Sort(tags)
 		for _, ver := range tags {
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
@@ -1144,7 +1145,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		}
 		s := ReleaseStream{
 			Release: r,
-			Tags:    tagsForRelease(r),
+			Tags:    sortedReleaseTags(r),
 		}
 		var delays []string
 		if r.Config.As != releaseConfigModeStable && len(s.Tags) > 0 {
@@ -1282,7 +1283,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		}
 		s := ReleaseStream{
 			Release: r,
-			Tags:    tagsForRelease(r),
+			Tags:    sortedReleaseTags(r),
 		}
 		var delays []string
 		if r.Config.As != releaseConfigModeStable && len(s.Tags) > 0 {

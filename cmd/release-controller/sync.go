@@ -399,7 +399,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 					return err
 				}
-				if tags := findTagReferencesByPhase(release, releasePhaseReady); len(tags) > 0 {
+				if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
 					go func() {
 						if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
 							glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
@@ -449,7 +449,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
-			if tags := findTagReferencesByPhase(release, releasePhaseReady); len(tags) > 0 {
+			if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
 				go func() {
 					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
 						glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
@@ -463,7 +463,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 }
 
 func (c *Controller) syncReady(release *Release) error {
-	readyTags := findTagReferencesByPhase(release, releasePhaseReady)
+	readyTags := sortedRawReleaseTags(release, releasePhaseReady)
 
 	if glog.V(5) && len(readyTags) > 0 {
 		glog.Infof("ready=%v", tagNames(readyTags))
@@ -515,7 +515,7 @@ func (c *Controller) syncReady(release *Release) error {
 }
 
 func (c *Controller) syncAccepted(release *Release) error {
-	acceptedTags := findTagReferencesByPhase(release, releasePhaseAccepted)
+	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
 
 	if glog.V(5) && len(acceptedTags) > 0 {
 		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))

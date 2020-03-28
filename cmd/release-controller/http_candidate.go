@@ -230,7 +230,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		latestPromotedTime = promotedTime.Unix()
 
 		candidates := make([]*ReleaseCandidate, 0)
-		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)
+		releaseTags := sortedReleaseTags(releaseStreamTagMap[stream].Release)
 		for _, tag := range releaseTags {
 			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
 				tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
