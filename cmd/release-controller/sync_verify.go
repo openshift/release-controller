@@ -75,7 +75,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 				switch upgradeType {
 				case releaseUpgradeFromPrevious:
-					if tags := tagsForRelease(release, releasePhaseAccepted); len(tags) > 0 {
+					if tags := sortedReleaseTags(release, releasePhaseAccepted); len(tags) > 0 {
 						previousTag = tags[0].Name
 						previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 					}
@@ -84,7 +84,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 						version.Minor--
 						if ref, err := c.stableReleases(); err == nil {
 							for _, stable := range ref.Releases {
-								versions := semanticTagsForRelease(stable.Release, releasePhaseAccepted)
+								versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
 								sort.Sort(versions)
 								if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 									previousTag = v.Tag.Name
@@ -98,7 +98,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					if version, err := semver.Parse(releaseTag.Name); err == nil {
 						if ref, err := c.stableReleases(); err == nil {
 							for _, stable := range ref.Releases {
-								versions := semanticTagsForRelease(stable.Release, releasePhaseAccepted)
+								versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
 								sort.Sort(versions)
 								if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 									previousTag = v.Tag.Name

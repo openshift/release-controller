@@ -47,7 +47,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		}
 		s := ReleaseStream{
 			Release: r,
-			Tags:    tagsForRelease(r),
+			Tags:    sortedReleaseTags(r),
 		}
 		nodeCount += len(s.Tags)
 		streams = append(streams, s)

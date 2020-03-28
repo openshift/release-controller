@@ -275,7 +275,10 @@ func findPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
 	return ""
 }
 
-func semanticTagsForRelease(release *Release, phases ...string) SemanticVersions {
+// unsortedSemanticReleaseTags returns the tags in the release as a sortable array, but
+// does not sort the array. If phases is specified only tags in the provided phases
+// are returned.
+func unsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVersions {
 	is := release.Target
 	sourceName := fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
 	versions := make(SemanticVersions, 0, len(is.Spec.Tags))
@@ -314,11 +317,11 @@ func firstTagWithMajorMinorSemanticVersion(versions SemanticVersions, version se
 	return nil
 }
 
-// tagsForRelease returns the tags for a given release in the most appropriate order -
+// sortedReleaseTags returns the tags for a given release in the most appropriate order -
 // by creation date for iterative streams, by semantic version for stable streams. If
 // phase is specified the list will be filtered.
-func tagsForRelease(release *Release, phases ...string) []*imagev1.TagReference {
-	versions := semanticTagsForRelease(release, phases...)
+func sortedReleaseTags(release *Release, phases ...string) []*imagev1.TagReference {
+	versions := unsortedSemanticReleaseTags(release, phases...)
 	switch release.Config.As {
 	case releaseConfigModeStable:
 		sort.Sort(versions)
@@ -339,10 +342,10 @@ func stringSliceContains(slice []string, s string) bool {
 	return false
 }
 
-// findTagReferencesByPhase returns the tags for the given release in order of their creation
-// if they are in one of the provided phases. Use tagsForRelease if you are trying to get the
-// most appropriate recent tag.
-func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.TagReference {
+// sortedRawReleaseTags returns the tags for the given release in order of their creation
+// if they are in one of the provided phases. Use sortedReleaseTags if you are trying to get the
+// most appropriate recent tag. Intended for use only within the release.
+func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagReference {
 	var tags []*imagev1.TagReference
 	for i := range release.Target.Spec.Tags {
 		tag := &release.Target.Spec.Tags[i]
