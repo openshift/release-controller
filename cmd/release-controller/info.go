@@ -137,6 +137,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	}
 
 	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
+	glog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
 		Stdout:    true,
