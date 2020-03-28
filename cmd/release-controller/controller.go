@@ -291,7 +291,7 @@ func (c *Controller) processJob(obj interface{}) {
 		if !ok {
 			return
 		}
-		if glog.V(4) {
+		if glog.V(6) {
 			success, complete := jobIsComplete(t)
 			glog.Infof("Job %s updated, complete=%t success=%t", t.Name, complete, success)
 		}
@@ -336,19 +336,19 @@ func (c *Controller) processImageStream(obj interface{}) {
 
 		// if this image stream is a mirror for releases, requeue any that it touches
 		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
-			glog.V(5).Infof("Image stream %s is a release input and will be queued", t.Name)
+			glog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
-			glog.V(5).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
+			glog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
 			return
 		}
 		if _, ok := t.Annotations[releaseAnnotationHasReleases]; ok {
 			// if the release image stream is modified, tags might have been deleted so retrigger
 			// everything
-			glog.V(5).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
+			glog.V(6).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
 			c.addQueueKey(queueKey{namespace: c.releaseNamespace})
 			return
 		}
