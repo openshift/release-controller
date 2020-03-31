@@ -41,8 +41,12 @@ import (
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowconfig "k8s.io/test-infra/prow/config"
+	"k8s.io/test-infra/prow/config/secret"
+	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
+	"k8s.io/test-infra/prow/plugins"
 
+	"github.com/openshift/release-controller/pkg/bugzilla"
 	"github.com/openshift/release-controller/pkg/signer"
 )
 
@@ -66,6 +70,11 @@ type options struct {
 
 	DryRun       bool
 	LimitSources []string
+
+	VerifyBugzilla bool
+	PluginConfig   string
+	github         flagutil.GitHubOptions
+	bugzilla       flagutil.BugzillaOptions
 }
 
 func main() {
@@ -94,30 +103,38 @@ func main() {
 			}
 		},
 	}
-	flag := cmd.Flags()
-	flag.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
-	flag.StringVar(&opt.AuditStorage, "audit", opt.AuditStorage, "A storage location to report audit logs to, if specified. The location may be a file://path or gs:// GCS bucket and path.")
-	flag.StringVar(&opt.AuditGCSServiceAccount, "audit-gcs-service-account", opt.AuditGCSServiceAccount, "An optional path to a service account file that should be used for uploading audit information to GCS.")
-	flag.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
-	flag.StringVar(&opt.SigningKeyring, "sign", opt.SigningKeyring, "The OpenPGP keyring to sign releases with. Only releases that can be verified will be signed.")
-	flag.StringVar(&opt.CLIImageForAudit, "audit-cli-image", opt.CLIImageForAudit, "The command line image pullspec to use for audit and signing. This should be set to a digest under the signers control to prevent attackers from forging verification. If you pass 'local' the oc binary on the path will be used instead of running a job.")
+	flagset := cmd.Flags()
+	flagset.BoolVar(&opt.DryRun, "dry-run", opt.DryRun, "Perform no actions on the release streams")
+	flagset.StringVar(&opt.AuditStorage, "audit", opt.AuditStorage, "A storage location to report audit logs to, if specified. The location may be a file://path or gs:// GCS bucket and path.")
+	flagset.StringVar(&opt.AuditGCSServiceAccount, "audit-gcs-service-account", opt.AuditGCSServiceAccount, "An optional path to a service account file that should be used for uploading audit information to GCS.")
+	flagset.StringSliceVar(&opt.LimitSources, "only-source", opt.LimitSources, "The names of the image streams to operate on. Intended for testing.")
+	flagset.StringVar(&opt.SigningKeyring, "sign", opt.SigningKeyring, "The OpenPGP keyring to sign releases with. Only releases that can be verified will be signed.")
+	flagset.StringVar(&opt.CLIImageForAudit, "audit-cli-image", opt.CLIImageForAudit, "The command line image pullspec to use for audit and signing. This should be set to a digest under the signers control to prevent attackers from forging verification. If you pass 'local' the oc binary on the path will be used instead of running a job.")
 
-	flag.StringVar(&opt.ToolsImageStreamTag, "tools-image-stream-tag", opt.ToolsImageStreamTag, "An image stream tag pointing to a release stream that contains the oc command and git (usually <master>:tests).")
+	flagset.StringVar(&opt.ToolsImageStreamTag, "tools-image-stream-tag", opt.ToolsImageStreamTag, "An image stream tag pointing to a release stream that contains the oc command and git (usually <master>:tests).")
 
 	var ignored string
-	flag.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
-	flag.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
-	flag.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults to the main kubeconfig if unset.")
-	flag.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
-	flag.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
-	flag.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
-	flag.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
+	flagset.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
+	flagset.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
+	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults to the main kubeconfig if unset.")
+	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
+	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
+	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
+	flagset.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
 
-	flag.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
+	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
 
-	flag.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
+	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
 
-	flag.AddGoFlag(original.Lookup("v"))
+	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
+	flagset.StringVar(&opt.PluginConfig, "plugin-config", opt.PluginConfig, "Path to Prow plugin config file. Used when verifying bugs, ignored otherwise.")
+
+	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
+	opt.github.AddFlagsWithoutDefaultGitHubTokenPath(goFlagSet)
+	opt.bugzilla.AddFlags(goFlagSet)
+	flagset.AddGoFlagSet(goFlagSet)
+
+	flagset.AddGoFlag(original.Lookup("v"))
 
 	if err := cmd.Execute(); err != nil {
 		klog.Exitf("error: %v", err)
@@ -218,6 +235,38 @@ func (o *options) Run() error {
 		releaseInfo,
 		graph,
 	)
+
+	if o.VerifyBugzilla {
+		var tokens []string
+
+		// Append the path of bugzilla and github secrets.
+		if o.github.TokenPath != "" {
+			tokens = append(tokens, o.github.TokenPath)
+		}
+
+		if o.bugzilla.ApiKeyPath != "" {
+			tokens = append(tokens, o.bugzilla.ApiKeyPath)
+		}
+
+		secretAgent := &secret.Agent{}
+		if err := secretAgent.Start(tokens); err != nil {
+			return fmt.Errorf("Error starting secrets agent: %v", err)
+		}
+
+		ghClient, err := o.github.GitHubClient(secretAgent, false)
+		if err != nil {
+			return fmt.Errorf("Failed to create github client: %v", err)
+		}
+		bzClient, err := o.bugzilla.BugzillaClient(secretAgent)
+		if err != nil {
+			return fmt.Errorf("Failed to create bugzilla client: %v", err)
+		}
+		pluginAgent := &plugins.ConfigAgent{}
+		if err := pluginAgent.Start(o.PluginConfig, false); err != nil {
+			return fmt.Errorf("Failed to create plugin agent: %v", err)
+		}
+		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
+	}
 
 	if len(o.AuditStorage) > 0 {
 		u, err := url.Parse(o.AuditStorage)

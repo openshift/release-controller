@@ -136,6 +136,8 @@ type ReleasePublish struct {
 	TagRef *PublishTagReference `json:"tagRef"`
 	// ImageStreamRef copies all images to another image stream in one transaction.
 	ImageStreamRef *PublishStreamReference `json:"imageStreamRef"`
+	// VerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
+	VerifyBugs *PublishVerifyBugs `json:"verifyBugs"`
 }
 
 // PublishTagReference ensures that the release image stream has a tag that points to
@@ -159,6 +161,11 @@ type PublishStreamReference struct {
 	// ExcludeTags if set will explicitly not publish these tags. Is applied after the
 	// tags field is checked.
 	ExcludeTags []string `json:"excludeTags"`
+}
+
+// PublishVerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
+type PublishVerifyBugs struct {
+	// No specific information currently required for bug verification
 }
 
 // ReleaseVerification is a task that must be completed before a release is marked
@@ -360,6 +367,10 @@ const (
 	// releaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+
+	// releaseAnnotationBugsVerified indicates whether or not the release has been
+	// processed by the BugzillaVerifier
+	releaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
 )
 
 type Duration time.Duration
