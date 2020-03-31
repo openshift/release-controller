@@ -28,7 +28,7 @@ func TestGetBugzillaPRs(t *testing.T) {
 
 	expected := []BugzillaPR{
 		{
-			bugzillaNum: 1234567,
+			bugzillaID: 1234567,
 			githubPR: GitHubPR{
 				Org:  "example",
 				Repo: "important-component",
@@ -36,7 +36,7 @@ func TestGetBugzillaPRs(t *testing.T) {
 			},
 		},
 		{
-			bugzillaNum: 8901234,
+			bugzillaID: 8901234,
 			githubPR: GitHubPR{
 				Org:  "example",
 				Repo: "another-important-component",

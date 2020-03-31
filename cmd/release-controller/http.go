@@ -615,15 +615,15 @@ func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Re
 	http.Redirect(w, req, u, http.StatusFound)
 }
 
-func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStreamTag, string, string, error, int) {
+func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStreamTag, error) {
 	tags, ok := c.findReleaseStreamTags(true, tag, from)
 	if !ok {
-		return nil, "", "", fmt.Errorf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound
+		return nil, fmt.Errorf("Unable to find release tag %s, it may have been deleted", tag)
 	}
 
 	info := tags[tag]
 	if len(release) > 0 && info.Release.Config.Name != release {
-		return nil, "", "", fmt.Errorf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound
+		return nil, fmt.Errorf("Release tag %s does not belong to release %s", tag, release)
 	}
 
 	if previous := tags[from]; previous != nil {
@@ -645,14 +645,7 @@ func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStrea
 			}
 		}
 	}
-
-	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
-	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
-	var previousTagPull string
-	if info.Previous != nil {
-		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
-	}
-	return info, tagPull, previousTagPull, nil, 0
+	return info, nil
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
@@ -664,9 +657,15 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	tag := vars["tag"]
 	from := req.URL.Query().Get("from")
 
-	info, tagPull, previousTagPull, err, httpCode := c.getReleaseTagInfo(release, tag, from)
+	info, err := c.getReleaseTagInfo(release, tag, from)
 	if err != nil {
-		http.Error(w, err.Error(), httpCode)
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
+	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
+	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
+	var previousTagPull string
+	if info.Previous != nil {
+		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
 	}
 	mirror, _ := c.getMirror(info.Release, info.Tag.Name)
 
