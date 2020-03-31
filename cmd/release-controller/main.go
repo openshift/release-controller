@@ -43,6 +43,7 @@ import (
 	prowconfig "k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
+	"k8s.io/test-infra/prow/plugins"
 
 	"github.com/openshift/release-controller/pkg/signer"
 )
@@ -68,8 +69,9 @@ type options struct {
 	DryRun       bool
 	LimitSources []string
 
-	github   flagutil.GitHubOptions
-	bugzilla flagutil.BugzillaOptions
+	pluginConfig string
+	github       flagutil.GitHubOptions
+	bugzilla     flagutil.BugzillaOptions
 }
 
 func main() {
@@ -120,6 +122,8 @@ func main() {
 	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
 
 	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
+
+	flagset.StringVar(&opt.pluginConfig, "plugin-config", "/etc/plugins/plugins.yaml", "Path to plugin config file.")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlagsWithoutDefaultGitHubTokenPath(goFlagSet)
@@ -204,6 +208,10 @@ func (o *options) Run() error {
 			return err
 		}
 	}
+	pluginAgent := &plugins.ConfigAgent{}
+	if err := pluginAgent.Start(o.pluginConfig, true); err != nil {
+		return err
+	}
 
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, releaseNamespace, imageCache.Get)
@@ -226,6 +234,7 @@ func (o *options) Run() error {
 		o.ArtifactsHost,
 		releaseInfo,
 		graph,
+		pluginAgent,
 		o.github,
 		o.bugzilla,
 	)

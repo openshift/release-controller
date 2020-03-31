@@ -36,6 +36,7 @@ import (
 	"k8s.io/test-infra/prow/config/secret"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/github"
+	"k8s.io/test-infra/prow/plugins"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -128,6 +129,9 @@ type Controller struct {
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
 
+	// plugin agent used to check if ReviewActsAsLGTM for repos
+	pluginAgent *plugins.ConfigAgent
+
 	// bugzilla and github clients used to verify bugs in accepted releases
 	ghClient github.Client
 	bzClient bugzilla.Client
@@ -147,6 +151,7 @@ func NewController(
 	artifactsHost string,
 	releaseInfo ReleaseInfo,
 	graph *UpgradeGraph,
+	pluginAgent *plugins.ConfigAgent,
 	ghOptions flagutil.GitHubOptions,
 	bzOptions flagutil.BugzillaOptions,
 ) *Controller {
@@ -226,8 +231,9 @@ func NewController(
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 
-		ghClient: ghClient,
-		bzClient: bzClient,
+		pluginAgent: pluginAgent,
+		ghClient:    ghClient,
+		bzClient:    bzClient,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)

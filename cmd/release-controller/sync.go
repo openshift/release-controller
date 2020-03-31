@@ -536,7 +536,7 @@ var (
 	// BZRegex matches the markdown labels to bugzilla links
 	BZRegex = regexp.MustCompile(`\[Bug [\d]+\]`)
 	// BZAssignRegex matches the QA assignment comment made by the openshift-ci-robot
-	BZAssignRegex = regexp.MustCompile(`Assigning the QA contact for review:[[:space:]]+/assign @[[:alnum:]]+`)
+	BZAssignRegex = regexp.MustCompile(`Requesting review from QA contact:[[:space:]]+/cc @[[:alnum:]]+`)
 )
 
 // getBugzillaPRs identifies bugzilla bugs and the associated github PRs fixed in a release from
@@ -582,7 +582,7 @@ func getBugzillaPRs(input string) []BugzillaPR {
 
 // prApprovedByQA looks through PR comments and identifies if an assigned
 // QA contact lgtm'd the PR
-func prApprovedByQA(comments []github.IssueComment) bool {
+func prApprovedByQA(comments []github.IssueComment, reviews []github.Review) bool {
 	var lgtms, qaContacts []string
 	for _, comment := range comments {
 		if strings.Contains(comment.Body, "/lgtm") {
@@ -594,6 +594,11 @@ func prApprovedByQA(comments []github.IssueComment) bool {
 			if len(splitbz) == 2 {
 				qaContacts = append(qaContacts, splitbz[1])
 			}
+		}
+	}
+	for _, review := range reviews {
+		if review.State == github.ReviewStateApproved {
+			lgtms = append(lgtms, review.User.Login)
 		}
 	}
 	for _, contact := range qaContacts {
@@ -664,7 +669,15 @@ func (c *Controller) syncAccepted(release *Release) error {
 					glog.Errorf("Unable to get comments for github pull %s/%s#%d: %v", bzp.githubPR.Org, bzp.githubPR.Repo, bzp.githubPR.PR, err)
 					continue
 				}
-				approved := prApprovedByQA(comments)
+				var reviews []github.Review
+				if c.pluginAgent.Config().LgtmFor(bzp.githubPR.Org, bzp.githubPR.Repo).ReviewActsAsLgtm {
+					reviews, err = c.ghClient.ListReviews(bzp.githubPR.Org, bzp.githubPR.Repo, bzp.githubPR.PR)
+					if err != nil {
+						glog.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", bzp.githubPR.Org, bzp.githubPR.Repo, bzp.githubPR.PR, err)
+						continue
+					}
+				}
+				approved := prApprovedByQA(comments, reviews)
 				if approved {
 					glog.V(4).Infof("Bug %d (current status %s) should be moved to VERIFIED state", bug.ID, bug.Status)
 					// once this is proven to work correctly in-cluster, add code to update bugzilla bug state to VERIFIED

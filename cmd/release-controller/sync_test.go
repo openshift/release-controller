@@ -55,6 +55,7 @@ func TestPRApprovedByQA(t *testing.T) {
 	testCases := []struct {
 		name     string
 		comments []github.IssueComment
+		reviews  []github.Review
 		approved bool
 	}{
 		{
@@ -68,6 +69,7 @@ func TestPRApprovedByQA(t *testing.T) {
 					User: github.User{Login: "exampleUser2"},
 				},
 			},
+			reviews:  []github.Review{},
 			approved: false,
 		},
 		{
@@ -78,12 +80,35 @@ func TestPRApprovedByQA(t *testing.T) {
 					User: github.User{Login: "exampleUser"},
 				},
 				{
-					Body: "Assigning the QA contact for review:\n/assign @exampleUser3\n\n<details>plugin details</details>",
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
 					User: github.User{Login: "exampleUser"},
 				},
 				{
 					Body: "/lgtm",
 					User: github.User{Login: "exampleUser2"},
+				},
+			},
+			reviews:  []github.Review{},
+			approved: false,
+		},
+		{
+			name: "approve review not from qa",
+			comments: []github.IssueComment{
+				{
+					Body: "Fixed Bug",
+					User: github.User{Login: "exampleUser"},
+				}, {
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
+					User: github.User{Login: "exampleUser"},
+				}, {
+					Body: "/lgtm",
+					User: github.User{Login: "exampleUser2"},
+				},
+			},
+			reviews: []github.Review{
+				{
+					State: github.ReviewStateApproved,
+					User:  github.User{Login: "exampleUser2"},
 				},
 			},
 			approved: false,
@@ -96,7 +121,7 @@ func TestPRApprovedByQA(t *testing.T) {
 					User: github.User{Login: "exampleUser"},
 				},
 				{
-					Body: "Assigning the QA contact for review:\n/assign @exampleUser3\n\n<details>plugin details</details>",
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
 					User: github.User{Login: "exampleUser"},
 				},
 				{
@@ -106,9 +131,29 @@ func TestPRApprovedByQA(t *testing.T) {
 			},
 			approved: true,
 		},
+		{
+			name: "assigned qa reviewed",
+			comments: []github.IssueComment{
+				{
+					Body: "Fixed Bug",
+					User: github.User{Login: "exampleUser"},
+				},
+				{
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
+					User: github.User{Login: "exampleUser"},
+				},
+			},
+			reviews: []github.Review{
+				{
+					State: github.ReviewStateApproved,
+					User:  github.User{Login: "exampleUser3"},
+				},
+			},
+			approved: true,
+		},
 	}
 	for _, testCase := range testCases {
-		approved := prApprovedByQA(testCase.comments)
+		approved := prApprovedByQA(testCase.comments, testCase.reviews)
 		if approved != testCase.approved {
 			t.Errorf("%s: Expected %t, got %t", testCase.name, testCase.approved, approved)
 		}
