@@ -864,7 +864,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				}
 				diffURL := url.URL{
 					Scheme: "https",
-					Host:   "releases-rhcos.cloud.privileged.psi.redhat.com",
+					Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
 					Path:   "/diff.html",
 					RawQuery: (url.Values{
 						"first_stream":   []string{fromStream},
