@@ -209,7 +209,7 @@ func (o *options) Run() error {
 		}
 	}
 	pluginAgent := &plugins.ConfigAgent{}
-	if err := pluginAgent.Start(o.pluginConfig, true); err != nil {
+	if err := pluginAgent.Start(o.pluginConfig, false); err != nil {
 		return err
 	}
 
