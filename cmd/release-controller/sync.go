@@ -669,7 +669,7 @@ func (c *Controller) syncAccepted(release *Release) error {
 		}
 	}
 	// If bugzilla bugs were fixed by a PR approved by their QA contact, move bug to verified
-	info, err := c.getReleaseTagInfo(release.Source.GetName(), newestAccepted.Name, "")
+	info, err := c.getReleaseTagInfo(release.Config.Name, newestAccepted.Name, "")
 	if err != nil {
 		errs = append(errs, err)
 	} else if info.Previous != nil {
