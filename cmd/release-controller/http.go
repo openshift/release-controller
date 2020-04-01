@@ -660,6 +660,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	info, err := c.getReleaseTagInfo(release, tag, from)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
 	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
 	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
