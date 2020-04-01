@@ -31,7 +31,12 @@ import (
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 
 	"github.com/openshift/release-controller/pkg/signer"
+	"k8s.io/test-infra/prow/bugzilla"
 	prowconfig "k8s.io/test-infra/prow/config"
+	"k8s.io/test-infra/prow/config/secret"
+	"k8s.io/test-infra/prow/flagutil"
+	"k8s.io/test-infra/prow/github"
+	"k8s.io/test-infra/prow/plugins"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -123,6 +128,13 @@ type Controller struct {
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
+
+	// plugin agent used to check if ReviewActsAsLGTM for repos
+	pluginAgent *plugins.ConfigAgent
+
+	// bugzilla and github clients used to verify bugs in accepted releases
+	ghClient github.Client
+	bzClient bugzilla.Client
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -139,6 +151,9 @@ func NewController(
 	artifactsHost string,
 	releaseInfo ReleaseInfo,
 	graph *UpgradeGraph,
+	pluginAgent *plugins.ConfigAgent,
+	ghOptions flagutil.GitHubOptions,
+	bzOptions flagutil.BugzillaOptions,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -149,6 +164,31 @@ func NewController(
 
 	// we cache parsed release configs to avoid the deserialization cost
 	parsedReleaseConfigCache, err := lru.New(50)
+	if err != nil {
+		panic(err)
+	}
+
+	var tokens []string
+
+	// Append the path of bugzilla and github secrets.
+	if ghOptions.TokenPath != "" {
+		tokens = append(tokens, ghOptions.TokenPath)
+	}
+
+	if bzOptions.ApiKeyPath != "" {
+		tokens = append(tokens, bzOptions.ApiKeyPath)
+	}
+
+	secretAgent := &secret.Agent{}
+	if err := secretAgent.Start(tokens); err != nil {
+		panic(fmt.Errorf("Error starting secrets agent: %v", err))
+	}
+
+	ghClient, err := ghOptions.GitHubClient(secretAgent, false)
+	if err != nil {
+		panic(err)
+	}
+	bzClient, err := bzOptions.BugzillaClient(secretAgent)
 	if err != nil {
 		panic(err)
 	}
@@ -190,6 +230,10 @@ func NewController(
 		graph: graph,
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
+
+		pluginAgent: pluginAgent,
+		ghClient:    ghClient,
+		bzClient:    bzClient,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)
