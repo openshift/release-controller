@@ -19,18 +19,29 @@ package clone
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	"k8s.io/test-infra/prow/logrusutil"
 )
 
 // Run clones the refs under the prescribed directory and optionally
 // configures the git username and email in the repository as well.
-func Run(refs prowapi.Refs, dir, gitUserName, gitUserEmail, cookiePath string, env []string) Record {
+func Run(refs prowapi.Refs, dir, gitUserName, gitUserEmail, cookiePath string, env []string, oauthToken string) Record {
+	if len(oauthToken) > 0 {
+		logrus.SetFormatter(logrusutil.NewCensoringFormatter(logrus.StandardLogger().Formatter, func() sets.String {
+			return sets.NewString(oauthToken)
+		}))
+	}
 	logrus.WithFields(logrus.Fields{"refs": refs}).Info("Cloning refs")
 	record := Record{Refs: refs}
 
@@ -39,7 +50,11 @@ func Run(refs prowapi.Refs, dir, gitUserName, gitUserEmail, cookiePath string, e
 	runCommands := func(commands []cloneCommand) error {
 		for _, command := range commands {
 			formattedCommand, output, err := command.run()
-			logrus.WithFields(logrus.Fields{"command": formattedCommand, "output": output, "error": err}).Info("Ran command")
+			log := logrus.WithFields(logrus.Fields{"command": formattedCommand, "output": output})
+			if err != nil {
+				log = log.WithField("error", err)
+			}
+			log.Info("Ran command")
 			message := ""
 			if err != nil {
 				message = err.Error()
@@ -53,7 +68,7 @@ func Run(refs prowapi.Refs, dir, gitUserName, gitUserEmail, cookiePath string, e
 		return nil
 	}
 
-	g := gitCtxForRefs(refs, dir, env)
+	g := gitCtxForRefs(refs, dir, env, oauthToken)
 	if err := runCommands(g.commandsForBaseRef(refs, gitUserName, gitUserEmail, cookiePath)); err != nil {
 		return record
 	}
@@ -85,7 +100,7 @@ func PathForRefs(baseDir string, refs prowapi.Refs) string {
 	} else {
 		clonePath = fmt.Sprintf("github.com/%s/%s", refs.Org, refs.Repo)
 	}
-	return fmt.Sprintf("%s/src/%s", baseDir, clonePath)
+	return path.Join(baseDir, "src", clonePath)
 }
 
 // gitCtx collects a few common values needed for all git commands.
@@ -96,7 +111,7 @@ type gitCtx struct {
 }
 
 // gitCtxForRefs creates a gitCtx based on the provide refs and baseDir.
-func gitCtxForRefs(refs prowapi.Refs, baseDir string, env []string) gitCtx {
+func gitCtxForRefs(refs prowapi.Refs, baseDir string, env []string, oauthToken string) gitCtx {
 	g := gitCtx{
 		cloneDir:      PathForRefs(baseDir, refs),
 		env:           env,
@@ -105,6 +120,13 @@ func gitCtxForRefs(refs prowapi.Refs, baseDir string, env []string) gitCtx {
 	if refs.CloneURI != "" {
 		g.repositoryURI = refs.CloneURI
 	}
+
+	if len(oauthToken) > 0 {
+		u, _ := url.Parse(g.repositoryURI)
+		u.User = url.UserPassword(oauthToken, "x-oauth-basic")
+		g.repositoryURI = u.String()
+	}
+
 	return g
 }
 
