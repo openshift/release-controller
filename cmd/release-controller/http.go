@@ -196,7 +196,7 @@ const releaseDashboardPageHtml = `
 							{{ tableLink $release.Config . }}
 							{{ phaseCell . }}
 							<td title="{{ $created }}">{{ since $created }}</td>
-							{{ upgradeJobs $upgrades $index $created }}
+							{{ upgradeJobs $upgrades $index $created }}  				    
 						</tr>
 				{{end}}
 			{{ end }}
@@ -615,15 +615,25 @@ func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Re
 	http.Redirect(w, req, u, http.StatusFound)
 }
 
-func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStreamTag, error) {
+func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	release := vars["release"]
+	tag := vars["tag"]
+	from := req.URL.Query().Get("from")
+
 	tags, ok := c.findReleaseStreamTags(true, tag, from)
 	if !ok {
-		return nil, fmt.Errorf("Unable to find release tag %s, it may have been deleted", tag)
+		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
+		return
 	}
 
 	info := tags[tag]
 	if len(release) > 0 && info.Release.Config.Name != release {
-		return nil, fmt.Errorf("Release tag %s does not belong to release %s", tag, release)
+		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
+		return
 	}
 
 	if previous := tags[from]; previous != nil {
@@ -645,22 +655,7 @@ func (c *Controller) getReleaseTagInfo(release, tag, from string) (*ReleaseStrea
 			}
 		}
 	}
-	return info, nil
-}
 
-func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
-
-	vars := mux.Vars(req)
-	release := vars["release"]
-	tag := vars["tag"]
-	from := req.URL.Query().Get("from")
-
-	info, err := c.getReleaseTagInfo(release, tag, from)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-	}
 	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
 	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
 	var previousTagPull string
