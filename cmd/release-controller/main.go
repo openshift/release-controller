@@ -41,8 +41,9 @@ import (
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowconfig "k8s.io/test-infra/prow/config"
-	"k8s.io/test-infra/prow/github"
+	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
+	"k8s.io/test-infra/prow/plugins"
 
 	"github.com/openshift/release-controller/pkg/signer"
 )
@@ -68,13 +69,9 @@ type options struct {
 	DryRun       bool
 	LimitSources []string
 
-	// temporarily add all flags from github and bugzilla flagsets
-	githubEndpoint      string
-	graphqlEndpoint     string
-	tokenPath           string
-	deprecatedTokenFile string
-	bugzillaEndpoint    string
-	apiKeyPath          string
+	pluginConfig string
+	github       flagutil.GitHubOptions
+	bugzilla     flagutil.BugzillaOptions
 }
 
 func main() {
@@ -126,15 +123,12 @@ func main() {
 
 	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
 
-	// these flags are from the test-infra go flagsets for bugzilla and github
-	// this is an intermediate PR to allow us to add the flags to the cmd arguments
-	// in the release-controller pods before they become required in a later PR
-	flagset.StringVar(&opt.githubEndpoint, "github-endpoint", github.DefaultAPIEndpoint, "GitHub's API endpoint (may differ for enterprise).")
-	flagset.StringVar(&opt.graphqlEndpoint, "github-graphql-endpoint", github.DefaultGraphQLEndpoint, "GitHub GraphQL API endpoint (may differ for enterprise).")
-	flagset.StringVar(&opt.tokenPath, "github-token-path", "", "Path to the file containing the GitHub OAuth secret.")
-	flagset.StringVar(&opt.deprecatedTokenFile, "github-token-file", "", "DEPRECATED: use -github-token-path instead.  -github-token-file may be removed anytime after 2019-01-01.")
-	flagset.StringVar(&opt.bugzillaEndpoint, "bugzilla-endpoint", "", "Bugzilla's API endpoint.")
-	flagset.StringVar(&opt.apiKeyPath, "bugzilla-api-key-path", "", "Path to the file containing the Bugzilla API key.")
+	flagset.StringVar(&opt.pluginConfig, "plugin-config", "/etc/plugins/plugins.yaml", "Path to plugin config file.")
+
+	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
+	opt.github.AddFlagsWithoutDefaultGitHubTokenPath(goFlagSet)
+	opt.bugzilla.AddFlags(goFlagSet)
+	flagset.AddGoFlagSet(goFlagSet)
 
 	flagset.AddGoFlag(original.Lookup("v"))
 
@@ -214,6 +208,10 @@ func (o *options) Run() error {
 			return err
 		}
 	}
+	pluginAgent := &plugins.ConfigAgent{}
+	if err := pluginAgent.Start(o.pluginConfig, true); err != nil {
+		return err
+	}
 
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, releaseNamespace, imageCache.Get)
@@ -236,6 +234,9 @@ func (o *options) Run() error {
 		o.ArtifactsHost,
 		releaseInfo,
 		graph,
+		pluginAgent,
+		o.github,
+		o.bugzilla,
 	)
 
 	if len(o.AuditStorage) > 0 {
