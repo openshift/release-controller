@@ -151,6 +151,52 @@ func TestPRApprovedByQA(t *testing.T) {
 			},
 			approved: true,
 		},
+		{
+			name: "assigned qa lgtm'd and then cancelled",
+			comments: []github.IssueComment{
+				{
+					Body: "Fixed Bug",
+					User: github.User{Login: "exampleUser"},
+				},
+				{
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
+					User: github.User{Login: "exampleUser"},
+				},
+				{
+					Body: "/lgtm",
+					User: github.User{Login: "exampleUser3"},
+				},
+				{
+					Body: "/lgtm cancel",
+					User: github.User{Login: "exampleUser3"},
+				},
+			},
+			approved: false,
+		},
+		{
+			name: "assigned qa approved review then requested changes",
+			comments: []github.IssueComment{
+				{
+					Body: "Fixed Bug",
+					User: github.User{Login: "exampleUser"},
+				},
+				{
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
+					User: github.User{Login: "exampleUser"},
+				},
+			},
+			reviews: []github.Review{
+				{
+					State: github.ReviewStateApproved,
+					User:  github.User{Login: "exampleUser3"},
+				},
+				{
+					State: github.ReviewStateChangesRequested,
+					User:  github.User{Login: "exampleUser3"},
+				},
+			},
+			approved: false,
+		},
 	}
 	for _, testCase := range testCases {
 		approved := prApprovedByQA(testCase.comments, testCase.reviews)

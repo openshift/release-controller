@@ -537,6 +537,9 @@ var (
 	BZRegex = regexp.MustCompile(`\[Bug [\d]+\]`)
 	// BZAssignRegex matches the QA assignment comment made by the openshift-ci-robot
 	BZAssignRegex = regexp.MustCompile(`Requesting review from QA contact:[[:space:]]+/cc @[[:alnum:]]+`)
+	// from prow lgtm plugin
+	lgtmRe       = regexp.MustCompile(`(?mi)^/lgtm(?: no-issue)?\s*$`)
+	lgtmCancelRe = regexp.MustCompile(`(?mi)^/lgtm cancel\s*$`)
 )
 
 // getBugzillaPRs identifies bugzilla bugs and the associated github PRs fixed in a release from
@@ -585,8 +588,18 @@ func getBugzillaPRs(input string) []BugzillaPR {
 func prApprovedByQA(comments []github.IssueComment, reviews []github.Review) bool {
 	var lgtms, qaContacts []string
 	for _, comment := range comments {
-		if strings.Contains(comment.Body, "/lgtm") {
+		if lgtmRe.MatchString(comment.Body) {
 			lgtms = append(lgtms, comment.User.Login)
+			continue
+		}
+		if lgtmCancelRe.MatchString(comment.Body) {
+			for index, name := range lgtms {
+				if name == comment.User.Login {
+					lgtms = append(lgtms[:index], lgtms[index+1:]...)
+					break
+				}
+			}
+			continue
 		}
 		bz := BZAssignRegex.FindString(comment.Body)
 		if bz != "" {
@@ -597,14 +610,24 @@ func prApprovedByQA(comments []github.IssueComment, reviews []github.Review) boo
 		}
 	}
 	for _, review := range reviews {
-		if review.State == github.ReviewStateApproved {
+		if review.State == github.ReviewStateApproved || lgtmRe.MatchString(review.Body) {
 			lgtms = append(lgtms, review.User.Login)
+			continue
+		}
+		if review.State == github.ReviewStateChangesRequested || lgtmCancelRe.MatchString(review.Body) {
+			for index, name := range lgtms {
+				if name == review.User.Login {
+					lgtms = append(lgtms[:index], lgtms[index+1:]...)
+					break
+				}
+			}
+			continue
 		}
 	}
 	for _, contact := range qaContacts {
 		for _, lgtm := range lgtms {
 			if contact == lgtm {
-				glog.V(4).Infof("QA Contact %s lgmt'd this PR", contact)
+				glog.V(4).Infof("QA Contact %s lgtm'd this PR", contact)
 				return true
 			}
 		}
