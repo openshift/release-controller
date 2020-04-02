@@ -1160,6 +1160,11 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
+		if r.Config.As == releaseConfigModeStable {
+			for i := range s.Upgrades.Tags {
+				s.Upgrades.Tags[i].External = nil
+			}
+		}
 		page.Streams = append(page.Streams, s)
 	}
 
