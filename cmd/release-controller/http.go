@@ -703,9 +703,30 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
 
-	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
+	upgradesTo := c.graph.UpgradesTo(tag)
+
+	var missingUpgrades []string
+	upgradeFound := make(map[string]bool)
+	supportedUpgrades, _ := c.getSupportedUpgrades(tagPull)
+	if len(supportedUpgrades) > 0 {
+		for _, u := range upgradesTo {
+			upgradeFound[u.From] = true
+		}
+		for _, from := range supportedUpgrades {
+			if !upgradeFound[from] {
+				upgradesTo = append(upgradesTo, UpgradeHistory{
+					From:  from,
+					To:    tag,
+					Total: -1,
+				})
+				missingUpgrades = append(missingUpgrades, fmt.Sprintf(`<a class="text-monospace" href="/releasetag/%s">%s</a>`, from, from))
+			}
+		}
+	}
+	if len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
-		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p><ul>`)
+		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p>`)
+		fmt.Fprintf(w, "<div class=\"alert alert-warning\">Untested upgrades: %s</div><ul>", strings.Join(missingUpgrades, ", "))
 		for _, upgrade := range upgradesTo {
 			var style string
 			switch {
@@ -714,7 +735,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			case upgrade.Success > 0:
 				style = "text-success"
 			}
-
+			if !upgradeFound[upgrade.From] {
+				style = fmt.Sprintf("%s font-weight-bold", style)
+				continue
+			}
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
 			if info.Previous == nil || upgrade.From != info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
@@ -1229,4 +1253,16 @@ var extendedRelTime = []humanize.RelTimeMagnitude{
 
 func relTime(a, b time.Time, albl, blbl string) string {
 	return humanize.CustomRelTime(a, b, albl, blbl, extendedRelTime)
+}
+
+func (c *Controller) getSupportedUpgrades(tagPull string) ([]string, error) {
+	tagUpgradeInfo, err := c.releaseInfo.UpgradeInfo(tagPull)
+	if err != nil {
+		return nil, fmt.Errorf("could not get release info for tag %s: %v", tagPull, err)
+	}
+	var supportedUpgrades []string
+	if tagUpgradeInfo.Metadata != nil {
+		supportedUpgrades = tagUpgradeInfo.Metadata.Previous
+	}
+	return supportedUpgrades, nil
 }

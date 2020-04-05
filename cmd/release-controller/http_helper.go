@@ -19,8 +19,8 @@ import (
 )
 
 type ReleasePage struct {
-	BaseURL string
-	Streams []ReleaseStream
+	BaseURL    string
+	Streams    []ReleaseStream
 	Dashboards []Dashboard
 }
 
@@ -780,7 +780,7 @@ type newestSemVerFromSummaries struct {
 func newNewestSemVerFromSummaries(summaries []UpgradeHistory) newestSemVerFromSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
-		if v, err := semver.Parse(summary.From); err != nil {
+		if v, err := semver.Parse(summary.From); err == nil {
 			versions[i] = v
 		}
 	}
@@ -820,7 +820,7 @@ type newestSemVerToSummaries struct {
 func newNewestSemVerToSummaries(summaries []UpgradeHistory) newestSemVerToSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
-		if v, err := semver.Parse(summary.To); err != nil {
+		if v, err := semver.Parse(summary.To); err == nil {
 			versions[i] = v
 		}
 	}
