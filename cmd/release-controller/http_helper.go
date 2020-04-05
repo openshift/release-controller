@@ -410,12 +410,12 @@ func links(tag imagev1.TagReference, release *Release) string {
 func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
 	links := tag.Annotations[releaseAnnotationVerify]
 	if len(links) == 0 {
-		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+		fmt.Fprintf(w, `<div id="tests"><p><em>No tests for this release</em></p></div>`)
 		return
 	}
 	var status VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
-		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load test info</em>`)
+		fmt.Fprintf(w, `<div id="tests"><p><em class="text-danger">Unable to load test info</em></p></div>`)
 		return
 	}
 
@@ -491,9 +491,9 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	}
 
 	if out := buf.String(); len(out) > 0 {
-		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
+		fmt.Fprintf(w, `<div id="tests"><p>Tests:</p><ul>%s</ul></div>`, out)
 	} else {
-		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+		fmt.Fprintf(w, `<div id="tests"><p><em>No tests for this release</em></p></div>`)
 	}
 }
 
@@ -791,6 +791,16 @@ func (s newestSemVerFromSummaries) Less(i, j int) bool {
 	}
 	if c < 0 {
 		return false
+	}
+	vi, erri := semverParseTolerant(s.summaries[i].From)
+	vj, errj := semverParseTolerant(s.summaries[j].From)
+	if erri == nil && errj == nil {
+		if vi.GT(vj) {
+			return true
+		}
+		if vi.LT(vj) {
+			return false
+		}
 	}
 	if s.summaries[i].From > s.summaries[j].From {
 		return true
