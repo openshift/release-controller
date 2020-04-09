@@ -513,6 +513,14 @@ func renderAlerts(release ReleaseStream) string {
 	return strings.Join(msgs, "\n")
 }
 
+func releaseJoin(streams []ReleaseStream) string {
+	releases := []string{}
+	for _, s := range streams {
+		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", s.Release.Config.Name, s.Release.Config.Name))
+	}
+	return strings.Join(releases, " | ")
+}
+
 func hasPublishTag(config *ReleaseConfig) (string, bool) {
 	for _, v := range config.Publish {
 		if v.TagRef != nil {
