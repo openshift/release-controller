@@ -58,7 +58,6 @@ const releasePageHtml = `
 <pre class="ml-4">
 oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
 </pre>
-<hr>
 <style>
 .upgrade-track-line {
 	position: absolute;
@@ -109,6 +108,11 @@ td.upgrade-track {
 	padding-right: 2px;
 }
 </style>
+
+<p class="small mb-3">
+	Jump to: {{ releaseJoin .Streams }}
+</p>
+
 <div class="row">
 <div class="col">
 {{ range .Streams }}
@@ -160,6 +164,9 @@ const releaseInfoPageHtml = `
 const releaseDashboardPageHtml = `
 <h1>Release Dashboard</h1>
 <p><a href=https://bugzilla.redhat.com/buglist.cgi?bug_status=NEW&bug_status=ASSIGNED&bug_status=POST&f1=cf_internal_whiteboard&f2=status_whiteboard&j_top=OR&known_name=BuildCop&list_id=10913331&o1=substring&o2=substring&query_format=advanced&v1=buildcop&v2=buildcop>Open Build Cop Bugs</a></p>
+<p class="small mb-3">
+	Jump to: {{ releaseJoin .Streams }}
+</p>
 <div class="row">
 <div class="col">
 {{ range .Streams }}
@@ -1120,6 +1127,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"phaseAlert":   phaseAlert,
 			"alerts":       renderAlerts,
 			"links":        links,
+			"releaseJoin":  releaseJoin,
 			"inc":          func(i int) int { return i + 1 },
 			"upgradeCells": upgradeCells,
 			"since": func(utcDate string) string {
@@ -1265,6 +1273,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			"phaseAlert":  phaseAlert,
 			"inc":         func(i int) int { return i + 1 },
 			"upgradeJobs": upgradeJobs,
+			"releaseJoin": releaseJoin,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
