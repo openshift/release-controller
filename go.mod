@@ -4,6 +4,7 @@ go 1.13
 
 replace (
 	github.com/golang/glog => github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533
+	github.com/russross/blackfriday/v2 => github.com/eparis/blackfriday/v2 v2.0.0-20200415134520-98d528eb5330
 	k8s.io/api => k8s.io/api v0.0.0-20190918195907-bd6ac527cfd2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
 	k8s.io/client-go => k8s.io/client-go v0.0.0-20190918200256-06eb1244587a
