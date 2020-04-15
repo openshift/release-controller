@@ -20,7 +20,7 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
-	"github.com/russross/blackfriday"
+	"github.com/russross/blackfriday/v2"
 
 	"k8s.io/apimachinery/pkg/labels"
 )

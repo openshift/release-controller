@@ -27,7 +27,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20190419201117-4bae0f495ea7
 	github.com/pkg/profile v1.3.0 // indirect
 	github.com/prometheus/client_golang v1.0.0
-	github.com/russross/blackfriday v2.0.0+incompatible
+	github.com/russross/blackfriday/v2 v2.0.1
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/spf13/cobra v0.0.5
 	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
