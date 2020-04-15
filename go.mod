@@ -22,7 +22,7 @@ require (
 	github.com/gorilla/mux v1.7.1
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
-	github.com/openshift/api v3.9.1-0.20190419161300-aae63d5f0f50+incompatible
+	github.com/openshift/api v0.0.0-20200221181648-8ce0047d664f
 	github.com/openshift/client-go v0.0.0-20190412095722-0255926f5393
 	github.com/openshift/library-go v0.0.0-20190419201117-4bae0f495ea7
 	github.com/pkg/profile v1.3.0 // indirect
