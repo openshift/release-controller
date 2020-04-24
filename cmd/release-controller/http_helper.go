@@ -352,8 +352,6 @@ func links(tag imagev1.TagReference, release *Release) string {
 		keys = append(keys, failing...)
 	}
 
-	final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
-
 	buf := &bytes.Buffer{}
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
@@ -384,7 +382,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 			buf.WriteString("</span>")
 			continue
 		}
-		if !release.Config.Verify[key].Disabled && !final {
+		if !release.Config.Verify[key].Disabled && !!isTagTerminalPhase(&tag) {
 			buf.WriteString(" <span title=\"Pending\">")
 			buf.WriteString(template.HTMLEscapeString(key))
 			buf.WriteString("</span>")
@@ -426,8 +424,6 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	}
 	sort.Strings(keys)
 
-	final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
-
 	buf := &bytes.Buffer{}
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
@@ -437,7 +433,7 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 				buf.WriteString("<li><span")
 			}
 			testKey := template.HTMLEscapeString(key)
-			if s.State == releaseVerificationStateFailed && s.Retries < release.Config.Verify[key].MaxRetries && !final {
+			if s.State == releaseVerificationStateFailed && s.Retries < release.Config.Verify[key].MaxRetries && !isTagTerminalPhase(&tag) {
 				testKey = "<span class=\"text-primary\">" + testKey + "</span>"
 			}
 			if len(s.History) > 1 {
@@ -515,7 +511,7 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 			}
 			continue
 		}
-		if !release.Config.Verify[key].Disabled && !final {
+		if !release.Config.Verify[key].Disabled && !isTagTerminalPhase(&tag) {
 			buf.WriteString("<li><span title=\"Pending\">")
 			buf.WriteString(template.HTMLEscapeString(key))
 			buf.WriteString("</span>")
@@ -527,6 +523,16 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	} else {
 		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
 	}
+}
+
+func isTagTerminalPhase(tag *imagev1.TagReference) bool {
+	if tag == nil {
+		return false
+	}
+	if len(tag.Annotations) == 0 {
+		return false
+	}
+	return tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
 }
 
 func renderAlerts(release ReleaseStream) string {
