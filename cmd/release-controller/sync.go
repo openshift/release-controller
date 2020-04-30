@@ -116,6 +116,15 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
+	// ensure cleanup on terminal tags
+	if err := c.syncTerminal(release); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		return err
+	}
+
 	// if we're waiting for an interval to elapse, go ahead and queue to be woken
 	if queueAfter > 0 {
 		c.queue.AddAfter(key, queueAfter)
@@ -511,6 +520,37 @@ func (c *Controller) syncReady(release *Release) error {
 		glog.V(4).Infof("Release %s accepted", releaseTag.Name)
 	}
 
+	return nil
+}
+
+func (c *Controller) syncTerminal(release *Release) error {
+	terminalTags := sortedRawReleaseTags(release, releasePhaseAccepted, releasePhaseRejected)
+	if glog.V(5) && len(terminalTags) > 0 {
+		glog.Infof("terminal=%v", tagNames(terminalTags))
+	}
+	for _, releaseTag := range terminalTags {
+		oldVerifyStatus := releaseTag.Annotations[releaseAnnotationVerify]
+		if len(oldVerifyStatus) == 0 {
+			glog.V(5).Infof("%s: Empty verify annotation, skipping", releaseTag.Name)
+			continue
+		}
+		status := make(VerificationStatusMap)
+		if err := json.Unmarshal([]byte(oldVerifyStatus), &status); err != nil {
+			glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
+			continue
+		}
+		for i := range status {
+			status[i].TransitionTime = nil
+		}
+		newVerifyStatus := toJSONString(status)
+		if  newVerifyStatus == oldVerifyStatus {
+			continue
+		}
+		releasePhase := releaseTag.Annotations[releaseAnnotationPhase]
+		if err := c.ensureReleaseTagPhase(release, []string{releasePhase}, releasePhase, map[string]string{releaseAnnotationVerify: newVerifyStatus}, releaseTag.Name); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

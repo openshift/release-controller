@@ -708,7 +708,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	renderInstallInstructions(w, mirror, info.Tag, tagPull, c.artifactsHost)
 
-	renderVerifyLinks(w, info.Tag, info.Release)
+	renderVerifyLinks(w, *info.Tag, info.Release)
 
 	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))

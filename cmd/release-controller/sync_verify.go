@@ -139,6 +139,12 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if s, ok := verifyStatus[name]; ok {
 				status.History = s.History
 			}
+			jobStatus := map[string]ReleaseVerification{name: verifyType}
+			if _, incomplete := verifyStatus.Incomplete(jobStatus); !incomplete {
+				if names, blockingJobFailure := verificationJobsWithRetries(jobStatus, verifyStatus); len(names) > 0 || blockingJobFailure {
+					status.TransitionTime = nil
+				}
+			}
 			verifyStatus[name] = status
 
 			if jobRetries >= verifyType.MaxRetries {

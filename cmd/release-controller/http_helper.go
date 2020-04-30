@@ -529,9 +529,6 @@ func isTagTerminalPhase(tag *imagev1.TagReference) bool {
 	if tag == nil {
 		return false
 	}
-	if len(tag.Annotations) == 0 {
-		return false
-	}
 	return tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
 }
 
