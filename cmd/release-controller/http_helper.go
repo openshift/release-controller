@@ -410,12 +410,12 @@ func links(tag imagev1.TagReference, release *Release) string {
 func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
 	links := tag.Annotations[releaseAnnotationVerify]
 	if len(links) == 0 {
-		fmt.Fprintf(w, `<div id="tests"><p><em>No tests for this release</em></p></div>`)
+		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
 		return
 	}
 	var status VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
-		fmt.Fprintf(w, `<div id="tests"><p><em class="text-danger">Unable to load test info</em></p></div>`)
+		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load test info</em>`)
 		return
 	}
 
@@ -491,9 +491,9 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	}
 
 	if out := buf.String(); len(out) > 0 {
-		fmt.Fprintf(w, `<div id="tests"><p>Tests:</p><ul>%s</ul></div>`, out)
+		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
 	} else {
-		fmt.Fprintf(w, `<div id="tests"><p><em>No tests for this release</em></p></div>`)
+		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
 	}
 }
 

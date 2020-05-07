@@ -710,7 +710,48 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
 
-	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
+	upgradesTo := c.graph.UpgradesTo(tag)
+
+	type releaseInfoStub struct {
+		Metadata   *struct {
+			Version  string   `json:"version"`
+			Previous []string `json:"previous"`
+		}               `json:"metadata"`
+	}
+	tagReleaseJson, err := c.releaseInfo.ReleaseInfo(tagPull)
+	var requiredUpgrades []string
+	var tagReleaseInfo releaseInfoStub
+	var missingUpgrades int
+	err = json.Unmarshal([]byte(tagReleaseJson), &tagReleaseInfo)
+	if err == nil && tagReleaseInfo.Metadata != nil {
+		requiredUpgrades = tagReleaseInfo.Metadata.Previous
+	}
+	upgradeFound := make(map[string]bool)
+	if len(requiredUpgrades) > 0 {
+		for _, u := range upgradesTo {
+			upgradeFound[u.From] = true
+		}
+		for _, from := range requiredUpgrades {
+			if !upgradeFound[from] {
+				 upgradesTo= append(upgradesTo, UpgradeHistory{
+					From:    from,
+					To:      tag,
+					Total:   -1,
+				})
+				if missingUpgrades == 0 {
+					fmt.Fprintf(w, `<span title="required upgrades listed in release info for which tests are missing"><p>Missing upgrades: </p><p>`)
+				} else {
+					fmt.Fprintf(w, `, `)
+				}
+				fmt.Fprintf(w, `<a class="text-monospace" href="/releasetag/%s">%s</a>`, from, from)
+				missingUpgrades++
+			}
+		}
+		if missingUpgrades > 0 {
+			fmt.Fprintf(w, `</p><span>`)
+		}
+	}
+	if len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
 		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p><ul>`)
 		for _, upgrade := range upgradesTo {
@@ -722,6 +763,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				style = "text-success"
 			}
 
+			if upgradeFound[upgrade.From] {
+				style = fmt.Sprintf("%s font-weight-bold", style)
+			}
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
 			if info.Previous == nil || upgrade.From != info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
@@ -808,57 +852,6 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		fmt.Fprintf(w, `</ul>`)
-	}
-
-	type releaseInfoStub struct {
-		Metadata   *struct {
-			Version  string   `json:"version"`
-			Previous []string `json:"previous"`
-		}               `json:"metadata"`
-	}
-
-	tagReleaseJson, err := c.releaseInfo.ReleaseInfo(tagPull)
-	var requiredUpgrades []string
-	var tagReleaseInfo releaseInfoStub
-	err = json.Unmarshal([]byte(tagReleaseJson), &tagReleaseInfo)
-	if err == nil && tagReleaseInfo.Metadata != nil {
-		requiredUpgrades = tagReleaseInfo.Metadata.Previous
-	}
-	if len(requiredUpgrades) > 0 {
-		sort.Slice(requiredUpgrades, func(i, j int) bool {
-			vi, erri := semverParseTolerant(requiredUpgrades[i])
-			vj, errj := semverParseTolerant(requiredUpgrades[j])
-			if erri == nil && errj == nil {
-				return vi.GT(vj)
-			}
-			return requiredUpgrades[i] > requiredUpgrades[j]
-		})
-		upgradesTo := c.graph.UpgradesTo(tag)
-		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
-		var releaseUpgradeScript string
-		if len(upgradesTo) == 0 {
-			releaseUpgradeScript = `document.getElementById("tests").insertAdjacentHTML("afterend", "<p id=\"upgrades-from\">Upgrades from:</p><ul></ul>");`
-		}
-		releaseUpgradeScript = fmt.Sprintf("%s\nvar upgrades_from = document.getElementById(\"upgrades-from\").nextSibling;",releaseUpgradeScript)
-
-		for i := 0; i < len(requiredUpgrades); i++ {
-			var found bool
-			for j:= 0; j < len(upgradesTo); j++ {
-				if requiredUpgrades[i] == upgradesTo[j].From {
-					releaseUpgradeScript = fmt.Sprintf("%s\nupgrades_from.childNodes[%d].firstChild.classList.add(\"font-weight-bold\");", releaseUpgradeScript, j)
-					found = true
-					break
-				}
-			}
-			if !found {
-				releaseUpgradeScript = fmt.Sprintf("%s\nvar missing_upgrade = document.createElement(\"LI\");" +
-					"\nmissing_upgrade.innerHTML = '<a class=\"text-monospace\" href=\"/releasetag/%s\">%s</a> Missing';" +
-					"\nupgrades_from.appendChild(missing_upgrade);", releaseUpgradeScript, requiredUpgrades[i], requiredUpgrades[i])
-			}
-		}
-		if len(releaseUpgradeScript) > 0 {
-			fmt.Fprintf(w, "\n<script>%s</script>\n", releaseUpgradeScript)
-		}
 	}
 
 	if info.Previous != nil && len(previousTagPull) > 0 && len(tagPull) > 0 {
