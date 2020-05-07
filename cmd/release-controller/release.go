@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/blang/semver"
 	"github.com/golang/glog"
@@ -362,3 +363,27 @@ func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
 }
+
+
+const releaseTagTimestampFormat = "2006-01-02-150405"
+
+func releaseTagTimestamp(v string) (time.Time, error) {
+	var t time.Time
+	version, err := semverParseTolerant(v)
+	if err != nil {
+		return t, err
+	}
+	if len(version.Pre) == 0 {
+		return t, fmt.Errorf("tag %s has no timestamp", v)
+	}
+	// for releases of the form x.y.z-0-stream-timestamp, semver parses 'stream-timestamp' into PreRelease array
+	// last entry of this has timestamp string, possibly with a prefix
+	prereleaseLast := version.Pre[len(version.Pre) - 1].VersionStr
+	// format string expects a timestamp of equal length
+	if len(prereleaseLast) < len(releaseTagTimestampFormat) {
+		return t, fmt.Errorf("tag %s has no timestamp", v)
+	}
+	// Remove any prefixes from the timestamp and parse
+	return time.Parse(releaseTagTimestampFormat, prereleaseLast[len(prereleaseLast) - len(releaseTagTimestampFormat):])
+}
+

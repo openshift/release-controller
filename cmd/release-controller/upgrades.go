@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -292,7 +291,12 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	return err
 }
 
-func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}, c *Controller) {
+type GraphPruner interface {
+	// Godoc that says what i do
+	PruneGraph()
+}
+
+func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}, pruner GraphPruner) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(name, metav1.GetOptions{})
@@ -313,8 +317,8 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 				glog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
 			}
 		}
-		if c != nil {
-			c.PruneGraph()
+		if pruner != nil {
+			pruner.PruneGraph()
 		}
 		return true, nil
 	}, stopCh)
@@ -350,38 +354,6 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 	}, 5*time.Minute, stopCh)
 }
 
-const releaseTagTimestampFormat = "2006-01-02-150405"
-
-func releaseTagTimestamp(v string) (time.Time, error) {
-	var t time.Time
-	version, err := semverParseTolerant(v)
-	if err != nil {
-		return t, err
-	}
-	if len(version.Pre) == 0 {
-		return t, fmt.Errorf("tag %s has no timestamp", v)
-	}
-	// release of format x.y.z-prefix-timestamp gets preifx-timetamp parsed into PreRelease array
-	// last entry of this has timestamp string, possibly with a prefix
-	prereleaseLast := version.Pre[len(version.Pre) - 1].VersionStr
-	// format string expects a timestamp of equal length
-	if len(prereleaseLast) < len(releaseTagTimestampFormat) {
-		return t, fmt.Errorf("tag %s has no timestamp", v)
-	}
-	// Remove any prefixes from the timestamp and parse
-	return time.Parse(releaseTagTimestampFormat, prereleaseLast[len(prereleaseLast) - len(releaseTagTimestampFormat):])
-}
-
-func (g *UpgradeGraph) Remove(fromTag, toTag string) {
-	if len(fromTag) == 0 || len(toTag) == 0 {
-		return
-	}
-
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	g.removeWithLock(fromTag, toTag)
-}
-
 func (g *UpgradeGraph) removeWithLock(fromTag, toTag string) {
 	delete(g.to[toTag], fromTag)
 	if len(g.to[toTag]) == 0 {
@@ -390,60 +362,5 @@ func (g *UpgradeGraph) removeWithLock(fromTag, toTag string) {
 	g.from[fromTag].Delete(toTag)
 	if g.from[fromTag].Len() == 0 {
 		delete(g.from, fromTag)
-	}
-}
-
-func (c *Controller) PruneGraph() {
-	if len(c.graph.to) == 0 {
-		return
-	}
-	now := time.Now()
-	pruneThreshold := time.Hour * 730 // roughly a month
-	tagList := make([]string, 0, len(c.graph.to))
-	for tag := range c.graph.to {
-		releaseTimestamp, err := releaseTagTimestamp(tag)
-		if err != nil {
-			// Release tag does not have an embedded date, skip
-			continue
-		}
-		if now.Sub(releaseTimestamp) <= pruneThreshold {
-			// Check only edges pointing to releases older than a month
-			continue
-		}
-		tagList = append(tagList, tag)
-	}
-	if len(tagList) == 0 {
-		return
-	}
-	tags, _ := c.findReleaseStreamTags(false, tagList...)
-	var prune []string
-	if len(tags) == 0 {
-		prune = tagList
-	} else {
-		prune = make([]string, 0, len(tagList))
-		for _, tag := range tagList {
-			// Remove edges that point to releases that don't exist
-			if tags[tag] == nil {
-				prune = append(prune, tag)
-				continue
-			}
-
-			// Remove tags with invalid pullspec
-			tagPullSpec := findPublicImagePullSpec(tags[tag].Release.Target, tag)
-			if len(tagPullSpec) == 0 {
-				prune = append(prune, tag)
-				continue
-			}
-			if _, err := c.releaseInfo.ReleaseInfo(tagPullSpec); err != nil {
-				prune = append(prune, tag)
-				continue
-			}
-		}
-	}
-	glog.V(1).Infof("Pruning %d/%d tags from release controller graph: %v", len(prune), len(c.graph.to), prune)
-	for _, toTag := range prune {
-		for fromTag := range c.graph.to[toTag] {
-			c.graph.Remove(fromTag, toTag)
-		}
 	}
 }

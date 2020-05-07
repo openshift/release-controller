@@ -505,3 +505,61 @@ func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, e
 	glog.V(2).Infof("Error syncing %v: %v", key, err)
 	queue.AddRateLimited(key)
 }
+
+
+func (c *Controller) PruneGraph() {
+	if len(c.graph.to) == 0 {
+		return
+	}
+	now := time.Now()
+	pruneThreshold := time.Hour * 730 // roughly a month
+	tagList := make([]string, 0, len(c.graph.to))
+	for tag := range c.graph.to {
+		releaseTimestamp, err := releaseTagTimestamp(tag)
+		if err != nil {
+			// Release tag does not have an embedded date, skip
+			continue
+		}
+		if now.Sub(releaseTimestamp) <= pruneThreshold {
+			// Check only edges pointing to releases older than a month
+			continue
+		}
+		tagList = append(tagList, tag)
+	}
+	if len(tagList) == 0 {
+		return
+	}
+	tags, _ := c.findReleaseStreamTags(false, tagList...)
+	var prune []string
+	if len(tags) == 0 {
+		prune = tagList
+	} else {
+		prune = make([]string, 0, len(tagList))
+		for _, tag := range tagList {
+			// Remove edges that point to releases that don't exist
+			if tags[tag] == nil {
+				prune = append(prune, tag)
+				continue
+			}
+
+			// Remove tags with invalid pullspec
+			tagPullSpec := findPublicImagePullSpec(tags[tag].Release.Target, tag)
+			if len(tagPullSpec) == 0 {
+				prune = append(prune, tag)
+				continue
+			}
+			if _, err := c.releaseInfo.ReleaseInfo(tagPullSpec); err != nil {
+				prune = append(prune, tag)
+				continue
+			}
+		}
+	}
+	glog.V(1).Infof("Pruning %d/%d tags from release controller graph: %v", len(prune), len(c.graph.to), prune)
+	c.graph.lock.Lock()
+	defer c.graph.lock.Unlock()
+	for _, toTag := range prune {
+		for fromTag := range c.graph.to[toTag] {
+			c.graph.removeWithLock(fromTag, toTag)
+		}
+	}
+}
