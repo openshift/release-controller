@@ -457,6 +457,30 @@ func (m VerificationStatusList) Incomplete(required map[string]*ReleaseCandidate
 	return names
 }
 
+func (t *ReleaseCandidateTest) state(status ...*VerifyJobStatus) string {
+	retryStrategy := t.RetryStrategy
+	if len(retryStrategy) == 0 {
+		retryStrategy = DefaultRetryStrategy
+	}
+	success := 0
+	for _, s := range status {
+		switch s.State {
+		case releaseVerificationStatePending:
+			return s.State
+		case releaseVerificationStateSucceeded:
+			if t.RetryStrategy == RetryStrategyFirstSuccess {
+				return s.State
+			}
+			success++
+		}
+	}
+	if success >= len(status)/2 {
+		// TODO: add success threshold for tests
+		return releaseVerificationStateSucceeded
+	}
+	return releaseVerificationStateFailed
+}
+
 const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.

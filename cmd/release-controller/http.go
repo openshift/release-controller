@@ -706,6 +706,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
 
+	renderCandidateLinks(w, *info.Tag, info.Release)
+
 	upgradesTo := c.graph.UpgradesTo(tag)
 
 	var missingUpgrades []string
@@ -744,7 +746,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			if len(supportedUpgrades) > 0 && !upgradeFound[upgrade.From] {
 				continue
 			}
-			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
+			fmt.Fprintf(w, `<li><a id="%s" class="text-monospace %s" href="/releasetag/%s">%s</a>`, upgrade.From, style, upgrade.From, upgrade.From)
 			if info.Previous == nil || upgrade.From != info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
 			}

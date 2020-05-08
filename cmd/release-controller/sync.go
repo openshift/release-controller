@@ -590,13 +590,13 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 		testTagLen--
 	}
 	testTags = testTags[:testTagLen]
-	if glog.V(4) && len(testTags) > 0 {
-		glog.Infof("release=%s keep=%v", release.Config.Name, tagNames(testTags))
+	if klog.V(4) && len(testTags) > 0 {
+		klog.Infof("release=%s keep=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
 		candidateTests, status, err := c.ensureCandidateTests(release, tag)
 		if err != nil {
-			glog.V(4).Infof("Unable to run CandidateTests for %s: %v", tag.Name, err)
+			klog.V(4).Infof("Unable to run CandidateTests for %s: %v", tag.Name, err)
 			return err
 		}
 		newStatusJSON := toJSONString(status)
@@ -604,7 +604,7 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 			continue
 		}
 		if names := status.Incomplete(candidateTests); len(names) > 0 {
-			glog.V(4).Infof("CandidateTests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
+			klog.V(4).Infof("CandidateTests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
 			if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status)}, tag.Name); err != nil {
 				return err
 			}

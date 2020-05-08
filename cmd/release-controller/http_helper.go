@@ -544,6 +544,92 @@ func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, fi
 	return buf.String()
 }
 
+func renderCandidateLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
+	if _, ok := tag.Annotations[releaseAnnotationKeep]; !ok {
+		return
+	}
+	links := tag.Annotations[releaseAnnotationCandidateTests]
+	if len(links) == 0 {
+		fmt.Fprintf(w, `<p><em>No candidate tests for this release</em>`)
+		return
+	}
+	var status VerificationStatusList
+	if err := json.Unmarshal([]byte(links), &status); err != nil {
+		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load candidate test info</em>`)
+		return
+	}
+	keys := make([]string, 0, len(release.Config.CandidateTests))
+	for k := range release.Config.CandidateTests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	buf := &bytes.Buffer{}
+	for _, key := range keys {
+		if s, ok := status[key]; ok {
+			switch release.Config.CandidateTests[key].state(s.Status...) {
+			case releaseVerificationStateFailed:
+				buf.WriteString("<li><span class=\"text-danger\">" + template.HTMLEscapeString(key) + " -")
+			case releaseVerificationStateSucceeded:
+				buf.WriteString("<li><span class=\"text-success\">" + template.HTMLEscapeString(key) + " -")
+			default:
+				buf.WriteString("<li><span class=\"\">" + template.HTMLEscapeString(key) + " -")
+			}
+			if len(s.Status) > 2 {
+				for _, status := range s.Status {
+					if len(status.URL) > 0 {
+						buf.WriteString(" <a href=\"" + template.HTMLEscapeString(status.URL) + "\" ")
+					} else {
+						buf.WriteString(" <span ")
+					}
+					switch status.State {
+					case releaseVerificationStateFailed:
+						buf.WriteString("class=\"text-danger\">F</a>")
+					case releaseVerificationStateSucceeded:
+						buf.WriteString("class=\"text-success\">S</a>")
+					case releaseVerificationStatePending:
+						buf.WriteString("class=\"text-warning\">P</a>")
+					}
+					if len(status.URL) > 0 {
+						buf.WriteString("</a>")
+					} else {
+						buf.WriteString("</span>")
+					}
+				}
+			} else {
+				for _, status := range s.Status {
+					if len(status.URL) > 0 {
+						buf.WriteString(" <a href=\"" + template.HTMLEscapeString(status.URL) + "\" ")
+					} else {
+						buf.WriteString(" <span ")
+					}
+					switch status.State {
+					case releaseVerificationStateFailed:
+						buf.WriteString("class=\"text-danger\">Failed</a>")
+					case releaseVerificationStateSucceeded:
+						buf.WriteString("class=\"text-success\">Success</a>")
+					case releaseVerificationStatePending:
+						buf.WriteString("class=\"text-warning\">Pending</a>")
+					}
+					if len(status.URL) > 0 {
+						buf.WriteString("</a>")
+					} else {
+						buf.WriteString("</span>")
+					}
+				}
+			}
+			if pj := release.Config.CandidateTests[key].ProwJob; pj != nil {
+				buf.WriteString(" ")
+				buf.WriteString(pj.Name)
+			}
+		}
+	}
+	if out := buf.String(); len(out) > 0 {
+		fmt.Fprintf(w, `<p>Candidate Tests:</p><ul>%s</ul>`, out)
+	} else {
+		fmt.Fprintf(w, `<p><em>No candidate tests for this release</em>`)
+	}
+}
+
 func renderAlerts(release ReleaseStream) string {
 	var msgs []string
 	for _, check := range release.Checks {
