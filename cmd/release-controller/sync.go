@@ -567,8 +567,22 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 	testTagLen := len(testTags)
 	for i := 0; i < testTagLen; i++ {
 		// Run tests only on new releases annotated with keep
-		_, hasCandidateResults := testTags[i].Annotations[releaseAnnotationCandidate]
-		if len(testTags[i].Annotations[releaseAnnotationKeep]) != 0 && !hasCandidateResults {
+		if len(testTags[i].Annotations[releaseAnnotationKeep]) != 0 {
+			if len(testTags[i].Annotations[releaseAnnotationCandidateTests]) == 0 {
+				continue
+			}
+			var candidateTestStatus VerificationStatusList
+			err := json.Unmarshal([]byte(testTags[i].Annotations[releaseAnnotationCandidateTests]), &candidateTestStatus)
+			if err != nil {
+				continue
+			}
+			candidateTests, err := c.expandCandidateTests(release, testTags[i])
+			if err != nil {
+				continue
+			}
+			if names := candidateTestStatus.Incomplete(candidateTests); len(names) == 0 {
+				continue
+			}
 			continue
 		}
 		testTags[i] = testTags[testTagLen-1]
@@ -585,7 +599,10 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 			glog.V(4).Infof("Unable to run CandidateTests for %s: %v", tag.Name, err)
 			return err
 		}
-
+		newStatusJSON := toJSONString(status)
+		if tag.Annotations[releaseAnnotationCandidateTests] == newStatusJSON {
+			continue
+		}
 		if names := status.Incomplete(candidateTests); len(names) > 0 {
 			glog.V(4).Infof("CandidateTests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
 			if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status)}, tag.Name); err != nil {
@@ -594,7 +611,7 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 			continue
 		}
 
-		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate: "ok"}, tag.Name); err != nil {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status)}, tag.Name); err != nil {
 			return err
 		}
 	}

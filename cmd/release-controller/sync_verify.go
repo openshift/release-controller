@@ -87,6 +87,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			}
 			if status.State == releaseVerificationStateSucceeded {
 				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+				status.TransitionTime = nil
 			}
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)
@@ -95,6 +96,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			verifyStatus[name] = status
 
 			if jobRetries >= verifyType.MaxRetries {
+				verifyStatus[name].TransitionTime = nil
 				continue
 			}
 
@@ -219,47 +221,11 @@ func (c *Controller) ensureCandidateTests(release *Release, releaseTag *imagev1.
 	}
 
 	// candidateTests stores expanded list of jobs that have run for testing status in sync loop
-	candidateTests := make(map[string]*ReleaseCandidateTest)
-
-	for name, testType := range release.Config.CandidateTests {
-		if testType.Disabled {
-			glog.V(2).Infof("Release testing step %s is disabled, ignoring", name)
-			continue
-		}
-
-		switch {
-		case testType.ProwJob != nil:
-			// if this is an upgrade job, find the appropriate source for the upgrade job
-			if testType.Upgrade {
-				upgradeSource, err := c.getUpgradeSource(release, releaseTag, name, testType.UpgradeFrom)
-				if err != nil || len(upgradeSource) == 0 {
-					return nil, nil, err
-				}
-
-				for _, src := range upgradeSource {
-					srcName := name
-					if len(upgradeSource) > 1 {
-						// Specify target for multiple upgrade tests
-						srcName = fmt.Sprintf("%s-%s", name, src.tag)
-					}
-					retryStrategy := testType.RetryStrategy
-					if len(retryStrategy) == 0 {
-						retryStrategy = DefaultRetryStrategy
-					}
-					candidateTests[srcName] = &ReleaseCandidateTest{
-						UpgradeTag:          src.tag,
-						UpgradeRef:          src.pullSpec,
-						RetryStrategy:       retryStrategy,
-						ReleaseVerification: testType.ReleaseVerification,
-					}
-				}
-			} else {
-				candidateTests[name] = testType
-			}
-		default:
-			// manual verification
-		}
+	candidateTests, err := c.expandCandidateTests(release, releaseTag)
+	if err != nil {
+		return nil, nil, err
 	}
+
 	for name, test := range candidateTests {
 		var jobNo, failed int
 		var lastJobFailed bool
@@ -320,6 +286,7 @@ func (c *Controller) ensureCandidateTests(release *Release, releaseTag *imagev1.
 		}
 		if status.State == releaseVerificationStateSucceeded {
 			glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+			status.TransitionTime = nil
 		}
 
 		if testStatus == nil {
@@ -337,6 +304,7 @@ func (c *Controller) ensureCandidateTests(release *Release, releaseTag *imagev1.
 		}
 		testStatus[name].TransitionTime = status.TransitionTime
 		if jobNo >= test.MaxRetries {
+			testStatus[name].TransitionTime = nil
 			continue
 		}
 
@@ -369,4 +337,47 @@ func isRallyPoint(v *imagev1.TagReference) bool {
 		return false
 	}
 	return version.Patch%10 == 0
+}
+
+func (c *Controller) expandCandidateTests(release *Release, releaseTag *imagev1.TagReference) (map[string]*ReleaseCandidateTest, error) {
+	// candidateTests stores expanded list of jobs that have run for testing status in sync loop
+	candidateTests := make(map[string]*ReleaseCandidateTest)
+
+	for name, testType := range release.Config.CandidateTests {
+		if testType.Disabled {
+			glog.V(2).Infof("Release testing step %s is disabled, ignoring", name)
+			continue
+		}
+
+		switch {
+		case testType.ProwJob != nil:
+			if !testType.Upgrade {
+				candidateTests[name] = testType
+				continue
+			}
+			// if this is an upgrade job, find the appropriate source for the upgrade job
+			upgradeSource, err := c.getUpgradeSource(release, releaseTag, name, testType.UpgradeFrom)
+			if err != nil || len(upgradeSource) == 0 {
+				return nil, err
+			}
+
+			for _, src := range upgradeSource {
+				srcName := name
+				if len(upgradeSource) > 1 {
+					// Specify target for multiple upgrade tests
+					srcName = fmt.Sprintf("%s-%s", name, src.tag)
+				}
+				retryStrategy := testType.RetryStrategy
+				candidateTests[srcName] = &ReleaseCandidateTest {
+					UpgradeTag:          src.tag,
+					UpgradeRef:          src.pullSpec,
+					RetryStrategy:       retryStrategy,
+					ReleaseVerification: testType.ReleaseVerification,
+				}
+			}
+		default:
+			// manual verification
+		}
+	}
+	return candidateTests, nil
 }

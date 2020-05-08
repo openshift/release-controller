@@ -487,8 +487,6 @@ const (
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
 
 	releaseAnnotationCandidateTests = "release.openshift.io/candidate-tests"
-	// to identify if a release has completed candidate tests
-	releaseAnnotationCandidate = "release.openshift.io/candidate"
 )
 
 type Duration time.Duration
