@@ -135,6 +135,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			verifyStatus[name] = status
 
 			if jobRetries >= verifyType.MaxRetries {
+				verifyStatus[name].TransitionTime = nil
 				continue
 			}
 
