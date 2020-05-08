@@ -710,6 +710,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	renderVerifyLinks(w, *info.Tag, info.Release)
 
+	renderCandidateLinks(w, *info.Tag, info.Release)
+
 	if upgradesTo := c.graph.UpgradesTo(tag); len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
 		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p><ul>`)
@@ -722,7 +724,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				style = "text-success"
 			}
 
-			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
+			fmt.Fprintf(w, `<li><a id="%s" class="text-monospace %s" href="/releasetag/%s">%s</a>`, upgrade.From, style, upgrade.From, upgrade.From)
 			if info.Previous == nil || upgrade.From != info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
 			}
