@@ -22,16 +22,16 @@ func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 	switch prowjobsv1.ProwJobState(s) {
 	case prowjobsv1.SuccessState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
-		status = &VerificationStatus{State: releaseVerificationStateSucceeded, URL: url}
+		status = &VerificationStatus{VerifyJobStatus: VerifyJobStatus{State: releaseVerificationStateSucceeded, URL: url}}
 	case prowjobsv1.FailureState, prowjobsv1.ErrorState, prowjobsv1.AbortedState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
-		status = &VerificationStatus{State: releaseVerificationStateFailed, URL: url}
+		status = &VerificationStatus{VerifyJobStatus: VerifyJobStatus{State: releaseVerificationStateFailed, URL: url}}
 	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.ProwJobState(""):
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "pendingTime")
 		if transitionTime == "" {
 			transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "startTime")
 		}
-		status = &VerificationStatus{State: releaseVerificationStatePending, URL: url}
+		status = &VerificationStatus{VerifyJobStatus: VerifyJobStatus{State: releaseVerificationStatePending, URL: url}}
 	default:
 		klog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())
 		return nil, false
