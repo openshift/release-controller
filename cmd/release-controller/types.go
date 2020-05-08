@@ -106,6 +106,10 @@ type ReleaseConfig struct {
 	// rejected.
 	Verify map[string]ReleaseVerification `json:"verify"`
 
+	// CandidateTests is a map of short names to tests that are run on all terminal releases
+	// marked with keep annotation.
+	CandidateTests map[string]*ReleaseCandidateTest `json:"candidateTests"`
+
 	// Publish is a map of short names to publish steps that will be performed after
 	// the release is Accepted. Some publish steps are continuously maintained, others
 	// may only be performed once.
@@ -200,14 +204,46 @@ type ProwJobVerification struct {
 	Name string `json:"name"`
 }
 
+type VerifyJobStatus struct {
+	State string `json:"state"`
+	URL   string `json:"url"`
+}
+
 type VerificationStatus struct {
-	State          string       `json:"state"`
-	URL            string       `json:"url"`
+	VerifyJobStatus
 	Retries        int          `json:"retries,omitempty"`
 	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
+
+type CandidateTestStatus struct {
+	Status         []*VerifyJobStatus
+	TransitionTime *metav1.Time
+}
+
+type VerificationStatusList map[string]*CandidateTestStatus
+
+type ReleaseCandidateTest struct {
+	ReleaseVerification
+	// UpgradeTag is the tag that upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeTag string `json:"upgradeTag"`
+	// UpgradeRef is the ref that the upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeRef    string        `json:"upgradeRef"`
+	RetryStrategy RetryStrategy `json:"retryStrategy"`
+}
+
+type RetryStrategy string
+
+const (
+	// Run till first success, or till MaxRetries limit is reached
+	RetryStrategyFirstSuccess RetryStrategy = "FirstSuccess"
+	DefaultRetryStrategy                    = RetryStrategyFirstSuccess
+)
 
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
@@ -288,6 +324,38 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
+func (m VerificationStatusList) Incomplete(required map[string]*ReleaseCandidateTest) []string {
+	var names []string
+	for name, definition := range required {
+		if definition.Disabled {
+			continue
+		}
+
+		if _, ok := m[name]; !ok {
+			names = append(names, name)
+			continue
+		}
+		maxRetries := definition.MaxRetries
+
+		var completed int
+		if test, ok := m[name]; ok {
+			for _, s := range test.Status {
+				if !stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+					continue
+				}
+				completed++
+			}
+			if completed >= maxRetries+1 {
+				continue
+			}
+			names = append(names, name)
+			break
+		}
+
+	}
+	return names
+}
+
 const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
@@ -360,6 +428,8 @@ const (
 	// releaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+
+	releaseAnnotationCandidateTests = "release.openshift.io/candidate-tests"
 )
 
 type Duration time.Duration
