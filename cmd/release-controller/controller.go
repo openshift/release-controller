@@ -32,6 +32,8 @@ import (
 
 	"github.com/openshift/release-controller/pkg/signer"
 	prowconfig "k8s.io/test-infra/prow/config"
+
+	"github.com/openshift/release-controller/pkg/bugzilla"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -82,6 +84,8 @@ type Controller struct {
 	gcQueue workqueue.RateLimitingInterface
 	// auditQueue is inputs that must be audited
 	auditQueue workqueue.RateLimitingInterface
+	// bugzillaQueue is the list of releases whose fixed bugs must be synced to bugzilla
+	bugzillaQueue workqueue.RateLimitingInterface
 
 	// auditTracker keeps track of when tags were audited
 	auditTracker *AuditTracker
@@ -123,6 +127,8 @@ type Controller struct {
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
+
+	bugzillaVerifier *bugzilla.Verifier
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -163,6 +169,8 @@ func NewController(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 2*time.Hour),
 			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Every(5), 2)},
 		), "audit"),
+
+		bugzillaQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "bugzilla"),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -276,6 +284,14 @@ func (c *Controller) addQueueKey(key queueKey) {
 	c.queue.Add(key)
 }
 
+func (c *Controller) addBugzillaQueueKey(key queueKey) {
+	// only image streams in the release namespace may be release inputs
+	if key.namespace != c.releaseNamespace {
+		return
+	}
+	c.bugzillaQueue.Add(key)
+}
+
 func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
@@ -338,6 +354,7 @@ func (c *Controller) processImageStream(obj interface{}) {
 		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
 			glog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
+			c.addBugzillaQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
@@ -388,6 +405,10 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.auditWorker, time.Second, stopCh)
+	}
+
+	for i := 0; i < workers; i++ {
+		go wait.Until(c.bugzillaWorker, time.Second, stopCh)
 	}
 
 	<-stopCh
@@ -480,6 +501,33 @@ func (c *Controller) processNextAudit() bool {
 	glog.V(5).Infof("processing %v begin", key)
 	err := c.syncAuditTag(key.(string))
 	c.handleNamespaceErr(c.auditQueue, err, key)
+	glog.V(5).Infof("processing %v end", key)
+
+	return true
+}
+
+func (c *Controller) bugzillaWorker() {
+	for c.processNextBugzilla() {
+	}
+	glog.V(4).Infof("Worker stopped")
+}
+
+func (c *Controller) processNextBugzilla() bool {
+	obj, quit := c.bugzillaQueue.Get()
+	if quit {
+		return false
+	}
+	defer c.bugzillaQueue.Done(obj)
+
+	// don't run if we don't have a verifier
+	if c.bugzillaVerifier != nil {
+		return true
+	}
+	key := obj.(queueKey)
+
+	glog.V(5).Infof("processing %v begin", key)
+	err := c.syncBugzilla(key)
+	c.handleNamespaceErr(c.bugzillaQueue, err, key)
 	glog.V(5).Infof("processing %v end", key)
 
 	return true

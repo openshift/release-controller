@@ -34,6 +34,17 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 		var err error
 		parts := strings.Split(key, "\x00")
 		switch parts[0] {
+		case "bugs":
+			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
+				s, err = "", fmt.Errorf("invalid from/to")
+			} else {
+				var sArr []string
+				sArr, err = info.Bugs(parts[1], parts[2])
+				if err == nil {
+					// there is no string array sink, so we must store as a single joined string
+					s = strings.Join(sArr, "\n")
+				}
+			}
 		case "changelog":
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
@@ -54,6 +65,13 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 	}
 }
 
+func (c *CachingReleaseInfo) Bugs(from, to string) ([]string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"bugs", from, to}, "\x00"), groupcache.StringSink(&s))
+	sArr := strings.Split(s, "\n")
+	return sArr, err
+}
+
 func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to}, "\x00"), groupcache.StringSink(&s))
@@ -67,6 +85,8 @@ func (c *CachingReleaseInfo) ReleaseInfo(image string) (string, error) {
 }
 
 type ReleaseInfo interface {
+	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
+	Bugs(from, to string) ([]string, error)
 	ChangeLog(from, to string) (string, error)
 	ReleaseInfo(image string) (string, error)
 }
@@ -164,6 +184,47 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+func (r *ExecReleaseInfo) Bugs(from, to string) ([]string, error) {
+	if _, err := imagereference.Parse(from); err != nil {
+		return nil, fmt.Errorf("%s is not an image reference: %v", from, err)
+	}
+	if _, err := imagereference.Parse(to); err != nil {
+		return nil, fmt.Errorf("%s is not an image reference: %v", to, err)
+	}
+	if strings.HasPrefix(from, "-") || strings.HasPrefix(to, "-") {
+		return nil, fmt.Errorf("not a valid reference")
+	}
+
+	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=name", from, to}
+	glog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
+	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Container: "git",
+		Stdout:    true,
+		Stderr:    true,
+		Command:   cmd,
+	}, scheme.ParameterCodec).URL()
+
+	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
+	if err != nil {
+		return nil, fmt.Errorf("could not initialize a new SPDY executor: %v", err)
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := e.Stream(remotecommand.StreamOptions{
+		Stdout: out,
+		Stdin:  nil,
+		Stderr: errOut,
+	}); err != nil {
+		glog.V(4).Infof("Failed to generate bug list: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("could not generate a bug list: %v", msg)
+	}
+
+	return strings.Split(out.String(), "\n"), nil
 }
 
 func (r *ExecReleaseInfo) refreshPod() error {
