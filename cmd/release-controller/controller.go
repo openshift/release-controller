@@ -354,12 +354,12 @@ func (c *Controller) processImageStream(obj interface{}) {
 		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
 			glog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
-			c.addBugzillaQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
 			glog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
+			c.addBugzillaQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if _, ok := t.Annotations[releaseAnnotationHasReleases]; ok {
