@@ -534,9 +534,16 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.wfile.write(content)
         self.wfile.close()
 
+	def _get_extension(self, namespace):
+		index = namespace.find('-')
+		if index == -1:
+			return ''
+		return namespace[index::]
+
     def do_GET(self):
         path = self.path.strip("/")
         segments = path.split("/")
+        extension = self._get_extension(RELEASE_NAMESPACE)
 
         if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
             name = segments[0]
@@ -560,7 +567,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
             try:
                 self._present_default_content(name)
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release:%s" % (RELEASE_NAMESPACE, name)],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
