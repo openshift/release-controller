@@ -534,11 +534,11 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.wfile.write(content)
         self.wfile.close()
 
-	def _get_extension(self, namespace):
-		index = namespace.find('-')
-		if index == -1:
-			return ''
-		return namespace[index::]
+    def _get_extension(self, namespace):
+        index = namespace.find('-')
+        if index == -1:
+            return ''
+        return namespace[index::]
 
     def do_GET(self):
         path = self.path.strip("/")
