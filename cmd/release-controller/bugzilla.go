@@ -21,6 +21,8 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		return err
 	}
 
+	glog.V(6).Infof("checking if %v (%s) has verifyBugs set", key, release.Config.Name)
+
 	// check if verifyBugs publish step is enabled for release
 	var verifyBugs *PublishVerifyBugs
 	for _, publishType := range release.Config.Publish {
@@ -36,6 +38,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		}
 	}
 	if verifyBugs == nil {
+		glog.V(6).Infof("%v (%s) does not have verifyBugs set", key, release.Config.Name)
 		return nil
 	}
 

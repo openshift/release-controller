@@ -525,10 +525,10 @@ func (c *Controller) processNextBugzilla() bool {
 	}
 	key := obj.(queueKey)
 
-	glog.V(5).Infof("processing %v begin", key)
+	glog.V(5).Infof("bz worker processing %v begin", key)
 	err := c.syncBugzilla(key)
 	c.handleNamespaceErr(c.bugzillaQueue, err, key)
-	glog.V(5).Infof("processing %v end", key)
+	glog.V(5).Infof("bz worker processing %v end", key)
 
 	return true
 }
