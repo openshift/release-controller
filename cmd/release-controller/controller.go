@@ -520,7 +520,7 @@ func (c *Controller) processNextBugzilla() bool {
 	defer c.bugzillaQueue.Done(obj)
 
 	// don't run if we don't have a verifier
-	if c.bugzillaVerifier != nil {
+	if c.bugzillaVerifier == nil {
 		return true
 	}
 	key := obj.(queueKey)
