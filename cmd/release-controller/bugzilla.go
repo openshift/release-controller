@@ -54,15 +54,21 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	// get latest accepted tag that has not been bugzilla verified
 	var tag, prevTag *v1.TagReference
 	for index, currTag := range acceptedTags {
-		if tag.Annotations[releaseAnnotationBugsVerified] == "true" {
+		if anno, ok := tag.Annotations[releaseAnnotationBugsVerified]; ok && anno == "true" {
 			// if we've already checked the latest tag, return
 			if index == 0 {
+				glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
 				return nil
 			}
 			prevTag = currTag
 			tag = acceptedTags[index-1]
 			break
 		}
+	}
+	if prevTag == nil || tag == nil {
+		// handle case where no tags have been verified yet; start with oldest tags
+		prevTag = acceptedTags[len(acceptedTags)-1]
+		tag = acceptedTags[len(acceptedTags)-2]
 	}
 
 	bugs, err := c.releaseInfo.Bugs(prevTag.Name, tag.Name)
