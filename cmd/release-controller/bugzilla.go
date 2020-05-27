@@ -8,6 +8,31 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
+func getNonVerifiedTags(acceptedTags []*v1.TagReference) (current, previous *v1.TagReference) {
+	// We need at least 2 accepted releases to compare
+	if len(acceptedTags) < 2 {
+		return nil, nil
+	}
+	// get latest accepted tag that has not been bugzilla verified
+	for index, tag := range acceptedTags {
+		if anno, ok := tag.Annotations[releaseAnnotationBugsVerified]; ok && anno == "true" {
+			// if we've already checked the latest tag, return
+			if index == 0 {
+				return nil, nil
+			}
+			previous = tag
+			current = acceptedTags[index-1]
+			break
+		}
+	}
+	if previous == nil || current == nil {
+		// handle case where no tags have been verified yet; start with oldest tags
+		previous = acceptedTags[len(acceptedTags)-1]
+		current = acceptedTags[len(acceptedTags)-2]
+	}
+	return current, previous
+}
+
 // syncBugzilla checks whether fixed bugs in a release had their
 // PR reviewed and approved by the QA contact for the bug
 func (c *Controller) syncBugzilla(key queueKey) error {
@@ -46,35 +71,17 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	// get accepted tags
 	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
-	// We need at least 2 accepted releases to compare
-	if len(acceptedTags) < 2 {
+	tag, prevTag := getNonVerifiedTags(acceptedTags)
+	if tag == nil || prevTag == nil {
+		glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
 		return nil
-	}
-	var errs []error
-	// get latest accepted tag that has not been bugzilla verified
-	var tag, prevTag *v1.TagReference
-	for index, currTag := range acceptedTags {
-		if anno, ok := tag.Annotations[releaseAnnotationBugsVerified]; ok && anno == "true" {
-			// if we've already checked the latest tag, return
-			if index == 0 {
-				glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
-				return nil
-			}
-			prevTag = currTag
-			tag = acceptedTags[index-1]
-			break
-		}
-	}
-	if prevTag == nil || tag == nil {
-		// handle case where no tags have been verified yet; start with oldest tags
-		prevTag = acceptedTags[len(acceptedTags)-1]
-		tag = acceptedTags[len(acceptedTags)-2]
 	}
 
 	bugs, err := c.releaseInfo.Bugs(prevTag.Name, tag.Name)
 	if err != nil {
 		return fmt.Errorf("Unable to generate changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
+	var errs []error
 	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs)...); len(errs) != 0 {
 		return utilerrors.NewAggregate(errs)
 	}
