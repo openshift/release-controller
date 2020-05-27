@@ -77,7 +77,12 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		return nil
 	}
 
-	bugs, err := c.releaseInfo.Bugs(prevTag.Name, tag.Name)
+	dockerRepo := release.Target.Status.PublicDockerImageRepository
+	if len(dockerRepo) == 0 {
+		return fmt.Errorf("bugzilla: release target %s does not have a configured registry", release.Target.Name)
+	}
+
+	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
 	if err != nil {
 		return fmt.Errorf("Unable to generate changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
