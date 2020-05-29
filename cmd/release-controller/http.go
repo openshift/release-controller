@@ -1330,9 +1330,15 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 }
 
 func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
-	for i := 0; i < maxUnready && i < len(tags); i++ {
-		if tags[i].Annotations[releaseAnnotationPhase] == releasePhaseAccepted {
+	unreadyCount := 0
+	for i := 0; unreadyCount < maxUnready && i < len(tags); i++ {
+		switch tags[i].Annotations[releaseAnnotationPhase] {
+		case releasePhaseReady:
+			continue
+		case releasePhaseAccepted:
 			return false
+		default:
+			unreadyCount++
 		}
 	}
 	return true
