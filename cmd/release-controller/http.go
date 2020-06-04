@@ -306,6 +306,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
 	mux.HandleFunc("/", c.httpReleases)
 	mux.HandleFunc("/dashboards/overview", c.httpDashboardOverview)
+	mux.HandleFunc("/dashboards/compare", c.httpDashboardCompare)
 	return mux
 }
 
