@@ -43,6 +43,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)
 	if err != nil || release == nil {
+		glog.V(6).Infof("bugzilla: could not load release for sync for %s/%s", key.namespace, key.name)
 		return err
 	}
 
@@ -79,21 +80,25 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	dockerRepo := release.Target.Status.PublicDockerImageRepository
 	if len(dockerRepo) == 0 {
+		glog.V(4).Infof("bugzilla: release target %s does not have a configured registry", release.Target.Name)
 		return fmt.Errorf("bugzilla: release target %s does not have a configured registry", release.Target.Name)
 	}
 
 	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
 	if err != nil {
-		return fmt.Errorf("Unable to generate changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
+		glog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
+		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
 	var errs []error
 	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs)...); len(errs) != 0 {
+		glog.V(4).Infof("Error(s) in bugzilla verifier: %v", utilerrors.NewAggregate(errs))
 		return utilerrors.NewAggregate(errs)
 	}
 
 	target := release.Target.DeepCopy()
 	tagToBeUpdated := findTagReference(target, tag.Name)
 	if tagToBeUpdated == nil {
+		glog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
 		return fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
 	}
 	if tagToBeUpdated.Annotations == nil {
@@ -102,6 +107,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	tagToBeUpdated.Annotations[releaseAnnotationBugsVerified] = "true"
 	glog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
 	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
+		glog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s", tag.Name, target.GetNamespace(), target.GetName())
 		return err
 	}
 
