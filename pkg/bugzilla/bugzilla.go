@@ -109,7 +109,8 @@ func getPRs(input []int, bzClient bugzilla.Client) ([]pr, []error) {
 			}
 		}
 		if !foundPR {
-			errs = append(errs, fmt.Errorf("failed to identify associated GitHub PR for bugzilla bug %d", bzID))
+			// sometimes people ignore the bot and manually change the bugzilla tags, resulting in a bug not being linked; ignore these
+			glog.V(5).Infof("Failed to identify associated GitHub PR for bugzilla bug %d", bzID)
 		}
 	}
 	return bzPRs, errs
