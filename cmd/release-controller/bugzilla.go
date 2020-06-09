@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 	v1 "github.com/openshift/api/image/v1"
@@ -80,7 +81,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	// To make sure all tags are up-to-date, requeue when non-verified tags are found; this allows us to make
 	// sure tags that may not have been passed to this function (such as older tags) get processed,
 	// and it also allows us to handle the case where the imagestream fails to update below.
-	defer c.queue.Add(key)
+	defer c.queue.AddAfter(key, time.Second)
 
 	dockerRepo := release.Target.Status.PublicDockerImageRepository
 	if len(dockerRepo) == 0 {
