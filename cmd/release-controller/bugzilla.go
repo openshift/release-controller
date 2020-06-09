@@ -77,6 +77,10 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
 		return nil
 	}
+	// To make sure all tags are up-to-date, requeue when non-verified tags are found; this allows us to make
+	// sure tags that may not have been passed to this function (such as older tags) get processed,
+	// and it also allows us to handle the case where the imagestream fails to update below.
+	defer c.queue.Add(key)
 
 	dockerRepo := release.Target.Status.PublicDockerImageRepository
 	if len(dockerRepo) == 0 {
