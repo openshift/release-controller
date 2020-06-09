@@ -73,16 +73,10 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 func (c *CachingReleaseInfo) Bugs(from, to string) ([]int, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"bugs", from, to}, "\x00"), groupcache.StringSink(&s))
-	sArr := strings.Split(s, "\n")
-	var iArr []int
-	for _, bug := range sArr {
-		bugID, err := strconv.Atoi(bug)
-		if err != nil {
-			return nil, err
-		}
-		iArr = append(iArr, bugID)
+	if err != nil {
+		return []int{}, err
 	}
-	return iArr, err
+	return bugListToArr(s)
 }
 
 func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
@@ -236,13 +230,19 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]int, error) {
 		}
 		return nil, fmt.Errorf("could not generate a bug list: %v", msg)
 	}
-	var bugs []int
-	for _, bug := range strings.Split(out.String(), "\n") {
-		bugID, err := strconv.Atoi(bug)
-		if err != nil {
-			return nil, fmt.Errorf("could not convert bug id %s to an int: %v", bug, err)
+	return bugListToArr(out.String())
+}
+
+func bugListToArr(s string) ([]int, error) {
+	bugs := []int{}
+	if s != "" {
+		for _, bug := range strings.Split(s, "\n") {
+			bugID, err := strconv.Atoi(bug)
+			if err != nil {
+				return nil, fmt.Errorf("could not convert bug id %s to an int: %v", bug, err)
+			}
+			bugs = append(bugs, bugID)
 		}
-		bugs = append(bugs, bugID)
 	}
 	return bugs, nil
 }
