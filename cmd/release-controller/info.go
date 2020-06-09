@@ -235,14 +235,15 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]int, error) {
 
 func bugListToArr(s string) ([]int, error) {
 	bugs := []int{}
-	if s != "" {
-		for _, bug := range strings.Split(s, "\n") {
-			bugID, err := strconv.Atoi(bug)
-			if err != nil {
-				return nil, fmt.Errorf("could not convert bug id %s to an int: %v", bug, err)
-			}
-			bugs = append(bugs, bugID)
+	for _, bug := range strings.Split(s, "\n") {
+		if bug == "" {
+			continue
 		}
+		bugID, err := strconv.Atoi(bug)
+		if err != nil {
+			return nil, fmt.Errorf("could not convert bug id %s to an int: %v", bug, err)
+		}
+		bugs = append(bugs, bugID)
 	}
 	return bugs, nil
 }
