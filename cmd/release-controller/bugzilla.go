@@ -107,7 +107,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	tagToBeUpdated.Annotations[releaseAnnotationBugsVerified] = "true"
 	glog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
 	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
-		glog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s", tag.Name, target.GetNamespace(), target.GetName())
+		glog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
 		return err
 	}
 
