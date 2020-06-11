@@ -52,6 +52,9 @@ const htmlPageEnd = `
 
 const releasePageHtml = `
 <h1>Release Status</h1>
+<p class="small mb-3">
+	Quick links: {{ dashboardsJoin .Dashboards }}
+</p>
 <p>Visualize upgrades in <a href="/graph">Cincinnati</a> | <a href="/graph?format=dot">dot</a> | <a href="/graph?format=svg">SVG</a> | <a href="/graph?format=png">PNG</a> format. Run the following command to make this your update server:</p>
 <pre class="ml-4">
 oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
@@ -161,6 +164,9 @@ const releaseInfoPageHtml = `
 
 const releaseDashboardPageHtml = `
 <h1>Release Dashboard</h1>
+<p class="small mb-3">
+	Quick links: {{ dashboardsJoin .Dashboards }}
+</p>
 <p><a href=https://bugzilla.redhat.com/buglist.cgi?bug_status=NEW&bug_status=ASSIGNED&bug_status=POST&f1=cf_internal_whiteboard&f2=status_whiteboard&j_top=OR&known_name=BuildCop&list_id=10913331&o1=substring&o2=substring&query_format=advanced&v1=buildcop&v2=buildcop>Open Build Cop Bugs</a></p>
 <p class="small mb-3">
 	Jump to: {{ releaseJoin .Streams }}
@@ -919,6 +925,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	base.Fragment = ""
 	page := &ReleasePage{
 		BaseURL: base.String(),
+		Dashboards: c.dashboards,
 	}
 
 	now := time.Now()
@@ -984,14 +991,15 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":    tableLink,
-			"phaseCell":    phaseCell,
-			"phaseAlert":   phaseAlert,
-			"alerts":       renderAlerts,
-			"links":        links,
-			"releaseJoin":  releaseJoin,
-			"inc":          func(i int) int { return i + 1 },
-			"upgradeCells": upgradeCells,
+			"tableLink":     tableLink,
+			"phaseCell":     phaseCell,
+			"phaseAlert":    phaseAlert,
+			"alerts":        renderAlerts,
+			"links":         links,
+			"releaseJoin":   releaseJoin,
+			"dashboardsJoin": dashboardsJoin,
+			"inc":           func(i int) int { return i + 1 },
+			"upgradeCells":  upgradeCells,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1065,6 +1073,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	base.Fragment = ""
 	page := &ReleasePage{
 		BaseURL: base.String(),
+		Dashboards: c.dashboards,
 	}
 
 	now := time.Now()
@@ -1130,12 +1139,13 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				}
 				return ""
 			},
-			"tableLink":   tableLink,
-			"phaseCell":   phaseCell,
-			"phaseAlert":  phaseAlert,
-			"inc":         func(i int) int { return i + 1 },
-			"upgradeJobs": upgradeJobs,
-			"releaseJoin": releaseJoin,
+			"tableLink":     tableLink,
+			"phaseCell":     phaseCell,
+			"phaseAlert":    phaseAlert,
+			"inc":           func(i int) int { return i + 1 },
+			"upgradeJobs":   upgradeJobs,
+			"releaseJoin":   releaseJoin,
+			"dashboardsJoin": dashboardsJoin,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {

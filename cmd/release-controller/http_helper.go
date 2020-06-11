@@ -21,6 +21,7 @@ import (
 type ReleasePage struct {
 	BaseURL string
 	Streams []ReleaseStream
+	Dashboards []Dashboard
 }
 
 type ReleaseStream struct {
@@ -35,6 +36,11 @@ type ReleaseStream struct {
 
 	// Failing is set if none of the most recent 5 payloads were accepted
 	Failing bool
+}
+
+type Dashboard struct {
+	Name string
+	Path string
 }
 
 type ReleaseDelay struct {
@@ -516,7 +522,7 @@ func renderAlerts(release ReleaseStream) string {
 func releaseJoin(streams []ReleaseStream) string {
 	releases := []string{}
 	for _, s := range streams {
-		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", s.Release.Config.Name, s.Release.Config.Name))
+		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(s.Release.Config.Name), template.HTMLEscapeString(s.Release.Config.Name)))
 	}
 	return strings.Join(releases, " | ")
 }
@@ -872,4 +878,12 @@ func checkReleasePage(page *ReleasePage) {
 			}
 		}
 	}
+}
+
+func dashboardsJoin(dashboards []Dashboard) string {
+	boards := []string{}
+	for _, d := range dashboards {
+		boards = append(boards, fmt.Sprintf("<a href=\"%s\">%s</a>", template.HTMLEscapeString(d.Path), template.HTMLEscapeString(d.Name)))
+	}
+	return strings.Join(boards, " | ")
 }

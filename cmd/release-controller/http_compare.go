@@ -28,10 +28,14 @@ type ComparisonPage struct {
 	BaseURL string
 	Streams []ReleaseStream
 	Tags []*v1.TagReference
+	Dashboards []Dashboard
 }
 
 const comparisonDashboardPageHtml = `
 <h1>Release Comparison Dashboard</h1>
+<p class="small mb-3">
+	Quick links: {{ dashboardsJoin .Dashboards }}
+</p>
 `
 
 func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Request) {
@@ -51,6 +55,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	base.Fragment = ""
 	page := &ComparisonPage{
 		BaseURL: base.String(),
+		Dashboards: c.dashboards,
 	}
 
 	fromRelease := req.URL.Query().Get("from")
@@ -67,7 +72,9 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		PullSpec: "",
 	}
 
-	var releasePage = template.Must(template.New("releaseDashboardPage").Funcs(template.FuncMap{}).Parse(comparisonDashboardPageHtml))
+	var releasePage = template.Must(template.New("releaseDashboardPage").Funcs(template.FuncMap{
+		"dashboardsJoin": dashboardsJoin,
+	}).Parse(comparisonDashboardPageHtml))
 
 	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
 	if err != nil {
