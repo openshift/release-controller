@@ -75,8 +75,10 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 		}
 		approved := prReviewedByQA(comments, reviews)
 		if approved {
-			glog.V(4).Infof("Bug %d (current status %s) should be moved to VERIFIED state", bug.ID, bug.Status)
-			// once this is proven to work correctly in-cluster, add code to update bugzilla bug state to VERIFIED
+			glog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
+			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); err != nil {
+				errs = append(errs, fmt.Errorf("Failed to update status for bug %d: %v", bug.ID, err))
+			}
 		} else {
 			glog.V(4).Infof("Bug %d (current status %s) not approved by QA contact", bug.ID, bug.Status)
 		}
