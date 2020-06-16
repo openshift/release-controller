@@ -129,6 +129,8 @@ type Controller struct {
 	parsedReleaseConfigCache *lru.Cache
 
 	bugzillaVerifier *bugzilla.Verifier
+
+	dashboards []Dashboard
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -208,6 +210,12 @@ func NewController(
 		DeleteFunc: c.processJob,
 		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
 	})
+
+	c.dashboards = []Dashboard {
+		{"Index", "/"},
+		{"Overview", "/dashboards/overview"},
+		{"Compare", "/dashboards/compare"},
+	}
 
 	return c
 }
