@@ -51,10 +51,11 @@ import (
 )
 
 type options struct {
-	ReleaseNamespaces []string
-	JobNamespace      string
-	ProwNamespace     string
-	ProwJobKubeconfig string
+	ReleaseNamespaces    []string
+	JobNamespace         string
+	ProwNamespace        string
+	ProwJobKubeconfig    string
+	NonProwJobKubeconfig string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -116,7 +117,8 @@ func main() {
 	var ignored string
 	flagset.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
 	flagset.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
-	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults to the main kubeconfig if unset.")
+	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults in-cluster config if unset.")
+	flagset.StringVar(&opt.NonProwJobKubeconfig, "non-prow-job-kubeconfig", opt.NonProwJobKubeconfig, "The kubeconfig to use for everything that is not prowjobs (namespaced, pods, batchjobs, ....). Falls back to incluster config if unset")
 	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
 	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
@@ -156,9 +158,13 @@ func (o *options) Run() error {
 		o.ProwNamespace = o.JobNamespace
 	}
 
-	config, err := loadClusterConfig()
+	inClusterCfg, err := loadClusterConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load incluster config: %w", err)
+	}
+	config, err := o.nonProwJobKubeconfig(inClusterCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load config from %s: %w", o.NonProwJobKubeconfig, err)
 	}
 	var mode string
 	switch {
@@ -195,7 +201,7 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 
-	prowClient, err := o.prowJobClient(config)
+	prowClient, err := o.prowJobClient(inClusterCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create prowjob client: %v", err)
 	}
@@ -436,6 +442,16 @@ func (o *options) prowJobClient(cfg *rest.Config) (dynamic.NamespaceableResource
 	}
 
 	return dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"}), nil
+}
+
+func (o *options) nonProwJobKubeconfig(inClusterCfg *rest.Config) (*rest.Config, error) {
+	if o.NonProwJobKubeconfig == "" {
+		return inClusterCfg, nil
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.NonProwJobKubeconfig},
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
 }
 
 // loadClusterConfig loads connection configuration
