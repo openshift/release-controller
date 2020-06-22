@@ -120,11 +120,13 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 		// Jenkins jobs cannot be parameterized
 		return true, nil
 	}
+	hasReleaseImage := false
 	for i := range spec.PodSpec.Containers {
 		c := &spec.PodSpec.Containers[i]
 		for j := range c.Env {
 			switch name := c.Env[j].Name; {
 			case name == "RELEASE_IMAGE_LATEST":
+				hasReleaseImage = true
 				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
 			case name == "RELEASE_IMAGE_INITIAL":
 				if len(previousReleasePullSpec) == 0 {
@@ -147,6 +149,9 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 				suffix = strings.ToLower(strings.Replace(suffix, "_", "-", -1))
 				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":" + suffix
 			}
+		}
+		if !hasReleaseImage {
+			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 		}
 	}
 	return true, nil
