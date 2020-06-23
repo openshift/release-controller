@@ -38,5 +38,6 @@ require (
 	k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/klog v1.0.0
+	k8s.io/kube-openapi v0.0.0-20190816220812-743ec37842bf
 	k8s.io/test-infra v0.0.0-20191114175535-e3e01110acb8
 )

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
+	"k8s.io/kube-openapi/pkg/util/sets"
 	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/plugins"
@@ -65,15 +67,12 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			errs = append(errs, fmt.Errorf("Unable to get comments for github pull %s/%s#%d: %v", bzp.org, bzp.repo, bzp.prNum, err))
 			continue
 		}
-		var reviews []github.Review
-		if c.pluginConfig.LgtmFor(bzp.org, bzp.repo).ReviewActsAsLgtm {
-			reviews, err = c.ghClient.ListReviews(bzp.org, bzp.repo, bzp.prNum)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", bzp.org, bzp.repo, bzp.prNum, err))
-				continue
-			}
+		reviews, err := c.ghClient.ListReviews(bzp.org, bzp.repo, bzp.prNum)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", bzp.org, bzp.repo, bzp.prNum, err))
+			continue
 		}
-		approved := prReviewedByQA(comments, reviews)
+		approved := prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(bzp.org, bzp.repo).ReviewActsAsLgtm)
 		if approved {
 			glog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
 			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); err != nil {
@@ -118,49 +117,57 @@ func getPRs(input []int, bzClient bugzilla.Client) ([]pr, []error) {
 	return bzPRs, errs
 }
 
+func updateLGTMs(lgtms map[string]time.Time, lgtmCancels map[string]time.Time, body, login string, submitted time.Time) {
+	if lgtmRe.MatchString(body) {
+		lgtms[login] = submitted
+		return
+	}
+	if lgtmCancelRe.MatchString(body) {
+		lgtmCancels[login] = submitted
+		return
+	}
+}
+
 // prReviewedByQA looks through PR comments and identifies if an assigned
 // QA contact lgtm'd the PR
-func prReviewedByQA(comments []github.IssueComment, reviews []github.Review) bool {
-	var lgtms, qaContacts []string
+func prReviewedByQA(comments []github.IssueComment, reviews []github.Review, reviewAsLGTM bool) bool {
+	lgtms := make(map[string]time.Time)
+	lgtmCancels := make(map[string]time.Time)
+	qaContacts := sets.NewString()
 	for _, comment := range comments {
-		if lgtmRe.MatchString(comment.Body) {
-			lgtms = append(lgtms, comment.User.Login)
-			continue
-		}
-		if lgtmCancelRe.MatchString(comment.Body) {
-			for index, name := range lgtms {
-				if name == comment.User.Login {
-					lgtms = append(lgtms[:index], lgtms[index+1:]...)
-					break
-				}
-			}
-			continue
-		}
+		updateLGTMs(lgtms, lgtmCancels, comment.Body, comment.User.Login, comment.UpdatedAt)
 		bz := bzAssignRegex.FindString(comment.Body)
 		if bz != "" {
 			splitbz := strings.Split(bz, "@")
 			if len(splitbz) == 2 {
-				qaContacts = append(qaContacts, splitbz[1])
+				qaContacts.Insert(splitbz[1])
 			}
 		}
 	}
 	for _, review := range reviews {
-		if review.State == github.ReviewStateApproved || lgtmRe.MatchString(review.Body) {
-			lgtms = append(lgtms, review.User.Login)
-			continue
-		}
-		if review.State == github.ReviewStateChangesRequested || lgtmCancelRe.MatchString(review.Body) {
-			for index, name := range lgtms {
-				if name == review.User.Login {
-					lgtms = append(lgtms[:index], lgtms[index+1:]...)
-					break
-				}
+		updateLGTMs(lgtms, lgtmCancels, review.Body, review.User.Login, review.SubmittedAt)
+		if reviewAsLGTM {
+			if review.State == github.ReviewStateApproved {
+				lgtms[review.User.Login] = review.SubmittedAt
+				continue
 			}
-			continue
+			if review.State == github.ReviewStateChangesRequested {
+				lgtmCancels[review.User.Login] = review.SubmittedAt
+				continue
+			}
 		}
 	}
-	for _, contact := range qaContacts {
-		for _, lgtm := range lgtms {
+	finalLGTMs := sets.NewString()
+	for user, lgtmTime := range lgtms {
+		if cancelTime, ok := lgtmCancels[user]; ok {
+			if cancelTime.After(lgtmTime) {
+				continue
+			}
+		}
+		finalLGTMs.Insert(user)
+	}
+	for contact := range qaContacts {
+		for lgtm := range finalLGTMs {
 			if contact == lgtm {
 				glog.V(4).Infof("QA Contact %s lgtm'd this PR", contact)
 				return true
