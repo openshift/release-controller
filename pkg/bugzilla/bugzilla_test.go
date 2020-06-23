@@ -182,6 +182,28 @@ func TestPRApprovedByQA(t *testing.T) {
 			reviewAsLGTM: false,
 			approved:     false,
 		},
+		{
+			name: "assigned qa lgmt'd inside review on repo without reviewAsLGTM",
+			comments: []github.IssueComment{
+				{
+					Body: "Fixed Bug",
+					User: github.User{Login: "exampleUser"},
+				},
+				{
+					Body: "Requesting review from QA contact:\n/cc @exampleUser3\n\n<details>plugin details</details>",
+					User: github.User{Login: "exampleUser"},
+				},
+			},
+			reviews: []github.Review{
+				{
+					State: github.ReviewStateApproved,
+					Body:  "/lgtm",
+					User:  github.User{Login: "exampleUser3"},
+				},
+			},
+			reviewAsLGTM: false,
+			approved:     true,
+		},
 	}
 	for _, testCase := range testCases {
 		approved := prReviewedByQA(testCase.comments, testCase.reviews, testCase.reviewAsLGTM)
