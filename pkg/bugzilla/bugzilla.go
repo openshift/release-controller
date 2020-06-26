@@ -93,7 +93,12 @@ func getPRs(input []int, bzClient bugzilla.Client) ([]pr, []error) {
 	for _, bzID := range input {
 		extBugs, err := bzClient.GetExternalBugPRsOnBug(bzID)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("Failed to get external bugs for bugzilla bug %d: %v", bzID, err))
+			// there are a couple of bugs with weird permissions issues that can cause this to fail; simply log instead of generating error
+			if bugzilla.IsAccessDenied(err) {
+				klog.V(4).Infof("Access denied getting external bugs for bugzilla bug %d: %v", bzID, err)
+			} else {
+				errs = append(errs, fmt.Errorf("Failed to get external bugs for bugzilla bug %d: %v", bzID, err))
+			}
 			continue
 		}
 		foundPR := false
