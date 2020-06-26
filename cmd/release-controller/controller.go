@@ -446,10 +446,10 @@ func (c *Controller) processNext() bool {
 		return true
 	}
 
-	klog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("sync processing %v begin", key)
 	err := c.syncFn(key)
 	c.handleNamespaceErr(c.queue, err, key)
-	klog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("sync processing %v end", key)
 
 	return true
 }
@@ -481,10 +481,10 @@ func (c *Controller) processNextGC() bool {
 	}
 	defer c.gcQueue.Done(key)
 
-	klog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("gc processing %v begin", key)
 	err := c.garbageCollectSync()
 	c.handleNamespaceErr(c.gcQueue, err, key)
-	klog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("gc processing %v end", key)
 
 	return true
 }
@@ -502,10 +502,10 @@ func (c *Controller) processNextAudit() bool {
 	}
 	defer c.auditQueue.Done(key)
 
-	klog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("audit processing %v begin", key)
 	err := c.syncAuditTag(key.(string))
 	c.handleNamespaceErr(c.auditQueue, err, key)
-	klog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("audit processing %v end", key)
 
 	return true
 }
