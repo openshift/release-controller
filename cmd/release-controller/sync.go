@@ -232,7 +232,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		removeTags = nil
 	default:
 		// gate creating new releases when we already are at max unready or in the cooldown interval
-		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount > release.Config.MaxUnreadyReleases {
+		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount >= release.Config.MaxUnreadyReleases {
 			glog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			hasNewImages = false
 		}
