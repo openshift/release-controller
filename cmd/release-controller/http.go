@@ -1030,7 +1030,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
-			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) > r.Config.MaxUnreadyReleases {
+			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 			}
 		}
@@ -1176,7 +1176,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
-			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) > r.Config.MaxUnreadyReleases {
+			if r.Config.MaxUnreadyReleases > 0 && countUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 			}
 		}
