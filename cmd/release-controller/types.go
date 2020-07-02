@@ -165,7 +165,20 @@ type PublishStreamReference struct {
 
 // PublishVerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
 type PublishVerifyBugs struct {
-	// No specific information currently required for bug verification
+	// PreviousRelease points to the last release created before the imagestream
+	// being published was created. It is used to verify bugs on the oldest tag
+	// in the release being published.
+	PreviousReleaseTag *VerifyBugsTagInfo `json:"previousReleaseTag"`
+}
+
+// VerifyBugsTagInfo contains the necessary data to get a tag reference as needed in the bugzilla verification support.
+type VerifyBugsTagInfo struct {
+	// Namespace is the namespace where the imagestream resides.
+	Namespace string `json:"namespace"`
+	// Name is the name of the imagestream
+	Name string `json:"name"`
+	// Tag is the tag that is being referenced in the image stream
+	Tag string `json:"tag"`
 }
 
 // ReleaseVerification is a task that must be completed before a release is marked

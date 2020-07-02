@@ -26,20 +26,25 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		}, {
 			Name: "test1",
 		}},
-		expectedCurrent:  &v1.TagReference{Name: "test2"},
-		expectedPrevious: &v1.TagReference{Name: "test1"},
+		expectedCurrent:  &v1.TagReference{Name: "test1"},
+		expectedPrevious: nil,
 	}, {
 		name: "2 tags, 1 verified",
 		acceptedTags: []*v1.TagReference{{
 			Name: "test2",
+		}, {
+			Name: "test1",
 			Annotations: map[string]string{
 				releaseAnnotationBugsVerified: "true",
 			},
-		}, {
-			Name: "test1",
 		}},
-		expectedCurrent:  nil,
-		expectedPrevious: nil,
+		expectedCurrent: &v1.TagReference{Name: "test2"},
+		expectedPrevious: &v1.TagReference{
+			Name: "test1",
+			Annotations: map[string]string{
+				releaseAnnotationBugsVerified: "true",
+			},
+		},
 	}, {
 		name: "Multiple tags",
 		acceptedTags: []*v1.TagReference{{
@@ -57,6 +62,9 @@ func TestGetNonVerifiedTags(t *testing.T) {
 			},
 		}, {
 			Name: "test1",
+			Annotations: map[string]string{
+				releaseAnnotationBugsVerified: "true",
+			},
 		}},
 		expectedCurrent: &v1.TagReference{
 			Name:        "test4",
@@ -64,6 +72,35 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		},
 		expectedPrevious: &v1.TagReference{
 			Name: "test3",
+			Annotations: map[string]string{
+				releaseAnnotationBugsVerified: "true",
+			},
+		},
+	}, {
+		name: "Multiple tags with unverified in between",
+		acceptedTags: []*v1.TagReference{{
+			Name:        "test4",
+			Annotations: map[string]string{},
+		}, {
+			Name: "test3",
+			Annotations: map[string]string{
+				releaseAnnotationBugsVerified: "true",
+			},
+		}, {
+			Name:        "test2",
+			Annotations: map[string]string{},
+		}, {
+			Name: "test1",
+			Annotations: map[string]string{
+				releaseAnnotationBugsVerified: "true",
+			},
+		}},
+		expectedCurrent: &v1.TagReference{
+			Name:        "test2",
+			Annotations: map[string]string{},
+		},
+		expectedPrevious: &v1.TagReference{
+			Name: "test1",
 			Annotations: map[string]string{
 				releaseAnnotationBugsVerified: "true",
 			},
