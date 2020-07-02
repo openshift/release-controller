@@ -6,32 +6,26 @@ import (
 
 	"github.com/golang/glog"
 	v1 "github.com/openshift/api/image/v1"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
 func getNonVerifiedTags(acceptedTags []*v1.TagReference) (current, previous *v1.TagReference) {
-	// We need at least 2 accepted releases to compare
-	if len(acceptedTags) < 2 {
-		return nil, nil
+	// get oldest non-verified tag to make sure none are missed
+	// accepted tags are returned sorted with the latest release first; reverse so we can get oldest non-verified release
+	for i := 0; i < len(acceptedTags)/2; i++ {
+		j := len(acceptedTags) - i - 1
+		acceptedTags[i], acceptedTags[j] = acceptedTags[j], acceptedTags[i]
 	}
-	// get latest accepted tag that has not been bugzilla verified
 	for index, tag := range acceptedTags {
-		if anno, ok := tag.Annotations[releaseAnnotationBugsVerified]; ok && anno == "true" {
-			// if we've already checked the latest tag, return
+		if anno, ok := tag.Annotations[releaseAnnotationBugsVerified]; !ok || anno != "true" {
 			if index == 0 {
-				return nil, nil
+				return tag, nil
 			}
-			previous = tag
-			current = acceptedTags[index-1]
-			break
+			return tag, acceptedTags[index-1]
 		}
 	}
-	if previous == nil || current == nil {
-		// handle case where no tags have been verified yet; start with oldest tags
-		previous = acceptedTags[len(acceptedTags)-1]
-		current = acceptedTags[len(acceptedTags)-2]
-	}
-	return current, previous
+	return nil, nil
 }
 
 // syncBugzilla checks whether fixed bugs in a release had their
@@ -74,9 +68,25 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	// get accepted tags
 	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
 	tag, prevTag := getNonVerifiedTags(acceptedTags)
-	if tag == nil || prevTag == nil {
+	if tag == nil {
 		glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
 		return nil
+	}
+	if prevTag == nil {
+		if verifyBugs.PreviousReleaseTag == nil {
+			glog.V(2).Infof("bugzilla error: previous release unset for %s", release.Config.Name)
+			return fmt.Errorf("bugzilla error: previous release unset for %s", release.Config.Name)
+		}
+		stream, err := c.imageClient.ImageStreams(verifyBugs.PreviousReleaseTag.Namespace).Get(verifyBugs.PreviousReleaseTag.Name, meta.GetOptions{})
+		if err != nil {
+			glog.V(2).Infof("bugzilla: failed to get imagestream (%s/%s) when getting previous release for %s: %v", verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name, err)
+			return err
+		}
+		prevTag = findTagReference(stream, verifyBugs.PreviousReleaseTag.Tag)
+		if prevTag == nil {
+			glog.V(2).Infof("bugzilla: failed to get tag %s in imagestream (%s/%s) when getting previous release for %s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name)
+			return fmt.Errorf("failed to find tag %s in imagestream %s/%s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name)
+		}
 	}
 	// To make sure all tags are up-to-date, requeue when non-verified tags are found; this allows us to make
 	// sure tags that may not have been passed to this function (such as older tags) get processed,
