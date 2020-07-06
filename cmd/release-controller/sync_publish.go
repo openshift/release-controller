@@ -74,7 +74,11 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		return nil
 	}
 
-	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
+	lister := c.publishLister.ImageStreams(toNamespace)
+	if lister == nil {
+		return fmt.Errorf("cannot publish to namespace %s, namespace was not registered for either release or publish", toNamespace)
+	}
+	target, err := lister.Get(toName)
 	if errors.IsNotFound(err) {
 		// TODO: create it?
 		klog.V(2).Infof("Target image stream doesn't exist yet: %v", err)

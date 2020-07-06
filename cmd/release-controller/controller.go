@@ -64,10 +64,11 @@ import (
 type Controller struct {
 	eventRecorder record.EventRecorder
 
-	imageClient       imageclient.ImageV1Interface
-	imageStreamLister *multiImageStreamLister
-	jobClient         batchclient.JobsGetter
-	jobLister         batchlisters.JobLister
+	imageClient   imageclient.ImageV1Interface
+	releaseLister *multiImageStreamLister
+	publishLister *multiImageStreamLister
+	jobClient     batchclient.JobsGetter
+	jobLister     batchlisters.JobLister
 
 	podClient kv1core.PodsGetter
 
@@ -173,8 +174,9 @@ func NewController(
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
 
-		imageClient:       imageClient,
-		imageStreamLister: &multiImageStreamLister{listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
+		imageClient:   imageClient,
+		releaseLister: &multiImageStreamLister{listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
+		publishLister: &multiImageStreamLister{listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
 
 		jobClient: jobClient,
 		jobLister: jobs.Lister(),
@@ -246,10 +248,11 @@ func (l *multiImageStreamLister) ImageStreams(ns string) imagelisters.ImageStrea
 	return l.listers[ns]
 }
 
-// AddNamespacedImageStreamInformer adds a new namespace scoped informer to the controller.
-// All namespaces are treated equally.
-func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams imageinformers.ImageStreamInformer) {
-	c.imageStreamLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
+// AddReleaseNamespace adds a new namespace scoped informer to the controller, which will be watched
+// for image streams containing release configuration.
+func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.ImageStreamInformer) {
+	c.releaseLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
+	c.publishLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
 
 	imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processImageStream,
@@ -258,6 +261,12 @@ func (c *Controller) AddNamespacedImageStreamInformer(ns string, imagestreams im
 			c.processImageStream(newObj)
 		},
 	})
+}
+
+// AddPublishNamespace adds a new namespace scoped informer to the controller which is used to look up
+// images by stream, but which may not contain release streams.
+func (c *Controller) AddPublishNamespace(ns string, imagestreams imageinformers.ImageStreamInformer) {
+	c.publishLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
 }
 
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the
@@ -446,7 +455,7 @@ func (c *Controller) processNext() bool {
 }
 
 func (c *Controller) processNextNamespace(ns string) error {
-	imageStreams, err := c.imageStreamLister.ImageStreams(ns).List(labels.Everything())
+	imageStreams, err := c.releaseLister.ImageStreams(ns).List(labels.Everything())
 	if err != nil {
 		return err
 	}

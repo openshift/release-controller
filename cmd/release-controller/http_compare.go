@@ -77,7 +77,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		"dashboardsJoin": dashboardsJoin,
 	}).Parse(comparisonDashboardPageHtml))
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -16,7 +16,7 @@ import (
 
 func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
 	mirrorName := mirrorName(release, releaseTagName)
-	is, err := c.imageStreamLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
+	is, err := c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 	if err == nil {
 		return is, nil
 	}
@@ -60,7 +60,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 }
 
 func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
-	return c.imageStreamLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
+	return c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
 }
 
 func mirrorName(release *Release, releaseTagName string) string {

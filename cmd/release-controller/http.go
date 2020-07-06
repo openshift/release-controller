@@ -229,7 +229,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -404,7 +404,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 }
 
 func (c *Controller) locateStream(streamName string, phases ...string) (*ReleaseStream, error) {
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -849,7 +849,7 @@ var (
 )
 
 func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1010,7 +1010,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		},
 	).Parse(releasePageHtml))
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1156,7 +1156,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		},
 	).Parse(releaseDashboardPageHtml))
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

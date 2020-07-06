@@ -29,7 +29,7 @@ type ReleaseGraph struct {
 }
 
 func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

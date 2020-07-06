@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
@@ -52,6 +53,7 @@ import (
 
 type options struct {
 	ReleaseNamespaces    []string
+	PublishNamespaces    []string
 	JobNamespace         string
 	ProwNamespace        string
 	ProwJobKubeconfig    string
@@ -120,6 +122,7 @@ func main() {
 	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults in-cluster config if unset.")
 	flagset.StringVar(&opt.NonProwJobKubeconfig, "non-prow-job-kubeconfig", opt.NonProwJobKubeconfig, "The kubeconfig to use for everything that is not prowjobs (namespaced, pods, batchjobs, ....). Falls back to incluster config if unset")
 	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
+	flagset.StringSliceVar(&opt.PublishNamespaces, "publish-namespace", opt.PublishNamespaces, "Optional namespaces that the release might publish results to.")
 	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flagset.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
@@ -156,6 +159,9 @@ func (o *options) Run() error {
 	}
 	if len(o.ProwNamespace) == 0 {
 		o.ProwNamespace = o.JobNamespace
+	}
+	if sets.NewString(o.ReleaseNamespaces...).HasAny(o.PublishNamespaces...) {
+		return fmt.Errorf("--release-namespace and --publish-namespace may not overlap")
 	}
 
 	inClusterCfg, err := loadClusterConfig()
@@ -335,15 +341,20 @@ func (o *options) Run() error {
 
 	batchFactory.Start(stopCh)
 
-	// register image streams
-	for _, ns := range o.ReleaseNamespaces {
+	// register the publish and release namespaces
+	publishNamespaces := sets.NewString(o.PublishNamespaces...)
+	for _, ns := range sets.NewString(o.ReleaseNamespaces...).Union(publishNamespaces).List() {
 		factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
 		streams := factory.Image().V1().ImageStreams()
-		c.AddNamespacedImageStreamInformer(ns, streams)
+		if publishNamespaces.Has(ns) {
+			c.AddPublishNamespace(ns, streams)
+		} else {
+			c.AddReleaseNamespace(ns, streams)
+		}
 		hasSynced = append(hasSynced, streams.Informer().HasSynced)
 		factory.Start(stopCh)
 	}
-	imageCache.SetLister(c.imageStreamLister.ImageStreams(releaseNamespace))
+	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
 	if len(o.ProwConfigPath) > 0 {
 		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))

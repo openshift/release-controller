@@ -20,7 +20,7 @@ func (c *Controller) garbageCollectSync() error {
 		panic(err)
 	}()
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func (c *Controller) garbageCollectSync() error {
 	if err != nil {
 		return err
 	}
-	mirrors, err := c.imageStreamLister.List(labels.Everything())
+	mirrors, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}

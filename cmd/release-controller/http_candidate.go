@@ -280,7 +280,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -335,7 +335,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 
 // TODO: Add support for returning stable releases after rally point
 func (c *Controller) stableReleases() (*StableReferences, error) {
-	imageStreams, err := c.imageStreamLister.List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
-	is, err := c.imageStreamLister.ImageStreams(isTokens[0]).Get(isTokens[1])
+	is, err := c.releaseLister.ImageStreams(isTokens[0]).Get(isTokens[1])
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
-	fromStream, err := c.imageStreamLister.ImageStreams(fromIsTokens[0]).Get(fromIsTokens[1])
+	fromStream, err := c.releaseLister.ImageStreams(fromIsTokens[0]).Get(fromIsTokens[1])
 	if err != nil {
 		return nil, err
 	}

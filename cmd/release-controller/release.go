@@ -44,7 +44,7 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		}
 		return r, true, nil
 	default:
-		targetImageStream, err := c.imageStreamLister.ImageStreams(is.Namespace).Get(cfg.To)
+		targetImageStream, err := c.releaseLister.ImageStreams(is.Namespace).Get(cfg.To)
 		if errors.IsNotFound(err) {
 			// TODO: something special here?
 			klog.V(2).Infof("The release image stream %s/%s does not exist", is.Namespace, cfg.To)
