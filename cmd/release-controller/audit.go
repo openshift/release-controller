@@ -84,7 +84,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		out, err := exec.Command("oc", "adm", "release", "info", "--verify", record.Location).CombinedOutput()
 		if err != nil {
 			failureMsg := fmt.Sprintf("Unable to verify release:\n%s", strings.TrimSpace(string(out)))
-			glog.V(4).Infof("Release verification command failed: %s", failureMsg)
+			glog.V(4).Infof("Release verification command failed: %s: %s", record.Location, failureMsg)
 			c.auditTracker.SetFailure(record.Name, failureMsg)
 			return nil
 		}
