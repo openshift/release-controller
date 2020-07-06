@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 
@@ -99,7 +98,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	if err != nil {
 		return nil, err
 	}
-	glog.V(2).Infof("Created new prow job %s", pj.Name)
+	klog.V(2).Infof("Created new prow job %s", pj.Name)
 	return out, nil
 }
 

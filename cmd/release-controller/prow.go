@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/golang/glog"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"time"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/klog"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -32,7 +33,7 @@ func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 		}
 		status = &VerificationStatus{State: releaseVerificationStatePending, URL: url}
 	default:
-		glog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())
+		klog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())
 		return nil, false
 	}
 	if t, err := time.Parse(time.RFC3339, transitionTime); err == nil {

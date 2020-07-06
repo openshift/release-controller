@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/golang/glog"
-	v1 "github.com/openshift/api/image/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"net/http"
 	"strings"
 	"text/template"
 	"time"
+
+	v1 "github.com/openshift/api/image/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 )
 
 type ComparisonType int
@@ -40,7 +41,7 @@ const comparisonDashboardPageHtml = `
 
 func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
@@ -127,7 +128,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		`)
 
 	if err := releasePage.Execute(w, page); err != nil {
-		glog.Errorf("Unable to render page: %v", err)
+		klog.Errorf("Unable to render page: %v", err)
 	}
 
 	if len(page.Tags) > 0 {

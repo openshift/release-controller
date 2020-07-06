@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 type FileAuditStore struct {
@@ -43,28 +43,28 @@ func (b *FileAuditStore) Refresh(ctx context.Context) error {
 		switch {
 		case parts[0] == "signatures":
 			if len(parts) != 5 {
-				glog.Warningf("Invalid signature at path %s", item)
+				klog.Warningf("Invalid signature at path %s", item)
 				return nil
 			}
 			if parts[1] != "openshift" || parts[2] != "release" {
-				glog.Warningf("Invalid signature at path %s", item)
+				klog.Warningf("Invalid signature at path %s", item)
 				return nil
 			}
 			if !strings.HasPrefix(parts[4], "signature-") {
-				glog.Warningf("Invalid signature at path %s", item)
+				klog.Warningf("Invalid signature at path %s", item)
 				return nil
 			}
 			digest := strings.Replace(parts[3], "=", ":", 1)
 			valueString := strings.TrimPrefix(parts[4], "signature-")
 			index, err := strconv.Atoi(valueString)
 			if err != nil {
-				glog.Warningf("Invalid signature at path %s", item)
+				klog.Warningf("Invalid signature at path %s", item)
 				return nil
 			}
 			signatures[digest] = append(signatures[digest], index)
-			glog.V(4).Infof("signature %s %d", digest, index)
+			klog.V(4).Infof("signature %s %d", digest, index)
 		default:
-			glog.Warningf("Invalid signature at path %s", item)
+			klog.Warningf("Invalid signature at path %s", item)
 		}
 		return nil
 	})

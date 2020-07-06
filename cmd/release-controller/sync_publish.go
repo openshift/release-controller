@@ -6,11 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -49,16 +48,16 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 	if err != nil {
 		return err
 	}
-	glog.V(2).Infof("Updated image stream tag %s/%s:%s to point to %s", release.Target.Namespace, release.Target.Name, to, from)
+	klog.V(2).Infof("Updated image stream tag %s/%s:%s to point to %s", release.Target.Namespace, release.Target.Name, to, from)
 	updateReleaseTarget(release, is)
 	return nil
 }
 
 func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespace, toName, from string, tags, excludeTags []string) error {
 	if len(tags) == 0 {
-		glog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
+		klog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
 	} else {
-		glog.V(4).Infof("Ensure image stream %s/%s has tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
+		klog.V(4).Infof("Ensure image stream %s/%s has tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
 	}
 	if toNamespace == release.Source.Namespace && toName == release.Source.Name {
 		return nil
@@ -71,26 +70,26 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 
 	mirror, err := c.getMirror(release, from)
 	if err != nil {
-		glog.V(2).Infof("Error getting release mirror image stream: %v", err)
+		klog.V(2).Infof("Error getting release mirror image stream: %v", err)
 		return nil
 	}
 
 	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
 	if errors.IsNotFound(err) {
 		// TODO: create it?
-		glog.V(2).Infof("Target image stream doesn't exist yet: %v", err)
+		klog.V(2).Infof("Target image stream doesn't exist yet: %v", err)
 		return nil
 	}
 	if err != nil {
 		// TODO
-		glog.V(2).Infof("Error getting publish image stream: %v", err)
+		klog.V(2).Infof("Error getting publish image stream: %v", err)
 		return nil
 	}
 
 	if len(tags) == 0 {
 		set := fmt.Sprintf("release.openshift.io/source-%s", release.Config.Name)
 		if value, ok := target.Annotations[set]; ok && value == from {
-			glog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
+			klog.V(2).Infof("Published image stream %s/%s is up to date", toNamespace, toName)
 			return nil
 		}
 
@@ -132,7 +131,7 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 
 			sourceTag := findTagReference(mirror, tag)
 			if sourceTag == nil {
-				glog.Warningf("The tag %s should be mirrored from %s to %s, but is not in the source tags", tag, release.Config.Name, toName)
+				klog.Warningf("The tag %s should be mirrored from %s to %s, but is not in the source tags", tag, release.Config.Name, toName)
 				continue
 			}
 			targetTag := findTagReference(target, tag)
@@ -164,9 +163,9 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		return err
 	}
 	if len(tags) == 0 {
-		glog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
+		klog.V(2).Infof("Updated image stream %s/%s to point to contents of %s", toNamespace, toName, from)
 	} else {
-		glog.V(2).Infof("Updated image stream %s/%s with tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
+		klog.V(2).Infof("Updated image stream %s/%s with tags from %s: %s", toNamespace, toName, from, strings.Join(tags, ", "))
 	}
 	return nil
 }

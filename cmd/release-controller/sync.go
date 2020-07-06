@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog"
 
 	"github.com/openshift/api/image/docker10"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -31,7 +31,7 @@ func (c *Controller) sync(key queueKey) error {
 	// if we are waiting to observe the result of our previous actions, simply delay
 	// if c.expectations.Expecting(key.namespace, key.name) {
 	// 	c.queue.AddAfter(key, c.expectationDelay)
-	// 	glog.V(5).Infof("Release %s has unsatisfied expectations", key.name)
+	// 	klog.V(5).Infof("Release %s has unsatisfied expectations", key.name)
 	// 	return nil
 	// }
 
@@ -57,8 +57,8 @@ func (c *Controller) sync(key queueKey) error {
 	now := time.Now()
 	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter := calculateSyncActions(release, now)
 
-	if glog.V(4) {
-		glog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v queueAfter=%s", release.Source.Name, hasNewImages, inputImageHash, tagNames(adoptTags), tagNames(removeTags), tagNames(pendingTags), queueAfter)
+	if klog.V(4) {
+		klog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v queueAfter=%s", release.Source.Name, hasNewImages, inputImageHash, tagNames(adoptTags), tagNames(removeTags), tagNames(pendingTags), queueAfter)
 	}
 
 	// take any tags that need to be given annotations now
@@ -212,11 +212,11 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 
 	// always keep at least one accepted tag, but remove any that are past expiration
 	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > keepTagsOfType {
-		glog.V(5).Infof("Checking for tags that are more than %s old", expires)
+		klog.V(5).Infof("Checking for tags that are more than %s old", expires)
 		for _, tag := range removeAccepted[keepTagsOfType:] {
 			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 			if err != nil {
-				glog.Errorf("Unparseable timestamp on release tag %s:%s: %v", release.Target.Name, tag.Name, err)
+				klog.Errorf("Unparseable timestamp on release tag %s:%s: %v", release.Target.Name, tag.Name, err)
 				continue
 			}
 			if created.Add(expires).Before(now) {
@@ -233,14 +233,14 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	default:
 		// gate creating new releases when we already are at max unready or in the cooldown interval
 		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount >= release.Config.MaxUnreadyReleases {
-			glog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
+			klog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			hasNewImages = false
 		}
 		if firstTag != nil {
 			delay, msg, interval := isReleaseDelayedForInterval(release, firstTag)
 			if delay {
 				queueAfter = interval
-				glog.V(2).Info(msg)
+				klog.V(2).Info(msg)
 				hasNewImages = false
 			}
 		}
@@ -328,7 +328,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			// wait for import, then determine whether the requested version (tag name) matches the source version (label on image)
 			id := findImageIDForTag(release.Source, tag.Name)
 			if len(id) == 0 {
-				glog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
+				klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
 				continue
 			}
 			rewriteValue := tag.Annotations[releaseAnnotationRewrite]
@@ -402,7 +402,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
 					go func() {
 						if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
-							glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 						}
 					}()
 				}
@@ -452,7 +452,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
 				go func() {
 					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
-						glog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 					}
 				}()
 			}
@@ -465,8 +465,8 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 func (c *Controller) syncReady(release *Release) error {
 	readyTags := sortedRawReleaseTags(release, releasePhaseReady)
 
-	if glog.V(5) && len(readyTags) > 0 {
-		glog.Infof("ready=%v", tagNames(readyTags))
+	if klog.V(5) && len(readyTags) > 0 {
+		klog.Infof("ready=%v", tagNames(readyTags))
 	}
 
 	for _, releaseTag := range readyTags {
@@ -476,7 +476,7 @@ func (c *Controller) syncReady(release *Release) error {
 		}
 
 		if names, ok := status.Incomplete(release.Config.Verify); ok {
-			glog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
+			klog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
 			if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 				return err
 			}
@@ -486,14 +486,14 @@ func (c *Controller) syncReady(release *Release) error {
 		if names, ok := status.Failures(); ok {
 			retryNames, blockingJobFailed := verificationJobsWithRetries(release.Config.Verify, status)
 			if !blockingJobFailed && len(retryNames) > 0 {
-				glog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
+				klog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
 				if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 					return err
 				}
 				continue
 			}
 			if !allOptional(release.Config.Verify, names...) {
-				glog.V(4).Infof("Release %s was rejected", releaseTag.Name)
+				klog.V(4).Infof("Release %s was rejected", releaseTag.Name)
 				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
 				annotations[releaseAnnotationVerify] = toJSONString(status)
 				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
@@ -501,14 +501,14 @@ func (c *Controller) syncReady(release *Release) error {
 				}
 				continue
 			}
-			glog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
+			klog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
 		}
 
 		// if all jobs are complete and there are no failures, this is accepted
 		if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 			return err
 		}
-		glog.V(4).Infof("Release %s accepted", releaseTag.Name)
+		klog.V(4).Infof("Release %s accepted", releaseTag.Name)
 	}
 
 	return nil
@@ -517,8 +517,8 @@ func (c *Controller) syncReady(release *Release) error {
 func (c *Controller) syncAccepted(release *Release) error {
 	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
 
-	if glog.V(5) && len(acceptedTags) > 0 {
-		glog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
+	if klog.V(5) && len(acceptedTags) > 0 {
+		klog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
 	}
 
 	if len(release.Config.Publish) == 0 || len(acceptedTags) == 0 {

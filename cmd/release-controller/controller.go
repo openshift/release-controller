@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/time/rate"
 
@@ -23,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imagescheme "github.com/openshift/client-go/image/clientset/versioned/scheme"
@@ -147,7 +147,7 @@ func NewController(
 
 	// log events at v2 and send them to the server
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartLogging(glog.V(2).Infof)
+	broadcaster.StartLogging(klog.V(2).Infof)
 	broadcaster.StartRecordingToSink(&kv1core.EventSinkImpl{Interface: eventsClient.Events("")})
 	recorder := broadcaster.NewRecorder(imagescheme.Scheme, corev1.EventSource{Component: "release-controller"})
 
@@ -302,9 +302,9 @@ func (c *Controller) processJob(obj interface{}) {
 		if !ok {
 			return
 		}
-		if glog.V(6) {
+		if klog.V(6) {
 			success, complete := jobIsComplete(t)
-			glog.Infof("Job %s updated, complete=%t success=%t", t.Name, complete, success)
+			klog.Infof("Job %s updated, complete=%t success=%t", t.Name, complete, success)
 		}
 		c.addQueueKey(key)
 	default:
@@ -347,12 +347,12 @@ func (c *Controller) processImageStream(obj interface{}) {
 
 		// if this image stream is a mirror for releases, requeue any that it touches
 		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
-			glog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
+			klog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
 		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
-			glog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
+			klog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
 			c.addBugzillaQueueKey(key)
 			return
@@ -360,7 +360,7 @@ func (c *Controller) processImageStream(obj interface{}) {
 		if _, ok := t.Annotations[releaseAnnotationHasReleases]; ok {
 			// if the release image stream is modified, tags might have been deleted so retrigger
 			// everything
-			glog.V(6).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
+			klog.V(6).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace})
 			return
 		}
@@ -385,7 +385,7 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	glog.Infof("Starting controller")
+	klog.Infof("Starting controller")
 
 	if !cache.WaitForCacheSync(stopCh, c.syncs...) {
 		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
@@ -407,13 +407,13 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 	}
 
 	<-stopCh
-	glog.Infof("Shutting down controller")
+	klog.Infof("Shutting down controller")
 }
 
 func (c *Controller) worker() {
 	for c.processNext() {
 	}
-	glog.V(4).Infof("Worker stopped")
+	klog.V(4).Infof("Worker stopped")
 }
 
 func (c *Controller) processNext() bool {
@@ -433,14 +433,14 @@ func (c *Controller) processNext() bool {
 		return true
 	}
 	if c.onlySources.Len() > 0 && !c.onlySources.Has(key.name) {
-		glog.V(4).Infof("Ignored %s", key.name)
+		klog.V(4).Infof("Ignored %s", key.name)
 		return true
 	}
 
-	glog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("processing %v begin", key)
 	err := c.syncFn(key)
 	c.handleNamespaceErr(c.queue, err, key)
-	glog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("processing %v end", key)
 
 	return true
 }
@@ -462,7 +462,7 @@ func (c *Controller) processNextNamespace(ns string) error {
 func (c *Controller) gcWorker() {
 	for c.processNextGC() {
 	}
-	glog.V(4).Infof("Worker stopped")
+	klog.V(4).Infof("Worker stopped")
 }
 
 func (c *Controller) processNextGC() bool {
@@ -472,10 +472,10 @@ func (c *Controller) processNextGC() bool {
 	}
 	defer c.gcQueue.Done(key)
 
-	glog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("processing %v begin", key)
 	err := c.garbageCollectSync()
 	c.handleNamespaceErr(c.gcQueue, err, key)
-	glog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("processing %v end", key)
 
 	return true
 }
@@ -483,7 +483,7 @@ func (c *Controller) processNextGC() bool {
 func (c *Controller) auditWorker() {
 	for c.processNextAudit() {
 	}
-	glog.V(4).Infof("Worker stopped")
+	klog.V(4).Infof("Worker stopped")
 }
 
 func (c *Controller) processNextAudit() bool {
@@ -493,10 +493,10 @@ func (c *Controller) processNextAudit() bool {
 	}
 	defer c.auditQueue.Done(key)
 
-	glog.V(5).Infof("processing %v begin", key)
+	klog.V(5).Infof("processing %v begin", key)
 	err := c.syncAuditTag(key.(string))
 	c.handleNamespaceErr(c.auditQueue, err, key)
-	glog.V(5).Infof("processing %v end", key)
+	klog.V(5).Infof("processing %v end", key)
 
 	return true
 }
@@ -504,7 +504,7 @@ func (c *Controller) processNextAudit() bool {
 func (c *Controller) bugzillaWorker() {
 	for c.processNextBugzilla() {
 	}
-	glog.V(4).Infof("Worker stopped")
+	klog.V(4).Infof("Worker stopped")
 }
 
 func (c *Controller) processNextBugzilla() bool {
@@ -520,10 +520,10 @@ func (c *Controller) processNextBugzilla() bool {
 	}
 	key := obj.(queueKey)
 
-	glog.V(5).Infof("bz worker processing %v begin", key)
+	klog.V(5).Infof("bz worker processing %v begin", key)
 	err := c.syncBugzilla(key)
 	c.handleNamespaceErr(c.bugzillaQueue, err, key)
-	glog.V(5).Infof("bz worker processing %v end", key)
+	klog.V(5).Infof("bz worker processing %v end", key)
 
 	return true
 }
@@ -541,10 +541,10 @@ func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, e
 	}
 
 	if _, ok := err.(terminalError); ok {
-		glog.V(2).Infof("Unable to sync %v, no retry: %v", key, err)
+		klog.V(2).Infof("Unable to sync %v, no retry: %v", key, err)
 		return
 	}
 
-	glog.V(2).Infof("Error syncing %v: %v", key, err)
+	klog.V(2).Infof("Error syncing %v: %v", key, err)
 	queue.AddRateLimited(key)
 }

@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 )
 
 type AuditStore interface {
@@ -37,7 +37,7 @@ func (c *Controller) syncAudit(key queueKey) error {
 		return err
 	}
 
-	glog.V(4).Infof("Audit %s", release.Config.Name)
+	klog.V(4).Infof("Audit %s", release.Config.Name)
 	c.auditTracker.Sync(release)
 	return nil
 }
@@ -49,14 +49,14 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	}
 
 	if record.Failure != nil {
-		glog.V(4).Infof("Release already failed, ignoring until retry interval is up")
+		klog.V(4).Infof("Release already failed, ignoring until retry interval is up")
 		return nil
 	}
 
 	if len(record.ID) == 0 {
 		msg := fmt.Sprintf("Release %s has no digest and cannot be verified", record.Name)
 		c.auditTracker.SetFailure(record.Name, msg)
-		glog.V(4).Info(msg)
+		klog.V(4).Info(msg)
 		return nil
 	}
 
@@ -66,7 +66,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	}
 
 	if c.auditStore.HasSignature(record.ID) {
-		glog.V(5).Infof("Release %s (%s) is already signed", record.ID, record.Name)
+		klog.V(5).Infof("Release %s (%s) is already signed", record.ID, record.Name)
 		return nil
 	}
 
@@ -76,7 +76,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		image = release.Config.OverrideCLIImage
 	}
 	if len(image) == 0 {
-		glog.Warningf("Unable to audit release %s, no configured audit CLI image or overrideCLIImage defined on the stream", releaseName)
+		klog.Warningf("Unable to audit release %s, no configured audit CLI image or overrideCLIImage defined on the stream", releaseName)
 		return nil
 	}
 
@@ -84,14 +84,14 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		out, err := exec.Command("oc", "adm", "release", "info", "--verify", record.Location).CombinedOutput()
 		if err != nil {
 			failureMsg := fmt.Sprintf("Unable to verify release:\n%s", strings.TrimSpace(string(out)))
-			glog.V(4).Infof("Release verification command failed: %s: %s", record.Location, failureMsg)
+			klog.V(4).Infof("Release verification command failed: %s: %s", record.Location, failureMsg)
 			c.auditTracker.SetFailure(record.Name, failureMsg)
 			return nil
 		}
 
 	} else {
 		if count, ok := c.countAuditVerifyJobs(); !ok || count > 2 {
-			glog.V(4).Infof("Throttling verify jobs to max 2")
+			klog.V(4).Infof("Throttling verify jobs to max 2")
 			c.auditQueue.AddAfter(releaseName, 10*time.Second)
 			return nil
 		}
@@ -112,7 +112,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 			if message, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "verify", false); len(message) > 0 {
 				failureMsg = fmt.Sprintf("Unable to verify release:\n\n%s", message)
 			}
-			glog.V(4).Infof("Release verification job failed: %s", failureMsg)
+			klog.V(4).Infof("Release verification job failed: %s", failureMsg)
 			c.auditTracker.SetFailure(record.Name, failureMsg)
 			return nil
 		}
@@ -120,7 +120,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 
 	switch {
 	case c.signer == nil:
-		glog.V(4).Infof("Completed audit of %s at %s without signing", releaseName, release.Source.ResourceVersion)
+		klog.V(4).Infof("Completed audit of %s at %s without signing", releaseName, release.Source.ResourceVersion)
 		return nil
 
 	default:
@@ -128,15 +128,15 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		if err != nil {
 			return fmt.Errorf("unable to sign release: %v", err)
 		}
-		if glog.V(5) {
-			glog.Infof("Signed:\n%s", hex.Dump(sig))
+		if klog.V(5) {
+			klog.Infof("Signed:\n%s", hex.Dump(sig))
 		}
 		ctx, cancelFn := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelFn()
 		if err := c.auditStore.PutSignature(ctx, record.ID, sig); err != nil {
 			return fmt.Errorf("unable to upload release signature: %v", err)
 		}
-		glog.V(4).Infof("Signed and uploaded signature for %s (%s)", record.ID, record.Name)
+		klog.V(4).Infof("Signed and uploaded signature for %s (%s)", record.ID, record.Name)
 	}
 
 	return nil
@@ -196,14 +196,14 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 		job.Annotations[releaseAnnotationReleaseTag] = record.Name
 		job.Annotations[releaseAnnotationJobPurpose] = "audit"
 
-		glog.V(2).Infof("Running release verify job for %s (%s)", record.ID, record.Name)
+		klog.V(2).Infof("Running release verify job for %s (%s)", record.ID, record.Name)
 		return job, nil
 	})
 }
 
 func ensureJobTerminationMessageRetrieved(podClient kv1core.PodsGetter, job *batchv1.Job, podFieldSelector, containerName string, onlySuccess bool) (string, int, bool) {
 	if job.Status.Active == 0 && job.Status.Failed == 0 && job.Status.Succeeded == 0 {
-		glog.V(4).Infof("Deferring pod lookup for %s - no pods observed", job.Name)
+		klog.V(4).Infof("Deferring pod lookup for %s - no pods observed", job.Name)
 		return "", 0, false
 	}
 	statuses, err := findJobContainerStatus(podClient, job, podFieldSelector, containerName)
@@ -343,16 +343,16 @@ func (a *AuditTracker) Sync(release *Release) {
 				ImageStreamNamespace: release.Source.Namespace,
 			}
 			a.queue.Add(tag.Name)
-			glog.V(5).Infof("Saw %s for the first time", tag.Name)
+			klog.V(5).Infof("Saw %s for the first time", tag.Name)
 			continue
 		}
 		changed := false
 		if existing.Location != location {
-			glog.Warningf("Location of %s changed from %s to %s", tag.Name, existing.Location, location)
+			klog.Warningf("Location of %s changed from %s to %s", tag.Name, existing.Location, location)
 			changed = true
 		}
 		if existing.ID != id {
-			glog.Warningf("ID of %s changed from %s to %s", tag.Name, existing.ID, id)
+			klog.Warningf("ID of %s changed from %s to %s", tag.Name, existing.ID, id)
 			changed = true
 		}
 		if time.Now().Sub(existing.At) > 12*time.Hour {
@@ -371,7 +371,7 @@ func (a *AuditTracker) Sync(release *Release) {
 			continue
 		}
 		if !found.Has(k) {
-			glog.Warningf("Release tag %s no longer exists", k)
+			klog.Warningf("Release tag %s no longer exists", k)
 			delete(a.records, k)
 		}
 	}

@@ -9,11 +9,11 @@ import (
 	"strings"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 	lru "github.com/hashicorp/golang-lru"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -31,7 +31,7 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 
 	if len(is.Status.Tags) == 0 {
-		glog.V(4).Infof("The release input has no status tags, waiting")
+		klog.V(4).Infof("The release input has no status tags, waiting")
 		return nil, false, nil
 	}
 
@@ -47,7 +47,7 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		targetImageStream, err := c.imageStreamLister.ImageStreams(is.Namespace).Get(cfg.To)
 		if errors.IsNotFound(err) {
 			// TODO: something special here?
-			glog.V(2).Infof("The release image stream %s/%s does not exist", is.Namespace, cfg.To)
+			klog.V(2).Infof("The release image stream %s/%s does not exist", is.Namespace, cfg.To)
 			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", is.Namespace, cfg.To)}
 		}
 		if err != nil {
@@ -127,12 +127,12 @@ func releaseGenerationFromObject(name string, annotations map[string]string) (in
 	}
 	s, ok := annotations[releaseAnnotationGeneration]
 	if !ok {
-		glog.V(4).Infof("Can't check %s, no generation", name)
+		klog.V(4).Infof("Can't check %s, no generation", name)
 		return 0, false
 	}
 	generation, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		glog.V(4).Infof("Can't check %s, generation is invalid: %v", name, err)
+		klog.V(4).Infof("Can't check %s, generation is invalid: %v", name, err)
 		return 0, false
 	}
 	return generation, true

@@ -54,8 +54,6 @@ github.com/getsentry/raven-go
 # github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
-# github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b => github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533
-github.com/golang/glog
 # github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6
 github.com/golang/groupcache
 github.com/golang/groupcache/consistenthash

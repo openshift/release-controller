@@ -5,14 +5,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang/glog"
-
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -41,7 +40,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
 
-		glog.V(2).Infof("Running release creation job for %s", name)
+		klog.V(2).Infof("Running release creation job for %s", name)
 		return job, nil
 	})
 }
@@ -111,7 +110,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
 		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
 
-		glog.V(2).Infof("Running release rewrite job for %s", name)
+		klog.V(2).Infof("Running release rewrite job for %s", name)
 		return job, nil
 	})
 }
@@ -157,7 +156,7 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
 		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
 
-		glog.V(2).Infof("Running release import job for %s", name)
+		klog.V(2).Infof("Running release import job for %s", name)
 		return job, nil
 	})
 }
@@ -167,7 +166,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 	if err == nil {
 		for k, v := range preconditions {
 			if job.Annotations[k] != v {
-				glog.V(2).Infof("Job %s doesn't match precondition %s: %s != %s, deleting and recreating", job.Name, k, v, job.Annotations[k])
+				klog.V(2).Infof("Job %s doesn't match precondition %s: %s != %s, deleting and recreating", job.Name, k, v, job.Annotations[k])
 				err = c.jobClient.Jobs(c.jobNamespace).Delete(job.Name, &metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &job.UID}})
 				return nil, err
 			}
@@ -208,7 +207,7 @@ func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batch
 	defer c.queue.AddAfter(queueKey{namespace: release.Source.Namespace, name: release.Source.Name}, 10*time.Second)
 
 	if job.Status.Active == 0 {
-		glog.V(4).Infof("Deferring pod lookup for %s - no active pods", job.Name)
+		klog.V(4).Infof("Deferring pod lookup for %s - no active pods", job.Name)
 		return nil
 	}
 	statuses, err := findJobContainerStatus(c.podClient, job, "status.phase=Pending", "image-cli")
@@ -224,7 +223,7 @@ func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batch
 		break
 	}
 	if len(imageSpec) == 0 {
-		glog.V(4).Infof("No image spec published yet for %s", job.Name)
+		klog.V(4).Infof("No image spec published yet for %s", job.Name)
 		return nil
 	}
 
@@ -246,7 +245,7 @@ func findJobContainerStatus(podClient kv1core.PodsGetter, job *batchv1.Job, fiel
 		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
 	})
 	if err != nil || len(pods.Items) == 0 {
-		glog.V(4).Infof("No pods for job %s: %v", job.Name, err)
+		klog.V(4).Infof("No pods for job %s: %v", job.Name, err)
 		return nil, err
 	}
 	containerStatus := make([]*corev1.ContainerStatus, 0, len(pods.Items))

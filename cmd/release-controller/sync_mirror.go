@@ -5,11 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
@@ -48,7 +47,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 		}
 	}
 
-	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
+	klog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
 	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
@@ -100,7 +99,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 		// eliminate status tag references that point to the outside
 		if len(source) > 0 {
 			if len(internal) > 0 && strings.HasPrefix(latest.DockerImageReference, internal) {
-				glog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
+				klog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
 				source = ""
 			}
 		}
@@ -119,7 +118,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 					from.ID = tag.Items[0].Image
 					source = from.Exact()
 				} else {
-					glog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
+					klog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
 				}
 			}
 			ref = ref.DeepCopy()

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -102,7 +102,7 @@ td.upgrade-track {
 
 func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -142,7 +142,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 		).Parse(candidatePageHtml))
 
 		if err := page.Execute(w, releaseCandidateList); err != nil {
-			glog.Errorf("Unable to render page: %v", err)
+			klog.Errorf("Unable to render page: %v", err)
 		}
 		fmt.Fprintln(w, htmlPageEnd)
 	}
@@ -150,7 +150,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 
 func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -223,7 +223,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		var latestPromotedTime int64 = 0
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
 		if err != nil || nextVersion == nil {
-			glog.Errorf("Unable to find next candidate for %s: %v", stream, err)
+			klog.Errorf("Unable to find next candidate for %s: %v", stream, err)
 			continue
 		}
 		nextReleaseName = nextVersion.String()
@@ -438,7 +438,7 @@ func (c *Controller) nextVersionDetails(stream string, stable []imagev1.TagRefer
 
 		pt, err := time.Parse(time.RFC3339, fromTag.Annotations[releaseAnnotationCreationTimestamp])
 		if err != nil {
-			glog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[releaseAnnotationCreationTimestamp], err)
+			klog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[releaseAnnotationCreationTimestamp], err)
 			continue
 		}
 

@@ -17,7 +17,6 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/getsentry/raven-go v0.0.0-20171206001108-32a13797442c // indirect
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6
 	github.com/google/go-cmp v0.3.1
 	github.com/gorilla/mux v1.7.1
