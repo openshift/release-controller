@@ -371,7 +371,7 @@ func (a *AuditTracker) Sync(release *Release) {
 			continue
 		}
 		if !found.Has(k) {
-			glog.Warningf("Release tag %s deleted", k)
+			glog.Warningf("Release tag %s no longer exists", k)
 			delete(a.records, k)
 		}
 	}
