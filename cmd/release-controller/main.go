@@ -300,10 +300,10 @@ func (o *options) Run() error {
 			}
 			store, err := NewGCSAuditStore(u.Host, path, config.UserAgent, o.AuditGCSServiceAccount)
 			if err != nil {
-				return err
+				return fmt.Errorf("unable to initialize audit store: %v", err)
 			}
 			if err := store.Refresh(context.Background()); err != nil {
-				return err
+				return fmt.Errorf("unable to refresh audit store: %v", err)
 			}
 			c.auditStore = store
 		default:
