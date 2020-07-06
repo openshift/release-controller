@@ -400,7 +400,7 @@ func (o *options) Run() error {
 		// read the graph
 		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
-		c.RunAudit(2, stopCh)
+		c.RunAudit(4, stopCh)
 		return nil
 	case len(o.LimitSources) > 0:
 		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)
