@@ -184,17 +184,17 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 	releaseNamespace := o.ReleaseNamespaces[0]
-	if _, err := client.CoreV1().Namespaces().Get(releaseNamespace, metav1.GetOptions{}); err != nil {
-		return fmt.Errorf("unable to find release namespace: %v", err)
+	for _, ns := range o.ReleaseNamespaces {
+		if _, err := client.CoreV1().Namespaces().Get(ns, metav1.GetOptions{}); err != nil {
+			return fmt.Errorf("unable to find release namespace: %s: %v", ns, err)
+		}
 	}
 	if o.JobNamespace != releaseNamespace {
 		if _, err := client.CoreV1().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
-		klog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
-	} else {
-		klog.Infof("Release will be published to namespace %s and jobs will be in the same namespace", releaseNamespace)
 	}
+	klog.Infof("Releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageClient, err := imageclientset.NewForConfig(config)
 	if err != nil {
@@ -235,7 +235,6 @@ func (o *options) Run() error {
 		client.CoreV1(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
-		releaseNamespace,
 		o.JobNamespace,
 		o.ArtifactsHost,
 		releaseInfo,

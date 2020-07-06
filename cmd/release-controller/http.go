@@ -229,7 +229,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -404,7 +404,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 }
 
 func (c *Controller) locateStream(streamName string, phases ...string) (*ReleaseStream, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -849,7 +849,7 @@ var (
 )
 
 func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -924,7 +924,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	base.RawQuery = ""
 	base.Fragment = ""
 	page := &ReleasePage{
-		BaseURL: base.String(),
+		BaseURL:    base.String(),
 		Dashboards: c.dashboards,
 	}
 
@@ -991,15 +991,15 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":     tableLink,
-			"phaseCell":     phaseCell,
-			"phaseAlert":    phaseAlert,
-			"alerts":        renderAlerts,
-			"links":         links,
-			"releaseJoin":   releaseJoin,
+			"tableLink":      tableLink,
+			"phaseCell":      phaseCell,
+			"phaseAlert":     phaseAlert,
+			"alerts":         renderAlerts,
+			"links":          links,
+			"releaseJoin":    releaseJoin,
 			"dashboardsJoin": dashboardsJoin,
-			"inc":           func(i int) int { return i + 1 },
-			"upgradeCells":  upgradeCells,
+			"inc":            func(i int) int { return i + 1 },
+			"upgradeCells":   upgradeCells,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1010,7 +1010,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		},
 	).Parse(releasePageHtml))
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1072,7 +1072,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	base.RawQuery = ""
 	base.Fragment = ""
 	page := &ReleasePage{
-		BaseURL: base.String(),
+		BaseURL:    base.String(),
 		Dashboards: c.dashboards,
 	}
 
@@ -1139,12 +1139,12 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				}
 				return ""
 			},
-			"tableLink":     tableLink,
-			"phaseCell":     phaseCell,
-			"phaseAlert":    phaseAlert,
-			"inc":           func(i int) int { return i + 1 },
-			"upgradeJobs":   upgradeJobs,
-			"releaseJoin":   releaseJoin,
+			"tableLink":      tableLink,
+			"phaseCell":      phaseCell,
+			"phaseAlert":     phaseAlert,
+			"inc":            func(i int) int { return i + 1 },
+			"upgradeJobs":    upgradeJobs,
+			"releaseJoin":    releaseJoin,
 			"dashboardsJoin": dashboardsJoin,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
@@ -1156,7 +1156,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		},
 	).Parse(releaseDashboardPageHtml))
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

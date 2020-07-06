@@ -380,7 +380,7 @@ type ExecReleaseFiles struct {
 }
 
 // NewExecReleaseFiles creates a stateful set, in the specified namespace, that provides cached access to downloaded
-//installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
+// installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
 // from being created when created with an identical name.  The releaseNamespace is used to ensure that the tools are
 // downloaded from the correct namespace.
 func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {

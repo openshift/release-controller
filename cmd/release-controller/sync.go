@@ -557,6 +557,9 @@ func (c *Controller) loadReleaseForSync(namespace, name string) (*Release, error
 	// locate the release definition off the image stream, or clean up any remaining
 	// artifacts if the release no longer points to those
 	isLister := c.imageStreamLister.ImageStreams(namespace)
+	if isLister == nil {
+		return nil, nil
+	}
 	imageStream, err := isLister.Get(name)
 	if errors.IsNotFound(err) {
 		c.gcQueue.AddAfter("", 10*time.Second)

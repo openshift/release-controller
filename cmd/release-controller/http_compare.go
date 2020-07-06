@@ -15,19 +15,19 @@ type ComparisonType int
 
 const (
 	From ComparisonType = 0
-	To ComparisonType = 1
+	To   ComparisonType = 1
 )
 
 type Comparison struct {
-	Type ComparisonType
+	Type     ComparisonType
 	PullSpec string
-	Tag *v1.TagReference
+	Tag      *v1.TagReference
 }
 
 type ComparisonPage struct {
-	BaseURL string
-	Streams []ReleaseStream
-	Tags []*v1.TagReference
+	BaseURL    string
+	Streams    []ReleaseStream
+	Tags       []*v1.TagReference
 	Dashboards []Dashboard
 }
 
@@ -54,7 +54,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	base.RawQuery = ""
 	base.Fragment = ""
 	page := &ComparisonPage{
-		BaseURL: base.String(),
+		BaseURL:    base.String(),
 		Dashboards: c.dashboards,
 	}
 
@@ -62,13 +62,13 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	toRelease := req.URL.Query().Get("to")
 
 	fromComparison := &Comparison{
-		Type: From,
-		Tag: nil,
+		Type:     From,
+		Tag:      nil,
 		PullSpec: "",
 	}
 	toComparison := &Comparison{
-		Type: To,
-		Tag: nil,
+		Type:     To,
+		Tag:      nil,
 		PullSpec: "",
 	}
 
@@ -76,7 +76,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		"dashboardsJoin": dashboardsJoin,
 	}).Parse(comparisonDashboardPageHtml))
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -149,7 +149,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		if fromComparison.Tag == nil && len(fromRelease) > 0 {
 			unsupported = append(unsupported, fromRelease)
 		}
-		if toComparison.Tag == nil  && len(toRelease) > 0 {
+		if toComparison.Tag == nil && len(toRelease) > 0 {
 			unsupported = append(unsupported, toRelease)
 		}
 		if len(unsupported) > 0 {
@@ -162,7 +162,7 @@ func generateSelectOptions(tags []*v1.TagReference, comp *Comparison) string {
 	var options []string
 	for _, tag := range tags {
 		selected := ""
-		if comp.Tag != nil &&  comp.Tag.Name == tag.Name {
+		if comp.Tag != nil && comp.Tag.Name == tag.Name {
 			selected = "selected"
 		}
 		options = append(options, fmt.Sprintf(`<option value="%s" %s>%s</option>`, tag.Name, selected, tag.Name))

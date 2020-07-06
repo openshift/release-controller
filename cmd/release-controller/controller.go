@@ -102,9 +102,6 @@ type Controller struct {
 	// own creates. Exposed only for testing.
 	expectationDelay time.Duration
 
-	// releaseNamespace is the namespace where the "release" image stream is expected
-	// to be found.
-	releaseNamespace string
 	// jobNamespace is the namespace where temporary job and image stream mirror objects
 	// are created.
 	jobNamespace string
@@ -142,7 +139,6 @@ func NewController(
 	podClient kv1core.PodsGetter,
 	prowConfigLoader ProwConfigLoader,
 	prowClient dynamic.ResourceInterface,
-	releaseNamespace string,
 	jobNamespace string,
 	artifactsHost string,
 	releaseInfo ReleaseInfo,
@@ -190,8 +186,7 @@ func NewController(
 		prowConfigLoader: prowConfigLoader,
 		prowClient:       prowClient,
 
-		releaseNamespace: releaseNamespace,
-		jobNamespace:     jobNamespace,
+		jobNamespace: jobNamespace,
 
 		artifactsHost: artifactsHost,
 
@@ -211,7 +206,7 @@ func NewController(
 		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
 	})
 
-	c.dashboards = []Dashboard {
+	c.dashboards = []Dashboard{
 		{"Index", "/"},
 		{"Overview", "/dashboards/overview"},
 		{"Compare", "/dashboards/compare"},
@@ -285,18 +280,10 @@ type queueKey struct {
 }
 
 func (c *Controller) addQueueKey(key queueKey) {
-	// only image streams in the release namespace may be release inputs
-	if key.namespace != c.releaseNamespace {
-		return
-	}
 	c.queue.Add(key)
 }
 
 func (c *Controller) addBugzillaQueueKey(key queueKey) {
-	// only image streams in the release namespace may be release inputs
-	if key.namespace != c.releaseNamespace {
-		return
-	}
 	c.bugzillaQueue.Add(key)
 }
 
@@ -374,7 +361,7 @@ func (c *Controller) processImageStream(obj interface{}) {
 			// if the release image stream is modified, tags might have been deleted so retrigger
 			// everything
 			glog.V(6).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
-			c.addQueueKey(queueKey{namespace: c.releaseNamespace})
+			c.addQueueKey(queueKey{namespace: t.Namespace})
 			return
 		}
 	default:

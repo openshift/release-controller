@@ -17,7 +17,7 @@ import (
 
 func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
 	mirrorName := mirrorName(release, releaseTagName)
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName)
+	is, err := c.imageStreamLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 	if err == nil {
 		return is, nil
 	}
@@ -28,7 +28,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 	is = &imagev1.ImageStream{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mirrorName,
-			Namespace: c.releaseNamespace,
+			Namespace: release.Source.Namespace,
 			Annotations: map[string]string{
 				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 				releaseAnnotationTarget:     fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name),
@@ -61,7 +61,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 }
 
 func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
-	return c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName(release, releaseTagName))
+	return c.imageStreamLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
 }
 
 func mirrorName(release *Release, releaseTagName string) string {

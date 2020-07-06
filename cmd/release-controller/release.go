@@ -30,9 +30,6 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		return nil, false, terminalError{err}
 	}
 
-	// TODO: require release config to point to a particular image stream, and then we should ignore image streams
-	//   that don't target c.releaseImageStream (so we can run separate controllers)
-
 	if len(is.Status.Tags) == 0 {
 		glog.V(4).Infof("The release input has no status tags, waiting")
 		return nil, false, nil
@@ -47,11 +44,11 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		}
 		return r, true, nil
 	default:
-		targetImageStream, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(cfg.To)
+		targetImageStream, err := c.imageStreamLister.ImageStreams(is.Namespace).Get(cfg.To)
 		if errors.IsNotFound(err) {
 			// TODO: something special here?
-			glog.V(2).Infof("The release image stream %s/%s does not exist", c.releaseNamespace, cfg.To)
-			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", c.releaseNamespace, cfg.To)}
+			glog.V(2).Infof("The release image stream %s/%s does not exist", is.Namespace, cfg.To)
+			return nil, false, terminalError{fmt.Errorf("the output release image stream %s/%s does not exist", is.Namespace, cfg.To)}
 		}
 		if err != nil {
 			return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)

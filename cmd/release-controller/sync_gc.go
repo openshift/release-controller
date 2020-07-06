@@ -21,7 +21,7 @@ func (c *Controller) garbageCollectSync() error {
 		panic(err)
 	}()
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}

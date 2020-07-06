@@ -280,7 +280,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -335,7 +335,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 
 // TODO: Add support for returning stable releases after rally point
 func (c *Controller) stableReleases() (*StableReferences, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.imageStreamLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
