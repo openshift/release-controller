@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/test-infra/prow/errorutil"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
 const (
@@ -45,6 +45,9 @@ const (
 
 	// DefaultAPIEndpoint is the default GitHub API endpoint.
 	DefaultAPIEndpoint = "https://api.github.com"
+
+	// DefaultHost is the default GitHub base endpoint.
+	DefaultHost = "github.com"
 
 	// DefaultGraphQLEndpoint is the default GitHub GraphQL API endpoint.
 	DefaultGraphQLEndpoint = "https://api.github.com/graphql"
@@ -101,18 +104,20 @@ func unmarshalClientError(b []byte) error {
 		return alternativeClientError
 	}
 	errors = append(errors, err)
-	return errorutil.NewAggregate(errors...)
+	return utilerrors.NewAggregate(errors)
 }
 
 // ClientError represents https://developer.github.com/v3/#client-errors
 type ClientError struct {
-	Message string `json:"message"`
-	Errors  []struct {
-		Resource string `json:"resource"`
-		Field    string `json:"field"`
-		Code     string `json:"code"`
-		Message  string `json:"message,omitempty"`
-	} `json:"errors,omitempty"`
+	Message string                `json:"message"`
+	Errors  []clientErrorSubError `json:"errors,omitempty"`
+}
+
+type clientErrorSubError struct {
+	Resource string `json:"resource"`
+	Field    string `json:"field"`
+	Code     string `json:"code"`
+	Message  string `json:"message,omitempty"`
 }
 
 func (r ClientError) Error() string {
@@ -204,7 +209,18 @@ const (
 	PullRequestActionSynchronize PullRequestEventAction = "synchronize"
 	// PullRequestActionReadyForReview means the PR is no longer a draft PR.
 	PullRequestActionReadyForReview PullRequestEventAction = "ready_for_review"
+	// PullRequestConvertedToDraft means the PR is now a draft PR.
+	PullRequestConvertedToDraft PullRequestEventAction = "converted_to_draft"
 )
+
+// GenericEvent is a lightweight struct containing just Sender, Organization and Repo as
+// they are allWebhook payload object common properties:
+// https://developer.github.com/webhooks/event-payloads/#webhook-payload-object-common-properties
+type GenericEvent struct {
+	Sender User         `json:"sender"`
+	Org    Organization `json:"organization"`
+	Repo   Repo         `json:"repository"`
+}
 
 // PullRequestEvent is what GitHub sends us when a PR is changed.
 type PullRequestEvent struct {
@@ -229,6 +245,7 @@ type PullRequest struct {
 	Number             int               `json:"number"`
 	HTMLURL            string            `json:"html_url"`
 	User               User              `json:"user"`
+	Labels             []Label           `json:"labels"`
 	Base               PullRequestBranch `json:"base"`
 	Head               PullRequestBranch `json:"head"`
 	Title              string            `json:"title"`
@@ -297,30 +314,42 @@ type PullRequestChange struct {
 	PreviousFilename string `json:"previous_filename"`
 }
 
-// Repo contains general repository information.
-// See also https://developer.github.com/v3/repos/#get
+// Repo contains general repository information: it includes fields available
+// in repo records returned by GH "List" methods but not those returned by GH
+// "Get" method.
+// See also https://developer.github.com/v3/repos/#list-organization-repositories
 type Repo struct {
-	Owner            User   `json:"owner"`
-	Name             string `json:"name"`
-	FullName         string `json:"full_name"`
-	HTMLURL          string `json:"html_url"`
-	Fork             bool   `json:"fork"`
-	DefaultBranch    string `json:"default_branch"`
-	Archived         bool   `json:"archived"`
-	Private          bool   `json:"private"`
-	Description      string `json:"description"`
-	Homepage         string `json:"homepage"`
-	HasIssues        bool   `json:"has_issues"`
-	HasProjects      bool   `json:"has_projects"`
-	HasWiki          bool   `json:"has_wiki"`
-	AllowSquashMerge bool   `json:"allow_squash_merge"`
-	AllowMergeCommit bool   `json:"allow_merge_commit"`
-	AllowRebaseMerge bool   `json:"allow_rebase_merge"`
+	Owner         User   `json:"owner"`
+	Name          string `json:"name"`
+	FullName      string `json:"full_name"`
+	HTMLURL       string `json:"html_url"`
+	Fork          bool   `json:"fork"`
+	DefaultBranch string `json:"default_branch"`
+	Archived      bool   `json:"archived"`
+	Private       bool   `json:"private"`
+	Description   string `json:"description"`
+	Homepage      string `json:"homepage"`
+	HasIssues     bool   `json:"has_issues"`
+	HasProjects   bool   `json:"has_projects"`
+	HasWiki       bool   `json:"has_wiki"`
 	// Permissions reflect the permission level for the requester, so
 	// on a repository GET call this will be for the user whose token
 	// is being used, if listing a team's repos this will be for the
 	// team's privilege level in the repo
 	Permissions RepoPermissions `json:"permissions"`
+}
+
+// Repo contains detailed repository information, including items
+// that are not available in repo records returned by GH "List" methods
+// but are in those returned by GH "Get" method.
+// See https://developer.github.com/v3/repos/#list-organization-repositories
+// See https://developer.github.com/v3/repos/#get
+type FullRepo struct {
+	Repo
+
+	AllowSquashMerge bool `json:"allow_squash_merge,omitempty"`
+	AllowMergeCommit bool `json:"allow_merge_commit,omitempty"`
+	AllowRebaseMerge bool `json:"allow_rebase_merge,omitempty"`
 }
 
 // RepoRequest contains metadata used in requests to create or update a Repo.
@@ -352,7 +381,7 @@ type RepoCreateRequest struct {
 	LicenseTemplate   *string `json:"license_template,omitempty"`
 }
 
-func (r RepoRequest) ToRepo() *Repo {
+func (r RepoRequest) ToRepo() *FullRepo {
 	setString := func(dest, src *string) {
 		if src != nil {
 			*dest = *src
@@ -364,7 +393,7 @@ func (r RepoRequest) ToRepo() *Repo {
 		}
 	}
 
-	var repo Repo
+	var repo FullRepo
 	setString(&repo.Name, r.Name)
 	setString(&repo.Description, r.Description)
 	setString(&repo.Homepage, r.Homepage)
@@ -395,7 +424,7 @@ type RepoUpdateRequest struct {
 	Archived      *bool   `json:"archived,omitempty"`
 }
 
-func (r RepoUpdateRequest) ToRepo() *Repo {
+func (r RepoUpdateRequest) ToRepo() *FullRepo {
 	repo := r.RepoRequest.ToRepo()
 	if r.DefaultBranch != nil {
 		repo.DefaultBranch = *r.DefaultBranch
@@ -512,6 +541,9 @@ type BranchProtectionRequest struct {
 	EnforceAdmins              *bool                              `json:"enforce_admins"`
 	RequiredPullRequestReviews *RequiredPullRequestReviewsRequest `json:"required_pull_request_reviews"`
 	Restrictions               *RestrictionsRequest               `json:"restrictions"`
+	RequiredLinearHistory      bool                               `json:"required_linear_history"`
+	AllowForcePushes           bool                               `json:"allow_force_pushes"`
+	AllowDeletions             bool                               `json:"allow_deletions"`
 }
 
 func (r BranchProtectionRequest) String() string {
@@ -966,6 +998,9 @@ type Membership struct {
 
 // Organization stores metadata information about an organization
 type Organization struct {
+	// Login has the same meaning as Name, but it's more reliable to use as Name can sometimes be empty,
+	// see https://developer.github.com/v3/orgs/#list-organizations
+	Login string `json:"login"`
 	// BillingEmail holds private billing address
 	BillingEmail string `json:"billing_email"`
 	Company      string `json:"company"`

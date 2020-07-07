@@ -135,7 +135,7 @@ func main() {
 	flagset.StringVar(&opt.PluginConfig, "plugin-config", opt.PluginConfig, "Path to Prow plugin config file. Used when verifying bugs, ignored otherwise.")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
-	opt.github.AddFlagsWithoutDefaultGitHubTokenPath(goFlagSet)
+	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
 	flagset.AddGoFlagSet(goFlagSet)
 
@@ -235,7 +235,7 @@ func (o *options) Run() error {
 
 	c := NewController(
 		client.CoreV1(),
-		imageClient.Image(),
+		imageClient.ImageV1(),
 		client.BatchV1(),
 		jobs,
 		client.CoreV1(),

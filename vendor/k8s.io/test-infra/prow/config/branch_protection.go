@@ -19,6 +19,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -37,13 +38,20 @@ type Policy struct {
 	Restrictions *Restrictions `json:"restrictions,omitempty"`
 	// RequiredPullRequestReviews specifies github approval/review criteria.
 	RequiredPullRequestReviews *ReviewPolicy `json:"required_pull_request_reviews,omitempty"`
+	// RequiredLinearHistory enforces a linear commit Git history, which prevents anyone from pushing merge commits to a branch.
+	RequiredLinearHistory *bool `json:"required_linear_history,omitempty"`
+	// AllowForcePushes permits force pushes to the protected branch by anyone with write access to the repository.
+	AllowForcePushes *bool `json:"allow_force_pushes,omitempty"`
+	// AllowDeletions allows deletion of the protected branch by anyone with write access to the repository.
+	AllowDeletions *bool `json:"allow_deletions,omitempty"`
 	// Exclude specifies a set of regular expressions which identify branches
 	// that should be excluded from the protection policy
 	Exclude []string `json:"exclude,omitempty"`
 }
 
 func (p Policy) defined() bool {
-	return p.Protect != nil || p.RequiredStatusChecks != nil || p.Admins != nil || p.Restrictions != nil || p.RequiredPullRequestReviews != nil
+	return p.Protect != nil || p.RequiredStatusChecks != nil || p.Admins != nil || p.Restrictions != nil || p.RequiredPullRequestReviews != nil ||
+		p.RequiredLinearHistory != nil || p.AllowForcePushes != nil || p.AllowDeletions != nil
 }
 
 // ContextPolicy configures required github contexts.
@@ -153,6 +161,9 @@ func (p Policy) Apply(child Policy) Policy {
 		Protect:                    selectBool(p.Protect, child.Protect),
 		RequiredStatusChecks:       mergeContextPolicy(p.RequiredStatusChecks, child.RequiredStatusChecks),
 		Admins:                     selectBool(p.Admins, child.Admins),
+		RequiredLinearHistory:      selectBool(p.RequiredLinearHistory, child.RequiredLinearHistory),
+		AllowForcePushes:           selectBool(p.AllowForcePushes, child.AllowForcePushes),
+		AllowDeletions:             selectBool(p.AllowDeletions, child.AllowDeletions),
 		Restrictions:               mergeRestrictions(p.Restrictions, child.Restrictions),
 		RequiredPullRequestReviews: mergeReviewPolicy(p.RequiredPullRequestReviews, child.RequiredPullRequestReviews),
 		Exclude:                    unionStrings(p.Exclude, child.Exclude),
@@ -253,7 +264,6 @@ func (c *Config) GetPolicy(org, repo, branch string, b Branch, presubmits []Pres
 		// Error if protection is disabled
 		if policy.Protect != nil && !*policy.Protect {
 			if c.BranchProtection.AllowDisabledJobPolicies {
-				logrus.Warnf("%s/%s=%s has required jobs but has protect: false", org, repo, branch)
 				return nil, nil
 			}
 			return nil, fmt.Errorf("required prow jobs require branch protection")
@@ -275,13 +285,7 @@ func (c *Config) GetPolicy(org, repo, branch string, b Branch, presubmits []Pres
 		// Ensure that protection is false => no protection settings
 		var old *bool
 		old, policy.Protect = policy.Protect, old
-		switch {
-		case policy.defined() && c.BranchProtection.AllowDisabledPolicies:
-			logrus.Warnf("%s/%s=%s defines a policy but has protect: false", org, repo, branch)
-			policy = Policy{
-				Protect: policy.Protect,
-			}
-		case policy.defined():
+		if policy.defined() && !c.BranchProtection.AllowDisabledPolicies {
 			return nil, fmt.Errorf("%s/%s=%s defines a policy, which requires protect: true", org, repo, branch)
 		}
 		policy.Protect = old
@@ -291,6 +295,78 @@ func (c *Config) GetPolicy(org, repo, branch string, b Branch, presubmits []Pres
 		return nil, nil
 	}
 	return &policy, nil
+}
+
+func isUnprotected(policy Policy, allowDisabledPolicies bool, hasRequiredContexts bool, allowDisabledJobPolicies bool) bool {
+	if policy.Protect != nil && !*policy.Protect {
+		if hasRequiredContexts && allowDisabledJobPolicies {
+			return true
+		}
+		if allowDisabledPolicies {
+			policy.Protect = nil
+			if policy.defined() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *Config) reposWithDisabledPolicy() []string {
+	repoWarns := sets.NewString()
+	for orgName, org := range c.BranchProtection.Orgs {
+		for repoName := range org.Repos {
+			repoPolicy := c.BranchProtection.GetOrg(orgName).GetRepo(repoName)
+			if isUnprotected(repoPolicy.Policy, c.BranchProtection.AllowDisabledPolicies, false, false) {
+				repoWarns.Insert(fmt.Sprintf("%s/%s", orgName, repoName))
+			}
+		}
+	}
+	return repoWarns.List()
+}
+
+// unprotectedBranches returns the set of names of branches
+// which have protection flag set to false, but have either:
+// a. a protection policy, or
+// b. a required context
+func (c *Config) unprotectedBranches(presubmits map[string][]Presubmit) []string {
+	branchWarns := sets.NewString()
+	for orgName, org := range c.BranchProtection.Orgs {
+		for repoName, repo := range org.Repos {
+			branches := sets.NewString()
+			for branchName := range repo.Branches {
+				b, err := c.BranchProtection.GetOrg(orgName).GetRepo(repoName).GetBranch(branchName)
+				if err != nil {
+					continue
+				}
+				policy, err := c.GetPolicy(orgName, repoName, branchName, *b, []Presubmit{})
+				if err != nil || policy == nil {
+					continue
+				}
+				requiredContexts, _, _ := BranchRequirements(branchName, presubmits[orgName+"/"+repoName])
+				if isUnprotected(*policy, c.BranchProtection.AllowDisabledPolicies, len(requiredContexts) > 0, c.BranchProtection.AllowDisabledJobPolicies) {
+					branches.Insert(branchName)
+				}
+			}
+			if branches.Len() > 0 {
+				branchWarns.Insert(fmt.Sprintf("%s/%s=%s", orgName, repoName, strings.Join(branches.List(), ",")))
+			}
+		}
+	}
+	return branchWarns.List()
+}
+
+// BranchProtectionWarnings logs two sets of warnings:
+// - The list of repos with unprotected branches,
+// - The list of repos with disabled policies, i.e. Protect set to false,
+//     because any branches not explicitly specified in the configuration will be unprotected.
+func (c *Config) BranchProtectionWarnings(logger *logrus.Entry, presubmits map[string][]Presubmit) {
+	if warnings := c.reposWithDisabledPolicy(); len(warnings) > 0 {
+		logger.Warnf("The following repos define a policy, but have protect: false: %s", strings.Join(warnings, ","))
+	}
+	if warnings := c.unprotectedBranches(presubmits); len(warnings) > 0 {
+		logger.Warnf("The following repos define a policy or require context(s), but have one or more branches with protect: false: %s", strings.Join(warnings, ","))
+	}
 }
 
 // BranchRequirements partitions status contexts for a given org, repo branch into three buckets:
