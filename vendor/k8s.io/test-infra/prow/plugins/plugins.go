@@ -20,9 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/test-infra/pkg/genyaml"
 	"sync"
 	"time"
+
+	"k8s.io/test-infra/pkg/genyaml"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -34,7 +35,7 @@ import (
 	prowv1 "k8s.io/test-infra/prow/client/clientset/versioned/typed/prowjobs/v1"
 	"k8s.io/test-infra/prow/commentpruner"
 	"k8s.io/test-infra/prow/config"
-	"k8s.io/test-infra/prow/git"
+	"k8s.io/test-infra/prow/git/v2"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/pluginhelp"
 	"k8s.io/test-infra/prow/repoowners"
@@ -56,7 +57,7 @@ var (
 
 // HelpProvider defines the function type that construct a pluginhelp.PluginHelp for enabled
 // plugins. It takes into account the plugins configuration and enabled repositories.
-type HelpProvider func(config *Configuration, enabledRepos []string) (*pluginhelp.PluginHelp, error)
+type HelpProvider func(config *Configuration, enabledRepos []config.OrgRepo) (*pluginhelp.PluginHelp, error)
 
 // HelpProviders returns the map of registered plugins with their associated HelpProvider.
 func HelpProviders() map[string]HelpProvider {
@@ -141,11 +142,11 @@ type Agent struct {
 	ProwJobClient             prowv1.ProwJobInterface
 	KubernetesClient          kubernetes.Interface
 	BuildClusterCoreV1Clients map[string]corev1.CoreV1Interface
-	GitClient                 *git.Client
+	GitClient                 git.ClientFactory
 	SlackClient               *slack.Client
 	BugzillaClient            bugzilla.Client
 
-	OwnersClient *repoowners.Client
+	OwnersClient repoowners.Interface
 
 	// Metrics exposes metrics that can be updated by plugins
 	Metrics *Metrics
@@ -163,17 +164,19 @@ type Agent struct {
 }
 
 // NewAgent bootstraps a new config.Agent struct from the passed dependencies.
-func NewAgent(configAgent *config.Agent, pluginConfigAgent *ConfigAgent, clientAgent *ClientAgent, metrics *Metrics, logger *logrus.Entry) Agent {
+func NewAgent(configAgent *config.Agent, pluginConfigAgent *ConfigAgent, clientAgent *ClientAgent, metrics *Metrics, logger *logrus.Entry, plugin string) Agent {
+	logger = logger.WithField("plugin", plugin)
 	prowConfig := configAgent.Config()
 	pluginConfig := pluginConfigAgent.Config()
+	gitHubClient := clientAgent.GitHubClient.WithFields(logger.Data).ForPlugin(plugin)
 	return Agent{
-		GitHubClient:              clientAgent.GitHubClient.WithFields(logger.Data),
+		GitHubClient:              gitHubClient,
 		KubernetesClient:          clientAgent.KubernetesClient,
 		BuildClusterCoreV1Clients: clientAgent.BuildClusterCoreV1Clients,
 		ProwJobClient:             clientAgent.ProwJobClient,
 		GitClient:                 clientAgent.GitClient,
 		SlackClient:               clientAgent.SlackClient,
-		OwnersClient:              clientAgent.OwnersClient,
+		OwnersClient:              clientAgent.OwnersClient.WithFields(logger.Data).WithGitHubClient(gitHubClient),
 		BugzillaClient:            clientAgent.BugzillaClient,
 		Metrics:                   metrics,
 		Config:                    prowConfig,
@@ -206,9 +209,9 @@ type ClientAgent struct {
 	ProwJobClient             prowv1.ProwJobInterface
 	KubernetesClient          kubernetes.Interface
 	BuildClusterCoreV1Clients map[string]corev1.CoreV1Interface
-	GitClient                 *git.Client
+	GitClient                 git.ClientFactory
 	SlackClient               *slack.Client
-	OwnersClient              *repoowners.Client
+	OwnersClient              repoowners.Interface
 	BugzillaClient            bugzilla.Client
 }
 
@@ -235,6 +238,7 @@ func (pa *ConfigAgent) Load(path string, checkUnknownPlugins bool) error {
 	if err := yaml.Unmarshal(b, np); err != nil {
 		return err
 	}
+
 	if err := np.Validate(); err != nil {
 		return err
 	}

@@ -22,8 +22,9 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	"k8s.io/test-infra/prow/version"
 )
 
 // DefaultFieldsFormatter wraps another logrus.Formatter, injecting
@@ -49,11 +50,11 @@ func Init(formatter *DefaultFieldsFormatter) {
 }
 
 // ComponentInit is a syntax sugar for easier Init
-func ComponentInit(component string) {
+func ComponentInit() {
 	Init(
 		&DefaultFieldsFormatter{
 			PrintLineNumber: true,
-			DefaultFields:   logrus.Fields{"component": component},
+			DefaultFields:   logrus.Fields{"component": version.Name},
 		},
 	)
 }
@@ -62,7 +63,9 @@ func ComponentInit(component string) {
 // map in order to not modify the caller's Entry, as that is not a thread
 // safe operation.
 func (f *DefaultFieldsFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	data := make(logrus.Fields, len(entry.Data)+len(f.DefaultFields))
+	data := make(logrus.Fields, len(entry.Data)+len(f.DefaultFields)+1)
+	// GCP's log collection expects a "severity" field instead of "level"
+	data["severity"] = entry.Level
 	for k, v := range f.DefaultFields {
 		data[k] = v
 	}

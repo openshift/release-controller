@@ -24,8 +24,10 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/testgrid/util/gcs"
+
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"k8s.io/test-infra/prow/flagutil"
+	prowflagutil "k8s.io/test-infra/prow/flagutil"
 )
 
 // NewOptions returns an empty Options with no nil fields.
@@ -36,7 +38,7 @@ func NewOptions() *Options {
 }
 
 // Options exposes the configuration necessary
-// for defining where in GCS an upload will land.
+// for defining where in storage an upload will land.
 type Options struct {
 	// Items are files or directories to upload.
 	Items []string `json:"items,omitempty"`
@@ -46,10 +48,9 @@ type Options struct {
 
 	*prowapi.GCSConfiguration
 
-	// GcsCredentialsFile is the path to the JSON
-	// credentials for pushing to GCS.
-	GcsCredentialsFile string `json:"gcs_credentials_file,omitempty"`
-	DryRun             bool   `json:"dry_run"`
+	prowflagutil.StorageClientOptions
+
+	DryRun bool `json:"dry_run"`
 
 	// mediaTypes holds additional extension media types to add to Go's
 	// builtin's and the local system's defaults.  Values are
@@ -77,10 +78,6 @@ func (o *Options) Validate() error {
 	if !o.DryRun {
 		if o.Bucket == "" {
 			return errors.New("GCS upload was requested no GCS bucket was provided")
-		}
-
-		if o.GcsCredentialsFile == "" {
-			return errors.New("GCS upload was requested but no GCS credentials file was provided")
 		}
 	}
 
@@ -126,12 +123,13 @@ func (o *Options) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.DefaultRepo, "default-repo", "", "optional default repo for GCS path encoding")
 
 	fs.Var(&o.gcsPath, "gcs-path", "GCS path to upload into")
-	fs.StringVar(&o.GcsCredentialsFile, "gcs-credentials-file", "", "file where Google Cloud authentication credentials are stored")
 	fs.BoolVar(&o.DryRun, "dry-run", true, "do not interact with GCS")
 
 	fs.Var(&o.mediaTypes, "media-type", "Optional comma-delimited set of extension media types.  Each entry is colon-delimited {extension}:{media-type}, for example, log:text/plain.")
 
 	fs.StringVar(&o.LocalOutputDir, "local-output-dir", "", "If specified, files are copied to this dir instead of uploading to GCS.")
+
+	o.StorageClientOptions.AddFlags(fs)
 }
 
 const (
