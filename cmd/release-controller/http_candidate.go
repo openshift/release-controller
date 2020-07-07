@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -102,7 +102,7 @@ td.upgrade-track {
 
 func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -142,7 +142,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 		).Parse(candidatePageHtml))
 
 		if err := page.Execute(w, releaseCandidateList); err != nil {
-			glog.Errorf("Unable to render page: %v", err)
+			klog.Errorf("Unable to render page: %v", err)
 		}
 		fmt.Fprintln(w, htmlPageEnd)
 	}
@@ -150,7 +150,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 
 func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -223,7 +223,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		var latestPromotedTime int64 = 0
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
 		if err != nil || nextVersion == nil {
-			glog.Errorf("Unable to find next candidate for %s: %v", stream, err)
+			klog.Errorf("Unable to find next candidate for %s: %v", stream, err)
 			continue
 		}
 		nextReleaseName = nextVersion.String()
@@ -280,7 +280,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -335,7 +335,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 
 // TODO: Add support for returning stable releases after rally point
 func (c *Controller) stableReleases() (*StableReferences, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
-	is, err := c.imageStreamLister.ImageStreams(isTokens[0]).Get(isTokens[1])
+	is, err := c.releaseLister.ImageStreams(isTokens[0]).Get(isTokens[1])
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("Unrecognized imagestream format %s", latestPromotedFrom)
 	}
 
-	fromStream, err := c.imageStreamLister.ImageStreams(fromIsTokens[0]).Get(fromIsTokens[1])
+	fromStream, err := c.releaseLister.ImageStreams(fromIsTokens[0]).Get(fromIsTokens[1])
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +438,7 @@ func (c *Controller) nextVersionDetails(stream string, stable []imagev1.TagRefer
 
 		pt, err := time.Parse(time.RFC3339, fromTag.Annotations[releaseAnnotationCreationTimestamp])
 		if err != nil {
-			glog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[releaseAnnotationCreationTimestamp], err)
+			klog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[releaseAnnotationCreationTimestamp], err)
 			continue
 		}
 

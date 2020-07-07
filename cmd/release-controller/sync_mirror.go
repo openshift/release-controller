@@ -5,11 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
@@ -17,7 +16,7 @@ import (
 
 func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
 	mirrorName := mirrorName(release, releaseTagName)
-	is, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName)
+	is, err := c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 	if err == nil {
 		return is, nil
 	}
@@ -28,7 +27,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 	is = &imagev1.ImageStream{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mirrorName,
-			Namespace: c.releaseNamespace,
+			Namespace: release.Source.Namespace,
 			Annotations: map[string]string{
 				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 				releaseAnnotationTarget:     fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name),
@@ -48,7 +47,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 		}
 	}
 
-	glog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
+	klog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
 	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
@@ -61,7 +60,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 }
 
 func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
-	return c.imageStreamLister.ImageStreams(c.releaseNamespace).Get(mirrorName(release, releaseTagName))
+	return c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
 }
 
 func mirrorName(release *Release, releaseTagName string) string {
@@ -100,7 +99,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 		// eliminate status tag references that point to the outside
 		if len(source) > 0 {
 			if len(internal) > 0 && strings.HasPrefix(latest.DockerImageReference, internal) {
-				glog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
+				klog.V(2).Infof("Can't use tag %q source %s because it points to the internal registry", tag.Tag, source)
 				source = ""
 			}
 		}
@@ -119,7 +118,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 					from.ID = tag.Items[0].Image
 					source = from.Exact()
 				} else {
-					glog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
+					klog.V(2).Infof("Can't use tag %q from %s because it isn't a valid image reference", tag.Tag, ref.From.Name)
 				}
 			}
 			ref = ref.DeepCopy()

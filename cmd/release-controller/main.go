@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
@@ -52,6 +53,7 @@ import (
 
 type options struct {
 	ReleaseNamespaces    []string
+	PublishNamespaces    []string
 	JobNamespace         string
 	ProwNamespace        string
 	ProwJobKubeconfig    string
@@ -120,6 +122,7 @@ func main() {
 	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults in-cluster config if unset.")
 	flagset.StringVar(&opt.NonProwJobKubeconfig, "non-prow-job-kubeconfig", opt.NonProwJobKubeconfig, "The kubeconfig to use for everything that is not prowjobs (namespaced, pods, batchjobs, ....). Falls back to incluster config if unset")
 	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
+	flagset.StringSliceVar(&opt.PublishNamespaces, "publish-namespace", opt.PublishNamespaces, "Optional namespaces that the release might publish results to.")
 	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flagset.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
@@ -157,6 +160,9 @@ func (o *options) Run() error {
 	if len(o.ProwNamespace) == 0 {
 		o.ProwNamespace = o.JobNamespace
 	}
+	if sets.NewString(o.ReleaseNamespaces...).HasAny(o.PublishNamespaces...) {
+		return fmt.Errorf("--release-namespace and --publish-namespace may not overlap")
+	}
 
 	inClusterCfg, err := loadClusterConfig()
 	if err != nil {
@@ -184,17 +190,17 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
 	releaseNamespace := o.ReleaseNamespaces[0]
-	if _, err := client.CoreV1().Namespaces().Get(releaseNamespace, metav1.GetOptions{}); err != nil {
-		return fmt.Errorf("unable to find release namespace: %v", err)
+	for _, ns := range o.ReleaseNamespaces {
+		if _, err := client.CoreV1().Namespaces().Get(ns, metav1.GetOptions{}); err != nil {
+			return fmt.Errorf("unable to find release namespace: %s: %v", ns, err)
+		}
 	}
 	if o.JobNamespace != releaseNamespace {
 		if _, err := client.CoreV1().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
-		klog.Infof("Releases will be published to namespace %s, jobs will be created in namespace %s", releaseNamespace, o.JobNamespace)
-	} else {
-		klog.Infof("Release will be published to namespace %s and jobs will be in the same namespace", releaseNamespace)
 	}
+	klog.Infof("Releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageClient, err := imageclientset.NewForConfig(config)
 	if err != nil {
@@ -235,7 +241,6 @@ func (o *options) Run() error {
 		client.CoreV1(),
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
-		releaseNamespace,
 		o.JobNamespace,
 		o.ArtifactsHost,
 		releaseInfo,
@@ -336,15 +341,20 @@ func (o *options) Run() error {
 
 	batchFactory.Start(stopCh)
 
-	// register image streams
-	for _, ns := range o.ReleaseNamespaces {
+	// register the publish and release namespaces
+	publishNamespaces := sets.NewString(o.PublishNamespaces...)
+	for _, ns := range sets.NewString(o.ReleaseNamespaces...).Union(publishNamespaces).List() {
 		factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
 		streams := factory.Image().V1().ImageStreams()
-		c.AddNamespacedImageStreamInformer(ns, streams)
+		if publishNamespaces.Has(ns) {
+			c.AddPublishNamespace(ns, streams)
+		} else {
+			c.AddReleaseNamespace(ns, streams)
+		}
 		hasSynced = append(hasSynced, streams.Informer().HasSynced)
 		factory.Start(stopCh)
 	}
-	imageCache.SetLister(c.imageStreamLister.ImageStreams(releaseNamespace))
+	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
 	if len(o.ProwConfigPath) > 0 {
 		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
@@ -401,7 +411,7 @@ func (o *options) Run() error {
 		// read the graph
 		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
-		c.RunAudit(2, stopCh)
+		c.RunAudit(4, stopCh)
 		return nil
 	case len(o.LimitSources) > 0:
 		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)

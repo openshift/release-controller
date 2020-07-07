@@ -17,13 +17,12 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/getsentry/raven-go v0.0.0-20171206001108-32a13797442c // indirect
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6
 	github.com/google/go-cmp v0.3.1
 	github.com/gorilla/mux v1.7.1
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
-	github.com/openshift/api v3.9.1-0.20190419161300-aae63d5f0f50+incompatible
+	github.com/openshift/api v0.0.0-20190419161300-aae63d5f0f50
 	github.com/openshift/client-go v0.0.0-20190412095722-0255926f5393
 	github.com/openshift/library-go v0.0.0-20190419201117-4bae0f495ea7
 	github.com/pkg/profile v1.3.0 // indirect

@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -28,7 +28,7 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
 
-	glog.V(2).Infof("Starting new release %s", tag.Name)
+	klog.V(2).Infof("Starting new release %s", tag.Name)
 
 	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
 	if errors.IsNotFound(err) {
@@ -83,7 +83,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 	origin.From = tag.From
 	origin.ImportPolicy = tag.ImportPolicy
 
-	glog.V(2).Infof("Updating next tag for %s to be %s", release.Config.Name, next)
+	klog.V(2).Infof("Updating next tag for %s to be %s", release.Config.Name, next)
 	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.TagReference) error {
 	for _, tag := range removeTags {
 		// use delete imagestreamtag so that status tags are removed as well
-		glog.V(2).Infof("Removing release tag %s", tag.Name)
+		klog.V(2).Infof("Removing release tag %s", tag.Name)
 		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
 			if !errors.IsNotFound(err) {
 				return err
@@ -140,7 +140,7 @@ func (c *Controller) setReleaseAnnotation(release *Release, phase string, annota
 			}
 		}
 		changes++
-		glog.V(2).Infof("Adding annotations to release %s", name)
+		klog.V(2).Infof("Adding annotations to release %s", name)
 	}
 
 	if changes == 0 {
@@ -200,7 +200,7 @@ func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases 
 			}
 		}
 		changes++
-		glog.V(2).Infof("Marking release %s %s", name, phase)
+		klog.V(2).Infof("Marking release %s %s", name, phase)
 	}
 
 	if changes == 0 {
@@ -230,7 +230,7 @@ func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditio
 			for k, v := range annotations {
 				tag.Annotations[k] = v
 			}
-			glog.V(2).Infof("Marking release %s failed: %v", name, annotations)
+			klog.V(2).Infof("Marking release %s failed: %v", name, annotations)
 			changed++
 		}
 	}

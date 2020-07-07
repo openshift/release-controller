@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	v1 "github.com/openshift/api/image/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog"
 )
 
 func getNonVerifiedTags(acceptedTags []*v1.TagReference) (current, previous *v1.TagReference) {
@@ -38,11 +38,11 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)
 	if err != nil || release == nil {
-		glog.V(6).Infof("bugzilla: could not load release for sync for %s/%s", key.namespace, key.name)
+		klog.V(6).Infof("bugzilla: could not load release for sync for %s/%s", key.namespace, key.name)
 		return err
 	}
 
-	glog.V(6).Infof("checking if %v (%s) has verifyBugs set", key, release.Config.Name)
+	klog.V(6).Infof("checking if %v (%s) has verifyBugs set", key, release.Config.Name)
 
 	// check if verifyBugs publish step is enabled for release
 	var verifyBugs *PublishVerifyBugs
@@ -59,32 +59,32 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		}
 	}
 	if verifyBugs == nil {
-		glog.V(6).Infof("%v (%s) does not have verifyBugs set", key, release.Config.Name)
+		klog.V(6).Infof("%v (%s) does not have verifyBugs set", key, release.Config.Name)
 		return nil
 	}
 
-	glog.V(4).Infof("Verifying fixed bugs in %s", release.Config.Name)
+	klog.V(4).Infof("Verifying fixed bugs in %s", release.Config.Name)
 
 	// get accepted tags
 	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
 	tag, prevTag := getNonVerifiedTags(acceptedTags)
 	if tag == nil {
-		glog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
+		klog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
 		return nil
 	}
 	if prevTag == nil {
 		if verifyBugs.PreviousReleaseTag == nil {
-			glog.V(2).Infof("bugzilla error: previous release unset for %s", release.Config.Name)
+			klog.V(2).Infof("bugzilla error: previous release unset for %s", release.Config.Name)
 			return fmt.Errorf("bugzilla error: previous release unset for %s", release.Config.Name)
 		}
 		stream, err := c.imageClient.ImageStreams(verifyBugs.PreviousReleaseTag.Namespace).Get(verifyBugs.PreviousReleaseTag.Name, meta.GetOptions{})
 		if err != nil {
-			glog.V(2).Infof("bugzilla: failed to get imagestream (%s/%s) when getting previous release for %s: %v", verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name, err)
+			klog.V(2).Infof("bugzilla: failed to get imagestream (%s/%s) when getting previous release for %s: %v", verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name, err)
 			return err
 		}
 		prevTag = findTagReference(stream, verifyBugs.PreviousReleaseTag.Tag)
 		if prevTag == nil {
-			glog.V(2).Infof("bugzilla: failed to get tag %s in imagestream (%s/%s) when getting previous release for %s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name)
+			klog.V(2).Infof("bugzilla: failed to get tag %s in imagestream (%s/%s) when getting previous release for %s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name)
 			return fmt.Errorf("failed to find tag %s in imagestream %s/%s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name)
 		}
 	}
@@ -95,34 +95,34 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	dockerRepo := release.Target.Status.PublicDockerImageRepository
 	if len(dockerRepo) == 0 {
-		glog.V(4).Infof("bugzilla: release target %s does not have a configured registry", release.Target.Name)
+		klog.V(4).Infof("bugzilla: release target %s does not have a configured registry", release.Target.Name)
 		return fmt.Errorf("bugzilla: release target %s does not have a configured registry", release.Target.Name)
 	}
 
 	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
 	if err != nil {
-		glog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
+		klog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
 	var errs []error
 	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs)...); len(errs) != 0 {
-		glog.V(4).Infof("Error(s) in bugzilla verifier: %v", utilerrors.NewAggregate(errs))
+		klog.V(4).Infof("Error(s) in bugzilla verifier: %v", utilerrors.NewAggregate(errs))
 		return utilerrors.NewAggregate(errs)
 	}
 
 	target := release.Target.DeepCopy()
 	tagToBeUpdated := findTagReference(target, tag.Name)
 	if tagToBeUpdated == nil {
-		glog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
+		klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
 		return fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
 	}
 	if tagToBeUpdated.Annotations == nil {
 		tagToBeUpdated.Annotations = make(map[string]string)
 	}
 	tagToBeUpdated.Annotations[releaseAnnotationBugsVerified] = "true"
-	glog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
+	klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
 	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
-		glog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
+		klog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
 		return err
 	}
 

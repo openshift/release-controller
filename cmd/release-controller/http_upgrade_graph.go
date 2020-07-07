@@ -11,9 +11,9 @@ import (
 	"text/template"
 
 	viz "github.com/awalterschulze/gographviz"
-	"github.com/golang/glog"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 )
 
 type ReleaseNode struct {
@@ -29,7 +29,7 @@ type ReleaseGraph struct {
 }
 
 func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -233,7 +233,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 			if err != nil {
-				glog.Errorf("dot failed:\n%s", buf.String())
+				klog.Errorf("dot failed:\n%s", buf.String())
 				http.Error(w, fmt.Sprintf("Unable to render graph: %v", err), http.StatusBadRequest)
 				return
 			}

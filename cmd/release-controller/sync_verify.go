@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/golang/glog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
 
 func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
@@ -18,7 +18,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	retryQueueDelay := 0 * time.Second
 	for name, verifyType := range release.Config.Verify {
 		if verifyType.Disabled {
-			glog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
+			klog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
 			continue
 		}
 
@@ -28,7 +28,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				if data := releaseTag.Annotations[releaseAnnotationVerify]; len(data) > 0 {
 					verifyStatus = make(VerificationStatusMap)
 					if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
-						glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
+						klog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
 					}
 				}
 			}
@@ -48,7 +48,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					if status.TransitionTime != nil {
 						backoffDuration := calculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{time.Now()})
 						if backoffDuration > 0 {
-							glog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
+							klog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
 								releaseTag.Name, name, jobRetries, status.TransitionTime.Format(time.RFC3339), time.Now().Add(backoffDuration).Format(time.RFC3339))
 							if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
 								retryQueueDelay = backoffDuration
@@ -59,7 +59,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				case releaseVerificationStatePending:
 					// we need to process this
 				default:
-					glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
+					klog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
 				}
 			}
 
@@ -126,7 +126,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
 			if status.State == releaseVerificationStateSucceeded {
-				glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
 			}
 			if verifyStatus == nil {
 				verifyStatus = make(VerificationStatusMap)

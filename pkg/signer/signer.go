@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
 	"golang.org/x/crypto/openpgp"
+	"k8s.io/klog"
 )
 
 // Interface performs signing and verification of the provided content. The default implementation
@@ -157,11 +157,11 @@ func (s *releaseSigner) Verify(ctx context.Context, releaseDigest, location stri
 	for k, keyring := range s.verifiers {
 		content, _, err := verifySignatureWithKeyring(bytes.NewReader(signature), keyring)
 		if err != nil {
-			glog.V(4).Infof("keyring %q could not verify signature: %s", k, err)
+			klog.V(4).Infof("keyring %q could not verify signature: %s", k, err)
 			continue
 		}
 		if err := verifyAtomicContainerSignature(content, releaseDigest); err != nil {
-			glog.V(4).Infof("signature %q is not valid: %s", location, err)
+			klog.V(4).Infof("signature %q is not valid: %s", location, err)
 			continue
 		}
 		return nil

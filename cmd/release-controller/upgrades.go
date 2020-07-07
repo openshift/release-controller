@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -297,19 +297,19 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 		secret, err := secretClient.Get(name, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
-				glog.Errorf("No secret %s/%s exists to store upgrade state into", ns, name)
+				klog.Errorf("No secret %s/%s exists to store upgrade state into", ns, name)
 				return false, nil
 			}
 			if errors.IsForbidden(err) {
-				glog.Errorf("Release controller doesn't have permission to get secret %s/%s to store upgrade state into", ns, name)
+				klog.Errorf("Release controller doesn't have permission to get secret %s/%s to store upgrade state into", ns, name)
 				return false, nil
 			}
-			glog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
+			klog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
 			return false, nil
 		}
 		if data := secret.Data["latest"]; len(data) > 0 {
 			if err := graph.Load(bytes.NewReader(data)); err != nil {
-				glog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
+				klog.Errorf("Can't load initial state from secret %s/%s: %v", ns, name, err)
 			}
 		}
 		return true, nil
@@ -327,12 +327,12 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 	wait.Until(func() {
 		buf.Reset()
 		if err := graph.Save(buf); err != nil {
-			glog.Errorf("Unable to calculate graph state: %v", err)
+			klog.Errorf("Unable to calculate graph state: %v", err)
 			return
 		}
 		secret, err := secretClient.Get(name, metav1.GetOptions{})
 		if err != nil {
-			glog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
+			klog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
 			return
 		}
 		if secret.Data == nil {
@@ -340,8 +340,8 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 		}
 		secret.Data["latest"] = buf.Bytes()
 		if _, err := secretClient.Update(secret); err != nil {
-			glog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
+			klog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
 		}
-		glog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
+		klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
 	}, 5*time.Minute, stopCh)
 }

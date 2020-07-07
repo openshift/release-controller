@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 	"k8s.io/kube-openapi/pkg/util/sets"
 	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/github"
@@ -74,12 +74,12 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 		}
 		approved := prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(bzp.org, bzp.repo).ReviewActsAsLgtm)
 		if approved {
-			glog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
+			klog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
 			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); err != nil {
 				errs = append(errs, fmt.Errorf("Failed to update status for bug %d: %v", bug.ID, err))
 			}
 		} else {
-			glog.V(4).Infof("Bug %d (current status %s) not approved by QA contact", bug.ID, bug.Status)
+			klog.V(4).Infof("Bug %d (current status %s) not approved by QA contact", bug.ID, bug.Status)
 		}
 	}
 	return errs
@@ -111,7 +111,7 @@ func getPRs(input []int, bzClient bugzilla.Client) ([]pr, []error) {
 		}
 		if !foundPR {
 			// sometimes people ignore the bot and manually change the bugzilla tags, resulting in a bug not being linked; ignore these
-			glog.V(5).Infof("Failed to identify associated GitHub PR for bugzilla bug %d", bzID)
+			klog.V(5).Infof("Failed to identify associated GitHub PR for bugzilla bug %d", bzID)
 		}
 	}
 	return bzPRs, errs
@@ -169,7 +169,7 @@ func prReviewedByQA(comments []github.IssueComment, reviews []github.Review, rev
 	for contact := range qaContacts {
 		for lgtm := range finalLGTMs {
 			if contact == lgtm {
-				glog.V(4).Infof("QA Contact %s lgtm'd this PR", contact)
+				klog.V(4).Infof("QA Contact %s lgtm'd this PR", contact)
 				return true
 			}
 		}

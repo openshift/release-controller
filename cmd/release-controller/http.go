@@ -16,11 +16,11 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 
 	humanize "github.com/dustin/go-humanize"
-	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/russross/blackfriday"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 )
 
 const htmlPageStart = `
@@ -229,7 +229,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	}
 	remaining := len(needed)
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, false
 	}
@@ -363,7 +363,7 @@ func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*Re
 
 func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	r, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -404,7 +404,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 }
 
 func (c *Controller) locateStream(streamName string, phases ...string) (*ReleaseStream, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +430,7 @@ func (c *Controller) locateStream(streamName string, phases ...string) (*Release
 
 func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
@@ -485,7 +485,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Encoding", "gzip")
@@ -496,7 +496,7 @@ func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
 
 func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	var isHtml bool
 	switch req.URL.Query().Get("format") {
@@ -561,7 +561,7 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 
 func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
 	tag := vars["tag"]
@@ -594,7 +594,7 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 
 func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
 	release := vars["release"]
@@ -622,7 +622,7 @@ func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Re
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	vars := mux.Vars(req)
 	release := vars["release"]
@@ -849,7 +849,7 @@ var (
 )
 
 func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -881,7 +881,7 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 
 func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	r, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -893,7 +893,7 @@ func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request)
 
 func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	_, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -910,7 +910,7 @@ func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
@@ -924,7 +924,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	base.RawQuery = ""
 	base.Fragment = ""
 	page := &ReleasePage{
-		BaseURL: base.String(),
+		BaseURL:    base.String(),
 		Dashboards: c.dashboards,
 	}
 
@@ -991,15 +991,15 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":     tableLink,
-			"phaseCell":     phaseCell,
-			"phaseAlert":    phaseAlert,
-			"alerts":        renderAlerts,
-			"links":         links,
-			"releaseJoin":   releaseJoin,
+			"tableLink":      tableLink,
+			"phaseCell":      phaseCell,
+			"phaseAlert":     phaseAlert,
+			"alerts":         renderAlerts,
+			"links":          links,
+			"releaseJoin":    releaseJoin,
 			"dashboardsJoin": dashboardsJoin,
-			"inc":           func(i int) int { return i + 1 },
-			"upgradeCells":  upgradeCells,
+			"inc":            func(i int) int { return i + 1 },
+			"upgradeCells":   upgradeCells,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1010,7 +1010,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		},
 	).Parse(releasePageHtml))
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1051,14 +1051,14 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
 	if err := releasePage.Execute(w, page); err != nil {
-		glog.Errorf("Unable to render page: %v", err)
+		klog.Errorf("Unable to render page: %v", err)
 	}
 	fmt.Fprintln(w, htmlPageEnd)
 }
 
 func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
@@ -1072,7 +1072,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	base.RawQuery = ""
 	base.Fragment = ""
 	page := &ReleasePage{
-		BaseURL: base.String(),
+		BaseURL:    base.String(),
 		Dashboards: c.dashboards,
 	}
 
@@ -1139,12 +1139,12 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				}
 				return ""
 			},
-			"tableLink":     tableLink,
-			"phaseCell":     phaseCell,
-			"phaseAlert":    phaseAlert,
-			"inc":           func(i int) int { return i + 1 },
-			"upgradeJobs":   upgradeJobs,
-			"releaseJoin":   releaseJoin,
+			"tableLink":      tableLink,
+			"phaseCell":      phaseCell,
+			"phaseAlert":     phaseAlert,
+			"inc":            func(i int) int { return i + 1 },
+			"upgradeJobs":    upgradeJobs,
+			"releaseJoin":    releaseJoin,
 			"dashboardsJoin": dashboardsJoin,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
@@ -1156,7 +1156,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		},
 	).Parse(releaseDashboardPageHtml))
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1196,7 +1196,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
 	if err := releasePage.Execute(w, page); err != nil {
-		glog.Errorf("Unable to render page: %v", err)
+		klog.Errorf("Unable to render page: %v", err)
 	}
 	fmt.Fprintln(w, htmlPageEnd)
 }

@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog"
 )
 
 // garbageCollectSync checks for unreferenced objects and deletes them. Because this can run
@@ -21,7 +20,7 @@ func (c *Controller) garbageCollectSync() error {
 		panic(err)
 	}()
 
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
@@ -29,7 +28,7 @@ func (c *Controller) garbageCollectSync() error {
 	if err != nil {
 		return err
 	}
-	mirrors, err := c.imageStreamLister.List(labels.Everything())
+	mirrors, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
@@ -76,14 +75,14 @@ func (c *Controller) garbageCollectSync() error {
 			continue
 		}
 		if generation < targetGeneration {
-			glog.V(2).Infof("Removing orphaned release job %s", job.Name)
+			klog.V(2).Infof("Removing orphaned release job %s", job.Name)
 			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
 			}
 			continue
 		}
 		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Time.Before(time.Now().Add(-2*time.Hour)) {
-			glog.V(2).Infof("Removing old completed release job %s", job.Name)
+			klog.V(2).Infof("Removing old completed release job %s", job.Name)
 			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s: %v", job.Name, err))
 			}
@@ -105,7 +104,7 @@ func (c *Controller) garbageCollectSync() error {
 			continue
 		}
 		if generation < targetGeneration {
-			glog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
+			klog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
 			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(mirror.Name, nil); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s: %v", mirror.Name, err))
 			}

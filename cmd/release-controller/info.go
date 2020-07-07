@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog"
 
-	"github.com/golang/glog"
 	"github.com/golang/groupcache"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -142,7 +142,7 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		glog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -164,7 +164,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	}
 
 	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
-	glog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
+	klog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
 		Stdout:    true,
@@ -182,7 +182,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		glog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+		klog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -205,7 +205,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]int, error) {
 	}
 
 	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=name", "--skip-bug-check", from, to}
-	glog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
+	klog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
 		Stdout:    true,
@@ -223,7 +223,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]int, error) {
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		glog.V(4).Infof("Failed to generate bug list: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+		klog.V(4).Infof("Failed to generate bug list: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -258,7 +258,7 @@ func (r *ExecReleaseInfo) refreshPod() error {
 	}
 
 	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
-		glog.Infof("Another release controller is managing git-cache, ignoring")
+		klog.Infof("Another release controller is managing git-cache, ignoring")
 		return nil
 	}
 
@@ -380,7 +380,7 @@ type ExecReleaseFiles struct {
 }
 
 // NewExecReleaseFiles creates a stateful set, in the specified namespace, that provides cached access to downloaded
-//installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
+// installer images from the Release Status website.  The provided name will prevent other instances of the stateful set
 // from being created when created with an identical name.  The releaseNamespace is used to ensure that the tools are
 // downloaded from the correct namespace.
 func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, releaseNamespace string, imageNameFn func() (string, error)) *ExecReleaseFiles {
@@ -404,7 +404,7 @@ func (r *ExecReleaseFiles) refreshPod() error {
 	}
 
 	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
-		glog.Infof("Another release controller is managing files-cache, ignoring")
+		klog.Infof("Another release controller is managing files-cache, ignoring")
 		return nil
 	}
 
