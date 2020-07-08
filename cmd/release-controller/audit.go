@@ -11,6 +11,7 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -90,9 +91,12 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		}
 
 	} else {
-		if count, ok := c.countAuditVerifyJobs(); !ok || count > 2 {
-			klog.V(4).Infof("Throttling verify jobs to max 2")
-			c.auditQueue.AddAfter(releaseName, 10*time.Second)
+		if ok, err := c.ensureMaximumAuditVerifyJobs(2, 15*time.Minute); !ok || err != nil {
+			if err != nil {
+				return err
+			}
+			klog.V(4).Infof("Waiting for existing audit jobs to complete")
+			c.auditQueue.AddAfter(releaseName, 30*time.Second)
 			return nil
 		}
 
@@ -144,19 +148,27 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 
 var auditVerifyJobSelector = labels.SelectorFromSet(labels.Set{releaseAnnotationJobPurpose: "audit"})
 
-func (c *Controller) countAuditVerifyJobs() (int, bool) {
+func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.Duration) (bool, error) {
 	result, err := c.jobLister.Jobs(c.jobNamespace).List(auditVerifyJobSelector)
 	if err != nil {
-		return 0, false
+		return false, err
 	}
 	count := 0
+	now := time.Now()
+	var lastErr error
 	for _, job := range result {
 		if job.Status.CompletionTime != nil {
+			if job.Status.Succeeded > 0 && now.Sub(job.Status.CompletionTime.Time) > expireJobs {
+				if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{}); err != nil {
+					klog.V(4).Infof("Failed to delete expired job %s/%s: %v", job.Namespace, job.Name, err)
+					lastErr = err
+				}
+			}
 			continue
 		}
 		count++
 	}
-	return count, true
+	return count < maximum, lastErr
 }
 
 func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord) (*batchv1.Job, error) {
@@ -191,7 +203,6 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 			job.Labels = make(map[string]string)
 		}
 		job.Labels[releaseAnnotationJobPurpose] = "audit"
-		job.Annotations[releaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
 		job.Annotations[releaseAnnotationTarget] = fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name)
 		job.Annotations[releaseAnnotationReleaseTag] = record.Name
 		job.Annotations[releaseAnnotationJobPurpose] = "audit"
