@@ -189,6 +189,9 @@ type ReleaseVerification struct {
 	// Optional verifications are run, but failures will not cause the release to
 	// be rejected.
 	Optional bool `json:"optional"`
+	// SkipTriggering determines if this controller should trigger the job or if
+	// it should just be honored for whatever releases it happens to run on.
+	SkipTriggering bool `json:"skipTriggering"`
 	// Upgrade is true if this verification should be used to verify upgrades.
 	// The default UpgradeFrom for stable streams is PreviousMicro and the default
 	// for other types of streams is Previous.

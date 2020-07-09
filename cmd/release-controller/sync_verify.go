@@ -22,6 +22,11 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			continue
 		}
 
+		if verifyType.SkipTriggering {
+			klog.V(2).Infof("Release verification step %s is not directly triggered, ignoring", name)
+			continue
+		}
+
 		switch {
 		case verifyType.ProwJob != nil:
 			if verifyStatus == nil {
