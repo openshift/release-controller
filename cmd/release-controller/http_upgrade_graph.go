@@ -92,26 +92,21 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		for _, history := range histories {
 			var toChannel = findChannelForNode(history.To, &nodes)
 			switch {
-			case channel == "", channel == "stable":
+			case channel == "", channel == "stable", strings.HasPrefix(channel, "stable-"):
 				if history.Success == 0 {
+					continue
+				}
+				if toChannel != "4-stable" {
 					continue
 				}
 			case channel == "prerelease", channel == "nightly":
-			case strings.HasPrefix(channel, "stable-"):
-				if history.Success == 0 {
-					continue
-				}
-				branch := channel[len("stable-"):] + "."
-				if !strings.HasPrefix(toChannel, branch) {
-					continue
-				}
 			case strings.HasPrefix(channel, "prerelease-"):
 				branch := channel[len("prerelease-"):] + "."
 				if !strings.HasPrefix(toChannel, branch) {
 					continue
 				}
 			case strings.HasPrefix(channel, "nightly-"):
-				branch := channel[len("nightly-"):] + ".0-0.nightly-"
+				branch := channel[len("nightly-"):] + ".0-0.nightly"
 				if !strings.HasPrefix(toChannel, branch) {
 					continue
 				}
