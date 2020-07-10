@@ -29,6 +29,15 @@ type ReleaseGraph struct {
 	Edges []ReleaseEdge `json:"edges"`
 }
 
+func findChannelForNode(tag string, nodes *[]ReleaseNode) string {
+	for _, node := range *nodes {
+		if node.Version == tag {
+			return node.Channel
+		}
+	}
+	return "no-channel"
+}
+
 func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
@@ -81,6 +90,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 
 		edges := make([]ReleaseEdge, 0, len(histories))
 		for _, history := range histories {
+			var toChannel = findChannelForNode(history.To, &nodes)
 			switch {
 			case channel == "", channel == "stable":
 				if history.Success == 0 {
@@ -92,17 +102,17 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 					continue
 				}
 				branch := channel[len("stable-"):] + "."
-				if !strings.HasPrefix(history.To, branch) {
+				if !strings.HasPrefix(toChannel, branch) {
 					continue
 				}
 			case strings.HasPrefix(channel, "prerelease-"):
 				branch := channel[len("prerelease-"):] + "."
-				if !strings.HasPrefix(history.To, branch) {
+				if !strings.HasPrefix(toChannel, branch) {
 					continue
 				}
 			case strings.HasPrefix(channel, "nightly-"):
 				branch := channel[len("nightly-"):] + ".0-0.nightly-"
-				if !strings.HasPrefix(history.To, branch) {
+				if !strings.HasPrefix(toChannel, branch) {
 					continue
 				}
 			default:
