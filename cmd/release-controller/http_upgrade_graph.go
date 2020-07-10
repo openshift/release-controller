@@ -19,6 +19,7 @@ import (
 type ReleaseNode struct {
 	Version string `json:"version"`
 	Payload string `json:"payload"`
+	Channel string `json:"-"`
 }
 
 type ReleaseEdge []int
@@ -66,11 +67,13 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 					nodes = append(nodes, ReleaseNode{
 						Version: tag.Name,
 						Payload: s.Release.Target.Status.PublicDockerImageRepository + "@" + id,
+						Channel: tag.Annotations[releaseAnnotationName],
 					})
 				} else {
 					nodes = append(nodes, ReleaseNode{
 						Version: tag.Name,
 						Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
+						Channel: tag.Annotations[releaseAnnotationName],
 					})
 				}
 			}
