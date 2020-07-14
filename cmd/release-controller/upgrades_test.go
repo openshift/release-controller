@@ -33,8 +33,8 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 					Success: 2,
 					Total:   2,
 					History: map[string]UpgradeResult{
-						"http://1": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"},
-						"http://2": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"},
+						"http://1": {State: releaseVerificationStateSucceeded, URL: "http://1"},
+						"http://2": {State: releaseVerificationStateSucceeded, URL: "http://2"},
 					},
 				},
 				{
@@ -43,7 +43,7 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 					Success: 1,
 					Total:   1,
 					History: map[string]UpgradeResult{
-						"http://5": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://5"},
+						"http://5": {State: releaseVerificationStateSucceeded, URL: "http://5"},
 					},
 				},
 			},
@@ -86,7 +86,7 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 					Success: 1,
 					Total:   1,
 					History: map[string]UpgradeResult{
-						"http://3": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://3"},
+						"http://3": {State: releaseVerificationStateSucceeded, URL: "http://3"},
 					},
 				},
 				{
@@ -95,8 +95,8 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 					Success: 2,
 					Total:   2,
 					History: map[string]UpgradeResult{
-						"http://1": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"},
-						"http://2": UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"},
+						"http://1": {State: releaseVerificationStateSucceeded, URL: "http://1"},
+						"http://2": {State: releaseVerificationStateSucceeded, URL: "http://2"},
 					},
 				},
 			},

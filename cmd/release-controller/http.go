@@ -399,7 +399,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 		w.Write(data)
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL"), http.StatusBadRequest)
 	}
 }
 
