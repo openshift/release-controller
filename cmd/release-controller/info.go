@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -91,11 +92,21 @@ func (c *CachingReleaseInfo) ReleaseInfo(image string) (string, error) {
 	return s, err
 }
 
+func (c *CachingReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"releaseinfo", image}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return ReleaseUpgradeInfo{}, err
+	}
+	return releaseInfoToUpgradeInfo(s)
+}
+
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]int, error)
 	ChangeLog(from, to string) (string, error)
 	ReleaseInfo(image string) (string, error)
+	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 }
 
 type ExecReleaseInfo struct {
@@ -246,6 +257,56 @@ func bugListToArr(s string) ([]int, error) {
 		bugs = append(bugs, bugID)
 	}
 	return bugs, nil
+}
+
+type ReleaseUpgradeInfo struct {
+	Metadata *ReleaseUpgradeMetadata `json:"metadata"`
+}
+
+type ReleaseUpgradeMetadata struct {
+	Version string `json:"version"`
+	Previous []string `json:"previous"`
+}
+
+func releaseInfoToUpgradeInfo(s string) (ReleaseUpgradeInfo, error) {
+	var tagUpgradeInfo ReleaseUpgradeInfo
+	if err := json.Unmarshal([]byte(s), &tagUpgradeInfo); err != nil {
+		return ReleaseUpgradeInfo{}, fmt.Errorf("could not unmarshal release info for tag %s: %v", s, err)
+	}
+	return tagUpgradeInfo, nil
+}
+
+func (r *ExecReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, error) {
+	if _, err := imagereference.Parse(image); err != nil {
+		return ReleaseUpgradeInfo{}, fmt.Errorf("%s is not an image reference: %v", image, err)
+	}
+	cmd := []string{"oc", "adm", "release", "info", "-o", "json", image}
+
+	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Container: "git",
+		Stdout:    true,
+		Stderr:    true,
+		Command:   cmd,
+	}, scheme.ParameterCodec).URL()
+
+	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
+	if err != nil {
+		return ReleaseUpgradeInfo{}, fmt.Errorf("could not initialize a new SPDY executor: %v", err)
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := e.Stream(remotecommand.StreamOptions{
+		Stdout: out,
+		Stdin:  nil,
+		Stderr: errOut,
+	}); err != nil {
+		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return ReleaseUpgradeInfo{}, fmt.Errorf("could not get release info for %s: %v", image, msg)
+	}
+	return releaseInfoToUpgradeInfo(out.String())
 }
 
 func (r *ExecReleaseInfo) refreshPod() error {
