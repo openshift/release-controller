@@ -116,15 +116,6 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
-	// ensure cleanup on terminal tags
-	if err := c.syncTerminal(release); err != nil {
-		if errors.IsConflict(err) {
-			return nil
-		}
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
-		return err
-	}
-
 	// if we're waiting for an interval to elapse, go ahead and queue to be woken
 	if queueAfter > 0 {
 		c.queue.AddAfter(key, queueAfter)
@@ -521,40 +512,6 @@ func (c *Controller) syncReady(release *Release) error {
 	}
 
 	return nil
-}
-
-func (c *Controller) syncTerminal(release *Release) error {
-	terminalTags := sortedRawReleaseTags(release, releasePhaseAccepted, releasePhaseRejected)
-	if klog.V(5) && len(terminalTags) > 0 {
-		klog.Infof("terminal=%v", tagNames(terminalTags))
-	}
-	var tagAnnotations map[string]interface{}
-	for _, releaseTag := range terminalTags {
-		oldVerifyStatus := releaseTag.Annotations[releaseAnnotationVerify]
-		if len(oldVerifyStatus) == 0 {
-			klog.V(5).Infof("%s: Empty verify annotation, skipping", releaseTag.Name)
-			continue
-		}
-		status := make(VerificationStatusMap)
-		if err := json.Unmarshal([]byte(oldVerifyStatus), &status); err != nil {
-			klog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
-			continue
-		}
-		for i := range status {
-			status[i].TransitionTime = nil
-		}
-		newVerifyStatus := toJSONString(status)
-		if  newVerifyStatus == oldVerifyStatus {
-			continue
-		}
-		releaseTag.Annotations[releaseAnnotationVerify] = newVerifyStatus
-		if tagAnnotations == nil {
-			tagAnnotations = map[string]interface{}{releaseTag.Name: releaseTag.Annotations}
-			continue
-		}
-		tagAnnotations[releaseTag.Name] = releaseTag.Annotations
-	}
-	return c.updateReleaseTagAnnotations(release, tagAnnotations)
 }
 
 func (c *Controller) syncAccepted(release *Release) error {
