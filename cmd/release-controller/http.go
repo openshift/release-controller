@@ -725,8 +725,11 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 	if len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
-		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p>`)
-		fmt.Fprintf(w, "<div class=\"alert alert-warning\">Untested upgrades: %s</div><ul>", strings.Join(missingUpgrades, ", "))
+		if len(missingUpgrades) > 0 {
+			fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p>`)
+			fmt.Fprintf(w, "<div class=\"alert alert-warning\">Untested upgrades: %s</div>", strings.Join(missingUpgrades, ", "))
+		}
+		fmt.Fprintf(w, "<ul>")
 		for _, upgrade := range upgradesTo {
 			var style string
 			switch {
