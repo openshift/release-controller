@@ -264,7 +264,7 @@ type ReleaseUpgradeInfo struct {
 }
 
 type ReleaseUpgradeMetadata struct {
-	Version string `json:"version"`
+	Version  string   `json:"version"`
 	Previous []string `json:"previous"`
 }
 

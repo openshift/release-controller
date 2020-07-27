@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/russross/blackfriday"
 	"net/http"
@@ -17,6 +18,14 @@ var (
 	reRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
 	reRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 )
+
+type dockerImageConfig struct {
+	Architecture string `json:"architecture"`
+}
+
+type releaseInfoConfig struct {
+	Config *dockerImageConfig `json:"config"`
+}
 
 func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string) {
 	flusher, ok := w.(http.Flusher)
@@ -40,6 +49,30 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 			return
 		}
 
+		op, err := c.releaseInfo.ReleaseInfo(toPull)
+		if err != nil {
+			ch <- renderResult{err: fmt.Errorf("could not get release info for pullSpec %s: %v", toPull, err)}
+			return
+		}
+
+		// Extract the architecture out of the ReleaseInfo
+		releaseInfo := releaseInfoConfig{}
+		if err := json.Unmarshal([]byte(op), &releaseInfo); err != nil {
+			ch <- renderResult{err: fmt.Errorf("could not unmarshal release info for pullSpec %s: %v", toPull, err)}
+			return
+		}
+
+		// There is an inconsistency with what is returned from ReleaseInfo (amd64) and what
+		// needs to be passed into the RHCOS diff engine (x86_64).
+		var architecture, archExtension string
+
+		if releaseInfo.Config.Architecture == "amd64" {
+			architecture = "x86_64"
+		} else {
+			architecture = releaseInfo.Config.Architecture
+			archExtension = fmt.Sprintf("-%s", architecture)
+		}
+
 		// replace references to the previous version with links
 		rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(fromTag)))
 		if err != nil {
@@ -60,7 +93,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		//       For now, this will have to do.
 		if m := reRHCoSDiff.FindStringSubmatch(out); m != nil {
 			fromRelease := m[1]
-			fromStream := fmt.Sprintf("releases/rhcos-%s.%s", m[2], m[3])
+			fromStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], archExtension)
 			fromURL := url.URL{
 				Scheme: "https",
 				Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
@@ -71,7 +104,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 				}).Encode(),
 			}
 			toRelease := m[4]
-			toStream := fmt.Sprintf("releases/rhcos-%s.%s", m[5], m[6])
+			toStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[5], m[6], archExtension)
 			toURL := url.URL{
 				Scheme: "https",
 				Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
@@ -90,6 +123,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 					"first_release":  []string{fromRelease},
 					"second_stream":  []string{toStream},
 					"second_release": []string{toRelease},
+					"arch":           []string{architecture},
 				}).Encode(),
 			}
 			replace := fmt.Sprintf(
@@ -104,7 +138,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		}
 		if m := reRHCoSVersion.FindStringSubmatch(out); m != nil {
 			fromRelease := m[1]
-			fromStream := fmt.Sprintf("releases/rhcos-%s.%s", m[2], m[3])
+			fromStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], archExtension)
 			fromURL := url.URL{
 				Scheme: "https",
 				Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
