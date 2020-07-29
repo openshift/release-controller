@@ -63,8 +63,8 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 }
 
 func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, error) {
-	if len(data) > 4*1024 {
-		return nil, fmt.Errorf("release config must be less than 4k")
+	if len(data) > 8*1024 {
+		return nil, fmt.Errorf("release config must be less than 8k")
 	}
 	if configCache != nil {
 		obj, ok := configCache.Get(data)
