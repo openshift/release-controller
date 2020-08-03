@@ -725,8 +725,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 	if len(upgradesTo) > 0 {
 		sort.Sort(newNewestSemVerFromSummaries(upgradesTo))
+		fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p>`)
 		if len(missingUpgrades) > 0 {
-			fmt.Fprintf(w, `<p id="upgrades-from">Upgrades from:</p>`)
 			fmt.Fprintf(w, "<div class=\"alert alert-warning\">Untested upgrades: %s</div>", strings.Join(missingUpgrades, ", "))
 		}
 		fmt.Fprintf(w, "<ul>")
@@ -738,8 +738,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			case upgrade.Success > 0:
 				style = "text-success"
 			}
-			if !upgradeFound[upgrade.From] {
-				style = fmt.Sprintf("%s font-weight-bold", style)
+			if len(supportedUpgrades) > 0 && !upgradeFound[upgrade.From] {
 				continue
 			}
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
