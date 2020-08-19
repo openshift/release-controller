@@ -25,8 +25,9 @@ import (
 // or to the entire namespace.
 func (c *Controller) sync(key queueKey) error {
 	defer func() {
-		err := recover()
-		panic(err)
+		if err := recover(); err != nil {
+			panic(err)
+		}
 	}()
 
 	// if we are waiting to observe the result of our previous actions, simply delay

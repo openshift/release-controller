@@ -33,8 +33,9 @@ func getNonVerifiedTags(acceptedTags []*v1.TagReference) (current, previous *v1.
 // PR reviewed and approved by the QA contact for the bug
 func (c *Controller) syncBugzilla(key queueKey) error {
 	defer func() {
-		err := recover()
-		panic(err)
+		if err := recover(); err != nil {
+			panic(err)
+		}
 	}()
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)

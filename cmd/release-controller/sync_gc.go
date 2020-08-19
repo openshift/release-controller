@@ -18,8 +18,9 @@ import (
 // know whether to delete the objects.
 func (c *Controller) garbageCollectSync() error {
 	defer func() {
-		err := recover()
-		panic(err)
+		if err := recover(); err != nil {
+			panic(err)
+		}
 	}()
 
 	imageStreams, err := c.releaseLister.List(labels.Everything())

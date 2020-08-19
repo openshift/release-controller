@@ -29,8 +29,9 @@ type AuditStore interface {
 // or to the entire namespace.
 func (c *Controller) syncAudit(key queueKey) error {
 	defer func() {
-		err := recover()
-		panic(err)
+		if err := recover(); err != nil {
+			panic(err)
+		}
 	}()
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)
