@@ -215,6 +215,48 @@ func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases 
 	return nil
 }
 
+// Update annotations for a set of tags in a release
+func (c *Controller) updateReleaseTagAnnotations(release *Release, tagAnnotations map[string]interface{}) error {
+	if len(tagAnnotations) == 0 {
+		return nil
+	}
+	var changed bool
+	target := release.Target.DeepCopy()
+	for name, annotationInterface := range tagAnnotations {
+		annotations, ok := annotationInterface.(map[string]string)
+		if !ok {
+			continue
+		}
+		tag := findTagReference(target, name)
+		if tag == nil {
+			return fmt.Errorf("release %s no longer exists, cannot update annotations", name)
+		}
+		if tag.Annotations == nil {
+			tag.Annotations = make(map[string]string)
+		}
+		for k, v := range annotations {
+			if _, ok := tag.Annotations[k]; ok && len(v) == 0 {
+				delete(tag.Annotations, k)
+				changed = true
+				continue
+			}
+			if tag.Annotations[k] != v {
+				tag.Annotations[k] = v
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return nil
+	}
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	if err != nil {
+		return err
+	}
+	updateReleaseTarget(release, is)
+	return nil
+}
+
 func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
 	target := release.Target.DeepCopy()
 	changed := 0
