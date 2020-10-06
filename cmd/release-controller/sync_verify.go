@@ -66,50 +66,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			// if this is an upgrade job, find the appropriate source for the upgrade job
 			var previousTag, previousReleasePullSpec string
 			if verifyType.Upgrade {
-				upgradeType := releaseUpgradeFromPrevious
-				if release.Config.As == releaseConfigModeStable {
-					upgradeType = releaseUpgradeFromPreviousPatch
-				}
-				if len(verifyType.UpgradeFrom) > 0 {
-					upgradeType = verifyType.UpgradeFrom
-				}
-				switch upgradeType {
-				case releaseUpgradeFromPrevious:
-					if tags := sortedReleaseTags(release, releasePhaseAccepted); len(tags) > 0 {
-						previousTag = tags[0].Name
-						previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-					}
-				case releaseUpgradeFromPreviousMinor:
-					if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
-						version.Minor--
-						if ref, err := c.stableReleases(); err == nil {
-							for _, stable := range ref.Releases {
-								versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
-								sort.Sort(versions)
-								if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
-									previousTag = v.Tag.Name
-									previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-									break
-								}
-							}
-						}
-					}
-				case releaseUpgradeFromPreviousPatch:
-					if version, err := semver.Parse(releaseTag.Name); err == nil {
-						if ref, err := c.stableReleases(); err == nil {
-							for _, stable := range ref.Releases {
-								versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
-								sort.Sort(versions)
-								if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
-									previousTag = v.Tag.Name
-									previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-									break
-								}
-							}
-						}
-					}
-				default:
-					return nil, fmt.Errorf("release %s has verify type %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
+				var err error
+				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom)
+				if err != nil {
+					return nil, err
 				}
 			}
 			jobName := name
@@ -159,4 +119,53 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 		c.queue.AddAfter(key, retryQueueDelay)
 	}
 	return verifyStatus, nil
+}
+
+func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imagev1.TagReference, name, upgradeFrom string) (previousTag, previousReleasePullSpec string, err error) {
+	upgradeType := releaseUpgradeFromPrevious
+	if release.Config.As == releaseConfigModeStable {
+		upgradeType = releaseUpgradeFromPreviousPatch
+	}
+	if len(upgradeFrom) > 0 {
+		upgradeType = upgradeFrom
+	}
+	switch upgradeType {
+	case releaseUpgradeFromPrevious:
+		if tags := sortedReleaseTags(release, releasePhaseAccepted); len(tags) > 0 {
+			previousTag = tags[0].Name
+			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+		}
+	case releaseUpgradeFromPreviousMinor:
+		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
+			version.Minor--
+			if ref, err := c.stableReleases(); err == nil {
+				for _, stable := range ref.Releases {
+					versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
+					sort.Sort(versions)
+					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
+						previousTag = v.Tag.Name
+						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+						break
+					}
+				}
+			}
+		}
+	case releaseUpgradeFromPreviousPatch:
+		if version, err := semver.Parse(releaseTag.Name); err == nil {
+			if ref, err := c.stableReleases(); err == nil {
+				for _, stable := range ref.Releases {
+					versions := unsortedSemanticReleaseTags(stable.Release, releasePhaseAccepted)
+					sort.Sort(versions)
+					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
+						previousTag = v.Tag.Name
+						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+						break
+					}
+				}
+			}
+		}
+	default:
+		return "", "", fmt.Errorf("release %s has job %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
+	}
+	return previousTag, previousReleasePullSpec, err
 }

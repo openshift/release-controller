@@ -106,6 +106,10 @@ type ReleaseConfig struct {
 	// rejected.
 	Verify map[string]ReleaseVerification `json:"verify"`
 
+	// Periodic is a map of short names to verification steps that run based on a cron
+	// or interval timer.
+	Periodic map[string]ReleasePeriodic `json:"periodic"`
+
 	// Publish is a map of short names to publish steps that will be performed after
 	// the release is Accepted. Some publish steps are continuously maintained, others
 	// may only be performed once.
@@ -211,6 +215,36 @@ type ReleaseVerification struct {
 	ProwJob *ProwJobVerification `json:"prowJob"`
 	// Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
 	MaxRetries int `json:"maxRetries,omitempty"`
+}
+
+// ReleasePeriodic is a job that runs on the speicifed cron or interval period as a
+// release informer.
+type ReleasePeriodic struct {
+	// Interval to wait between two runs of the job.
+	Interval string `json:"interval,omitempty"`
+	// Cron representation of job trigger time
+	Cron string `json:"cron,omitempty"`
+
+	// Upgrade is true if this verification should be used to verify upgrades.
+	// The default UpgradeFrom for stable streams is PreviousMicro and the default
+	// for other types of streams is Previous.
+	Upgrade bool `json:"upgrade"`
+	// UpgradeFrom, if set, describes a different default upgrade source. The supported
+	// values are:
+	//
+	// Previous - selects the latest accepted tag from the current stream
+	// PreviousMicro - selects the latest accepted patch version from the current minor
+	//   version (4.2.1 will select the latest accepted 4.2.z tag).
+	// PreviousMinor - selects the latest accepted patch version from the previous minor
+	//   version (4.2.1 will select the latest accepted 4.1.z tag).
+	//
+	// If no matching target exists the job will be a no-op.
+	UpgradeFrom string `json:"upgradeFrom"`
+
+	// ProwJob requires that the named ProwJob from the prow config pass before the
+	// release is accepted. The job is run only one time and if it fails the release
+	// is rejected.
+	ProwJob *ProwJobVerification `json:"prowJob"`
 }
 
 // ProwJobVerification identifies the name of a prow job that will be used to
