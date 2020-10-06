@@ -34,6 +34,7 @@ type ComparisonPage struct {
 
 const comparisonDashboardPageHtml = `
 <h1>Release Comparison Dashboard</h1>
+<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit <a href="https://access.redhat.com/downloads/content/290/">the Red Hat Customer Portal</a> for the latest supported product details.</div>
 <p class="small mb-3">
 	Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
