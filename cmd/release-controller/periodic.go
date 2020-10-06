@@ -59,19 +59,13 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 					klog.Errorf("the prowjob %s is not valid: %v", periodic.ProwJob.Name, err)
 					continue
 				}
-				// create unique job name based on release; this prevents issues where the same base job is specified
-				// by 2 different releases (for example nightly vs ci) or when a job gets runs by horologium
-				jobName := fmt.Sprintf("%s-%s-periodic", periodic.ProwJob.Name, r.Config.Name)
-				// make new copy of periodicConfig so we can update the name
-				newPeriodicConfig := *periodicConfig
-				newPeriodicConfig.Name = jobName
-				releasePeriodics[jobName] = PeriodicWithRelease{
-					Periodic:    &newPeriodicConfig,
+				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
+					Periodic:    periodicConfig,
 					Release:     r,
 					Upgrade:     periodic.Upgrade,
 					UpgradeFrom: periodic.UpgradeFrom,
 				}
-				cronConfig.Periodics = append(cronConfig.Periodics, newPeriodicConfig)
+				cronConfig.Periodics = append(cronConfig.Periodics, *periodicConfig)
 			}
 		}
 		// update cron
