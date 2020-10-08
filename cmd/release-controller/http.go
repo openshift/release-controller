@@ -52,7 +52,7 @@ const htmlPageEnd = `
 
 const releasePageHtml = `
 <h1>Release Status</h1>
-<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit <a href="https://access.redhat.com/downloads/content/290/">the Red Hat Customer Portal</a> for the latest supported product details.</div>
+<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 <p class="small mb-3">
 	Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
@@ -165,7 +165,7 @@ const releaseInfoPageHtml = `
 
 const releaseDashboardPageHtml = `
 <h1>Release Dashboard</h1>
-<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit <a href="https://access.redhat.com/downloads/content/290/">the Red Hat Customer Portal</a> for the latest supported product details.</div>
+<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 <p class="small mb-3">
 	Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
@@ -701,7 +701,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "<div class=\"alert alert-warning\">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit <a href=\"https://access.redhat.com/downloads/content/290/\">the Red Hat Customer Portal</a> for the latest supported product details.</div>")
+	fmt.Fprintf(w, "<div class=\"alert alert-warning\">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit the Red Hat Customer Portal for the latest supported product details.</div>")
 
 	renderInstallInstructions(w, mirror, info.Tag, tagPull, c.artifactsHost)
 
