@@ -34,10 +34,10 @@ type ComparisonPage struct {
 
 const comparisonDashboardPageHtml = `
 <h1>Release Comparison Dashboard</h1>
-<div class="alert alert-warning">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 <p class="small mb-3">
 	Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
+<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 `
 
 func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Request) {
