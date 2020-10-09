@@ -79,6 +79,8 @@ type options struct {
 	github         flagutil.GitHubOptions
 	bugzilla       flagutil.BugzillaOptions
 	githubThrottle int
+
+	validateConfigs string
 }
 
 func main() {
@@ -136,6 +138,8 @@ func main() {
 	flagset.StringVar(&opt.PluginConfig, "plugin-config", opt.PluginConfig, "Path to Prow plugin config file. Used when verifying bugs, ignored otherwise.")
 	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
 
+	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
+
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
@@ -149,6 +153,10 @@ func main() {
 }
 
 func (o *options) Run() error {
+	if o.validateConfigs != "" {
+		return validateConfigs(o.validateConfigs)
+	}
+
 	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
 	if len(tagParts) != 2 || len(tagParts[1]) == 0 {
 		return fmt.Errorf("--tools-image-stream-tag must be STREAM:TAG or :TAG (default STREAM is the oldest release stream)")
