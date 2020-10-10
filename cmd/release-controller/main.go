@@ -78,6 +78,7 @@ type options struct {
 	PluginConfig   string
 	github         flagutil.GitHubOptions
 	bugzilla       flagutil.BugzillaOptions
+	githubThrottle int
 }
 
 func main() {
@@ -133,6 +134,7 @@ func main() {
 
 	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
 	flagset.StringVar(&opt.PluginConfig, "plugin-config", opt.PluginConfig, "Path to Prow plugin config file. Used when verifying bugs, ignored otherwise.")
+	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -268,6 +270,7 @@ func (o *options) Run() error {
 		if err != nil {
 			return fmt.Errorf("Failed to create github client: %v", err)
 		}
+		ghClient.Throttle(o.githubThrottle, 0)
 		bzClient, err := o.bugzilla.BugzillaClient(secretAgent)
 		if err != nil {
 			return fmt.Errorf("Failed to create bugzilla client: %v", err)
