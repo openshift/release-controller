@@ -573,17 +573,97 @@ mkdir -p /tmp/.docker/
 cp /tmp/pull-secret/* /tmp/.docker/ || true
 oc registry login
 
-cat <<END >>/tmp/serve.py
-import re
-import os
-import subprocess
-import time
-import threading
-import socket
-import BaseHTTPServer
-import SimpleHTTPServer
-
+if which python3 2> /dev/null; then
+  # If python3 is available, use it
+  cat <<END >/tmp/serve.py
+import re, os, subprocess, time, threading, socket, socketserver, http, http.server
 from subprocess import CalledProcessError
+
+handler = http.server.SimpleHTTPRequestHandler
+
+RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
+
+class FileServer(handler):
+    def _present_default_content(self, name):
+        content = ("""<!DOCTYPE html>
+        <html>
+            <head>
+                <meta http-equiv=\"refresh\" content=\"5\">
+            </head>
+            <body>
+                <p>Extracting tools for %s, may take up to a minute ...</p>
+            </body>
+        </html>
+        """ % name).encode('UTF-8')
+
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Retry-After", "5")
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _get_extension(self, namespace):
+        index = namespace.find('-')
+        if index == -1:
+            return ''
+        return namespace[index::]
+
+    def do_GET(self):
+        path = self.path.strip("/")
+        segments = path.split("/")
+        extension = self._get_extension(RELEASE_NAMESPACE)
+
+        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
+            name = segments[0]
+
+            if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+                handler.do_GET(self)
+                return
+
+            if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+                self._present_default_content(name)
+                return
+
+            try:
+                os.mkdir(name)
+            except OSError:
+                pass
+
+            with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                outfile.write("Downloading %s" % name)
+
+            try:
+                self._present_default_content(name)
+                self.wfile.flush()
+
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
+                                        stderr=subprocess.STDOUT)
+                os.remove(os.path.join(name, "DOWNLOADING.md"))
+
+            except CalledProcessError as e:
+                print("Unable to get release tools for %s: %s" % name, e.output)
+
+                if e.output and ("no such image" in e.output or
+                                  "image does not exist" in e.output or
+                                  "unauthorized: access to the requested resource is not authorized" in e.output or
+                                  "some required images are missing" in e.output or
+                                  "invalid reference format" in e.output):
+                    with open(os.path.join(name, "FAILED.md"), "w") as outfile:
+                        outfile.write("Unable to get release tools: %s" % e.output)
+                    os.remove(os.path.join(name, "DOWNLOADING.md"))
+                    return
+
+                with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
+                    outfile.write("Unable to get release tools: %s" % e.output)
+
+            except Exception as e:
+                print("Unable to get release tools for %s: %s" % name, e.message)
+                self.log_error('An unexpected error has occurred: {}'.format(e.message))
+
+            return
+
+        handler.do_GET(self)
 
 # Create socket
 addr = ('', 8080)
@@ -592,10 +672,34 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(addr)
 sock.listen(5)
 
+# Launch multiple listeners as threads
+class Thread(threading.Thread):
+  def __init__(self, i):
+    threading.Thread.__init__(self)
+    self.i = i
+    self.daemon = True
+    self.start()
+  def run(self):
+    with socketserver.TCPServer(addr, FileServer, False) as httpd:
+      # Prevent the HTTP server from re-binding every handler.
+      # https://stackoverflow.com/questions/46210672/
+      httpd.socket = sock
+      httpd.server_bind = self.server_close = lambda self: None
+      httpd.serve_forever()
+[Thread(i) for i in range(100)]
+time.sleep(9e9)
+END
+  python3 /tmp/serve.py
+else
+  cat <<END >/tmp/serve.py
+import re, os, subprocess, time, threading, socket, BaseHTTPServer, SimpleHTTPServer
+from subprocess import CalledProcessError
+
 RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 
+handler = SimpleHTTPServer.SimpleHTTPRequestHandler
 
-class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class FileServer(handler):
     def _present_default_content(self, name):
         content = ("""<!DOCTYPE html>
         <html>
@@ -631,7 +735,7 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
             name = segments[0]
 
             if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
-                SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+                handler.do_GET(self)
                 return
 
             if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
@@ -655,10 +759,10 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
             except CalledProcessError as e:
                 if e.output and ("no such image" in e.output or
-                                 "image does not exist" in e.output or
-                                 "unauthorized: access to the requested resource is not authorized" in e.output or
-                                 "some required images are missing" in e.output or
-                                 "invalid reference format" in e.output):
+                                  "image does not exist" in e.output or
+                                  "unauthorized: access to the requested resource is not authorized" in e.output or
+                                  "some required images are missing" in e.output or
+                                  "invalid reference format" in e.output):
                     with open(os.path.join(name, "FAILED.md"), "w") as outfile:
                         outfile.write("Unable to get release tools: %s" % e.output)
                     os.remove(os.path.join(name, "DOWNLOADING.md"))
@@ -672,8 +776,14 @@ class FileServer(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
             return
 
-        SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+        handler.do_GET(self)
 
+# Create socket
+addr = ('', 8080)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(addr)
+sock.listen(5)
 
 # Launch multiple listeners as threads
 class Thread(threading.Thread):
@@ -684,7 +794,7 @@ class Thread(threading.Thread):
         self.start()
 
     def run(self):
-        server = FileServer  # SimpleHTTPServer.SimpleHTTPRequestHandler
+        server = FileServer
         server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
         httpd = BaseHTTPServer.HTTPServer(addr, server, False)
 
@@ -699,8 +809,9 @@ class Thread(threading.Thread):
 [Thread(i) for i in range(100)]
 time.sleep(9e9)
 END
-python /tmp/serve.py
-`,
+  python /tmp/serve.py
+fi
+              `,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
