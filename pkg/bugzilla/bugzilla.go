@@ -62,6 +62,9 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			errs = append(errs, fmt.Errorf("Unable to get bugzilla number %d: %v", bzp.bugID, err))
 			continue
 		}
+		if bug.Status == "CLOSED" {
+			continue
+		}
 		comments, err := c.ghClient.ListIssueComments(bzp.org, bzp.repo, bzp.prNum)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("Unable to get comments for github pull %s/%s#%d: %v", bzp.org, bzp.repo, bzp.prNum, err))
