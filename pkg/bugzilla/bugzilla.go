@@ -62,14 +62,7 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			errs = append(errs, fmt.Errorf("Unable to get bugzilla number %d: %v", bzp.bugID, err))
 			continue
 		}
-		// Get PR so we can identify the branch the PR is being merged to
-		pr, err := c.ghClient.GetPullRequest(bzp.org, bzp.repo, bzp.prNum)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Unable to retrieve pull request %s/%s#%d: %v", bzp.org, bzp.repo, bzp.prNum, err))
-			continue
-		}
-		// only act on bug if status is in the configured state_after_merge
-		if bug.Status != c.pluginConfig.Bugzilla.OptionsForBranch(bzp.org, bzp.repo, pr.Base.Ref).StateAfterMerge.Status {
+		if bug.Status != "ON_QA" {
 			continue
 		}
 		comments, err := c.ghClient.ListIssueComments(bzp.org, bzp.repo, bzp.prNum)
