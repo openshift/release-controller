@@ -394,6 +394,8 @@ func (o *options) Run() error {
 				}
 			}, 2*time.Minute, stopCh)
 		}()
+
+		go c.syncPeriodicJobs(prowInformers, stopCh)
 	}
 
 	klog.Infof("Waiting for caches to sync")
