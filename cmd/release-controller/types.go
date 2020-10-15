@@ -377,9 +377,10 @@ const (
 
 	releaseConfigModeStable = "Stable"
 
-	releaseUpgradeFromPreviousMinor = "PreviousMinor"
-	releaseUpgradeFromPreviousPatch = "PreviousPatch"
-	releaseUpgradeFromPrevious      = "Previous"
+	releaseUpgradeFromPreviousMinor  = "PreviousMinor"
+	releaseUpgradeFromPreviousPatch  = "PreviousPatch"
+	releaseUpgradeFromPrevious       = "Previous"
+	releaseUpgradeFromPreviousMinus1 = "PreviousMinus1"
 
 	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation

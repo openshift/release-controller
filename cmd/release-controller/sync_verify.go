@@ -67,7 +67,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			var previousTag, previousReleasePullSpec string
 			if verifyType.Upgrade {
 				var err error
-				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom)
+				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, false)
 				if err != nil {
 					return nil, err
 				}
@@ -121,8 +121,13 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	return verifyStatus, nil
 }
 
-func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imagev1.TagReference, name, upgradeFrom string) (previousTag, previousReleasePullSpec string, err error) {
-	upgradeType := releaseUpgradeFromPrevious
+func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
+	var upgradeType string
+	if periodic {
+		upgradeType = releaseUpgradeFromPreviousMinus1
+	} else {
+		upgradeType = releaseUpgradeFromPrevious
+	}
 	if release.Config.As == releaseConfigModeStable {
 		upgradeType = releaseUpgradeFromPreviousPatch
 	}
@@ -133,6 +138,11 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imag
 	case releaseUpgradeFromPrevious:
 		if tags := sortedReleaseTags(release, releasePhaseAccepted); len(tags) > 0 {
 			previousTag = tags[0].Name
+			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+		}
+	case releaseUpgradeFromPreviousMinus1:
+		if tags := sortedReleaseTags(release, releasePhaseAccepted); len(tags) > 1 {
+			previousTag = tags[1].Name
 			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 		}
 	case releaseUpgradeFromPreviousMinor:
