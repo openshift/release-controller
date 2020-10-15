@@ -49,23 +49,33 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 			if err != nil || !ok {
 				continue
 			}
-			for _, periodic := range r.Config.Periodic {
-				periodicConfig, ok := hasProwJob(cfg, periodic.ProwJob.Name)
+			for name, releasePeriodic := range r.Config.Periodic {
+				periodicConfig, ok := hasProwJob(cfg, releasePeriodic.ProwJob.Name)
 				if !ok {
-					klog.Errorf("the prow job %s is not valid: no job with that name", periodic.ProwJob.Name)
+					klog.Errorf("the prow job %s is not valid: no job with that name", releasePeriodic.ProwJob.Name)
 					continue
 				}
 				if err := validateProwJob(periodicConfig); err != nil {
-					klog.Errorf("the prowjob %s is not valid: %v", periodic.ProwJob.Name, err)
+					klog.Errorf("the prowjob %s is not valid: %v", releasePeriodic.ProwJob.Name, err)
 					continue
 				}
-				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
-					Periodic:    periodicConfig,
-					Release:     r,
-					Upgrade:     periodic.Upgrade,
-					UpgradeFrom: periodic.UpgradeFrom,
+				// make copy of periodic with updated interval and cron values
+				updatedPeriodicConfig := *periodicConfig
+				updatedPeriodicConfig.Interval = releasePeriodic.Interval
+				intervalDuration, err := time.ParseDuration(releasePeriodic.Interval)
+				if err != nil {
+					klog.Errorf("could not parse interval for periodic job %s/%s: %v", r.Config.Name, name, err)
+					continue
 				}
-				cronConfig.Periodics = append(cronConfig.Periodics, *periodicConfig)
+				updatedPeriodicConfig.SetInterval(intervalDuration)
+				updatedPeriodicConfig.Cron = releasePeriodic.Cron
+				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
+					Periodic:    &updatedPeriodicConfig,
+					Release:     r,
+					Upgrade:     releasePeriodic.Upgrade,
+					UpgradeFrom: releasePeriodic.UpgradeFrom,
+				}
+				cronConfig.Periodics = append(cronConfig.Periodics, updatedPeriodicConfig)
 			}
 		}
 		// update cron
