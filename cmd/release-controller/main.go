@@ -52,12 +52,15 @@ import (
 )
 
 type options struct {
-	ReleaseNamespaces    []string
-	PublishNamespaces    []string
-	JobNamespace         string
-	ProwNamespace        string
+	ReleaseNamespaces []string
+	PublishNamespaces []string
+	JobNamespace      string
+	ProwNamespace     string
+
 	ProwJobKubeconfig    string
 	NonProwJobKubeconfig string
+	ReleasesKubeconfig   string
+	ToolsKubeconfig      string
 
 	ProwConfigPath string
 	JobConfigPath  string
@@ -121,12 +124,17 @@ func main() {
 
 	var ignored string
 	flagset.StringVar(&ignored, "to", ignored, "REMOVED: The image stream in the release namespace to push releases to.")
-	flagset.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
+
 	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults in-cluster config if unset.")
 	flagset.StringVar(&opt.NonProwJobKubeconfig, "non-prow-job-kubeconfig", opt.NonProwJobKubeconfig, "The kubeconfig to use for everything that is not prowjobs (namespaced, pods, batchjobs, ....). Falls back to incluster config if unset")
+	flagset.StringVar(&opt.ReleasesKubeconfig, "releases-kubeconfig", opt.ReleasesKubeconfig, "The kubeconfig to use for interacting with release imagestreams and jobs. Falls back to non-prow-job-kubeconfig and then incluster config if unset")
+	flagset.StringVar(&opt.ToolsKubeconfig, "tools-kubeconfig", opt.ToolsKubeconfig, "The kubeconfig to use for running the release-controller tools. Falls back to non-prow-job-kubeconfig and then incluster config if unset")
+
+	flagset.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
 	flagset.StringSliceVar(&opt.PublishNamespaces, "publish-namespace", opt.PublishNamespaces, "Optional namespaces that the release might publish results to.")
 	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
+
 	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
 	flagset.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
 
@@ -182,6 +190,14 @@ func (o *options) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config from %s: %w", o.NonProwJobKubeconfig, err)
 	}
+	releasesConfig, err := o.releasesKubeconfig(inClusterCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load releases config from %s: %w", o.ReleasesKubeconfig, err)
+	}
+	toolsConfig, err := o.toolsKubeconfig(inClusterCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load tools config from %s: %w", o.ToolsKubeconfig, err)
+	}
 	var mode string
 	switch {
 	case o.DryRun:
@@ -194,10 +210,20 @@ func (o *options) Run() error {
 		mode = "manage"
 	}
 	config.UserAgent = fmt.Sprintf("release-controller/%s (%s/%s) %s", version.Get().GitVersion, goruntime.GOOS, goruntime.GOARCH, mode)
+	releasesConfig.UserAgent = fmt.Sprintf("release-controller/%s (%s/%s) %s", version.Get().GitVersion, goruntime.GOOS, goruntime.GOARCH, mode)
+	toolsConfig.UserAgent = fmt.Sprintf("release-controller/%s (%s/%s) %s", version.Get().GitVersion, goruntime.GOOS, goruntime.GOARCH, mode)
 
 	client, err := clientset.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("unable to create client: %v", err)
+	}
+	releasesClient, err := clientset.NewForConfig(releasesConfig)
+	if err != nil {
+		return fmt.Errorf("unable to create releases client: %v", err)
+	}
+	toolsClient, err := clientset.NewForConfig(toolsConfig)
+	if err != nil {
+		return fmt.Errorf("unable to create tools client: %v", err)
 	}
 	releaseNamespace := o.ReleaseNamespaces[0]
 	for _, ns := range o.ReleaseNamespaces {
@@ -212,9 +238,9 @@ func (o *options) Run() error {
 	}
 	klog.Infof("Releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
-	imageClient, err := imageclientset.NewForConfig(config)
+	imageClient, err := imageclientset.NewForConfig(releasesConfig)
 	if err != nil {
-		return fmt.Errorf("unable to create client: %v", err)
+		return fmt.Errorf("unable to create image client: %v", err)
 	}
 
 	prowClient, err := o.prowJobClient(inClusterCfg)
@@ -224,7 +250,7 @@ func (o *options) Run() error {
 	stopCh := wait.NeverStop
 	var hasSynced []cache.InformerSynced
 
-	batchFactory := informers.NewSharedInformerFactoryWithOptions(client, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
+	batchFactory := informers.NewSharedInformerFactoryWithOptions(releasesClient, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 	hasSynced = append(hasSynced, jobs.Informer().HasSynced)
 
@@ -236,17 +262,17 @@ func (o *options) Run() error {
 	}
 
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := NewExecReleaseInfo(client, config, o.JobNamespace, releaseNamespace, imageCache.Get)
+	execReleaseInfo := NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
-	execReleaseFiles := NewExecReleaseFiles(client, config, o.JobNamespace, releaseNamespace, releaseNamespace, imageCache.Get)
+	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, imageCache.Get)
 
 	graph := NewUpgradeGraph()
 
 	c := NewController(
 		client.CoreV1(),
 		imageClient.ImageV1(),
-		client.BatchV1(),
+		releasesClient.BatchV1(),
 		jobs,
 		client.CoreV1(),
 		configAgent,
@@ -414,7 +440,7 @@ func (o *options) Run() error {
 		klog.Infof("Dry run mode (no changes will be made)")
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		<-stopCh
 		return nil
@@ -422,7 +448,7 @@ func (o *options) Run() error {
 		klog.Infof("Auditing releases to %s", o.AuditStorage)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		c.RunAudit(4, stopCh)
 		return nil
@@ -430,7 +456,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		c.RunSync(3, stopCh)
 		return nil
@@ -438,7 +464,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing releases")
 
 		// keep the graph in a more persistent form
-		go syncGraphToSecret(graph, true, client.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go syncGraphToSecret(graph, true, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 		// maintain the release pods
 		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
 
@@ -473,6 +499,26 @@ func (o *options) nonProwJobKubeconfig(inClusterCfg *rest.Config) (*rest.Config,
 	}
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.NonProwJobKubeconfig},
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
+}
+
+func (o *options) releasesKubeconfig(inClusterCfg *rest.Config) (*rest.Config, error) {
+	if o.ReleasesKubeconfig == "" {
+		return o.nonProwJobKubeconfig(inClusterCfg)
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.ReleasesKubeconfig},
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
+}
+
+func (o *options) toolsKubeconfig(inClusterCfg *rest.Config) (*rest.Config, error) {
+	if o.ToolsKubeconfig == "" {
+		return o.nonProwJobKubeconfig(inClusterCfg)
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.ToolsKubeconfig},
 		&clientcmd.ConfigOverrides{},
 	).ClientConfig()
 }
