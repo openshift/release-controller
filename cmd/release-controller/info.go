@@ -642,7 +642,7 @@ class FileServer(handler):
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
             except CalledProcessError as e:
-                print("Unable to get release tools for %s: %s" % name, e.output)
+                print("Unable to get release tools for %s: %s" % (name, e.output))
 
                 if e.output and ("no such image" in e.output or
                                   "image does not exist" in e.output or
@@ -658,7 +658,7 @@ class FileServer(handler):
                     outfile.write("Unable to get release tools: %s" % e.output)
 
             except Exception as e:
-                print("Unable to get release tools for %s: %s" % name, e.message)
+                print("Unable to get release tools for %s: %s" % (name, e.message))
                 self.log_error('An unexpected error has occurred: {}'.format(e.message))
 
             return
