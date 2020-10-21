@@ -644,11 +644,12 @@ class FileServer(handler):
             except CalledProcessError as e:
                 print("Unable to get release tools for %s: %s" % (name, e.output))
 
-                if e.output and ("no such image" in e.output or
-                                  "image does not exist" in e.output or
-                                  "unauthorized: access to the requested resource is not authorized" in e.output or
-                                  "some required images are missing" in e.output or
-                                  "invalid reference format" in e.output):
+                if e.output and (b"no such image" in e.output or
+                                 b"image does not exist" in e.output or
+                                 (b"error: image" in e.output and b"does not exist" in e.output) or
+                                 b"unauthorized: access to the requested resource is not authorized" in e.output or
+                                 b"some required images are missing" in e.output or
+                                 b"invalid reference format" in e.output):
                     with open(os.path.join(name, "FAILED.md"), "w") as outfile:
                         outfile.write("Unable to get release tools: %s" % e.output)
                     os.remove(os.path.join(name, "DOWNLOADING.md"))
