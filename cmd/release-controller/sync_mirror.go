@@ -108,7 +108,7 @@ func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error
 			ref = &imagev1.TagReference{Name: tag.Tag}
 		} else {
 			// prevent unimported images from being skipped
-			if ref.Generation != nil && *ref.Generation != tag.Items[0].Generation {
+			if ref.Generation != nil && *ref.Generation > tag.Items[0].Generation {
 				return fmt.Errorf("the tag %q in the source input stream has not been imported yet", tag.Tag)
 			}
 			// use the tag ref as the source
