@@ -91,6 +91,8 @@ type options struct {
 	ReleaseArchitecture string
 
 	AuthenticationMessage string
+
+	Registry string
 }
 
 func main() {
@@ -106,8 +108,8 @@ func main() {
 
 	opt := &options{
 		ListenAddr: ":8080",
-
 		ToolsImageStreamTag: ":tests",
+		Registry: "registry.ci.openshift.org",
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -160,6 +162,8 @@ func main() {
 	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
 
 	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
+
+	flagset.StringVar(&opt.Registry, "registry", opt.Registry, "The image registry to use")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -288,7 +292,7 @@ func (o *options) Run() error {
 	execReleaseInfo := NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
-	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, imageCache.Get)
+	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
 
 	graph := NewUpgradeGraph(architecture)
 
