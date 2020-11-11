@@ -7,6 +7,7 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 
+	citools "github.com/openshift/ci-tools/pkg/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -201,6 +202,7 @@ type ReleaseVerification struct {
 	// values are:
 	//
 	// Previous - selects the latest accepted tag from the current stream
+	// PreviousMinus1 - selects the second latest accepted tag from the current stream
 	// PreviousMicro - selects the latest accepted patch version from the current minor
 	//   version (4.2.1 will select the latest accepted 4.2.z tag).
 	// PreviousMinor - selects the latest accepted patch version from the previous minor
@@ -208,6 +210,9 @@ type ReleaseVerification struct {
 	//
 	// If no matching target exists the job will be a no-op.
 	UpgradeFrom string `json:"upgradeFrom"`
+	// UpgradeFromRelease, if set, describes the release that should be used as the inital
+	// release in upgrade verification jobs.
+	UpgradeFromRelease *UpgradeRelease `json:"upgradeFromRelease"`
 
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
@@ -225,14 +230,15 @@ type ReleasePeriodic struct {
 	// Cron representation of job trigger time
 	Cron string `json:"cron,omitempty"`
 
-	// Upgrade is true if this verification should be used to verify upgrades.
+	// Upgrade is true if this periodic should be an upgrade job.
 	// The default UpgradeFrom for stable streams is PreviousMicro and the default
-	// for other types of streams is Previous.
+	// for other types of streams is PreviousMinus1.
 	Upgrade bool `json:"upgrade"`
 	// UpgradeFrom, if set, describes a different default upgrade source. The supported
 	// values are:
 	//
 	// Previous - selects the latest accepted tag from the current stream
+	// PreviousMinus1 - selects the second latest accepted tag from the current stream
 	// PreviousMicro - selects the latest accepted patch version from the current minor
 	//   version (4.2.1 will select the latest accepted 4.2.z tag).
 	// PreviousMinor - selects the latest accepted patch version from the previous minor
@@ -240,11 +246,52 @@ type ReleasePeriodic struct {
 	//
 	// If no matching target exists the job will be a no-op.
 	UpgradeFrom string `json:"upgradeFrom"`
+	// UpgradeFromRelease, if set, describes the release that should be used as the inital
+	// release in upgrade periodic jobs.
+	UpgradeFromRelease *UpgradeRelease `json:"upgradeFromRelease"`
 
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+}
+
+type UpgradeRelease struct {
+	// Candidate describes a candidate release payload
+	Candidate *UpgradeCandidate `json:"candidate,omitempty"`
+	// Prerelease describes a yet-to-be released payload
+	Prerelease *UpgradePrerelease `json:"prerelease,omitempty"`
+	// Official describes a released payload
+	Official *citools.Release `json:"release,omitempty"`
+}
+
+// UpgradeCandidate describes a validated candidate release payload
+type UpgradeCandidate struct {
+	// Stream is the stream from which we pick the latest candidate
+	Stream string `json:"stream"`
+	// Version is the minor version to search for
+	Version string `json:"version"`
+	// Relative optionally specifies how old of a release
+	// is requested from this stream. For instance, a value
+	// of 1 will resolve to the previous validated release
+	// for this stream.
+	Relative int `json:"relative,omitempty"`
+}
+
+// UpgradePrerelease describes a validated release payload before it is exposed
+type UpgradePrerelease struct {
+	// VersionBounds describe the allowable version bounds to search in
+	VersionBounds UpgradeVersionBounds `json:"version_bounds"`
+}
+
+// UpgradeVersionBounds describe the upper and lower bounds on a version search
+type UpgradeVersionBounds struct {
+	Lower string `json:"lower"`
+	Upper string `json:"upper"`
+}
+
+func (b *UpgradeVersionBounds) Query() string {
+	return fmt.Sprintf(">%s <%s", b.Lower, b.Upper)
 }
 
 // ProwJobVerification identifies the name of a prow job that will be used to

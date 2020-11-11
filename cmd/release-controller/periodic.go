@@ -20,10 +20,11 @@ import (
 )
 
 type PeriodicWithRelease struct {
-	Periodic    *config.Periodic
-	Release     *Release
-	Upgrade     bool
-	UpgradeFrom string
+	Periodic           *config.Periodic
+	Release            *Release
+	Upgrade            bool
+	UpgradeFrom        string
+	UpgradeFromRelease *UpgradeRelease
 }
 
 func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, stopCh <-chan struct{}) {
@@ -71,10 +72,11 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 				updatedPeriodicConfig.SetInterval(intervalDuration)
 				updatedPeriodicConfig.Cron = releasePeriodic.Cron
 				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
-					Periodic:    &updatedPeriodicConfig,
-					Release:     r,
-					Upgrade:     releasePeriodic.Upgrade,
-					UpgradeFrom: releasePeriodic.UpgradeFrom,
+					Periodic:           &updatedPeriodicConfig,
+					Release:            r,
+					Upgrade:            releasePeriodic.Upgrade,
+					UpgradeFrom:        releasePeriodic.UpgradeFrom,
+					UpgradeFromRelease: releasePeriodic.UpgradeFromRelease,
 				}
 				cronConfig.Periodics = append(cronConfig.Periodics, updatedPeriodicConfig)
 			}
@@ -149,7 +151,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 	}
 	var previousTag, previousReleasePullSpec string
 	if periodicWithRelease.Upgrade {
-		previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, latestTag, periodicWithRelease.Periodic.Name, periodicWithRelease.UpgradeFrom, true)
+		previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, latestTag, periodicWithRelease.Periodic.Name, periodicWithRelease.UpgradeFrom, periodicWithRelease.UpgradeFromRelease, true)
 		if err != nil {
 			return fmt.Errorf("failed to get previous release spec and tag for release %s tag %s: %v", release.Config.Name, latestTag.Name, err)
 		}
