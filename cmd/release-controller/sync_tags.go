@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/blang/semver"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -30,7 +32,7 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 
 	klog.V(2).Infof("Starting new release %s", tag.Name)
 
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if errors.IsNotFound(err) {
 		return nil, nil
 	}
@@ -84,7 +86,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 	origin.ImportPolicy = tag.ImportPolicy
 
 	klog.V(2).Infof("Updating next tag for %s to be %s", release.Config.Name, next)
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -96,7 +98,7 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 	for _, tag := range removeTags {
 		// use delete imagestreamtag so that status tags are removed as well
 		klog.V(2).Infof("Removing release tag %s", tag.Name)
-		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), nil); err != nil {
+		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(context.TODO(), fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), metav1.DeleteOptions{}); err != nil {
 			if !errors.IsNotFound(err) {
 				return err
 			}
@@ -147,7 +149,7 @@ func (c *Controller) setReleaseAnnotation(release *Release, phase string, annota
 		return nil
 	}
 
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -207,7 +209,7 @@ func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases 
 		return nil
 	}
 
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -239,7 +241,7 @@ func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditio
 		return nil
 	}
 
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}

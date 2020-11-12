@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -48,13 +49,13 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 	}
 
 	klog.V(2).Infof("Mirroring release images in %s/%s to %s/%s", release.Source.Namespace, release.Source.Name, is.Namespace, is.Name)
-	is, err = c.imageClient.ImageStreams(is.Namespace).Create(is)
+	is, err = c.imageClient.ImageStreams(is.Namespace).Create(context.TODO(), is, metav1.CreateOptions{})
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return nil, err
 		}
 		// perform a live read
-		is, err = c.imageClient.ImageStreams(is.Namespace).Get(is.Name, metav1.GetOptions{})
+		is, err = c.imageClient.ImageStreams(is.Namespace).Get(context.TODO(), is.Name, metav1.GetOptions{})
 	}
 	return is, err
 }

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -76,14 +78,14 @@ func (c *Controller) garbageCollectSync() error {
 		}
 		if generation < targetGeneration {
 			klog.V(2).Infof("Removing orphaned release job %s", job.Name)
-			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
+			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
 			}
 			continue
 		}
 		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Time.Before(time.Now().Add(-2*time.Hour)) {
 			klog.V(2).Infof("Removing old completed release job %s", job.Name)
-			if err := c.jobClient.Jobs(job.Namespace).Delete(job.Name, nil); err != nil && !errors.IsNotFound(err) {
+			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s: %v", job.Name, err))
 			}
 			continue
@@ -105,7 +107,7 @@ func (c *Controller) garbageCollectSync() error {
 		}
 		if generation < targetGeneration {
 			klog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
-			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(mirror.Name, nil); err != nil && !errors.IsNotFound(err) {
+			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(context.TODO(), mirror.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s: %v", mirror.Name, err))
 			}
 		}

@@ -41,6 +41,7 @@ import (
 	"golang.org/x/oauth2"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"k8s.io/test-infra/ghproxy/ghcache"
 	"k8s.io/test-infra/prow/version"
@@ -138,6 +139,7 @@ type CommitClient interface {
 	ListStatuses(org, repo, ref string) ([]Status, error)
 	GetSingleCommit(org, repo, SHA string) (SingleCommit, error)
 	GetCombinedStatus(org, repo, ref string) (*CombinedStatus, error)
+	ListCheckRuns(org, repo, ref string) (*CheckRunList, error)
 	GetRef(org, repo, ref string) (string, error)
 	DeleteRef(org, repo, ref string) error
 }
@@ -175,7 +177,7 @@ type TeamClient interface {
 	RemoveTeamMembership(id int, user string) error
 	ListTeamMembers(id int, role string) ([]TeamMember, error)
 	ListTeamRepos(id int) ([]Repo, error)
-	UpdateTeamRepo(id int, org, repo string, permission RepoPermissionLevel) error
+	UpdateTeamRepo(id int, org, repo string, permission TeamPermission) error
 	RemoveTeamRepo(id int, org, repo string) error
 	ListTeamInvitations(id int) ([]OrgInvitation, error)
 	TeamHasMember(teamID int, memberLogin string) (bool, error)
@@ -485,8 +487,11 @@ func NewClientWithFields(fields logrus.Fields, getToken func() []byte, censor fu
 			gqlc: githubql.NewEnterpriseClient(
 				graphqlEndpoint,
 				&http.Client{
-					Timeout:   maxRequestTime,
-					Transport: &oauth2.Transport{Source: newReloadingTokenSource(getToken)},
+					Timeout: maxRequestTime,
+					Transport: &oauth2.Transport{
+						Source: newReloadingTokenSource(getToken),
+						Base:   newAddHeaderTransport(),
+					},
 				}),
 			client:        &http.Client{Timeout: maxRequestTime},
 			bases:         bases,
@@ -499,6 +504,21 @@ func NewClientWithFields(fields logrus.Fields, getToken func() []byte, censor fu
 			maxSleepTime:  defaultMaxSleepTime,
 		},
 	}
+}
+
+func newAddHeaderTransport() http.RoundTripper {
+	return &addHeaderTransport{}
+}
+
+type addHeaderTransport struct {
+}
+
+func (s *addHeaderTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	// We have to add this header to enable the Checks scheme preview:
+	// https://docs.github.com/en/enterprise-server@2.22/graphql/overview/schema-previews
+	// Any GHE version after 2.22 will enable the Checks types per default
+	r.Header.Add("Accept", "application/vnd.github.antiope-preview+json")
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 // NewClient creates a new fully operational GitHub client.
@@ -815,7 +835,49 @@ func (c *client) doRequest(method, path, accept string, body interface{}) (*http
 	// https://go-review.googlesource.com/#/c/3210/ fixed it for GET, but not
 	// for POST.
 	req.Close = true
+
+	c.logger.WithField("curl", toCurl(req)).Trace("Executing http request")
 	return c.client.Do(req)
+}
+
+// toCurl is a slightly adjusted copy of https://github.com/kubernetes/kubernetes/blob/74053d555d71a14e3853b97e204d7d6415521375/staging/src/k8s.io/client-go/transport/round_trippers.go#L339
+func toCurl(r *http.Request) string {
+	headers := ""
+	for key, values := range r.Header {
+		for _, value := range values {
+			headers += fmt.Sprintf(` -H %q`, fmt.Sprintf("%s: %s", key, maskAuthorizationHeader(key, value)))
+		}
+	}
+
+	return fmt.Sprintf("curl -k -v -X%s %s '%s'", r.Method, headers, r.URL.String())
+}
+
+var knownAuthTypes = sets.NewString("bearer", "basic", "negotiate")
+
+// maskAuthorizationHeader masks credential content from authorization headers
+// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
+func maskAuthorizationHeader(key string, value string) string {
+	if !strings.EqualFold(key, "Authorization") {
+		return value
+	}
+	if len(value) == 0 {
+		return ""
+	}
+	var authType string
+	if i := strings.Index(value, " "); i > 0 {
+		authType = value[0:i]
+	} else {
+		authType = value
+	}
+	if !knownAuthTypes.Has(strings.ToLower(authType)) {
+		return "<masked>"
+	}
+	if len(value) > len(authType)+1 {
+		value = authType + " <masked>"
+	} else {
+		value = authType
+	}
+	return value
 }
 
 func (c *client) authHeader() string {
@@ -1826,7 +1888,7 @@ func (c *client) ListReviews(org, repo string, number int) ([]Review, error) {
 
 // CreateStatus creates or updates the status of a commit.
 //
-// See https://developer.github.com/v3/repos/statuses/#create-a-status
+// See https://docs.github.com/en/free-pro-team@latest/rest/reference/repos#create-a-commit-status
 func (c *client) CreateStatus(org, repo, SHA string, s Status) error {
 	durationLogger := c.log("CreateStatus", org, repo, SHA, s)
 	defer durationLogger()
@@ -3026,7 +3088,7 @@ func (c *client) ListTeamRepos(id int) ([]Repo, error) {
 // UpdateTeamRepo adds the repo to the team with the provided role.
 //
 // https://developer.github.com/v3/teams/#add-or-update-team-repository
-func (c *client) UpdateTeamRepo(id int, org, repo string, permission RepoPermissionLevel) error {
+func (c *client) UpdateTeamRepo(id int, org, repo string, permission TeamPermission) error {
 	durationLogger := c.log("UpdateTeamRepo", id, org, repo, permission)
 	defer durationLogger()
 
@@ -3694,4 +3756,23 @@ func (c *client) GetTeamBySlug(slug string, org string) (*Team, error) {
 		return nil, err
 	}
 	return &team, err
+}
+
+// ListCheckRuns lists all checkruns for the given ref
+//
+// See https://docs.github.com/en/free-pro-team@latest/rest/reference/checks#list-check-runs-for-a-git-reference
+func (c *client) ListCheckRuns(org, repo, ref string) (*CheckRunList, error) {
+	durationLogger := c.log("ListCheckRuns", org, repo, ref)
+	defer durationLogger()
+
+	var checkRunList CheckRunList
+	_, err := c.request(&request{
+		method:    http.MethodGet,
+		path:      fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", org, repo, ref),
+		exitCodes: []int{200},
+	}, &checkRunList)
+	if err != nil {
+		return nil, err
+	}
+	return &checkRunList, nil
 }

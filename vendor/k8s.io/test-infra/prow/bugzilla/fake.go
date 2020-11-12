@@ -20,6 +20,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -241,7 +242,8 @@ func (c *Fake) GetAllClones(bug *Bug) ([]*Bug, error) {
 	if c.BugErrors.Has(bug.ID) {
 		return nil, errors.New("injected error getting subcomponents")
 	}
-	return getAllClones(c, bug)
+	bugCache := newBugDetailsCache()
+	return getAllClones(c, bug, bugCache)
 }
 
 // GetRootForClone gets the original bug.
@@ -251,6 +253,15 @@ func (c *Fake) GetRootForClone(bug *Bug) (*Bug, error) {
 	}
 	return getRootForClone(c, bug)
 }
+
+// SetRoundTripper sets the Transport in http.Client to a custom RoundTripper
+func (c *Fake) SetRoundTripper(t http.RoundTripper) {
+	// Do nothing here
+}
+
+func (c *Fake) ForPlugin(plugin string) Client             { return c }
+func (c *Fake) ForSubcomponent(subcomponent string) Client { return c }
+func (c *Fake) WithFields(fields logrus.Fields) Client     { return c }
 
 // the Fake is a Client
 var _ Client = &Fake{}

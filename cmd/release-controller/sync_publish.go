@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sort"
@@ -8,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 
@@ -41,7 +43,7 @@ func (c *Controller) ensureTagPointsToRelease(release *Release, to, from string)
 	toTag.From = &corev1.ObjectReference{Kind: "ImageStreamTag", Name: from}
 	toTag.ImportPolicy = imagev1.TagImportPolicy{}
 
-	is, err := c.imageClient.ImageStreams(target.Namespace).Update(target)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}
@@ -159,7 +161,7 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		target = copied
 	}
 
-	_, err = c.imageClient.ImageStreams(target.Namespace).Update(target)
+	_, err = c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}

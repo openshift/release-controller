@@ -201,12 +201,12 @@ func (o *options) Run() error {
 	}
 	releaseNamespace := o.ReleaseNamespaces[0]
 	for _, ns := range o.ReleaseNamespaces {
-		if _, err := client.CoreV1().Namespaces().Get(ns, metav1.GetOptions{}); err != nil {
+		if _, err := client.CoreV1().Namespaces().Get(context.TODO(), ns, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find release namespace: %s: %v", ns, err)
 		}
 	}
 	if o.JobNamespace != releaseNamespace {
-		if _, err := client.CoreV1().Namespaces().Get(o.JobNamespace, metav1.GetOptions{}); err != nil {
+		if _, err := client.CoreV1().Namespaces().Get(context.TODO(), o.JobNamespace, metav1.GetOptions{}); err != nil {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
 	}
@@ -495,11 +495,11 @@ func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).List(options)
+				return client.Namespace(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).Watch(options)
+				return client.Namespace(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&unstructured.Unstructured{},
