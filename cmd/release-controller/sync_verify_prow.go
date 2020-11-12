@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 
@@ -79,7 +80,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
-	out, err := c.prowClient.Create(objectToUnstructured(&pj), metav1.CreateOptions{})
+	out, err := c.prowClient.Create(context.TODO(), objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
 		job, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
@@ -89,7 +90,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		if exists {
 			return job.(*unstructured.Unstructured), nil
 		}
-		return c.prowClient.Get(prowJobName, metav1.GetOptions{})
+		return c.prowClient.Get(context.TODO(), prowJobName, metav1.GetOptions{})
 	}
 	if errors.IsInvalid(err) {
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", "the prow job %s is not valid: %v", jobName, err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -48,7 +49,7 @@ func (c *Controller) sync(key queueKey) error {
 			target.Annotations = make(map[string]string)
 		}
 		target.Annotations[releaseAnnotationHasReleases] = "true"
-		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
+		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 		return nil
@@ -333,7 +334,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			}
 			rewriteValue := tag.Annotations[releaseAnnotationRewrite]
 			if len(rewriteValue) == 0 {
-				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
+				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
 				if err != nil {
 					return err
 				}

@@ -22,13 +22,18 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+
+	"k8s.io/test-infra/prow/version"
 )
 
 const (
@@ -78,22 +83,122 @@ type Client interface {
 	GetAllClones(bug *Bug) ([]*Bug, error)
 	// GetRootForClone returns the original bug.
 	GetRootForClone(bug *Bug) (*Bug, error)
+	// SetRoundTripper sets a custom implementation of RoundTripper as the Transport for http.Client
+	SetRoundTripper(t http.RoundTripper)
+
+	// ForPlugin and ForSubcomponent allow for the logger used in the client
+	// to be created in a more specific manner when spawning parallel workers
+	ForPlugin(plugin string) Client
+	ForSubcomponent(subcomponent string) Client
+	WithFields(fields logrus.Fields) Client
 }
 
-func NewClient(getAPIKey func() []byte, endpoint string) Client {
+// NewClient returns a bugzilla client.
+func NewClient(getAPIKey func() []byte, endpoint string, githubExternalTrackerId uint) Client {
 	return &client{
-		logger:    logrus.WithField("client", "bugzilla"),
-		client:    &http.Client{},
-		endpoint:  endpoint,
-		getAPIKey: getAPIKey,
+		logger: logrus.WithField("client", "bugzilla"),
+		delegate: &delegate{
+			client:                  &http.Client{},
+			endpoint:                endpoint,
+			githubExternalTrackerId: githubExternalTrackerId,
+			getAPIKey:               getAPIKey,
+		},
 	}
 }
 
+// SetRoundTripper sets the Transport in http.Client to a custom RoundTripper
+func (c *client) SetRoundTripper(t http.RoundTripper) {
+	c.client.Transport = t
+}
+
+// newBugDetailsCache is a constructor for bugDetailsCache
+func newBugDetailsCache() *bugDetailsCache {
+	return &bugDetailsCache{cache: map[int]Bug{}}
+}
+
+// bugDetailsCache holds the already retrieved bug details
+type bugDetailsCache struct {
+	cache map[int]Bug
+	lock  sync.Mutex
+}
+
+// get retrieves bug details from the cache and is thread safe
+func (bd *bugDetailsCache) get(key int) (bug Bug, exists bool) {
+	bd.lock.Lock()
+	defer bd.lock.Unlock()
+	entry, ok := bd.cache[key]
+	return entry, ok
+}
+
+// set stores the bug details in the cache and is thread safe
+func (bd *bugDetailsCache) set(key int, value Bug) {
+	bd.lock.Lock()
+	defer bd.lock.Unlock()
+	bd.cache[key] = value
+}
+
+// list returns a slice of all bugs in the cache
+func (bd *bugDetailsCache) list() []Bug {
+	bd.lock.Lock()
+	defer bd.lock.Unlock()
+	result := make([]Bug, 0, len(bd.cache))
+	for _, bug := range bd.cache {
+		result = append(result, bug)
+	}
+	return result
+}
+
+// client interacts with the Bugzilla api.
 type client struct {
-	logger    *logrus.Entry
-	client    *http.Client
-	endpoint  string
-	getAPIKey func() []byte
+	// If logger is non-nil, log all method calls with it.
+	logger *logrus.Entry
+	// identifier is used to add more identification to the user-agent header
+	identifier string
+	*delegate
+}
+
+// ForPlugin clones the client, keeping the underlying delegate the same but adding
+// a plugin identifier and log field
+func (c *client) ForPlugin(plugin string) Client {
+	return c.forKeyValue("plugin", plugin)
+}
+
+// ForSubcomponent clones the client, keeping the underlying delegate the same but adding
+// an identifier and log field
+func (c *client) ForSubcomponent(subcomponent string) Client {
+	return c.forKeyValue("subcomponent", subcomponent)
+}
+
+func (c *client) forKeyValue(key, value string) Client {
+	return &client{
+		identifier: value,
+		logger:     c.logger.WithField(key, value),
+		delegate:   c.delegate,
+	}
+}
+
+func (c *client) userAgent() string {
+	if c.identifier != "" {
+		return version.UserAgentWithIdentifier(c.identifier)
+	}
+	return version.UserAgent()
+}
+
+// WithFields clones the client, keeping the underlying delegate the same but adding
+// fields to the logging context
+func (c *client) WithFields(fields logrus.Fields) Client {
+	return &client{
+		logger:   c.logger.WithFields(fields),
+		delegate: c.delegate,
+	}
+}
+
+// delegate actually does the work to talk to Bugzilla
+type delegate struct {
+	client                  *http.Client
+	endpoint                string
+	githubExternalTrackerId uint
+	getAPIKey               func() []byte
 }
 
 // the client is a Client impl
@@ -220,31 +325,102 @@ func (c *client) GetRootForClone(bug *Bug) (*Bug, error) {
 // GetAllClones returns all the clones of the bug including itself
 // Differs from GetClones as GetClones only gets the child clones which are one level lower
 func (c *client) GetAllClones(bug *Bug) ([]*Bug, error) {
-	return getAllClones(c, bug)
+	bugCache := newBugDetailsCache()
+	return getAllClones(c, bug, bugCache)
 }
-func getAllClones(c Client, bug *Bug) ([]*Bug, error) {
-	root, err := getRootForClone(c, bug)
+
+func getAllClones(c Client, bug *Bug, bugCache *bugDetailsCache) (clones []*Bug, err error) {
+
+	clones = []*Bug{}
+	bugCache.set(bug.ID, *bug)
+	err = getAllLinkedBugs(c, bug.ID, bugCache, nil)
 	if err != nil {
 		return nil, err
 	}
-	clones, err := getRecursiveClones(c, root)
-	if err != nil {
-		return nil, err
-	}
-	// Getting rid of the bug whose clones we are searching for
-	// we could optimize this (maybe?) if the list turns out to be too long
-	indexOfOriginal := -1
-	for index, clone := range clones {
-		if clone.ID == bug.ID {
-			// Check if there is a more elegant way to do this
-			indexOfOriginal = index
+	cachedBugs := bugCache.list()
+	for index, node := range cachedBugs {
+		if node.Summary == bug.Summary {
+			clones = append(clones, &cachedBugs[index])
 		}
 	}
-	if indexOfOriginal == -1 {
-		return nil, fmt.Errorf("Original bug not found in list of clones. Error in logic for getRecursiveClones/getRootForClone")
-	}
-	clones = append(clones[:indexOfOriginal], clones[indexOfOriginal+1:]...)
+	sort.SliceStable(clones, func(i, j int) bool {
+		return clones[i].ID < clones[j].ID
+	})
 	return clones, nil
+}
+
+// Parallel implementation for getAllClones - spawns threads to go up and down the tree
+// Also parallelizes the getBug calls if bug has multiple bugs in DependsOn/Blocks
+func getAllLinkedBugs(c Client, bugID int, bugCache *bugDetailsCache, errGroup *errgroup.Group) error {
+	var shouldWait bool
+	if errGroup == nil {
+		shouldWait = true
+		errGroup = new(errgroup.Group)
+	}
+	bugObj, cacheHasBug := bugCache.get(bugID)
+	if !cacheHasBug {
+		bug, err := c.GetBug(bugID)
+		if err != nil {
+			return err
+		}
+		bugObj = *bug
+	}
+	errGroup.Go(func() error {
+		return traverseUp(c, &bugObj, bugCache, errGroup)
+	})
+	errGroup.Go(func() error {
+		return traverseDown(c, &bugObj, bugCache, errGroup)
+	})
+
+	if shouldWait {
+		return errGroup.Wait()
+	}
+	return nil
+}
+
+func traverseUp(c Client, bug *Bug, bugCache *bugDetailsCache, errGroup *errgroup.Group) error {
+	for _, dependsOnID := range bug.DependsOn {
+		dependsOnID := dependsOnID
+		errGroup.Go(func() error {
+			_, alreadyFetched := bugCache.get(dependsOnID)
+			if alreadyFetched {
+				return nil
+			}
+			parent, err := c.GetBug(dependsOnID)
+			if err != nil {
+				return err
+			}
+			bugCache.set(parent.ID, *parent)
+			if bug.Summary == parent.Summary {
+				return getAllLinkedBugs(c, parent.ID, bugCache, errGroup)
+			}
+			return nil
+		})
+	}
+	return nil
+}
+
+func traverseDown(c Client, bug *Bug, bugCache *bugDetailsCache, errGroup *errgroup.Group) error {
+	for _, childID := range bug.Blocks {
+		childID := childID
+		errGroup.Go(func() error {
+			_, alreadyFetched := bugCache.get(childID)
+			if alreadyFetched {
+				return nil
+			}
+			child, err := c.GetBug(childID)
+			if err != nil {
+				return err
+			}
+
+			bugCache.set(child.ID, *child)
+			if bug.Summary == child.Summary {
+				return getAllLinkedBugs(c, child.ID, bugCache, errGroup)
+			}
+			return nil
+		})
+	}
+	return nil
 }
 
 // GetSubComponentsOnBug retrieves a the list of SubComponents of the bug.
@@ -497,6 +673,9 @@ func (c *client) request(req *http.Request, logger *logrus.Entry) ([]byte, error
 		values.Add("api_key", string(apiKey))
 		req.URL.RawQuery = values.Encode()
 	}
+	if userAgent := c.userAgent(); userAgent != "" {
+		req.Header.Add("User-Agent", userAgent)
+	}
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	stop := time.Now()
@@ -586,6 +765,14 @@ func IsAccessDenied(err error) bool {
 func (c *client) AddPullRequestAsExternalBug(id int, org, repo string, num int) (bool, error) {
 	logger := c.logger.WithFields(logrus.Fields{methodField: "AddExternalBug", "id": id, "org": org, "repo": repo, "num": num})
 	pullIdentifier := IdentifierForPull(org, repo, num)
+	bugIdentifier := ExternalBugIdentifier{
+		ID: pullIdentifier,
+	}
+	if c.githubExternalTrackerId != 0 {
+		bugIdentifier.TrackerID = int(c.githubExternalTrackerId)
+	} else {
+		bugIdentifier.Type = "https://github.com/"
+	}
 	rpcPayload := struct {
 		// Version is the version of JSONRPC to use. All Bugzilla servers
 		// support 1.0. Some support 1.1 and some support 2.0
@@ -600,12 +787,9 @@ func (c *client) AddPullRequestAsExternalBug(id int, org, repo string, num int) 
 		Method:  "ExternalBugs.add_external_bug",
 		ID:      "identifier", // this is useful when fielding asynchronous responses, but not here
 		Parameters: []AddExternalBugParameters{{
-			APIKey: string(c.getAPIKey()),
-			BugIDs: []int{id},
-			ExternalBugs: []ExternalBugIdentifier{{
-				Type: "https://github.com/",
-				ID:   pullIdentifier,
-			}},
+			APIKey:       string(c.getAPIKey()),
+			BugIDs:       []int{id},
+			ExternalBugs: []ExternalBugIdentifier{bugIdentifier},
 		}},
 	}
 	body, err := json.Marshal(rpcPayload)

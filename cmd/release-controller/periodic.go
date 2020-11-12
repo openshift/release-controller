@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -166,7 +167,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		prowJob.Annotations[releaseAnnotationFromTag] = previousTag
 	}
 
-	_, err = c.prowClient.Create(objectToUnstructured(&prowJob), metav1.CreateOptions{})
+	_, err = c.prowClient.Create(context.TODO(), objectToUnstructured(&prowJob), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create periodic prowjob %s: %v", periodicWithRelease.Periodic.Name, err)
 	}

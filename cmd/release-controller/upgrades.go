@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"sort"
@@ -294,7 +295,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
-		secret, err := secretClient.Get(name, metav1.GetOptions{})
+		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				klog.Errorf("No secret %s/%s exists to store upgrade state into", ns, name)
@@ -330,7 +331,7 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 			klog.Errorf("Unable to calculate graph state: %v", err)
 			return
 		}
-		secret, err := secretClient.Get(name, metav1.GetOptions{})
+		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
 			return
@@ -339,7 +340,7 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 			secret.Data = make(map[string][]byte)
 		}
 		secret.Data["latest"] = buf.Bytes()
-		if _, err := secretClient.Update(secret); err != nil {
+		if _, err := secretClient.Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
 		}
 		klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)

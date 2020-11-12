@@ -273,10 +273,7 @@ func (r *Repo) BranchExists(branch string) bool {
 	heads := "origin"
 	r.logger.Infof("Checking if branch %s exists in %s.", branch, heads)
 	co := r.gitCommand("ls-remote", "--exit-code", "--heads", heads, branch)
-	if co.Run() == nil {
-		return true
-	}
-	return false
+	return co.Run() == nil
 }
 
 // CheckoutNewBranch creates a new branch and checks it out.
@@ -387,11 +384,14 @@ func (r *Repo) Am(path string) error {
 		r.logger.WithError(abortErr).Warningf("Aborting patch apply failed with output: %s", string(b))
 	}
 	applyMsg := "The copy of the patch that failed is found in: .git/rebase-apply/patch"
+	msg := ""
 	if strings.Contains(output, applyMsg) {
 		i := strings.Index(output, applyMsg)
-		err = fmt.Errorf("%s", output[:i])
+		msg = string(output[:i])
+	} else {
+		msg = string(output)
 	}
-	return err
+	return errors.New(msg)
 }
 
 // Push pushes over https to the provided owner/repo#branch using a password
@@ -444,7 +444,8 @@ func retryCmd(l *logrus.Entry, dir, cmd string, arg ...string) ([]byte, error) {
 		c.Dir = dir
 		b, err = c.CombinedOutput()
 		if err != nil {
-			l.Warningf("Running %s %v returned error %v with output %s.", cmd, arg, err, string(b))
+			err = fmt.Errorf("running %q %v returned error %w with output %q", cmd, arg, err, string(b))
+			l.WithError(err).Debugf("Retrying #%d, if this is not the 3rd try then this will be retried", i+1)
 			time.Sleep(sleepyTime)
 			sleepyTime *= 2
 			continue
@@ -487,23 +488,4 @@ func (i *Repo) ShowRef(commitlike string) (string, error) {
 		return "", fmt.Errorf("failed to get commit sha for commitlike %s: %v", commitlike, err)
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// FetchFromRemote runs a git fetch command for the specified remote.
-// Pass the destination as org/repo format since the actual URI will be constructed
-// using the existing credentials and will always use the https protocol.
-func (r *Repo) FetchFromRemote(orgRepo, branch string) error {
-	r.logger.Infof("Fetching from '%s (branch: %s)'.", orgRepo, branch)
-
-	remoteURI := fmt.Sprintf("https://%s/%s", r.host, orgRepo)
-	if r.user != "" && r.pass != "" {
-		remoteURI = fmt.Sprintf("https://%s:%s@%s/%s", r.user, r.pass, r.host, orgRepo)
-	}
-
-	co := r.gitCommand("fetch", remoteURI, branch)
-	out, err := co.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("Fetching failed, output: %q, error: %v", string(out), err)
-	}
-	return nil
 }

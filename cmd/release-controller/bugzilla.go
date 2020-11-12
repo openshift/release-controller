@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -77,7 +78,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 			klog.V(2).Infof("bugzilla error: previous release unset for %s", release.Config.Name)
 			return fmt.Errorf("bugzilla error: previous release unset for %s", release.Config.Name)
 		}
-		stream, err := c.imageClient.ImageStreams(verifyBugs.PreviousReleaseTag.Namespace).Get(verifyBugs.PreviousReleaseTag.Name, meta.GetOptions{})
+		stream, err := c.imageClient.ImageStreams(verifyBugs.PreviousReleaseTag.Namespace).Get(context.TODO(), verifyBugs.PreviousReleaseTag.Name, meta.GetOptions{})
 		if err != nil {
 			klog.V(2).Infof("bugzilla: failed to get imagestream (%s/%s) when getting previous release for %s: %v", verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name, err)
 			return err
@@ -121,7 +122,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	}
 	tagToBeUpdated.Annotations[releaseAnnotationBugsVerified] = "true"
 	klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
-	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(target); err != nil {
+	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
 		klog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
 		return err
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -167,7 +168,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 		for k, v := range preconditions {
 			if job.Annotations[k] != v {
 				klog.V(2).Infof("Job %s doesn't match precondition %s: %s != %s, deleting and recreating", job.Name, k, v, job.Annotations[k])
-				err = c.jobClient.Jobs(c.jobNamespace).Delete(job.Name, &metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &job.UID}})
+				err = c.jobClient.Jobs(c.jobNamespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &job.UID}})
 				return nil, err
 			}
 		}
@@ -188,7 +189,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 		}
 	}
 
-	job, err = c.jobClient.Jobs(c.jobNamespace).Create(job)
+	job, err = c.jobClient.Jobs(c.jobNamespace).Create(context.TODO(), job, metav1.CreateOptions{})
 	if err == nil {
 		return job, nil
 	}
@@ -197,7 +198,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 	}
 
 	// perform a live lookup if we are racing to create the job
-	return c.jobClient.Jobs(c.jobNamespace).Get(name, metav1.GetOptions{})
+	return c.jobClient.Jobs(c.jobNamespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batchv1.Job, mirror *imagev1.ImageStream) error {
@@ -233,14 +234,14 @@ func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batch
 		From: &corev1.ObjectReference{Kind: "DockerImage", Name: imageSpec},
 	})
 
-	if _, err := c.imageClient.ImageStreams(mirror.Namespace).Update(mirror); err != nil {
+	if _, err := c.imageClient.ImageStreams(mirror.Namespace).Update(context.TODO(), mirror, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("unable to save \"cli\" image %q to the mirror: %v", imageSpec, err)
 	}
 	return nil
 }
 
 func findJobContainerStatus(podClient kv1core.PodsGetter, job *batchv1.Job, fieldSelector string, containerName string) ([]*corev1.ContainerStatus, error) {
-	pods, err := podClient.Pods(job.Namespace).List(metav1.ListOptions{
+	pods, err := podClient.Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{
 		FieldSelector: fieldSelector,
 		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
 	})
