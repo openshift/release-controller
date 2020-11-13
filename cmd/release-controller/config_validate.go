@@ -41,6 +41,23 @@ func validateConfigs(configDir string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
+func validateUpgradeJobs(releaseConfigs []ReleaseConfig) []error {
+	errors := []error{}
+	for _, config := range releaseConfigs {
+		for name, verify := range config.Verify {
+			if len(verify.UpgradeFrom) > 0 && verify.UpgradeFromRelease != nil {
+				errors = append(errors, fmt.Errorf("%s: verification job %s cannot have both upgradeFrom and upgradeFromRelease set", config.Name, name))
+			}
+		}
+		for name, periodic := range config.Periodic {
+			if len(periodic.UpgradeFrom) > 0 && periodic.UpgradeFromRelease != nil {
+				errors = append(errors, fmt.Errorf("%s: periodic job %s cannot have both upgradeFrom and upgradeFromRelease set", config.Name, name))
+			}
+		}
+	}
+	return errors
+}
+
 func verifyPeriodicFields(releaseConfigs []ReleaseConfig) []error {
 	errors := []error{}
 	for _, config := range releaseConfigs {

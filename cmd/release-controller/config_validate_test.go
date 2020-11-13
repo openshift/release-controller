@@ -235,3 +235,122 @@ func TestFindDuplicatePeriodics(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateUpgradeJobs(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configs     []ReleaseConfig
+		expectedErr bool
+	}{{
+		name: "Good config",
+		configs: []ReleaseConfig{{
+			Name: "4.6.0-0.nightly",
+			Verify: map[string]ReleaseVerification{
+				"upgrade-minor": {
+					Upgrade:     true,
+					UpgradeFrom: "PreviousMinor",
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			},
+			Periodic: map[string]ReleasePeriodic{
+				"upgrade-minor": {
+					Upgrade: true,
+					UpgradeFromRelease: &UpgradeRelease{
+						Prerelease: &UpgradePrerelease{
+							VersionBounds: UpgradeVersionBounds{
+								Lower: "4.5.0",
+								Upper: "4.6.0-0",
+							},
+						},
+					},
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			}},
+		},
+		expectedErr: false,
+	}, {
+		name: "Bad Verification",
+		configs: []ReleaseConfig{{
+			Name: "4.6.0-0.nightly",
+			Verify: map[string]ReleaseVerification{
+				"upgrade-minor": {
+					Upgrade:     true,
+					UpgradeFrom: "PreviousMinor",
+					UpgradeFromRelease: &UpgradeRelease{
+						Prerelease: &UpgradePrerelease{
+							VersionBounds: UpgradeVersionBounds{
+								Lower: "4.5.0",
+								Upper: "4.6.0-0",
+							},
+						},
+					},
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			},
+			Periodic: map[string]ReleasePeriodic{
+				"upgrade-minor": {
+					Upgrade: true,
+					UpgradeFromRelease: &UpgradeRelease{
+						Prerelease: &UpgradePrerelease{
+							VersionBounds: UpgradeVersionBounds{
+								Lower: "4.5.0",
+								Upper: "4.6.0-0",
+							},
+						},
+					},
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			},
+		}},
+		expectedErr: true,
+	}, {
+		name: "Bad Periodic",
+		configs: []ReleaseConfig{{
+			Name: "4.6.0-0.nightly",
+			Verify: map[string]ReleaseVerification{
+				"upgrade-minor": {
+					Upgrade:     true,
+					UpgradeFrom: "PreviousMinor",
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			},
+			Periodic: map[string]ReleasePeriodic{
+				"upgrade-minor": {
+					Upgrade:     true,
+					UpgradeFrom: "PreviousMinor",
+					UpgradeFromRelease: &UpgradeRelease{
+						Prerelease: &UpgradePrerelease{
+							VersionBounds: UpgradeVersionBounds{
+								Lower: "4.5.0",
+								Upper: "4.6.0-0",
+							},
+						},
+					},
+					ProwJob: &ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
+					},
+				},
+			},
+		}},
+		expectedErr: true,
+	}}
+	for _, testCase := range testCases {
+		errs := validateUpgradeJobs(testCase.configs)
+		if len(errs) > 0 && !testCase.expectedErr {
+			t.Errorf("%s: got error when error was not expected: %v", testCase.name, errs)
+		}
+		if len(errs) == 0 && testCase.expectedErr {
+			t.Errorf("%s: did not get error when error was expected", testCase.name)
+		}
+	}
+}

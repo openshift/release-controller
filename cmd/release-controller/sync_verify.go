@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/blang/semver"
-
 	imagev1 "github.com/openshift/api/image/v1"
+	citools "github.com/openshift/ci-tools/pkg/release/official"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
@@ -67,7 +68,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			var previousTag, previousReleasePullSpec string
 			if verifyType.Upgrade {
 				var err error
-				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, false)
+				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, verifyType.UpgradeFromRelease, false)
 				if err != nil {
 					return nil, err
 				}
@@ -121,7 +122,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	return verifyStatus, nil
 }
 
-func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
+func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *UpgradeRelease, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
+	if upgradeFromRelease != nil {
+		return c.resolveUpgradeRelease(upgradeFromRelease, release)
+	}
 	var upgradeType string
 	if periodic {
 		upgradeType = releaseUpgradeFromPreviousMinus1
@@ -178,4 +182,38 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *Release, releaseTag *imag
 		return "", "", fmt.Errorf("release %s has job %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
 	}
 	return previousTag, previousReleasePullSpec, err
+}
+
+func (c *Controller) resolveUpgradeRelease(upgradeRelease *UpgradeRelease, release *Release) (string, string, error) {
+	if upgradeRelease.Prerelease != nil {
+		semverRange, err := semver.ParseRange(upgradeRelease.Prerelease.VersionBounds.Query())
+		if err != nil {
+			return "", "", fmt.Errorf("invalid semver range `%s`: %w", upgradeRelease.Prerelease.VersionBounds.Query(), err)
+		}
+		r, latest, err := c.latestForStream("4-stable", semverRange, 0)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get latest tag in 4-stable stream: %w", err)
+		}
+		tag := latest.Name
+		pullSpec := r.Target.Status.PublicDockerImageRepository + ":" + tag
+		return tag, pullSpec, nil
+	} else if upgradeRelease.Candidate != nil {
+		// create blank semver.Range
+		var constraint semver.Range
+		stream := fmt.Sprintf("%s.0-0.%s%s", upgradeRelease.Candidate.Version, upgradeRelease.Candidate.Stream, strings.TrimPrefix(release.Config.To, "release"))
+		r, latest, err := c.latestForStream(stream, constraint, upgradeRelease.Candidate.Relative)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", stream, err)
+		}
+		tag := latest.Name
+		pullSpec := r.Target.Status.PublicDockerImageRepository + ":" + tag
+		return tag, pullSpec, nil
+	} else if upgradeRelease.Official != nil {
+		pullspec, version, err := citools.ResolvePullSpecAndVersion(*upgradeRelease.Official)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to resolve official release: %w", err)
+		}
+		return pullspec, version, nil
+	}
+	return "", "", fmt.Errorf("upgradeRelease fields must be set if upgradeRelease is set")
 }
