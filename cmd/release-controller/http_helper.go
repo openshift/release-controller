@@ -424,56 +424,79 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load test info</em>`)
 		return
 	}
-
+	buf := &bytes.Buffer{}
+	blockingJobs := make(VerificationStatusMap)
+	informingJobs := make(VerificationStatusMap)
+	pendingJobs := make(VerificationStatusMap)
 	keys := make([]string, 0, len(release.Config.Verify))
 	for k := range release.Config.Verify {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	buf := &bytes.Buffer{}
 	for _, key := range keys {
-		if s, ok := status[key]; ok {
-			if len(s.URL) > 0 {
-				switch s.State {
-				case releaseVerificationStateFailed:
-					buf.WriteString("<li><a class=\"text-danger\" href=\"")
-				case releaseVerificationStateSucceeded:
-					buf.WriteString("<li><a class=\"text-success\" href=\"")
-				default:
-					buf.WriteString("<li><a class=\"\" href=\"")
-				}
-				buf.WriteString(template.HTMLEscapeString(s.URL))
-				buf.WriteString("\">")
+		if value, ok := status[key]; ok {
+			if release.Config.Verify[key].Optional {
+				informingJobs[key] = value
+			} else {
+				blockingJobs[key] = value
+			}
+		} else {
+			pendingJobs[key] = nil
+		}
+	}
+	final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
+	if len(blockingJobs) > 0 {
+		buf.WriteString("<li>Blocking jobs<ul>")
+		buf.WriteString(renderVerificationJobsList(blockingJobs, release, final))
+		buf.WriteString("</ul></li>")
+	}
+	if len(informingJobs) > 0 {
+		buf.WriteString("<li>Informing jobs<ul>")
+		buf.WriteString(renderVerificationJobsList(informingJobs, release, final))
+		buf.WriteString("</ul></li>")
+	}
+	if len(pendingJobs) > 0 {
+		buf.WriteString("<li>Pending jobs<ul>")
+		buf.WriteString(renderVerificationJobsList(pendingJobs, release, final))
+		buf.WriteString("</ul></li>")
+	}
+	if out := buf.String(); len(out) > 0 {
+		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
+	} else {
+		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+	}
+}
+
+func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, final bool) string {
+	buf := &bytes.Buffer{}
+	keys := make([]string, 0, len(jobs))
+	for k := range jobs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := jobs[key]
+		if value == nil {
+			if !release.Config.Verify[key].Disabled && !final {
+				buf.WriteString("<li><span title=\"Pending\">")
 				buf.WriteString(template.HTMLEscapeString(key))
-				switch s.State {
-				case releaseVerificationStateFailed:
-					buf.WriteString(" Failed")
-				case releaseVerificationStateSucceeded:
-					buf.WriteString(" Succeeded")
-				default:
-					buf.WriteString(" Pending")
-				}
-				buf.WriteString("</a>")
-				if s.Retries > 0 {
-					buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", s.Retries))
-				}
-				if pj := release.Config.Verify[key].ProwJob; pj != nil {
-					buf.WriteString(" ")
-					buf.WriteString(pj.Name)
-				}
-				continue
+				buf.WriteString("</span></li>")
 			}
-			switch s.State {
+			continue
+		}
+		if len(value.URL) > 0 {
+			switch value.State {
 			case releaseVerificationStateFailed:
-				buf.WriteString("<li><span class=\"text-danger\">")
+				buf.WriteString("<li><a class=\"text-danger\" href=\"")
 			case releaseVerificationStateSucceeded:
-				buf.WriteString("<li><span class=\"text-success\">")
+				buf.WriteString("<li><a class=\"text-success\" href=\"")
 			default:
-				buf.WriteString("<li><span class=\"\">")
+				buf.WriteString("<li><a class=\"\" href=\"")
 			}
+			buf.WriteString(template.HTMLEscapeString(value.URL))
+			buf.WriteString("\">")
 			buf.WriteString(template.HTMLEscapeString(key))
-			switch s.State {
+			switch value.State {
 			case releaseVerificationStateFailed:
 				buf.WriteString(" Failed")
 			case releaseVerificationStateSucceeded:
@@ -481,26 +504,41 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 			default:
 				buf.WriteString(" Pending")
 			}
-			buf.WriteString("</span>")
+			buf.WriteString("</a>")
+			if value.Retries > 0 {
+				buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", value.Retries))
+			}
 			if pj := release.Config.Verify[key].ProwJob; pj != nil {
 				buf.WriteString(" ")
 				buf.WriteString(pj.Name)
 			}
 			continue
 		}
-		final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
-		if !release.Config.Verify[key].Disabled && !final {
-			buf.WriteString("<li><span title=\"Pending\">")
-			buf.WriteString(template.HTMLEscapeString(key))
-			buf.WriteString("</span>")
+		switch value.State {
+		case releaseVerificationStateFailed:
+			buf.WriteString("<li><span class=\"text-danger\">")
+		case releaseVerificationStateSucceeded:
+			buf.WriteString("<li><span class=\"text-success\">")
+		default:
+			buf.WriteString("<li><span class=\"\">")
 		}
+		buf.WriteString(template.HTMLEscapeString(key))
+		switch value.State {
+		case releaseVerificationStateFailed:
+			buf.WriteString(" Failed")
+		case releaseVerificationStateSucceeded:
+			buf.WriteString(" Succeeded")
+		default:
+			buf.WriteString(" Pending")
+		}
+		buf.WriteString("</span>")
+		if pj := release.Config.Verify[key].ProwJob; pj != nil {
+			buf.WriteString(" ")
+			buf.WriteString(pj.Name)
+		}
+		continue
 	}
-
-	if out := buf.String(); len(out) > 0 {
-		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
-	} else {
-		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
-	}
+	return buf.String()
 }
 
 func renderAlerts(release ReleaseStream) string {
