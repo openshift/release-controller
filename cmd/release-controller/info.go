@@ -363,21 +363,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
 		},
-		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "git",
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							"storage": resource.MustParse("40Gi"),
-						},
-					},
-				},
-			},
-		},
+		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
@@ -387,6 +373,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 			},
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
+					{Name: "git", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
 				},
 				Containers: []corev1.Container{
