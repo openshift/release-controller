@@ -96,11 +96,34 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 
 func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.TagReference) error {
 	for _, tag := range removeTags {
-		// use delete imagestreamtag so that status tags are removed as well
-		klog.V(2).Infof("Removing release tag %s", tag.Name)
-		if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(context.TODO(), fmt.Sprintf("%s:%s", release.Target.Name, tag.Name), metav1.DeleteOptions{}); err != nil {
-			if !errors.IsNotFound(err) {
+		ctx := context.TODO()
+		name := fmt.Sprintf("%s:%s", release.Target.Name, tag.Name)
+		if c.softDeleteReleaseTags {
+			// indicate by annotation that the isTag should be deleted
+			klog.V(2).Infof("Soft-removing (annotating) release tag %s", tag.Name)
+			isTag, err := c.imageClient.ImageStreamTags(release.Target.Namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return nil
+				}
 				return err
+			}
+			if isTag.Annotations == nil {
+				isTag.Annotations = map[string]string{}
+			}
+			if _, ok := isTag.Annotations[releaseAnnotationSoftDelete]; !ok {
+				isTag.Annotations[releaseAnnotationSoftDelete] = time.Now().Format(time.RFC3339)
+				if _, err := c.imageClient.ImageStreamTags(release.Target.Namespace).Update(context.TODO(), isTag, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+					return err
+				}
+			}
+		} else {
+			// use delete imagestreamtag so that status tags are removed as well
+			klog.V(2).Infof("Removing release tag %s", tag.Name)
+			if err := c.imageClient.ImageStreamTags(release.Target.Namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+				if !errors.IsNotFound(err) {
+					return err
+				}
 			}
 		}
 	}

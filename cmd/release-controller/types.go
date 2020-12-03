@@ -466,6 +466,9 @@ const (
 	// releaseAnnotationBugsVerified indicates whether or not the release has been
 	// processed by the BugzillaVerifier
 	releaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
+
+	// releaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
+	releaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
 )
 
 type Duration time.Duration
