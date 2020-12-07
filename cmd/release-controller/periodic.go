@@ -157,7 +157,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		}
 	}
 	spec := pjutil.PeriodicSpec(*periodicWithRelease.Periodic)
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec)
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec, periodicWithRelease.Upgrade)
 	if err != nil || !ok {
 		return fmt.Errorf("failed to add release env to periodic %s: %v", periodicWithRelease.Periodic.Name, err)
 	}

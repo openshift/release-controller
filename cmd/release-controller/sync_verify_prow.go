@@ -52,7 +52,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade)
 	if err != nil {
 		return nil, err
 	}
@@ -115,12 +115,13 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
 	}
 	hasReleaseImage := false
+	hasUpgradeImage := false
 	for i := range spec.PodSpec.Containers {
 		c := &spec.PodSpec.Containers[i]
 		for j := range c.Env {
@@ -132,6 +133,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 				if len(previousReleasePullSpec) == 0 {
 					return false, nil
 				}
+				hasUpgradeImage = true
 				c.Env[j].Value = previousReleasePullSpec
 			case name == "IMAGE_FORMAT":
 				if mirror == nil {
@@ -152,6 +154,12 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 		}
 		if !hasReleaseImage {
 			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+		}
+		if isUpgrade && !hasUpgradeImage {
+			if len(previousReleasePullSpec) == 0 {
+				return false, nil
+			}
+			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
 		}
 	}
 	return true, nil
