@@ -64,12 +64,14 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 				// make copy of periodic with updated interval and cron values
 				updatedPeriodicConfig := *periodicConfig
 				updatedPeriodicConfig.Interval = releasePeriodic.Interval
-				intervalDuration, err := time.ParseDuration(releasePeriodic.Interval)
-				if err != nil {
-					klog.Errorf("could not parse interval for periodic job %s/%s: %v", r.Config.Name, name, err)
-					continue
+				if updatedPeriodicConfig.Interval != "" {
+					intervalDuration, err := time.ParseDuration(releasePeriodic.Interval)
+					if err != nil {
+						klog.Errorf("could not parse interval for periodic job %s/%s: %v", r.Config.Name, name, err)
+						continue
+					}
+					updatedPeriodicConfig.SetInterval(intervalDuration)
 				}
-				updatedPeriodicConfig.SetInterval(intervalDuration)
 				updatedPeriodicConfig.Cron = releasePeriodic.Cron
 				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
 					Periodic:           &updatedPeriodicConfig,
