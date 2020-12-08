@@ -84,6 +84,8 @@ type options struct {
 	githubThrottle int
 
 	validateConfigs string
+
+	softDeleteReleaseTags bool
 }
 
 func main() {
@@ -147,6 +149,7 @@ func main() {
 	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
 
 	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
+	flagset.BoolVar(&opt.softDeleteReleaseTags, "soft-delete-release-tags", false, "If set to true, annotate imagestreamtags instead of deleting them")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -281,6 +284,7 @@ func (o *options) Run() error {
 		o.ArtifactsHost,
 		releaseInfo,
 		graph,
+		o.softDeleteReleaseTags,
 	)
 
 	if o.VerifyBugzilla {

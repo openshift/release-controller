@@ -129,6 +129,8 @@ type Controller struct {
 	bugzillaVerifier *bugzilla.Verifier
 
 	dashboards []Dashboard
+
+	softDeleteReleaseTags bool
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -144,6 +146,7 @@ func NewController(
 	artifactsHost string,
 	releaseInfo ReleaseInfo,
 	graph *UpgradeGraph,
+	softDeleteReleaseTags bool,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -197,6 +200,8 @@ func NewController(
 		graph: graph,
 
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
+
+		softDeleteReleaseTags: softDeleteReleaseTags,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)
