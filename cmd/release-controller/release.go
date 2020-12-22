@@ -228,6 +228,9 @@ func isTagEventConditionNotImported(event *imagev1.NamedTagEventList) bool {
 	return false
 }
 
+// find ImagePullSpec will return a fully-resolved pull spec for an image tag
+// when such a thing exists for the local registry. When the source image is
+// known but an import has not yet succeeded, we return the empty string.
 func findImagePullSpec(is *imagev1.ImageStream, name string) string {
 	for i := range is.Status.Tags {
 		tag := &is.Status.Tags[i]
@@ -235,41 +238,51 @@ func findImagePullSpec(is *imagev1.ImageStream, name string) string {
 			if len(tag.Items) == 0 {
 				if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil {
 					if from := specTag.From; from != nil && from.Kind == "DockerImage" {
-						return from.Name
+						return "" // the ImageStream controller needs to import this, we can check again later
 					}
 				}
-				return ""
+				return "" // the ImageStream controller has not yet imported this, we can check again later
 			}
-			return tag.Items[0].DockerImageReference
+			return fmt.Sprintf("%s@%s", is.Status.PublicDockerImageRepository, tag.Items[0].Image)
 		}
 	}
-	return ""
+	return "" // no such tag
 }
 
+// findPublicImagePullSpec will return fully-resolved pull spec for an image tag
+// when such a thing exists for the local registry. When the source image is
+// known but an import has not yet succeeded, we return the empty string.
+//
+// TODO: it looks like this func is now very similar to findImagePullSpec - but
+// consumers of findImagePullSpec use the output to configure e.g. PodSpecs, so
+// clearly consumers are not correctly determining if they need the _public_
+// pull-spec or "any" pull-spec, or perhaps there is no meaningful distinction
+// between these functions.
 func findPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
 	for i := range is.Status.Tags {
 		tag := &is.Status.Tags[i]
 		if tag.Tag == name {
 			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil {
 				if from := specTag.From; from != nil && from.Kind == "DockerImage" {
-					if len(tag.Items) == 0 || (specTag.Generation != nil && *specTag.Generation >= tag.Items[0].Generation) {
-						return from.Name
+					if len(tag.Items) == 0 || (specTag.Generation != nil && *specTag.Generation > tag.Items[0].Generation) {
+						return "" // the ImageStream controller needs to import this, we can check again later
 					}
 				}
 			}
 			if len(tag.Items) == 0 {
-				return ""
+				return "" // the ImageStream controller has not yet imported this, we can check again later
 			}
 			if len(is.Status.PublicDockerImageRepository) > 0 {
 				return fmt.Sprintf("%s:%s", is.Status.PublicDockerImageRepository, name)
 			}
+			// the rest of this code is not important as CI registries are always public
 			if strings.HasPrefix(tag.Items[0].DockerImageReference, is.Status.DockerImageRepository) {
-				return ""
+				return "" // why?
 			}
-			return tag.Items[0].DockerImageReference
+			return tag.Items[0].DockerImageReference // this is likely to not be a useful pullspec for someone calling this func...
 		}
 	}
-	return ""
+	return "" // no such tag
 }
 
 // unsortedSemanticReleaseTags returns the tags in the release as a sortable array, but
