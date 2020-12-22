@@ -12,9 +12,9 @@ periodics:
       # These environment parameters are replaced by the release-controller dynamically
       env:
       - name: RELEASE_IMAGE_LATEST
-        value: registry.svc.ci.openshift.org/openshift/release:v4.0
+        value: registry.ci.openshift.org/openshift/release:v4.0
       - name: IMAGE_FORMAT
-        value: registry.svc.ci.openshift.org/openshift/origin-v4.0:${component}
+        value: registry.ci.openshift.org/openshift/origin-v4.0:${component}
       - name: RPM_REPO
         value: https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/
       command: 
@@ -29,9 +29,9 @@ periodics:
       # These environment parameters are replaced by the release-controller dynamically
       env:
       - name: RELEASE_IMAGE_LATEST
-        value: registry.svc.ci.openshift.org/openshift/release:v4.0
+        value: registry.ci.openshift.org/openshift/release:v4.0
       - name: IMAGE_FORMAT
-        value: registry.svc.ci.openshift.org/openshift/origin-v4.0:${component}
+        value: registry.ci.openshift.org/openshift/origin-v4.0:${component}
       - name: RPM_REPO
         value: https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/
       command: 

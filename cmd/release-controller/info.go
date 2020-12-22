@@ -637,7 +637,7 @@ class FileServer(handler):
                 self._present_default_content(name)
                 self.wfile.flush()
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
@@ -754,7 +754,7 @@ class FileServer(handler):
             try:
                 self._present_default_content(name)
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.svc.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "registry.ci.openshift.org/%s/release%s:%s" % (RELEASE_NAMESPACE, extension, name)],
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
