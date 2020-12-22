@@ -30,6 +30,11 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		return nil, false, terminalError{err}
 	}
 
+	if is.Status.PublicDockerImageRepository == "" {
+		klog.V(4).Infof("The release input has no public docker image repository, waiting")
+		return nil, false, nil
+	}
+
 	if len(is.Status.Tags) == 0 {
 		klog.V(4).Infof("The release input has no status tags, waiting")
 		return nil, false, nil
