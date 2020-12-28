@@ -332,8 +332,10 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
 				continue
 			}
+			klog.V(2).Infof("Processing pending release %s", tag.Name)
 			rewriteValue := tag.Annotations[releaseAnnotationRewrite]
 			if len(rewriteValue) == 0 {
+				klog.V(2).Infof("Rewriting pending release %s", tag.Name)
 				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
 				if err != nil {
 					return err
@@ -437,6 +439,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			return err
 		}
 		success, complete := jobIsComplete(job)
+		klog.V(4).Infof("Release creation for %s success: %v, complete: %v", release, success, complete)
 		switch {
 		case !complete:
 			return nil

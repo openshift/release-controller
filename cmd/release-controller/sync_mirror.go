@@ -54,8 +54,14 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 		if !errors.IsAlreadyExists(err) {
 			return nil, err
 		}
-		// perform a live read
-		is, err = c.imageClient.ImageStreams(is.Namespace).Get(context.TODO(), is.Name, metav1.GetOptions{})
+		for {
+			klog.V(4).Infof("Performing a live lookup of release images in %s/%s", is.Namespace, is.Name)
+			// perform live reads, ensure we have observed a public image repo
+			is, err = c.imageClient.ImageStreams(is.Namespace).Get(context.TODO(), is.Name, metav1.GetOptions{})
+			if err != nil || (is != nil && is.Status.PublicDockerImageRepository != "") {
+				break
+			}
+		}
 	}
 	return is, err
 }
