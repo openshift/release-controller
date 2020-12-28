@@ -439,7 +439,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			return err
 		}
 		success, complete := jobIsComplete(job)
-		klog.V(4).Infof("Release creation for %s success: %v, complete: %v", release, success, complete)
+		klog.V(4).Infof("Release creation for %s success: %v, complete: %v", tag.Name, success, complete)
 		switch {
 		case !complete:
 			return nil
