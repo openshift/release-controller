@@ -399,7 +399,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 		buf.WriteString(" <a title=\"See details page for more\" class=\"\" href=\"")
 		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("/releasestream/%s/release/%s", url.PathEscape(release.Config.Name), url.PathEscape(tag.Name))))
 		buf.WriteString("\">")
-		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("%d pending", len(failing))))
+		buf.WriteString(template.HTMLEscapeString(fmt.Sprintf("%d pending", len(pending))))
 		buf.WriteString("</a>")
 	}
 	if failingCount > 3 {
