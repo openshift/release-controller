@@ -20,7 +20,7 @@ import (
 func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
@@ -54,7 +54,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
@@ -123,7 +123,7 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.PublicDockerImageRepository)
+		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
 		}
