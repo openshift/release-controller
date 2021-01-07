@@ -195,6 +195,9 @@ func styleForUpgrade(upgrade *UpgradeHistory) string {
 }
 
 func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
+	if upgrades == nil {
+		return ""
+	}
 	buf := &bytes.Buffer{}
 	u := url.URL{}
 	for _, visual := range upgrades.Tags[index].Visual {

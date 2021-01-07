@@ -404,7 +404,6 @@ func (o *options) Run() error {
 		go prowInformers.Run(stopCh)
 
 		go func() {
-
 			index := prowInformers.GetIndexer()
 			cache.WaitForCacheSync(stopCh, prowInformers.HasSynced)
 			wait.Until(func() {
@@ -433,7 +432,9 @@ func (o *options) Run() error {
 			}, 2*time.Minute, stopCh)
 		}()
 
-		go c.syncPeriodicJobs(prowInformers, stopCh)
+		if !o.DryRun {
+			go c.syncPeriodicJobs(prowInformers, stopCh)
+		}
 	}
 
 	klog.Infof("Waiting for caches to sync")
