@@ -129,7 +129,7 @@ td.upgrade-track {
 					<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
 					<th>Started</th>
 					<th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
-					<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>
+					{{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
 				</tr>
 			</thead>
 			<tbody>
@@ -137,7 +137,7 @@ td.upgrade-track {
 		{{ if .Delayed }}
 			<tr>
 				<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
-				<td colspan="{{ inc $upgrades.Width }}"></td>
+				{{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
 			</tr>
 		{{ end }}
 		{{ range $index, $tag := .Tags }}
@@ -196,7 +196,7 @@ const releaseDashboardPageHtml = `
 			{{ if .Delayed }}
 				<tr>
 					<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
-					<td colspan="{{ inc $upgrades.Width }}"></td>
+					{{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
 				</tr>
 			{{ end }}
 			{{ if .Failing }}
@@ -1065,11 +1065,8 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
-		if r.Config.As == releaseConfigModeStable {
-			for i := range s.Upgrades.Tags {
-				s.Upgrades.Tags[i].External = nil
-			}
+		if r.Config.As != releaseConfigModeStable {
+			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 		}
 		page.Streams = append(page.Streams, s)
 	}
@@ -1215,7 +1212,9 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
+		if r.Config.As != releaseConfigModeStable {
+			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
+		}
 		page.Streams = append(page.Streams, s)
 	}
 
