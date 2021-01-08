@@ -53,7 +53,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 		releaseAnnotationGeneration: strconv.FormatInt(generation, 10),
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
-		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
+		toImage := fmt.Sprintf("%s:%s", release.Source.Status.DockerImageRepository, name)
 		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
 		if len(release.Config.OverrideCLIImage) > 0 {
 			cliImage = release.Config.OverrideCLIImage
