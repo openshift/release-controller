@@ -280,11 +280,13 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 			mkdir $HOME/.docker/
 			cp -Lf /tmp/pull-secret/* $HOME/.docker/
 			oc registry login
+			oc registry login --registry registry.ci.openshift.org  # Change in OCP4 behavior - public name is not available
 			`
 	} else {
 		prefix = `
 			set -eu
 			oc registry login
+			oc registry login --registry registry.ci.openshift.org  # Change in OCP4 behavior - public name is not available
 			`
 	}
 	job := &batchv1.Job{
