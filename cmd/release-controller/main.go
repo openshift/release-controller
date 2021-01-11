@@ -86,6 +86,8 @@ type options struct {
 	validateConfigs string
 
 	softDeleteReleaseTags bool
+
+	ReleaseArchitecture string
 }
 
 func main() {
@@ -151,6 +153,8 @@ func main() {
 	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
 	flagset.BoolVar(&opt.softDeleteReleaseTags, "soft-delete-release-tags", false, "If set to true, annotate imagestreamtags instead of deleting them")
 
+	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
+
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
@@ -183,6 +187,10 @@ func (o *options) Run() error {
 	}
 	if sets.NewString(o.ReleaseNamespaces...).HasAny(o.PublishNamespaces...) {
 		return fmt.Errorf("--release-namespace and --publish-namespace may not overlap")
+	}
+	var architecture = "amd64"
+	if len(o.ReleaseArchitecture) > 0 {
+		architecture = o.ReleaseArchitecture
 	}
 
 	inClusterCfg, err := loadClusterConfig()
@@ -239,7 +247,7 @@ func (o *options) Run() error {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
 	}
-	klog.Infof("Releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
+	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageClient, err := imageclientset.NewForConfig(releasesConfig)
 	if err != nil {
