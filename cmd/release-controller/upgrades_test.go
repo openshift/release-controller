@@ -17,7 +17,7 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 	}{
 		{
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"})
 				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"})
 				g.Add("1.0.1", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://3"})
@@ -70,7 +70,7 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 	}{
 		{
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"})
 				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"})
 				g.Add("1.0.1", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://3"})

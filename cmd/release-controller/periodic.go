@@ -170,6 +170,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 	if periodicWithRelease.Upgrade && len(previousTag) > 0 {
 		prowJob.Annotations[releaseAnnotationFromTag] = previousTag
 	}
+	prowJob.Annotations[releaseAnnotationArchitecture] = c.graph.architecture
 
 	_, err = c.prowClient.Create(context.TODO(), objectToUnstructured(&prowJob), metav1.CreateOptions{})
 	if err != nil {

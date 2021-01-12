@@ -80,6 +80,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releaseAnnotationFromTag] = previousTag
 	}
+	pj.Annotations[releaseAnnotationArchitecture] = c.graph.architecture
 	out, err := c.prowClient.Create(context.TODO(), objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call

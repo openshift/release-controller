@@ -22,7 +22,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 		{
 			tags: []*imagev1.TagReference{},
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				return g
 			},
 			want: &ReleaseUpgrades{
@@ -36,7 +36,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				{Name: "4.0.0"},
 			},
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				return g
 			},
 			want: &ReleaseUpgrades{
@@ -54,7 +54,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				{Name: "4.0.0-9"},
 			},
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				g.Add("4.0.0", "4.0.1", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
 				return g
 			},
@@ -89,7 +89,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				{Name: "4.0.1"},
 			},
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				g.Add("4.0.4", "4.0.5", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
 				g.Add("4.0.3", "4.0.5", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
 				g.Add("4.0.0", "4.0.2", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
@@ -141,7 +141,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				{Name: "4.1.0-0.test-06"},
 			},
 			graph: func() *UpgradeGraph {
-				g := NewUpgradeGraph()
+				g := NewUpgradeGraph("amd64")
 				g.Add("4.1.0-0.test-08", "4.1.0-0.test-09", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
 				g.Add("4.1.0-0.test-07", "4.1.0-0.test-08", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
 				g.Add("4.1.0-rc.0", "4.1.0-0.test-08", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
