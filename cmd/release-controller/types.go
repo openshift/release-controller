@@ -469,6 +469,9 @@ const (
 
 	// releaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
 	releaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
+
+	// releaseAnnotationArchitecture indicates the architecture of the release
+	releaseAnnotationArchitecture = "release.openshift.io/architecture"
 )
 
 type Duration time.Duration

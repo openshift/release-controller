@@ -278,7 +278,7 @@ func (o *options) Run() error {
 
 	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, imageCache.Get)
 
-	graph := NewUpgradeGraph()
+	graph := NewUpgradeGraph(architecture)
 
 	c := NewController(
 		client.CoreV1(),
