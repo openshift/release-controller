@@ -723,6 +723,7 @@ github.com/google/martian v2.1.0+incompatible h1:/CP5g8u/VJHijgedC/Legn3BAbAaWPg
 github.com/google/martian v2.1.0+incompatible/go.mod h1:9I4somxYTbIHy5NJKHRl3wXiIaQGbYVAs8BPL6v8lEs=
 github.com/google/martian v2.1.1-0.20190517191504-25dcb96d9e51+incompatible h1:xmapqc1AyLoB+ddYT6r04bD9lIjlOqGaREovi0SzFaE=
 github.com/google/martian v2.1.1-0.20190517191504-25dcb96d9e51+incompatible/go.mod h1:9I4somxYTbIHy5NJKHRl3wXiIaQGbYVAs8BPL6v8lEs=
+github.com/google/martian/v3 v3.0.0 h1:pMen7vLs8nvgEYhywH3KDWJIJTeEr2ULsVWHWYHQyBs=
 github.com/google/martian/v3 v3.0.0/go.mod h1:y5Zk1BBys9G+gd6Jrk0W3cC1+ELVxBWuIGO+w/tUAp0=
 github.com/google/pprof v0.0.0-20181206194817-3ea8567a2e57/go.mod h1:zfwlbNMJ+OItoe0UupaVj+oy1omPYYDuagoSzA8v9mc=
 github.com/google/pprof v0.0.0-20190515194954-54271f7e092f/go.mod h1:zfwlbNMJ+OItoe0UupaVj+oy1omPYYDuagoSzA8v9mc=
@@ -1146,8 +1147,6 @@ github.com/openshift/api v0.0.0-20200521101457-60c476765272/go.mod h1:TkhafijfTi
 github.com/openshift/build-machinery-go v0.0.0-20200211121458-5e3d6e570160/go.mod h1:1CkcsT3aVebzRBzVTSbiKSkJMsC/CASqxesfqEMfJEc=
 github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc/go.mod h1:1CkcsT3aVebzRBzVTSbiKSkJMsC/CASqxesfqEMfJEc=
 github.com/openshift/builder v0.0.0-20200325182657-6a52122d21e0/go.mod h1:DE+EEa9c2Bv/B4eQ64cYqTiarVTl9Kf5EQsUyEsZ2iU=
-github.com/openshift/ci-tools v0.0.0-20201112165351-28480094e685 h1:TzafdwhXCANBpUrRhI/+GciQTVF0Nh67/lSBK/fWgPE=
-github.com/openshift/ci-tools v0.0.0-20201112165351-28480094e685/go.mod h1:PwVuCCkWcWpqE3IfKTWpUxZ1n+s8B8IF5fvlqebJz+E=
 github.com/openshift/ci-tools v0.0.0-20201112214423-2f4cc3d7672d h1:iQ6cXgftu57rVYLfYZggDM9BYyeetlkOlcVFN2i7FyU=
 github.com/openshift/ci-tools v0.0.0-20201112214423-2f4cc3d7672d/go.mod h1:PwVuCCkWcWpqE3IfKTWpUxZ1n+s8B8IF5fvlqebJz+E=
 github.com/openshift/client-go v0.0.0-20200521150516-05eb9880269c h1:l7CmbzzkyWl4Y6qHmy6m4FvbH4iLnIXGrXqOfE5IFNA=
@@ -2234,10 +2233,8 @@ k8s.io/test-infra v0.0.0-20200514184223-ba32c8aae783/go.mod h1:bW6thaPZfL2hW7ecj
 k8s.io/test-infra v0.0.0-20200617221206-ea73eaeab7ff/go.mod h1:L3+cRvwftUq8IW1TrHji5m3msnc4uck/7LsE/GR/aZk=
 k8s.io/test-infra v0.0.0-20200630233406-1dca6122872e/go.mod h1:L3+cRvwftUq8IW1TrHji5m3msnc4uck/7LsE/GR/aZk=
 k8s.io/test-infra v0.0.0-20201029180605-20aad120bf8a/go.mod h1:0cyHeX6hFHM8fNxumHp9kEXVjJmULd6PQJh4HYIxvcQ=
-k8s.io/test-infra v0.0.0-20201112175450-00537d1bb47c h1:+LVq5qxgqPv4xEuOYeqQ6pSKIqd5KryAhqTEuvJADns=
-k8s.io/test-infra v0.0.0-20201112175450-00537d1bb47c/go.mod h1:pgzMkCSFaMNHVIfSvT6VYqrWwP3We9B7XFlKwJl/n4s=
-k8s.io/test-infra v0.0.0-20201215143149-52898a46a14c h1:Ho+AKqcXlC6wNiIi0roXHHF2hq76Ppz6wdqL3ly3RDA=
-k8s.io/test-infra v0.0.0-20201215143149-52898a46a14c/go.mod h1:w8UnlrLZZc6ANHdBaCoLrkF7PN4tX5H4OPlSDJMdPqM=
+k8s.io/test-infra v0.0.0-20210111180425-5d64d2ba2ac5 h1:JNhTBUhugyuq4Wuj53LPnYIInpHoDqKOCn7Rp4Ab3lk=
+k8s.io/test-infra v0.0.0-20210111180425-5d64d2ba2ac5/go.mod h1:w8UnlrLZZc6ANHdBaCoLrkF7PN4tX5H4OPlSDJMdPqM=
 k8s.io/utils v0.0.0-20181019225348-5e321f9a457c/go.mod h1:8k8uAuAQ0rXslZKaEWd0c3oVhZz7sSzSiPnVZayjIX0=
 k8s.io/utils v0.0.0-20190221042446-c2654d5206da/go.mod h1:8k8uAuAQ0rXslZKaEWd0c3oVhZz7sSzSiPnVZayjIX0=
 k8s.io/utils v0.0.0-20190506122338-8fab8cb257d5/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
