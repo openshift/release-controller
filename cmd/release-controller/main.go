@@ -424,12 +424,20 @@ func (o *options) Run() error {
 					if !ok {
 						continue
 					}
-					from, ok := job.GetAnnotations()[releaseAnnotationFromTag]
+					annotations := job.GetAnnotations()
+					from, ok := annotations[releaseAnnotationFromTag]
 					if !ok {
 						continue
 					}
-					to, ok := job.GetAnnotations()[releaseAnnotationToTag]
+					to, ok := annotations[releaseAnnotationToTag]
 					if !ok {
+						continue
+					}
+					jobArchitecture, ok := annotations[releaseAnnotationArchitecture]
+					if !ok {
+						continue
+					}
+					if jobArchitecture != architecture {
 						continue
 					}
 					status, ok := prowJobVerificationStatus(job)
