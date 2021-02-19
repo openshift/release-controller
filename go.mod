@@ -3,7 +3,7 @@ module github.com/openshift/release-controller
 go 1.13
 
 replace (
-	github.com/Azure/go-autorest => github.com/Azure/go-autorest v12.2.0+incompatible
+	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 	github.com/containerd/containerd => github.com/containerd/containerd v0.2.10-0.20180716142608-408d13de2fbb
 	github.com/docker/docker => github.com/openshift/moby-moby v1.4.2-0.20190308215630-da810a85109d
 	github.com/golang/glog => github.com/openshift/golang-glog v0.0.0-20190322123450-3c92600d7533
@@ -34,15 +34,15 @@ require (
 	github.com/prometheus/client_golang v1.7.1
 	github.com/russross/blackfriday v2.0.0+incompatible
 	github.com/spf13/cobra v1.1.1
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/api v0.32.0
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/robfig/cron.v2 v2.0.0-20150107220207-be2e0b0deed5
-	k8s.io/api v0.19.3
-	k8s.io/apimachinery v0.19.3
+	k8s.io/api v0.20.2
+	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/klog v1.0.0
-	k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6
-	k8s.io/test-infra v0.0.0-20210111180425-5d64d2ba2ac5
+	k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
+	k8s.io/test-infra v0.0.0-20210219083424-bfbed413c242
 )
