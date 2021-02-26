@@ -95,6 +95,10 @@ type options struct {
 	ClusterGroups []string
 
 	ARTSuffix string
+
+	PruneGraph        bool
+	PrintPrunedGraph  string
+	ConfirmPruneGraph bool
 }
 
 // Add metrics for bugzilla verifier errors
@@ -122,7 +126,10 @@ func main() {
 	opt := &options{
 		ListenAddr:          ":8080",
 		ToolsImageStreamTag: ":tests",
-		Registry:            "registry.ci.openshift.org",
+
+		Registry: "registry.ci.openshift.org",
+
+		PrintPrunedGraph: releasecontroller.PruneGraphPrintSecret,
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -190,6 +197,10 @@ func main() {
 	// configurations can be distributed properly on the environment that they require.
 	flagset.StringArrayVar(&opt.ClusterGroups, "cluster-group", opt.ClusterGroups, "A comma seperated list of build cluster names to evenly distribute jobs to.  May be specified multiple times to account for different configurations of build clusters.")
 
+	flagset.BoolVar(&opt.PruneGraph, "prune-graph", opt.PruneGraph, "Reads the upgrade graph, prunes edges, and prints the result")
+	flagset.StringVar(&opt.PrintPrunedGraph, "print-pruned-graph", opt.PrintPrunedGraph, "Print the result of pruning the graph.  Valid options are: <|secret|debug>. The default, 'secret', is the base64 encoded secret payload. The 'debug' option will pretty print the json payload")
+	flagset.BoolVar(&opt.ConfirmPruneGraph, "confirm-prune-graph", opt.ConfirmPruneGraph, "Persist the pruned graph")
+
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
@@ -212,7 +223,6 @@ func (o *options) Run() error {
 	if o.validateConfigs != "" {
 		return validateConfigs(o.validateConfigs)
 	}
-
 	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
 	if len(tagParts) != 2 || len(tagParts[1]) == 0 {
 		return fmt.Errorf("--tools-image-stream-tag must be STREAM:TAG or :TAG (default STREAM is the oldest release stream)")
@@ -233,7 +243,9 @@ func (o *options) Run() error {
 	if len(o.ReleaseArchitecture) > 0 {
 		architecture = o.ReleaseArchitecture
 	}
-
+	if len(o.PrintPrunedGraph) > 0 && o.PrintPrunedGraph != releasecontroller.PruneGraphPrintSecret && o.PrintPrunedGraph != releasecontroller.PruneGraphPrintDebug {
+		return fmt.Errorf("--print-prune-graph must be \"%s\" or \"%s\"", releasecontroller.PruneGraphPrintSecret, releasecontroller.PruneGraphPrintDebug)
+	}
 	inClusterCfg, err := loadClusterConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load incluster config: %w", err)
@@ -527,6 +539,8 @@ func (o *options) Run() error {
 	health.ServeReady(func() bool { return true })
 
 	switch {
+	case o.PruneGraph:
+		return c.PruneGraph(releasesClient.CoreV1().Secrets(releaseNamespace), o.ReleaseNamespaces[0], "release-upgrade-graph", o.PrintPrunedGraph, o.ConfirmPruneGraph)
 	case o.DryRun:
 		klog.Infof("Dry run mode (no changes will be made)")
 
