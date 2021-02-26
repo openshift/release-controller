@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/labels"
 	"sort"
 	"sync"
 	"time"
@@ -248,23 +251,7 @@ func (g *UpgradeGraph) Records() []UpgradeRecord {
 }
 
 func (g *UpgradeGraph) Save(w io.Writer) error {
-	records := g.Records()
-
-	// put the records into a stable order
-	sort.Slice(records, func(i, j int) bool {
-		a, b := records[i], records[j]
-		if a.To == b.To {
-			return a.From < b.From
-		}
-		return a.To < b.To
-	})
-	for _, record := range records {
-		sort.Slice(record.Results, func(i, j int) bool {
-			return record.Results[i].URL < record.Results[j].URL
-		})
-	}
-
-	data, err := json.Marshal(records)
+	data, err := json.Marshal(g.orderedRecords())
 	if err != nil {
 		return err
 	}
@@ -295,6 +282,24 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 }
 
 func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+	loadUpgradeGraph(graph, secretClient, ns, name, stopCh)
+
+	if !update {
+		return
+	}
+
+	// wait a bit of time to let any other loops load what they can
+	time.Sleep(15 * time.Second)
+
+	// keep the secret up to date
+	buf := &bytes.Buffer{}
+	wait.Until(func() {
+		buf.Reset()
+		saveUpgradeGraph(buf, graph, secretClient, ns, name)
+	}, 5*time.Minute, stopCh)
+}
+
+func loadUpgradeGraph(graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
@@ -317,34 +322,173 @@ func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 		}
 		return true, nil
 	}, stopCh)
+}
 
-	if !update {
+func saveUpgradeGraph(buf *bytes.Buffer, graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string) {
+	if err := graph.Save(buf); err != nil {
+		klog.Errorf("Unable to calculate graph state: %v", err)
 		return
 	}
+	secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
+		return
+	}
+	if secret.Data == nil {
+		secret.Data = make(map[string][]byte)
+	}
+	secret.Data["latest"] = buf.Bytes()
+	if _, err := secretClient.Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
+	}
+	klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
+}
 
-	// wait a bit of time to let any other loops load what they can
-	time.Sleep(15 * time.Second)
+func (g *UpgradeGraph) orderedRecords() []UpgradeRecord {
+	records := g.Records()
+	// put the records into a stable order
+	sort.Slice(records, func(i, j int) bool {
+		a, b := records[i], records[j]
+		if a.To == b.To {
+			return a.From < b.From
+		}
+		return a.To < b.To
+	})
+	for _, record := range records {
+		sort.Slice(record.Results, func(i, j int) bool {
+			return record.Results[i].URL < record.Results[j].URL
+		})
+	}
+	return records
+}
 
-	// keep the secret up to date
+const (
+	PruneGraphPrintSecret = "secret"
+	PruneGraphPrintDebug = "debug"
+)
+
+func (c *Controller) pruneGraph(secretClient kv1core.SecretInterface, ns, name string, printOption string, confirm bool) error {
+	stopCh := wait.NeverStop
+
+	loadUpgradeGraph(c.graph, secretClient, ns, name, stopCh)
+
+	imageStreams, err := c.releaseLister.ImageStreams(ns).List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	var stableTagList []string
+
+	for _, imageStream := range imageStreams {
+		r, ok, err := c.releaseDefinition(imageStream)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.As == releaseConfigModeStable {
+			for _, tag := range imageStream.Spec.Tags {
+				stableTagList = append(stableTagList, tag.Name)
+			}
+		}
+	}
+
+	// To tags that are not present in the stable tags
+	toMissingList := make([]string, 0, len(c.graph.to))
+	for tag := range c.graph.to {
+		if ! stringInSlice(tag, stableTagList) {
+			toMissingList = append(toMissingList, tag)
+		}
+	}
+
+	// From tags that are not present in the stable tags
+	fromMissingList := make([]string, 0, len(c.graph.from))
+	for tag := range c.graph.from {
+		if ! stringInSlice(tag, stableTagList) {
+			fromMissingList = append(fromMissingList, tag)
+		}
+	}
+
+	// To tags that are not in the From tags
+	pruneTagList := make([]string, 0, len(c.graph.to))
+	for _, tag := range toMissingList {
+		if ! stringInSlice(tag, fromMissingList) {
+			pruneTagList = append(pruneTagList, tag)
+		}
+	}
+
+	// From tags that are not in the To tags
+	for _, tag := range fromMissingList {
+		if ! stringInSlice(tag, toMissingList) {
+			pruneTagList = append(pruneTagList, tag)
+		}
+	}
+
+	// Tags that are in both the From and To lists
+	for _, tag := range toMissingList {
+		if stringInSlice(tag, fromMissingList) {
+			pruneTagList = append(pruneTagList, tag)
+		}
+	}
+
+	klog.V(2).Infof("Pruning %d/%d tags from release controller graph\n", len(pruneTagList), len(c.graph.to))
+
+	// Prune graph
+	c.graph.lock.Lock()
+	for _, toTag := range pruneTagList {
+		for fromTag := range c.graph.to[toTag] {
+			c.graph.removeWithLock(fromTag, toTag)
+		}
+	}
+	c.graph.lock.Unlock()
+
+	if confirm {
+		buf := &bytes.Buffer{}
+		saveUpgradeGraph(buf, c.graph, secretClient, ns, name)
+	} else {
+		switch printOption {
+		case PruneGraphPrintDebug:
+			c.graph.prettyPrint()
+		case PruneGraphPrintSecret:
+			c.graph.printSecretPayload()
+		}
+	}
+
+	return nil
+}
+
+func (g *UpgradeGraph) removeWithLock(fromTag, toTag string) {
+	delete(g.to[toTag], fromTag)
+	if len(g.to[toTag]) == 0 {
+		delete(g.to, toTag)
+	}
+	g.from[fromTag].Delete(toTag)
+	if g.from[fromTag].Len() == 0 {
+		delete(g.from, fromTag)
+	}
+}
+
+func (g *UpgradeGraph) prettyPrint() {
+	json, err := json.MarshalIndent(g.orderedRecords(), "", "    ")
+	if err != nil {
+		klog.V(1).Infof("Unable to marshal graph: %v", err)
+	}
+	fmt.Printf("%s\n", json)
+}
+
+func (g *UpgradeGraph) printSecretPayload() {
 	buf := &bytes.Buffer{}
-	wait.Until(func() {
-		buf.Reset()
-		if err := graph.Save(buf); err != nil {
-			klog.Errorf("Unable to calculate graph state: %v", err)
-			return
+	if err := g.Save(buf); err != nil {
+		klog.Errorf("Unable to calculate graph state: %v", err)
+		return
+	}
+	str := base64.StdEncoding.EncodeToString(buf.Bytes())
+	fmt.Println(str)
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
 		}
-		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
-			return
-		}
-		if secret.Data == nil {
-			secret.Data = make(map[string][]byte)
-		}
-		secret.Data["latest"] = buf.Bytes()
-		if _, err := secretClient.Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
-		}
-		klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
-	}, 5*time.Minute, stopCh)
+	}
+	return false
 }
