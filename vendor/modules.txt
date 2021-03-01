@@ -772,7 +772,7 @@ k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-# k8s.io/test-infra v0.0.0-20210219083424-bfbed413c242
+# k8s.io/test-infra v0.0.0-20210301221816-869f6a84fdbd
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
 k8s.io/test-infra/pkg/genyaml
@@ -832,7 +832,7 @@ knative.dev/pkg/apis/duck/v1beta1
 knative.dev/pkg/configmap
 knative.dev/pkg/kmeta
 knative.dev/pkg/kmp
-# sigs.k8s.io/controller-runtime v0.8.1-0.20210115141952-3c5b3583fd30
+# sigs.k8s.io/controller-runtime v0.8.3-0.20210301154926-12660d4f2255
 sigs.k8s.io/controller-runtime/pkg/cache
 sigs.k8s.io/controller-runtime/pkg/cache/internal
 sigs.k8s.io/controller-runtime/pkg/client

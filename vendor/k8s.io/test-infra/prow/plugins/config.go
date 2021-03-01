@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/yaml"
+
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -47,10 +49,10 @@ const (
 type Configuration struct {
 	// Plugins is a map of repositories (eg "k/k") to lists of
 	// plugin names.
-	// You can find a comprehensive list of the default avaulable plugins here
+	// You can find a comprehensive list of the default available plugins here
 	// https://github.com/kubernetes/test-infra/tree/master/prow/plugins
 	// note that you're also able to add external plugins.
-	Plugins map[string][]string `json:"plugins,omitempty"`
+	Plugins Plugins `json:"plugins,omitempty"`
 
 	// ExternalPlugins is a map of repositories (eg "k/k") to lists of
 	// external plugins.
@@ -107,6 +109,13 @@ type Golint struct {
 	// in (0,1] over which problems will be printed. Defaults to
 	// 0.8, as does the `go lint` tool.
 	MinimumConfidence *float64 `json:"minimum_confidence,omitempty"`
+}
+
+type Plugins map[string]OrgPlugins
+
+type OrgPlugins struct {
+	ExcludedRepos []string `json:"excluded_repos,omitempty"`
+	Plugins       []string `json:"plugins,omitempty"`
 }
 
 // ExternalPlugin holds configuration for registering an external
@@ -255,6 +264,11 @@ type Size struct {
 type Blockade struct {
 	// Repos are either of the form org/repos or just org.
 	Repos []string `json:"repos,omitempty"`
+	// BranchRegexp is the regular expression for branches that the the blockade applies to.
+	// If BranchRegexp is not specified, the blockade applies to all branches by default.
+	// Compiles into BranchRe during config load.
+	BranchRegexp *string        `json:"branchregexp,omitempty"`
+	BranchRe     *regexp.Regexp `json:"-"`
 	// BlockRegexps are regular expressions matching the file paths to block.
 	BlockRegexps []string `json:"blockregexps,omitempty"`
 	// ExceptionRegexps are regular expressions matching the file paths that are exceptions to the BlockRegexps.
@@ -811,11 +825,39 @@ func (c *Configuration) DcoFor(org, repo string) *Dco {
 	return &Dco{}
 }
 
+func OldToNewPlugins(oldPlugins map[string][]string) Plugins {
+	newPlugins := make(Plugins)
+	for repo, plugins := range oldPlugins {
+		newPlugins[repo] = OrgPlugins{
+			Plugins: plugins,
+		}
+	}
+	return newPlugins
+}
+
+type pluginsWithoutUnmarshaler Plugins
+
+var warnTriggerDeprecatedConfig time.Time
+
+func (p *Plugins) UnmarshalJSON(d []byte) error {
+	var oldPlugins map[string][]string
+	if err := yaml.Unmarshal(d, &oldPlugins); err == nil {
+		logrusutil.ThrottledWarnf(&warnTriggerDeprecatedConfig, time.Hour, "plugins declaration uses a deprecated config style, see https://github.com/kubernetes/test-infra/issues/20631#issuecomment-787693609 for a migration guide")
+		*p = OldToNewPlugins(oldPlugins)
+		return nil
+	}
+	var target pluginsWithoutUnmarshaler
+	err := yaml.Unmarshal(d, &target)
+	*p = Plugins(target)
+	return err
+}
+
 // EnabledReposForPlugin returns the orgs and repos that have enabled the passed plugin.
-func (c *Configuration) EnabledReposForPlugin(plugin string) (orgs, repos []string) {
+func (c *Configuration) EnabledReposForPlugin(plugin string) (orgs, repos []string, orgExceptions map[string]sets.String) {
+	orgExceptions = make(map[string]sets.String)
 	for repo, plugins := range c.Plugins {
 		found := false
-		for _, candidate := range plugins {
+		for _, candidate := range plugins.Plugins {
 			if candidate == plugin {
 				found = true
 				break
@@ -826,8 +868,17 @@ func (c *Configuration) EnabledReposForPlugin(plugin string) (orgs, repos []stri
 				repos = append(repos, repo)
 			} else {
 				orgs = append(orgs, repo)
+				orgExceptions[repo] = sets.NewString()
+				for _, excludedRepo := range plugins.ExcludedRepos {
+					orgExceptions[repo].Insert(fmt.Sprintf("%s/%s", repo, excludedRepo))
+				}
 			}
 		}
+	}
+	// <plugin> plugin might be declared in both org and org/repo
+	// in that case, remove repo from org's orgExceptions despite the excluded_repo in org
+	for _, repo := range repos {
+		orgExceptions[strings.Split(repo, "/")[0]].Delete(repo)
 	}
 	return
 }
@@ -923,12 +974,12 @@ func (c *Configuration) setDefaults() {
 // validatePluginsDupes will return an error if there are duplicated plugins.
 // It is sometimes a sign of misconfiguration and is always useless for a
 // plugin to be specified at both the org and repo levels.
-func validatePluginsDupes(plugins map[string][]string) error {
+func validatePluginsDupes(plugins Plugins) error {
 	var errors []error
 	for repo, repoConfig := range plugins {
 		if strings.Contains(repo, "/") {
 			org := strings.Split(repo, "/")[0]
-			if dupes := findDuplicatedPluginConfig(repoConfig, plugins[org]); len(dupes) > 0 {
+			if dupes := findDuplicatedPluginConfig(repoConfig.Plugins, plugins[org].Plugins); len(dupes) > 0 {
 				errors = append(errors, fmt.Errorf("plugins %v are duplicated for %s and %s", dupes, repo, org))
 			}
 		}
@@ -941,7 +992,7 @@ func validatePluginsDupes(plugins map[string][]string) error {
 func (c *Configuration) ValidatePluginsUnknown() error {
 	var errors []error
 	for _, configuration := range c.Plugins {
-		for _, plugin := range configuration {
+		for _, plugin := range configuration.Plugins {
 			if _, ok := pluginHelp[plugin]; !ok {
 				errors = append(errors, fmt.Errorf("unknown plugin: %s", plugin))
 			}
@@ -1116,6 +1167,17 @@ func compileRegexpsAndDurations(pc *Configuration) error {
 		return err
 	}
 	pc.CherryPickUnapproved.BranchRe = branchRe
+
+	for _, blockade := range pc.Blockades {
+		if blockade.BranchRegexp == nil {
+			continue
+		}
+		branchRe, err := regexp.Compile(*blockade.BranchRegexp)
+		if err != nil {
+			return fmt.Errorf("failed to compile blockade branchregexp: %q, error: %v", *blockade.BranchRegexp, err)
+		}
+		blockade.BranchRe = branchRe
+	}
 
 	commentRe, err := regexp.Compile(pc.Heart.CommentRegexp)
 	if err != nil {
