@@ -449,6 +449,13 @@ func (o *options) Run() error {
 					if jobArchitecture != architecture {
 						continue
 					}
+					jobSource, ok := annotations[releaseAnnotationSource]
+					if !ok {
+						continue
+					}
+					if strings.Split(jobSource, "/")[0] != releaseNamespace {
+						continue
+					}
 					status, ok := prowJobVerificationStatus(job)
 					if !ok {
 						continue
