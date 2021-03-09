@@ -294,6 +294,8 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
+# go4.org v0.0.0-20201209231011-d4a079459e60
+go4.org/bytereplacer
 # gocloud.dev v0.19.0
 gocloud.dev/aws
 gocloud.dev/blob
@@ -772,7 +774,7 @@ k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-# k8s.io/test-infra v0.0.0-20210301221816-869f6a84fdbd
+# k8s.io/test-infra v0.0.0-20210309003700-6e0f21eba4c9
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
 k8s.io/test-infra/pkg/genyaml
@@ -815,6 +817,7 @@ k8s.io/test-infra/prow/pod-utils/downwardapi
 k8s.io/test-infra/prow/pod-utils/gcs
 k8s.io/test-infra/prow/pod-utils/wrapper
 k8s.io/test-infra/prow/repoowners
+k8s.io/test-infra/prow/secretutil
 k8s.io/test-infra/prow/sidecar
 k8s.io/test-infra/prow/simplifypath
 k8s.io/test-infra/prow/slack
