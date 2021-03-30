@@ -60,6 +60,7 @@ const releasePageHtml = `
 oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
 </pre>
 <div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
+<p>Pulling these images requires <a href="https://docs.ci.openshift.org/docs/how-tos/use-registries-in-build-farm/">authenticating to the app.ci cluster</a>.</p>
 <style>
 .upgrade-track-line {
 	position: absolute;
