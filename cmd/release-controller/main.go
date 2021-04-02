@@ -271,7 +271,7 @@ func (o *options) Run() error {
 
 	configAgent := &prowconfig.Agent{}
 	if len(o.ProwConfigPath) > 0 {
-		if err := configAgent.Start(o.ProwConfigPath, o.JobConfigPath); err != nil {
+		if err := configAgent.Start(o.ProwConfigPath, o.JobConfigPath, []string{}); err != nil {
 			return err
 		}
 	}
