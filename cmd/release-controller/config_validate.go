@@ -11,9 +11,11 @@ import (
 
 	"gopkg.in/robfig/cron.v2"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/kube-openapi/pkg/util/sets"
+	prowconfig "k8s.io/test-infra/prow/config"
 )
 
-func validateConfigs(configDir string) error {
+func validateConfigs(configDir, prowConfig, jobConfig string) error {
 	errors := []error{}
 	releaseConfigs := []ReleaseConfig{}
 	err := filepath.Walk(configDir, func(path string, info os.FileInfo, err error) error {
@@ -36,6 +38,11 @@ func validateConfigs(configDir string) error {
 	if err != nil {
 		return fmt.Errorf("error encountered while trying to read config files: %w", err)
 	}
+	configs, err := prowconfig.Load(prowConfig, jobConfig, nil, "")
+	if err != nil {
+		return fmt.Errorf("failed to load job configs: %w", err)
+	}
+	errors = append(errors, validateDefinedReleaseControllerJobs(configs.JobConfig, releaseConfigs)...)
 	errors = append(errors, verifyPeriodicFields(releaseConfigs)...)
 	errors = append(errors, findDuplicatePeriodics(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
@@ -103,4 +110,39 @@ func findDuplicatePeriodics(releaseConfigs []ReleaseConfig) []error {
 		duplicates = append(duplicates, fmt.Errorf("found job %s in multiple locations: %v", job, steps))
 	}
 	return duplicates
+}
+
+func validateDefinedReleaseControllerJobs(jobConfig prowconfig.JobConfig, releaseConfigs []ReleaseConfig) []error {
+	releaseConfigJobs := sets.NewString()
+	for _, config := range releaseConfigs {
+		for _, verify := range config.Verify {
+			if verify.ProwJob != nil {
+				releaseConfigJobs.Insert(verify.ProwJob.Name)
+			}
+		}
+		for _, periodic := range config.Periodic {
+			if periodic.ProwJob != nil {
+				releaseConfigJobs.Insert(periodic.ProwJob.Name)
+			}
+		}
+	}
+	releaseJobs := sets.NewString()
+	for _, job := range jobConfig.Periodics {
+		// TODO: replace hardcoded label with import from ci-tools
+		if _, ok := job.Labels["ci-operator.openshift.io/release-controller"]; ok {
+			releaseJobs.Insert(job.Name)
+		}
+	}
+	var errs []error
+	for rcJob := range releaseConfigJobs {
+		if !releaseJobs.Has(rcJob) {
+			errs = append(errs, fmt.Errorf("job configured in release-controller config not defined as a release-controller job: %s", rcJob))
+		}
+	}
+	for job := range releaseJobs {
+		if !releaseConfigJobs.Has(job) {
+			errs = append(errs, fmt.Errorf("job defined as release-controller job not configured in release-controller configs: %s", job))
+		}
+	}
+	return errs
 }

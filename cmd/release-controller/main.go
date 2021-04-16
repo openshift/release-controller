@@ -179,7 +179,7 @@ func main() {
 
 func (o *options) Run() error {
 	if o.validateConfigs != "" {
-		return validateConfigs(o.validateConfigs)
+		return validateConfigs(o.validateConfigs, o.prowconfig.ConfigPath, o.prowconfig.JobConfigPath)
 	}
 
 	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
