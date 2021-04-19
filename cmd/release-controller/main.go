@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
@@ -63,8 +64,7 @@ type options struct {
 	ReleasesKubeconfig   string
 	ToolsKubeconfig      string
 
-	ProwConfigPath string
-	JobConfigPath  string
+	prowconfig configflagutil.ConfigOptions
 
 	ListenAddr    string
 	ArtifactsHost string
@@ -140,8 +140,10 @@ func main() {
 	flagset.StringSliceVar(&opt.PublishNamespaces, "publish-namespace", opt.PublishNamespaces, "Optional namespaces that the release might publish results to.")
 	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 
-	flagset.StringVar(&opt.ProwConfigPath, "prow-config", opt.ProwConfigPath, "A config file containing the prow configuration.")
-	flagset.StringVar(&opt.JobConfigPath, "job-config", opt.JobConfigPath, "A config file containing the jobs to run against releases.")
+	opt.prowconfig.ConfigPathFlagName = "prow-config"
+	opt.prowconfig.JobConfigPathFlagName = "job-config"
+	opt.prowconfig.AddFlags(flag.CommandLine)
+	flagset.AddGoFlagSet(flag.CommandLine)
 
 	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
 
@@ -270,8 +272,10 @@ func (o *options) Run() error {
 	hasSynced = append(hasSynced, jobs.Informer().HasSynced)
 
 	configAgent := &prowconfig.Agent{}
-	if len(o.ProwConfigPath) > 0 {
-		if err := configAgent.Start(o.ProwConfigPath, o.JobConfigPath, []string{}); err != nil {
+	if o.prowconfig.ConfigPath != "" {
+		var err error
+		configAgent, err = o.prowconfig.ConfigAgent()
+		if err != nil {
 			return err
 		}
 	}
@@ -409,7 +413,7 @@ func (o *options) Run() error {
 	}
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
-	if len(o.ProwConfigPath) > 0 {
+	if o.prowconfig.ConfigPath != "" {
 		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
 		hasSynced = append(hasSynced, prowInformers.HasSynced)
 		c.AddProwInformer(o.ProwNamespace, prowInformers)
