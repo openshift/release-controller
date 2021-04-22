@@ -44,5 +44,5 @@ require (
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
-	k8s.io/test-infra v0.0.0-20210420183833-0512a33e0336
+	k8s.io/test-infra v0.0.0-20210422095526-28747eb818b8
 )
