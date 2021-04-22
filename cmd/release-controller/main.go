@@ -89,6 +89,8 @@ type options struct {
 	softDeleteReleaseTags bool
 
 	ReleaseArchitecture string
+
+	disableAuthMessage bool
 }
 
 func main() {
@@ -157,6 +159,8 @@ func main() {
 	flagset.BoolVar(&opt.softDeleteReleaseTags, "soft-delete-release-tags", false, "If set to true, annotate imagestreamtags instead of deleting them")
 
 	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
+
+	flagset.BoolVar(&opt.disableAuthMessage, "disable-auth-message", false, "If set to true, disables the CI authentication message")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -301,6 +305,7 @@ func (o *options) Run() error {
 		releaseInfo,
 		graph,
 		o.softDeleteReleaseTags,
+		o.disableAuthMessage,
 	)
 
 	if o.VerifyBugzilla {
