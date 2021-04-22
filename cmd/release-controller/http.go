@@ -958,8 +958,8 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 
 	authMessage := ""
-	if !c.disableAuthMessage {
-		authMessage = "<p>Pulling these images requires <a href=\"https://docs.ci.openshift.org/docs/how-tos/use-registries-in-build-farm/\">authenticating to the app.ci cluster</a>.</p>"
+	if len(c.authenticationMessage) > 0 {
+		authMessage = fmt.Sprintf("<p>%s</p>", c.authenticationMessage)
 	}
 
 	now := time.Now()

@@ -90,7 +90,7 @@ type options struct {
 
 	ReleaseArchitecture string
 
-	disableAuthMessage bool
+	AuthenticationMessage string
 }
 
 func main() {
@@ -160,7 +160,7 @@ func main() {
 
 	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
 
-	flagset.BoolVar(&opt.disableAuthMessage, "disable-auth-message", false, "If set to true, disables the CI authentication message")
+	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -305,7 +305,7 @@ func (o *options) Run() error {
 		releaseInfo,
 		graph,
 		o.softDeleteReleaseTags,
-		o.disableAuthMessage,
+		o.AuthenticationMessage,
 	)
 
 	if o.VerifyBugzilla {
