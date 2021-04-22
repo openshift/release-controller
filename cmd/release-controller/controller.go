@@ -131,6 +131,7 @@ type Controller struct {
 	dashboards []Dashboard
 
 	softDeleteReleaseTags bool
+	authenticationMessage string
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -147,6 +148,7 @@ func NewController(
 	releaseInfo ReleaseInfo,
 	graph *UpgradeGraph,
 	softDeleteReleaseTags bool,
+	authenticationMessage string,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -202,6 +204,7 @@ func NewController(
 		parsedReleaseConfigCache: parsedReleaseConfigCache,
 
 		softDeleteReleaseTags: softDeleteReleaseTags,
+		authenticationMessage: authenticationMessage,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)

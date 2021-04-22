@@ -60,7 +60,7 @@ const releasePageHtml = `
 oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
 </pre>
 <div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
-<p>Pulling these images requires <a href="https://docs.ci.openshift.org/docs/how-tos/use-registries-in-build-farm/">authenticating to the app.ci cluster</a>.</p>
+{{ displayAuthMessage }}
 <style>
 .upgrade-track-line {
 	position: absolute;
@@ -957,6 +957,11 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		Dashboards: c.dashboards,
 	}
 
+	authMessage := ""
+	if len(c.authenticationMessage) > 0 {
+		authMessage = fmt.Sprintf("<p>%s</p>", c.authenticationMessage)
+	}
+
 	now := time.Now()
 	var releasePage = template.Must(template.New("releasePage").Funcs(
 		template.FuncMap{
@@ -1036,6 +1041,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return relTime(t, now, "ago", "from now")
 			},
+			"displayAuthMessage": func() string { return authMessage },
 		},
 	).Parse(releasePageHtml))
 
