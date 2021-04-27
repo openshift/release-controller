@@ -134,15 +134,11 @@ func validateDefinedReleaseControllerJobs(jobConfig prowconfig.JobConfig, releas
 		}
 	}
 	var errs []error
-	for rcJob := range releaseConfigJobs {
-		if !releaseJobs.Has(rcJob) {
-			errs = append(errs, fmt.Errorf("job configured in release-controller config not defined as a release-controller job: %s", rcJob))
-		}
+	if rcJobs := releaseConfigJobs.Difference(releaseJobs); len(rcJobs) > 0 {
+		errs = append(errs, fmt.Errorf("job(s) configured in release-controller config not defined as a release-controller job(s): %v", rcJobs.List()))
 	}
-	for job := range releaseJobs {
-		if !releaseConfigJobs.Has(job) {
-			errs = append(errs, fmt.Errorf("job defined as release-controller job not configured in release-controller configs: %s", job))
-		}
+	if jobs := releaseJobs.Difference(releaseConfigJobs); len(jobs) > 0 {
+		errs = append(errs, fmt.Errorf("job(s) defined as release-controller job not configured in release-controller configs: %v", jobs.List()))
 	}
 	return errs
 }
