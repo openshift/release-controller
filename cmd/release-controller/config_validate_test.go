@@ -444,30 +444,6 @@ func TestValidateDefinedReleaseInformingJobs(t *testing.T) {
 		rcVerify:    map[string]ReleaseVerification{},
 		expectedErr: true,
 	}, {
-		name: "missing job periodic defined in release-controller verification",
-		periodics: []prowconfig.Periodic{{
-			JobBase: prowconfig.JobBase{
-				Name: "periodic3",
-				Labels: map[string]string{
-					"ci-operator.openshift.io/release-controller": "true",
-				},
-			},
-		}},
-		rcPeriodics: map[string]ReleasePeriodic{},
-		rcVerify: map[string]ReleaseVerification{
-			"third": {
-				ProwJob: &ProwJobVerification{
-					Name: "periodic3",
-				},
-			},
-			"fourth": {
-				ProwJob: &ProwJobVerification{
-					Name: "periodic4",
-				},
-			},
-		},
-		expectedErr: true,
-	}, {
 		name: "missing release controller periodic",
 		periodics: []prowconfig.Periodic{{
 			JobBase: prowconfig.JobBase{
@@ -493,6 +469,31 @@ func TestValidateDefinedReleaseInformingJobs(t *testing.T) {
 		},
 		rcVerify:    map[string]ReleaseVerification{},
 		expectedErr: true,
+	}, {
+		name: "disabled verification does not require match",
+		periodics: []prowconfig.Periodic{{
+			JobBase: prowconfig.JobBase{
+				Name: "periodic3",
+				Labels: map[string]string{
+					"ci-operator.openshift.io/release-controller": "true",
+				},
+			},
+		}},
+		rcPeriodics: map[string]ReleasePeriodic{},
+		rcVerify: map[string]ReleaseVerification{
+			"third": {
+				ProwJob: &ProwJobVerification{
+					Name: "periodic3",
+				},
+			},
+			"fourth": {
+				Disabled: true,
+				ProwJob: &ProwJobVerification{
+					Name: "periodic4",
+				},
+			},
+		},
+		expectedErr: false,
 	}, {
 		name: "missing release controller verification",
 		periodics: []prowconfig.Periodic{{

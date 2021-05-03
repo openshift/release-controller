@@ -116,7 +116,7 @@ func validateDefinedReleaseControllerJobs(jobConfig prowconfig.JobConfig, releas
 	releaseConfigJobs := sets.NewString()
 	for _, config := range releaseConfigs {
 		for _, verify := range config.Verify {
-			if verify.ProwJob != nil {
+			if verify.ProwJob != nil && !verify.Disabled {
 				releaseConfigJobs.Insert(verify.ProwJob.Name)
 			}
 		}
