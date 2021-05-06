@@ -29,6 +29,7 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mirrorName,
 			Namespace: release.Source.Namespace,
+			Labels: release.Source.Labels,
 			Annotations: map[string]string{
 				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 				releaseAnnotationTarget:     fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name),
