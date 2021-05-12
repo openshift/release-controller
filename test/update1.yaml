@@ -1,0 +1,65 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  annotations:
+    release.openshift.io/config: |-
+      {
+        "name":"4.3.0-0.ci",
+        "to": "release",
+        "message": "This release contains CI image builds of all code in release-4.3 (master) branches, and is updated each time someone merges.",
+        "mirrorPrefix": "4.3",
+        "expires":"72h",
+        "pullSecretName": "source",
+        "publish":{
+          "mirror-to-origin":{
+            "imageStreamRef":{
+              "namespace": "release-controller-test-release",
+              "name": "4.3-origin"
+            }
+          }
+        },
+        "publish":{
+          "tag":{"tagRef":{"name":"4.3-ci"}}
+        },
+        "verify":{
+          "aws":{
+            "prowJob":{"name":"release-controller-test-echo-job"}
+          },
+          "aws-serial":{
+            "prowJob":{"name":"release-controller-test-echo-job"}
+          },
+          "upgrade":{
+            "upgrade":true,
+            "optional":true,
+            "prowJob":{"name":"release-controller-test-echo-job"}
+          },
+          "upgrade-minor":{
+            "upgrade":true,
+            "upgradeFrom": "PreviousMinor",
+            "optional":false,
+            "prowJob":{"name":"release-controller-test-echo-job"}
+          }
+        }
+      }
+  name: 4.3-art-latest
+  namespace: release-controller-test-release
+spec:
+  lookupPolicy:
+    local: false
+  tags:
+    - name: cli
+      from:
+        kind: DockerImage
+        name: quay.io/openshift-release-dev/ocp-v4.0-art-dev:v4.3.0-201910181317-ose-cli
+    - name: tests
+      from:
+        kind: DockerImage
+        name: quay.io/openshift-release-dev/ocp-v4.0-art-dev:v4.3.0-201910210717-ose-tests
+    - name: insights-operator
+      from:
+        kind: DockerImage
+        name: quay.io/openshift-release-dev/ocp-v4.0-art-dev:v4.3.0-201910210717-ose-insights-operator
+    - name: cluster-version-operator
+      from:
+        kind: DockerImage
+        name: quay.io/openshift-release-dev/ocp-v4.0-art-dev:v4.3.0-201910200037-ose-cluster-version-operator

@@ -1,0 +1,36 @@
+kind: List
+apiVersion: v1
+items:
+
+# create the secret that holds the upgrade graph state
+- kind: Secret
+  apiVersion: v1
+  metadata:
+    name: release-upgrade-graph
+    namespace: release-controller-test-release
+
+# expose the files cache to the outside world
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: files-cache
+    namespace: release-controller-test-job
+  spec:
+    selector:
+      app: files-cache
+    ports:
+    - port: 80
+      targetPort: 8080
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: files-cache
+    namespace: release-controller-test-job
+  spec:
+    host: openshift-test-release-artifacts.svc.ci.openshift.org
+    tls:
+      termination: Edge
+      insecureEdgeTerminationPolicy: Redirect
+    to:
+      kind: Service
+      name: files-cache

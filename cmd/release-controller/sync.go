@@ -211,8 +211,8 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 		removeTags = append(removeTags, removeRejected[keepTagsOfType:]...)
 	}
 
-	// always keep at least one accepted tag, but remove any that are past expiration
-	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > keepTagsOfType {
+	// always keep at least two accepted tag, but remove any that are past expiration
+	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) + 1 > keepTagsOfType {
 		klog.V(5).Infof("Checking for tags that are more than %s old", expires)
 		for _, tag := range removeAccepted[keepTagsOfType:] {
 			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
