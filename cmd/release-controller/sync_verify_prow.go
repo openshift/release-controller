@@ -156,7 +156,12 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 		if !hasReleaseImage {
 			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 		}
-		if isUpgrade && !hasUpgradeImage {
+		if !isUpgrade {
+			// If an initial release is specified in the ci-operator config, ci-operator will always try to pull it. This can cause jobs to fail
+			// if there are not at least 2 accepted releases for the release being tested. To prevent this issue, always set RELEASE_IMAGE_INITIAL,
+			// even for non-upgrade jobs
+			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+		} else if !hasUpgradeImage {
 			if len(previousReleasePullSpec) == 0 {
 				return false, nil
 			}
