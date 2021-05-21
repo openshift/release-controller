@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
+	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
@@ -47,7 +48,6 @@ import (
 	"k8s.io/test-infra/prow/config/secret"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
-	"k8s.io/test-infra/prow/plugins"
 
 	"github.com/openshift/release-controller/pkg/bugzilla"
 	"github.com/openshift/release-controller/pkg/signer"
@@ -79,7 +79,7 @@ type options struct {
 	LimitSources []string
 
 	VerifyBugzilla bool
-	PluginConfig   string
+	PluginConfig   pluginflagutil.PluginOptions
 	github         flagutil.GitHubOptions
 	bugzilla       flagutil.BugzillaOptions
 	githubThrottle int
@@ -152,7 +152,6 @@ func main() {
 	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
 
 	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
-	flagset.StringVar(&opt.PluginConfig, "plugin-config", opt.PluginConfig, "Path to Prow plugin config file. Used when verifying bugs, ignored otherwise.")
 	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
 
 	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
@@ -165,6 +164,7 @@ func main() {
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
+	opt.PluginConfig.AddFlags(goFlagSet)
 	flagset.AddGoFlagSet(goFlagSet)
 
 	flagset.AddGoFlag(original.Lookup("v"))
@@ -334,8 +334,8 @@ func (o *options) Run() error {
 		if err != nil {
 			return fmt.Errorf("Failed to create bugzilla client: %v", err)
 		}
-		pluginAgent := &plugins.ConfigAgent{}
-		if err := pluginAgent.Start(o.PluginConfig, false); err != nil {
+		pluginAgent, err := o.PluginConfig.PluginAgent()
+		if err != nil {
 			return fmt.Errorf("Failed to create plugin agent: %v", err)
 		}
 		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
