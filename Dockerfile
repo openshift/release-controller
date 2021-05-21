@@ -1,4 +1,4 @@
-FROM openshift/origin-release:golang-1.15
+FROM openshift/origin-release:golang-1.16
 WORKDIR /go/src/github.com/openshift/release-controller
 COPY . .
 RUN make build

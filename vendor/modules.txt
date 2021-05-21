@@ -156,8 +156,9 @@ github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-querystring v1.0.0
 github.com/google/go-querystring/query
-# github.com/google/gofuzz v1.1.0
+# github.com/google/gofuzz v1.2.1-0.20210504230335-f78f29fc09ea
 github.com/google/gofuzz
+github.com/google/gofuzz/bytesource
 # github.com/google/pprof v0.0.0-20200905233945-acf8798be1f7
 github.com/google/pprof/profile
 # github.com/google/uuid v1.1.2
@@ -781,7 +782,7 @@ k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-# k8s.io/test-infra v0.0.0-20210504134511-af1ac03335dc
+# k8s.io/test-infra v0.0.0-20210520185236-f6cc68bf9185
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
 k8s.io/test-infra/pkg/genyaml
@@ -800,6 +801,7 @@ k8s.io/test-infra/prow/cron
 k8s.io/test-infra/prow/entrypoint
 k8s.io/test-infra/prow/flagutil
 k8s.io/test-infra/prow/flagutil/config
+k8s.io/test-infra/prow/flagutil/plugins
 k8s.io/test-infra/prow/gcsupload
 k8s.io/test-infra/prow/gerrit/client
 k8s.io/test-infra/prow/git
