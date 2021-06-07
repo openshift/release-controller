@@ -68,6 +68,9 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 
 		if releaseInfo.Config.Architecture == "amd64" {
 			architecture = "x86_64"
+		} else if releaseInfo.Config.Architecture == "arm64" {
+			architecture = "aarch64"
+			archExtension = fmt.Sprintf("-%s", architecture)
 		} else {
 			architecture = releaseInfo.Config.Architecture
 			archExtension = fmt.Sprintf("-%s", architecture)
