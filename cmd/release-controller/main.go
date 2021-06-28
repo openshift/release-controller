@@ -163,7 +163,7 @@ func main() {
 
 	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
 
-	flagset.StringVar(&opt.Registry, "registry", opt.Registry, "The image registry to use")
+	flagset.StringVar(&opt.Registry, "registry", opt.Registry, "Specify an alternate image registry to reference.  This option should be used when running the controller on a different cluster.")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
