@@ -474,6 +474,11 @@ func (c *Controller) syncReady(release *Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
+		err := c.ensureAnalysisJobs(release, releaseTag)
+		if err != nil {
+			klog.Errorf("Unable to launch analysis job: %v", err)
+		}
+
 		status, err := c.ensureVerificationJobs(release, releaseTag)
 		if err != nil {
 			return err

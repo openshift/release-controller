@@ -31,16 +31,16 @@ type UpgradeRecord struct {
 }
 
 type UpgradeGraph struct {
-	lock sync.Mutex
-	to   map[string]map[string]*UpgradeHistory
-	from map[string]sets.String
+	lock         sync.Mutex
+	to           map[string]map[string]*UpgradeHistory
+	from         map[string]sets.String
 	architecture string
 }
 
 func NewUpgradeGraph(architecture string) *UpgradeGraph {
 	return &UpgradeGraph{
-		to:   make(map[string]map[string]*UpgradeHistory),
-		from: make(map[string]sets.String),
+		to:           make(map[string]map[string]*UpgradeHistory),
+		from:         make(map[string]sets.String),
 		architecture: architecture,
 	}
 }

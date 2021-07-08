@@ -77,8 +77,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if jobRetries > 0 {
 				jobName = fmt.Sprintf("%s-%d", jobName, jobRetries)
 			}
-
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+			jobLabels := map[string]string{
+				"release.openshift.io/verify": "true",
+			}
+			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 			if err != nil {
 				return nil, err
 			}

@@ -119,6 +119,10 @@ type ReleaseConfig struct {
 	// Check is a map of short names to check routines that report additional information
 	// about the health or quality of this stream to the user interface.
 	Check map[string]ReleaseCheck `json:"check"`
+
+	// Analysis is a map of short names to analysis steps to run to check the overall
+	// stability of a particular release.
+	Analysis map[string]ReleaseVerification `json:"analysis"`
 }
 
 type ReleaseCheck struct {
@@ -220,6 +224,8 @@ type ReleaseVerification struct {
 	ProwJob *ProwJobVerification `json:"prowJob"`
 	// Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
 	MaxRetries int `json:"maxRetries,omitempty"`
+	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
+	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
 }
 
 // ReleasePeriodic is a job that runs on the speicifed cron or interval period as a
