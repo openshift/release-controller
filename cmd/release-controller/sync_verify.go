@@ -80,7 +80,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			jobLabels := map[string]string{
 				"release.openshift.io/verify": "true",
 			}
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, map[string]string{})
 			if err != nil {
 				return nil, err
 			}

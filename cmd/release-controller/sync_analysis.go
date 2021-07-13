@@ -6,20 +6,62 @@ import (
 	"k8s.io/klog"
 )
 
+func findStatusTag(is *imagev1.ImageStream, name string) *imagev1.TagEvent {
+	for i := range is.Status.Tags {
+		tag := &is.Status.Tags[i]
+		if tag.Tag == name {
+			if len(tag.Items) == 0 {
+				return nil
+			}
+			if len(tag.Conditions) > 0 {
+				if isTagEventConditionNotImported(tag) {
+					return nil
+				}
+			}
+			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil && (specTag.Generation == nil || *specTag.Generation > tag.Items[0].Generation) {
+				return nil
+			}
+			return &tag.Items[0]
+		}
+	}
+	return nil
+}
+
+// ensureAnalysisJobs creates and instantiates the specified number of occurrences of the release verification job for
+// a given release.  The jobs can be tracked via its labels and/or annotations:
+// Labels:
+//     "release.openshift.io/analysis": the name of the release tag (i.e. 4.9.0-0.nightly-2021-07-12-202251)
+// Annotations:
+//     "release.openshift.io/image": the SHA value of the release
+//     "release.openshift.io/dockerImageReference": the pull spec of the release
 func (c *Controller) ensureAnalysisJobs(release *Release, releaseTag *imagev1.TagReference) error {
+	statusTag := findStatusTag(release.Target, releaseTag.Name)
+	if statusTag == nil {
+		klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", releaseTag.Name)
+		return nil
+	}
 	for name, analysisType := range release.Config.Analysis {
 		if analysisType.Disabled {
 			klog.V(2).Infof("Release %s analysis step %s is disabled, ignoring", releaseTag.Name, name)
 			continue
 		}
-		if analysisType.AnalysisJobCount == 0 {
+		if analysisType.AnalysisJobCount <= 0 {
 			klog.Warningf("Release %s analysis step %s configured without analysisJobCount, ignoring", releaseTag.Name, name)
 			continue
+		}
+		jobCount := analysisType.AnalysisJobCount
+		if jobCount > 20 {
+			jobCount = 20
+			klog.Warningf("Release %s analysis step %s configured with greater than maximum number of jobs: %d.  Running %d instances", releaseTag.Name, name, analysisType.AnalysisJobCount, jobCount)
 		}
 
 		// TODO: How do we want to track these jobs...
 		jobLabels := map[string]string{
 			"release.openshift.io/analysis": releaseTag.Name,
+		}
+		jobAnnotations := map[string]string{
+			"release.openshift.io/image":                statusTag.Image,
+			"release.openshift.io/dockerImageReference": statusTag.DockerImageReference,
 		}
 
 		switch {
@@ -33,9 +75,9 @@ func (c *Controller) ensureAnalysisJobs(release *Release, releaseTag *imagev1.Ta
 					return err
 				}
 			}
-			for i := 1; i <= analysisType.AnalysisJobCount; i++ {
+			for i := 1; i <= jobCount; i++ {
 				jobName := fmt.Sprintf("%s-analysis-%d", name, i)
-				_, err := c.ensureProwJobForReleaseTag(release, jobName, analysisType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+				_, err := c.ensureProwJobForReleaseTag(release, jobName, analysisType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, jobAnnotations)
 				if err != nil {
 					return err
 				}
