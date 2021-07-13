@@ -41,7 +41,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
 
-		klog.V(2).Infof("Running release creation job %s/%s for %s", job.Namespace, job.Name, name)
+		klog.V(2).Infof("Running release creation job %s/%s for %s", c.jobNamespace, job.Name, name)
 		return job, nil
 	})
 }

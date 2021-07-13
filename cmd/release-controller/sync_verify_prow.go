@@ -20,7 +20,7 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
@@ -56,9 +56,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	if err != nil {
 		return nil, err
 	}
-	pj := prowutil.NewProwJob(spec, map[string]string{
-		"release.openshift.io/verify": "true",
-	}, map[string]string{
+	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
 		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 	})
 	// Override default UUID naming of prowjob
