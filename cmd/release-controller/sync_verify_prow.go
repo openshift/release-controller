@@ -20,7 +20,10 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
-func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
+// ensureProwJobForReleaseTag generates, creates, and returns a reference to a prowjob with the necessary release
+// annotations and labels.  Consumers may also specify their own labels and annotations to the prowjob generation, via
+// the extraLabels and extraAnnotations parameters.
+func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels, extraAnnotations map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 
@@ -86,9 +89,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		}
 		ok = ok && status
 	}
-	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
-		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-	})
+	if _, ok := extraAnnotations[releaseAnnotationSource]; !ok {
+		extraAnnotations[releaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
+	}
+	pj := prowutil.NewProwJob(spec, extraLabels, extraAnnotations)
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
 	if !ok {

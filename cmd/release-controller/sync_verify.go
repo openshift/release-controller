@@ -87,7 +87,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, map[string]string{})
 			if err != nil {
 				return nil, err
 			}
