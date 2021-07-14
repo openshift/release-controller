@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	maximumAnalysisJobCount = 20
+
 	// defaultAggregateProwJobName the default ProwJob to call if no override is specified
 	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
 )
@@ -61,24 +63,23 @@ func findStatusTag(is *imagev1.ImageStream, name string) *imagev1.TagEvent {
 //     "release.openshift.io/image": the SHA value of the release
 //     "release.openshift.io/dockerImageReference": the pull spec of the release
 func (c *Controller) ensureAnalysisJobs(release *Release, releaseTag *imagev1.TagReference) error {
-	statusTag := findStatusTag(release.Target, releaseTag.Name)
+	statusTag := findImportedCurrentStatusTag(release.Target, releaseTag.Name)
 	if statusTag == nil {
 		klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", releaseTag.Name)
 		return nil
 	}
 	for name, analysisType := range release.Config.Analysis {
 		if analysisType.Disabled {
-			klog.V(2).Infof("Release %s analysis step %s is disabled, ignoring", releaseTag.Name, name)
+			klog.V(2).Infof("%s: Release analysis step %s is disabled, ignoring", release.Config.MirrorPrefix, name)
 			continue
 		}
 		if analysisType.AnalysisJobCount <= 0 {
-			klog.Warningf("Release %s analysis step %s configured without analysisJobCount, ignoring", releaseTag.Name, name)
+			klog.Warningf("%s: Release analysis step %s configured without analysisJobCount, ignoring", release.Config.MirrorPrefix, name)
 			continue
 		}
-		jobCount := analysisType.AnalysisJobCount
-		if jobCount > 20 {
-			jobCount = 20
-			klog.Warningf("Release %s analysis step %s configured with greater than maximum number of jobs: %d.  Running %d instances", releaseTag.Name, name, analysisType.AnalysisJobCount, jobCount)
+		if analysisType.AnalysisJobCount > maximumAnalysisJobCount {
+			klog.Warningf("%s: Release analysis step %s analysisJobCount (%d) exceeds the maximum number of jobs (%d), ignoring ", release.Config.MirrorPrefix, name, analysisType.AnalysisJobCount, maximumAnalysisJobCount)
+			continue
 		}
 	}
 	return nil
@@ -118,7 +119,7 @@ func addAnalysisEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, payloadTag, verifi
 					return err
 				}
 			}
-			for i := 1; i <= jobCount; i++ {
+			for i := 1; i <= analysisType.AnalysisJobCount; i++ {
 				jobName := fmt.Sprintf("%s-analysis-%d", name, i)
 				_, err := c.ensureProwJobForReleaseTag(release, jobName, analysisType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, jobAnnotations)
 				if err != nil {
