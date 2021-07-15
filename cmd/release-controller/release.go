@@ -208,10 +208,8 @@ func findImageIDForTag(is *imagev1.ImageStream, name string) string {
 			if len(tag.Items) == 0 {
 				return ""
 			}
-			if len(tag.Conditions) > 0 {
-				if isTagEventConditionNotImported(tag) {
-					return ""
-				}
+			if isTagEventConditionNotImported(tag) {
+				return ""
 			}
 			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil && (specTag.Generation == nil || *specTag.Generation > tag.Items[0].Generation) {
 				return ""
@@ -363,4 +361,27 @@ func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 	}
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
+}
+
+// findImportedCurrentStatusTag finds the current, imported status tag that matches the specified name.
+// Returns nil if no tags, matching the name, are found, a status tag is found but has no associated TagEvents,
+// the status tag has not been successfully imported, or the corresponding Spec tag's generation is nil or greater than
+// the current status tag's generation value.
+func findImportedCurrentStatusTag(is *imagev1.ImageStream, name string) *imagev1.TagEvent {
+	for statusTag := range is.Status.Tags {
+		tag := &is.Status.Tags[statusTag]
+		if tag.Tag == name {
+			if len(tag.Items) == 0 {
+				return nil
+			}
+			if isTagEventConditionNotImported(tag) {
+				return nil
+			}
+			if specTag := findSpecTag(is.Spec.Tags, name); specTag != nil && (specTag.Generation == nil || *specTag.Generation > tag.Items[0].Generation) {
+				return nil
+			}
+			return tag.Items[0].DeepCopy()
+		}
+	}
+	return nil
 }

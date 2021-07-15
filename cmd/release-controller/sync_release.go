@@ -25,7 +25,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 			cliImage = release.Config.OverrideCLIImage
 		}
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+		job, prefix := newReleaseJobBase(name, c.jobNamespace, cliImage, release.Config.PullSecretName)
 
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
@@ -41,7 +41,7 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
 		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
 
-		klog.V(2).Infof("Running release creation job %s/%s for %s", c.jobNamespace, job.Name, name)
+		klog.V(2).Infof("Running release creation job %s/%s for %s", job.Namespace, job.Name, name)
 		return job, nil
 	})
 }
@@ -59,7 +59,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 			cliImage = release.Config.OverrideCLIImage
 		}
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+		job, prefix := newReleaseJobBase(name, c.jobNamespace, cliImage, release.Config.PullSecretName)
 
 		container := job.Spec.Template.Spec.Containers[0]
 
@@ -128,7 +128,7 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 			cliImage = release.Config.OverrideCLIImage
 		}
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+		job, prefix := newReleaseJobBase(name, c.jobNamespace, cliImage, release.Config.PullSecretName)
 
 		container := job.Spec.Template.Spec.Containers[0]
 
@@ -272,7 +272,7 @@ func findContainerStatus(statuses []corev1.ContainerStatus, name string) *corev1
 	return nil
 }
 
-func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, string) {
+func newReleaseJobBase(name, namespace, cliImage, pullSecretName string) (*batchv1.Job, string) {
 	var prefix string
 	if len(pullSecretName) > 0 {
 		prefix = `
@@ -290,6 +290,7 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
+			Namespace:   namespace,
 			Annotations: map[string]string{},
 		},
 		Spec: batchv1.JobSpec{

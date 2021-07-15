@@ -17,6 +17,11 @@ import (
 func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev1.TagReference) (VerificationStatusMap, error) {
 	var verifyStatus VerificationStatusMap
 	retryQueueDelay := 0 * time.Second
+	statusTag := findImportedCurrentStatusTag(release.Target, releaseTag.Name)
+	if statusTag == nil {
+		klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", releaseTag.Name)
+		return verifyStatus, nil
+	}
 	for name, verifyType := range release.Config.Verify {
 		if verifyType.Disabled {
 			klog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
@@ -80,7 +85,11 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			jobLabels := map[string]string{
 				"release.openshift.io/verify": "true",
 			}
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+			jobAnnotations := map[string]string{
+				"release.openshift.io/image":                statusTag.Image,
+				"release.openshift.io/dockerImageReference": statusTag.DockerImageReference,
+			}
+			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, jobAnnotations)
 			if err != nil {
 				return nil, err
 			}

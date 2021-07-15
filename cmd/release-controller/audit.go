@@ -186,7 +186,7 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
 		cliImage := release.Config.OverrideCLIImage
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+		job, prefix := newReleaseJobBase(name, c.jobNamespace, cliImage, release.Config.PullSecretName)
 
 		// copy the contents of the release to the mirror
 		job.Spec.Template.Spec.Containers[0].Name = "verify"
