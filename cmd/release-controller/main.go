@@ -396,6 +396,8 @@ func (o *options) Run() error {
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 		http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
+		http.DefaultServeMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
+		http.DefaultServeMux.HandleFunc("/healthz/ready", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
 		http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 		go func() {
 			klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
