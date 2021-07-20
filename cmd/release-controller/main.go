@@ -263,22 +263,30 @@ func (o *options) Run() error {
 	}
 	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
+	start := time.Now()
 	imageClient, err := imageclientset.NewForConfig(releasesConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create image client: %v", err)
 	}
+	klog.V(4).Infof("1: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	prowClient, err := o.prowJobClient(inClusterCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create prowjob client: %v", err)
 	}
+	klog.V(4).Infof("2: %v", time.Now().Sub(start))
+
 	stopCh := wait.NeverStop
 	var hasSynced []cache.InformerSynced
 
+	start = time.Now()
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(releasesClient, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 	hasSynced = append(hasSynced, jobs.Informer().HasSynced)
+	klog.V(4).Infof("3: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	configAgent := &prowconfig.Agent{}
 	if o.prowconfig.ConfigPath != "" {
 		var err error
@@ -287,15 +295,21 @@ func (o *options) Run() error {
 			return err
 		}
 	}
+	klog.V(4).Infof("4: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
 	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
 
 	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
+	klog.V(4).Infof("5: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	graph := NewUpgradeGraph(architecture)
+	klog.V(4).Infof("6: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	c := NewController(
 		client.CoreV1(),
 		imageClient.ImageV1(),
@@ -311,7 +325,9 @@ func (o *options) Run() error {
 		o.softDeleteReleaseTags,
 		o.AuthenticationMessage,
 	)
+	klog.V(4).Infof("7: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	if o.VerifyBugzilla {
 		var tokens []string
 
@@ -344,7 +360,9 @@ func (o *options) Run() error {
 		}
 		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
 	}
+	klog.V(4).Infof("8: %v", time.Now().Sub(start))
 
+	start = time.Now()
 	if len(o.AuditStorage) > 0 {
 		u, err := url.Parse(o.AuditStorage)
 		if err != nil {
@@ -381,10 +399,13 @@ func (o *options) Run() error {
 			return fmt.Errorf("--audit must be a valid file:// or gs:// URL")
 		}
 	}
+	klog.V(4).Infof("9: %v", time.Now().Sub(start))
 
 	if len(o.CLIImageForAudit) > 0 {
 		c.cliImageForAudit = o.CLIImageForAudit
 	}
+
+	start = time.Now()
 	if len(o.SigningKeyring) > 0 {
 		signer, err := signer.NewFromKeyring(o.SigningKeyring)
 		if err != nil {
@@ -392,6 +413,7 @@ func (o *options) Run() error {
 		}
 		c.signer = signer
 	}
+	klog.V(4).Infof("10: %v", time.Now().Sub(start))
 
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
