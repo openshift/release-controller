@@ -959,7 +959,11 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 	authMessage := ""
 	if len(c.authenticationMessage) > 0 {
-		authMessage = fmt.Sprintf("<p>%s</p>", c.authenticationMessage)
+		if message, err := strconv.Unquote(c.authenticationMessage); err == nil {
+			authMessage = fmt.Sprintf("<p>%s</p>", message)
+		} else {
+			klog.Warningf("Unable to display authenticationMessage: %v", err)
+		}
 	}
 
 	now := time.Now()
