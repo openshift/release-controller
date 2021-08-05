@@ -52,7 +52,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.architecture)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool, architecture string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
@@ -152,18 +152,45 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, m
 			}
 		}
 		if !hasReleaseImage {
-			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			switch architecture {
+			case "arm64":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			case "s390x":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			case "ppc64le":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			default:
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			}
 		}
 		if !isUpgrade {
 			// If an initial release is specified in the ci-operator config, ci-operator will always try to pull it. This can cause jobs to fail
 			// if there are not at least 2 accepted releases for the release being tested. To prevent this issue, always set RELEASE_IMAGE_INITIAL,
 			// even for non-upgrade jobs
-			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			switch architecture {
+			case "arm64":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			case "s390x":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			case "ppc64le":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			default:
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+			}
 		} else if !hasUpgradeImage {
 			if len(previousReleasePullSpec) == 0 {
 				return false, nil
 			}
-			c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
+			switch architecture {
+			case "arm64":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_INITIAL", Value: previousReleasePullSpec})
+			case "s390x":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_INITIAL", Value: previousReleasePullSpec})
+			case "ppc64le":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: previousReleasePullSpec})
+			default:
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
+			}
 		}
 	}
 	return true, nil
