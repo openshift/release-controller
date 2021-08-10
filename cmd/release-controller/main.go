@@ -16,6 +16,8 @@ import (
 	_ "net/http/pprof" // until openshift/library-go#309 merges
 
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"gopkg.in/fsnotify.v1"
@@ -95,6 +97,17 @@ type options struct {
 	Registry string
 }
 
+// Add metrics for bugzilla verifier errors
+var (
+	bugzillaErrorMetrics = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "release_controller_bugzilla_errors_total",
+			Help: "The total number of errors encountered by the release-controller's bugzilla verifier",
+		},
+		[]string{"type"},
+	)
+)
+
 func main() {
 	serviceability.StartProfiler()
 	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
@@ -107,9 +120,9 @@ func main() {
 	original.Set("v", "2")
 
 	opt := &options{
-		ListenAddr: ":8080",
+		ListenAddr:          ":8080",
 		ToolsImageStreamTag: ":tests",
-		Registry: "registry.ci.openshift.org",
+		Registry:            "registry.ci.openshift.org",
 	}
 	cmd := &cobra.Command{
 		Run: func(cmd *cobra.Command, arguments []string) {
@@ -359,6 +372,7 @@ func (o *options) Run() error {
 			return fmt.Errorf("Failed to create plugin agent: %v", err)
 		}
 		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
+		c.bugzillaErrorMetrics = bugzillaErrorMetrics
 	}
 	klog.V(4).Infof("8: %v", time.Now().Sub(start))
 
