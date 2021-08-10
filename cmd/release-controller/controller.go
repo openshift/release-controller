@@ -5,6 +5,7 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -126,7 +127,8 @@ type Controller struct {
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
 
-	bugzillaVerifier *bugzilla.Verifier
+	bugzillaVerifier     *bugzilla.Verifier
+	bugzillaErrorMetrics *prometheus.CounterVec
 
 	dashboards []Dashboard
 
