@@ -353,17 +353,16 @@ func (o *options) Run() error {
 			tokens = append(tokens, o.bugzilla.ApiKeyPath)
 		}
 
-		secretAgent := &secret.Agent{}
-		if err := secretAgent.Start(tokens); err != nil {
-			return fmt.Errorf("Error starting secrets agent: %v", err)
+		if err := secret.Add(tokens...); err != nil {
+			return fmt.Errorf("failed to add tokens to secret agent: %w", err)
 		}
 
-		ghClient, err := o.github.GitHubClient(secretAgent, false)
+		ghClient, err := o.github.GitHubClient(false)
 		if err != nil {
 			return fmt.Errorf("Failed to create github client: %v", err)
 		}
 		ghClient.Throttle(o.githubThrottle, 0)
-		bzClient, err := o.bugzilla.BugzillaClient(secretAgent)
+		bzClient, err := o.bugzilla.BugzillaClient()
 		if err != nil {
 			return fmt.Errorf("Failed to create bugzilla client: %v", err)
 		}

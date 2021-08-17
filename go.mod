@@ -33,7 +33,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20200127110935-527e40ed17d9
 	github.com/prometheus/client_golang v1.11.0
 	github.com/russross/blackfriday v2.0.0+incompatible
-	github.com/spf13/cobra v1.1.1
+	github.com/spf13/cobra v1.1.3
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	google.golang.org/api v0.32.0
@@ -44,5 +44,5 @@ require (
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
-	k8s.io/test-infra v0.0.0-20210728172935-01baa4728fcb
+	k8s.io/test-infra v0.0.0-20210817161113-0757032ed149
 )
