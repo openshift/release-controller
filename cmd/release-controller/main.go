@@ -371,6 +371,7 @@ func (o *options) Run() error {
 			return fmt.Errorf("Failed to create plugin agent: %v", err)
 		}
 		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
+		initializeMetrics(bugzillaErrorMetrics)
 		c.bugzillaErrorMetrics = bugzillaErrorMetrics
 	}
 	klog.V(4).Infof("8: %v", time.Now().Sub(start))
