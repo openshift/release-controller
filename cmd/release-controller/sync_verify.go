@@ -73,9 +73,9 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					return nil, err
 				}
 			}
-			jobName := name
+			jobName := generateSafeProwJobName(name, "")
 			if jobRetries > 0 {
-				jobName = fmt.Sprintf("%s-%d", jobName, jobRetries)
+				jobName = generateSafeProwJobName(name, fmt.Sprintf("%d", jobRetries))
 			}
 			jobLabels := map[string]string{
 				"release.openshift.io/verify": "true",

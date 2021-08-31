@@ -20,6 +20,28 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
+const (
+	maxProwJobNameLength = 63
+	elide                = "..."
+)
+
+func generateSafeProwJobName(jobName, suffix string) string {
+	hasSuffix := false
+	fullName := jobName
+	if len(suffix) > 0 {
+		hasSuffix = true
+		fullName = fmt.Sprintf("%s-%s", jobName, suffix)
+	}
+	if len(fullName) <= maxProwJobNameLength {
+		return fullName
+	}
+	trimLen := len(fullName) + len(elide) - maxProwJobNameLength
+	if !hasSuffix {
+		return fmt.Sprintf("%s%s", jobName[:len(jobName)-trimLen], elide)
+	}
+	return fmt.Sprintf("%s%s-%s", jobName[:len(jobName)-trimLen], elide, suffix)
+}
+
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
