@@ -95,6 +95,8 @@ type options struct {
 	AuthenticationMessage string
 
 	Registry string
+
+	ClusterGroups []string
 }
 
 // Add metrics for bugzilla verifier errors
@@ -177,6 +179,16 @@ func main() {
 	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
 
 	flagset.StringVar(&opt.Registry, "registry", opt.Registry, "Specify the registry, that the artifact server will use, to retrieve release images when located on remote clusters")
+
+	// This option can be used to group, any number of, similar build cluster names into logical groups that will be used to
+	// randomly distribute prowjobs onto.  When the release-controller reads in the prowjob definition, it will check if
+	// the defined "cluster:" value exists in one of the cluster groups and then "Get()" the next, random, cluster name
+	// from the group and assign the job to that cluster. If the cluster: is not a member of any group, then the
+	// release-controller will not make any modifications and the jobs will run on the cluster as it is defined in the
+	// job itself. The groupings are intended to be used to pool build clusters of similar configurations (i.e. cloud
+	// provider, specific hardware, configurations, etc).  This way, jobs that are intended to be run on the specific
+	// configurations can be distributed properly on the environment that they require.
+	flagset.StringArrayVar(&opt.ClusterGroups, "cluster-group", opt.ClusterGroups, "A comma seperated list of build cluster names to evenly distribute jobs to.  May be specified multiple times to account for different configurations of build clusters.")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -337,6 +349,7 @@ func (o *options) Run() error {
 		graph,
 		o.softDeleteReleaseTags,
 		o.AuthenticationMessage,
+		o.ClusterGroups,
 	)
 	klog.V(4).Infof("7: %v", time.Now().Sub(start))
 

@@ -65,6 +65,14 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	if isAggregatedJob {
 		periodicConfig.Name = fmt.Sprintf("%s-%s", jobName, verifyName)
 	}
+	// If the release-controller was given a list of build cluster names to use, this will
+	// distribute the prowjobs onto them.  If not, then the jobs will be run on the
+	// build cluster defined inside the job itself.
+	for _, buildClusterDistribution := range c.buildClusterDistributions {
+		if buildClusterDistribution.Contains(periodicConfig.Cluster){
+			periodicConfig.Cluster = buildClusterDistribution.Get()
+		}
+	}
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
 	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.architecture)
