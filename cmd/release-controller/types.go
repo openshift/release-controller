@@ -226,6 +226,20 @@ type ReleaseVerification struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
 	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
+	// AggregatedProwJob defines the prow job used to run release analysis verification
+	AggregatedProwJob *AggregatedProwJobVerification `json:"aggregatedProwJob,omitempty"`
+}
+
+// AggregatedProwJobVerification identifies the name of a prow job that will be used to
+// aggregate the release analysis jobs.
+type AggregatedProwJobVerification struct{
+	// ProwJob requires that the named ProwJob from the prow config pass before the
+	// release is accepted. The job is run only one time and if it fails the release
+	// is rejected.
+	// Defaults to "release-openshift-release-analysis-aggregator" if not specified.
+	ProwJob *ProwJobVerification `json:"prowJob,omitempty"`
+	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
+	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
 }
 
 // ReleasePeriodic is a job that runs on the speicifed cron or interval period as a
@@ -536,4 +550,43 @@ func calculateBackoff(retryCount int, initialTime, currentTime *metav1.Time) tim
 		backoffDuration = 0
 	}
 	return backoffDuration
+}
+
+func (in *ReleaseVerification) DeepCopy() *ReleaseVerification {
+	if in == nil {
+		return nil
+	}
+	out := new(ReleaseVerification)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *ReleaseVerification) DeepCopyInto(out *ReleaseVerification) {
+	*out = *in
+	if in.ProwJob != nil {
+		in, out := &in.ProwJob, &out.ProwJob
+		*out = new(ProwJobVerification)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.AggregatedProwJob != nil {
+		in, out := &in.AggregatedProwJob, &out.AggregatedProwJob
+		*out = new(AggregatedProwJobVerification)
+		(*in).DeepCopyInto(*out)
+	}
+	return
+}
+
+func (in *ProwJobVerification) DeepCopyInto(out *ProwJobVerification) {
+	*out = *in
+	return
+}
+
+func (in *AggregatedProwJobVerification) DeepCopyInto(out *AggregatedProwJobVerification) {
+	*out = *in
+	if in.ProwJob != nil {
+		in, out := &in.ProwJob, &out.ProwJob
+		*out = new(ProwJobVerification)
+		(*in).DeepCopyInto(*out)
+	}
+	return
 }
