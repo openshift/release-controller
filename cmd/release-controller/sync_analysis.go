@@ -3,46 +3,52 @@ package main
 import (
 	"fmt"
 	imagev1 "github.com/openshift/api/image/v1"
-	"k8s.io/klog"
+	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	"time"
 )
 
-func (c *Controller) ensureAnalysisJobs(release *Release, releaseTag *imagev1.TagReference) error {
-	for name, analysisType := range release.Config.Analysis {
-		if analysisType.Disabled {
-			klog.V(2).Infof("Release %s analysis step %s is disabled, ignoring", releaseTag.Name, name)
-			continue
-		}
-		if analysisType.AnalysisJobCount == 0 {
-			klog.Warningf("Release %s analysis step %s configured without analysisJobCount, ignoring", releaseTag.Name, name)
-			continue
-		}
+const (
+	// defaultAggregateProwJobName the default ProwJob to call if no override is specified
+	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
+)
 
-		// TODO: How do we want to track these jobs...
-		jobLabels := map[string]string{
-			"release.openshift.io/analysis": releaseTag.Name,
-		}
+func (c *Controller) launchAnalysisJobs(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
+	jobLabels := map[string]string{
+		"release.openshift.io/analysis": releaseTag.Name,
+	}
 
-		switch {
-		case analysisType.ProwJob != nil:
-			// if this is an upgrade job, find the appropriate source for the upgrade job
-			var previousTag, previousReleasePullSpec string
-			if analysisType.Upgrade {
-				var err error
-				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, analysisType.UpgradeFrom, analysisType.UpgradeFromRelease, false)
-				if err != nil {
-					return err
-				}
-			}
-			for i := 1; i <= analysisType.AnalysisJobCount; i++ {
-				jobName := fmt.Sprintf("%s-analysis-%d", name, i)
-				_, err := c.ensureProwJobForReleaseTag(release, jobName, analysisType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
-				if err != nil {
-					return err
-				}
-			}
-		default:
-			// manual verification
+	// Update the AnalysisJobCount to no trigger the analysis logic again
+	copied := verifyType.DeepCopy()
+	copied.AggregatedProwJob.AnalysisJobCount = 0
+
+	for i := 0; i < verifyType.AggregatedProwJob.AnalysisJobCount; i++ {
+		// Postfix the name to differentiate it from the aggregator job
+		jobName := fmt.Sprintf("%s-analysis-%d", verifyName, i)
+		_, err := c.ensureProwJobForReleaseTag(release, jobName, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func addAnalysisEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, payloadTag, verificationJobName string) (bool, error) {
+	if spec.PodSpec == nil {
+		// Jenkins jobs cannot be parameterized
+		return true, nil
+	}
+	for i := range spec.PodSpec.Containers {
+		c := &spec.PodSpec.Containers[i]
+		for j := range c.Env {
+			switch name := c.Env[j].Name; {
+			case name == "PAYLOAD_TAG":
+				c.Env[j].Value = payloadTag
+			case name == "VERIFICATION_JOB_NAME":
+				c.Env[j].Value = verificationJobName
+			case name == "JOB_START_TIME":
+				c.Env[j].Value = time.Now().Format(time.RFC3339)
+			}
+		}
+	}
+	return true, nil
 }

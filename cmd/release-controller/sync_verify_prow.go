@@ -23,6 +23,18 @@ import (
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
+
+	isAggregatedJob := verifyType.AggregatedProwJob != nil && verifyType.AggregatedProwJob.AnalysisJobCount > 0
+	if isAggregatedJob {
+		// Provide a way to override the default aggregator prow job
+		if verifyType.AggregatedProwJob.ProwJob != nil && len(verifyType.AggregatedProwJob.ProwJob.Name) > 0 {
+			jobName = verifyType.AggregatedProwJob.ProwJob.Name
+		} else {
+			jobName = defaultAggregateProwJobName
+		}
+		// Postfix the name to differentiate it from the analysis jobs
+		prowJobName = fmt.Sprintf("%s-aggregator", prowJobName)
+	}
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {
 		return nil, err
@@ -55,6 +67,13 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.architecture)
 	if err != nil {
 		return nil, err
+	}
+	if isAggregatedJob {
+		status, err := addAnalysisEnvToProwJobSpec(&spec, releaseTag.Name, verifyType.ProwJob.Name)
+		if err != nil {
+			return nil, err
+		}
+		ok = ok && status
 	}
 	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
 		releaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
