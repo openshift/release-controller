@@ -26,20 +26,13 @@ const (
 )
 
 func generateSafeProwJobName(jobName, suffix string) string {
-	hasSuffix := false
-	fullName := jobName
-	if len(suffix) > 0 {
-		hasSuffix = true
-		fullName = fmt.Sprintf("%s-%s", jobName, suffix)
+	if suffix != "" {
+		suffix = "-" + suffix
 	}
-	if len(fullName) <= maxProwJobNameLength {
-		return fullName
+	if len(jobName) + len(suffix) > maxProwJobNameLength {
+		jobName = jobName[:maxProwJobNameLength-len(suffix)-len(elide)] + elide
 	}
-	trimLen := len(fullName) + len(elide) - maxProwJobNameLength
-	if !hasSuffix {
-		return fmt.Sprintf("%s%s", jobName[:len(jobName)-trimLen], elide)
-	}
-	return fmt.Sprintf("%s%s-%s", jobName[:len(jobName)-trimLen], elide, suffix)
+	return fmt.Sprintf("%s%s", jobName, suffix)
 }
 
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
