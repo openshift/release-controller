@@ -14,24 +14,26 @@ import (
 
 const (
 	bzPrevReleaseUnset        = "previous_release_unset"
-	bzImagestreamGetErr       = "imagestream_get_error"
+	bzPrevImagestreamGetErr   = "previous_imagestream_get_error"
 	bzMissingTag              = "missing_tag"
 	bzNoRegistry              = "no_configured_registry"
 	bzUnableToGenerateBuglist = "unable_to_generate_buglist"
 	bzVerifier                = "verifier"
 	bzFailedAnnotation        = "failed_annotation"
+	bzImagestreamGetErr       = "imagestream_get_error"
 )
 
 // initializeMetrics initializes all labels used by the bugzilla error metrics to 0. This allows
 // prometheus to output a non-zero rate when an error occurs (unset values becoming set is a `0` rate)
 func initializeMetrics(*prometheus.CounterVec) {
 	bugzillaErrorMetrics.WithLabelValues(bzPrevReleaseUnset).Add(0)
-	bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Add(0)
+	bugzillaErrorMetrics.WithLabelValues(bzPrevImagestreamGetErr).Add(0)
 	bugzillaErrorMetrics.WithLabelValues(bzMissingTag).Add(0)
 	bugzillaErrorMetrics.WithLabelValues(bzNoRegistry).Add(0)
 	bugzillaErrorMetrics.WithLabelValues(bzUnableToGenerateBuglist).Add(0)
 	bugzillaErrorMetrics.WithLabelValues(bzVerifier).Add(0)
 	bugzillaErrorMetrics.WithLabelValues(bzFailedAnnotation).Add(0)
+	bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Add(0)
 }
 
 func getNonVerifiedTags(acceptedTags []*v1.TagReference) (current, previous *v1.TagReference) {
@@ -105,7 +107,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		stream, err := c.imageClient.ImageStreams(verifyBugs.PreviousReleaseTag.Namespace).Get(context.TODO(), verifyBugs.PreviousReleaseTag.Name, meta.GetOptions{})
 		if err != nil {
 			klog.V(2).Infof("bugzilla: failed to get imagestream (%s/%s) when getting previous release for %s: %v", verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name, err)
-			c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
+			c.bugzillaErrorMetrics.WithLabelValues(bzPrevImagestreamGetErr).Inc()
 			return err
 		}
 		prevTag = findTagReference(stream, verifyBugs.PreviousReleaseTag.Tag)
@@ -140,7 +142,13 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		return utilerrors.NewAggregate(errs)
 	}
 
-	target := release.Target.DeepCopy()
+	// Get latest version of imagestream before trying to update annotations
+	target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
+	if err != nil {
+		klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
+		c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
+		return err
+	}
 	tagToBeUpdated := findTagReference(target, tag.Name)
 	if tagToBeUpdated == nil {
 		klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releaseAnnotationBugsVerified)
