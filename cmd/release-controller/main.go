@@ -752,7 +752,7 @@ func setupKubeconfigWatches(o *options) error {
 	if err != nil {
 		return fmt.Errorf("failed to set up watcher: %w", err)
 	}
-	for _, candidate := range []string{o.ProwJobKubeconfig, o.NonProwJobKubeconfig, "/var/run/secrets/kubernetes.io/serviceaccount/token"} {
+	for _, candidate := range []string{o.ProwJobKubeconfig, o.NonProwJobKubeconfig} {
 		if _, err := os.Stat(candidate); err != nil {
 			continue
 		}
