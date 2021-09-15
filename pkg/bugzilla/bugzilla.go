@@ -61,27 +61,70 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			errs = append(errs, fmt.Errorf("Unable to get bugzilla number %d: %v", bugID, err))
 			continue
 		}
+		var success bool
+		message := ""
 		if bug.Status != "ON_QA" {
+			// In case bug has already been moved to VERIFIED, completely ignore
+			if bug.Status != "VERIFIED" {
+				message = "Bug is not in ON_QA status; bug will not be automatically moved to VERIFIED"
+			}
 			continue
+		} else {
+			var unapprovedPRs []pr
+			var bugErrs []error
+			for _, extPR := range extPRs {
+				comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
+				if err != nil {
+					newErr := fmt.Errorf("Unable to get comments for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
+					errs = append(errs, newErr)
+					bugErrs = append(bugErrs, newErr)
+					continue
+				}
+				reviews, err := c.ghClient.ListReviews(extPR.org, extPR.repo, extPR.prNum)
+				if err != nil {
+					newErr := fmt.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
+					errs = append(errs, newErr)
+					bugErrs = append(bugErrs, newErr)
+					continue
+				}
+				if !prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(extPR.org, extPR.repo).ReviewActsAsLgtm) {
+					unapprovedPRs = append(unapprovedPRs, extPR)
+				}
+			}
+			if len(unapprovedPRs) > 0 || len(bugErrs) > 0 {
+				message = "Bug will not be automatically moved to VERIFIED for the following reasons:"
+				for _, extPR := range unapprovedPRs {
+					message = fmt.Sprintf("%s\n- PR %s/%s#%d not appoved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
+				}
+				for _, err := range bugErrs {
+					message = fmt.Sprintf("%s\n- %s", message, err)
+				}
+			} else {
+				success = true
+			}
 		}
-		// TODO: use this list to comment on bugzilla bugs with reason for not auto-verifying a PR
-		var unapprovedPRs []pr
-		for _, extPR := range extPRs {
-			comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
+		if success {
+			message = "All linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED"
+		}
+		if message != "" {
+			comments, err := c.bzClient.GetComments(bugID)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("Unable to get comments for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err))
-				continue
+				errs = append(errs, fmt.Errorf("Failed to get comments on bug %d: %v", bug.ID, err))
 			}
-			reviews, err := c.ghClient.ListReviews(extPR.org, extPR.repo, extPR.prNum)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err))
-				continue
+			var alreadyCommented bool
+			for _, comment := range comments {
+				if comment.Text == message {
+					alreadyCommented = true
+					break
+				}
 			}
-			if !prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(extPR.org, extPR.repo).ReviewActsAsLgtm) {
-				unapprovedPRs = append(unapprovedPRs, extPR)
+			if !alreadyCommented {
+				if _, err := c.bzClient.CreateComment(&bugzilla.CommentCreate{ID: bugID, Comment: message, IsPrivate: true}); err != nil {
+					errs = append(errs, fmt.Errorf("Failed to comment on bug %d: %v", bug.ID, err))
+				}
 			}
 		}
-		if len(unapprovedPRs) == 0 {
+		if success {
 			klog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
 			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); err != nil {
 				errs = append(errs, fmt.Errorf("Failed to update status for bug %d: %v", bug.ID, err))
