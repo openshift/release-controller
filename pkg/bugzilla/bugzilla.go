@@ -110,10 +110,11 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			comments, err := c.bzClient.GetComments(bugID)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("Failed to get comments on bug %d: %v", bug.ID, err))
+				continue
 			}
 			var alreadyCommented bool
 			for _, comment := range comments {
-				if comment.Text == message {
+				if comment.Text == message && comment.Creator == "openshift-bugzilla-robot" {
 					alreadyCommented = true
 					break
 				}
