@@ -62,6 +62,9 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return nil, terminalError{err}
 	}
 
+	if isAggregatedJob {
+		periodicConfig.Name = fmt.Sprintf("%s-%s", jobName, verifyName)
+	}
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
 	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.architecture)
