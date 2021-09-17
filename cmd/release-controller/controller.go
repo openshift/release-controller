@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -134,6 +135,8 @@ type Controller struct {
 
 	softDeleteReleaseTags bool
 	authenticationMessage string
+
+	buildClusterDistributions []ClusterDistribution
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -151,6 +154,7 @@ func NewController(
 	graph *UpgradeGraph,
 	softDeleteReleaseTags bool,
 	authenticationMessage string,
+	clusterGroups []string,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -222,6 +226,14 @@ func NewController(
 		{"Index", "/"},
 		{"Overview", "/dashboards/overview"},
 		{"Compare", "/dashboards/compare"},
+	}
+
+	for _, memberList := range clusterGroups {
+		members := strings.Split(memberList, ",")
+		distribution, _ := NewRandomClusterDistribution(members...)
+		if distribution != nil {
+			c.buildClusterDistributions = append(c.buildClusterDistributions, distribution)
+		}
 	}
 
 	return c
