@@ -63,7 +63,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	}
 
 	if isAggregatedJob {
-		periodicConfig.Name = fmt.Sprintf("%s-%s", jobName, verifyName)
+		periodicConfig.Name = fmt.Sprintf("%s-%s", verifyName, jobName)
 	}
 	spec := prowutil.PeriodicSpec(*periodicConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
