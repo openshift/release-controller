@@ -86,18 +86,13 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				"release.openshift.io/verify": "true",
 			}
 			if verifyType.AggregatedProwJob != nil {
-				err := c.launchAnalysisJobs(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+				err := c.launchAnalysisJobs(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, statusTag)
 				if err != nil {
 					return nil, err
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
 			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, map[string]string{})
-			jobAnnotations := map[string]string{
-				"release.openshift.io/image":                statusTag.Image,
-				"release.openshift.io/dockerImageReference": statusTag.DockerImageReference,
-			}
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, jobAnnotations)
 			if err != nil {
 				return nil, err
 			}
