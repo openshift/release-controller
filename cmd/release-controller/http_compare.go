@@ -155,7 +155,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 			unsupported = append(unsupported, toRelease)
 		}
 		if len(unsupported) > 0 {
-			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to locate release(s): %s", strings.Join(unsupported, ", ")))
+			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to locate release(s): %s", template.HTMLEscapeString(strings.Join(unsupported, ", "))))
 		}
 	}
 }
