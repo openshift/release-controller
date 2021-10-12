@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -300,22 +301,28 @@ func semverParseTolerant(v string) (semver.Version, error) {
 
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
+	mux.HandleFunc("/", c.httpReleases)
 	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
-	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
-	mux.HandleFunc("/api/v1/releasestream/{release}/tags", c.apiReleaseTags)
-	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
+
+	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
+
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
-	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
-	mux.HandleFunc("/", c.httpReleases)
+
 	mux.HandleFunc("/dashboards/overview", c.httpDashboardOverview)
 	mux.HandleFunc("/dashboards/compare", c.httpDashboardCompare)
+
+	// APIs
+	mux.HandleFunc("/api/v1/releasestream/{release}/tags", c.apiReleaseTags)
+	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
+	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
+	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	return mux
 }
 
@@ -482,8 +489,70 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		w.Write(data)
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL"), http.StatusBadRequest)
 	}
+}
+
+func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	verificationJobs, msg := getVerificationJobs(*tagInfo.Info.Tag, tagInfo.Info.Release)
+	if len(msg) > 0 {
+		klog.V(4).Infof("Unable to retrieve verification job results for: %s", tagInfo.Tag)
+	}
+
+	var changeLog []byte
+
+	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
+		ch := make(chan renderResult)
+
+		// run the changelog in a goroutine because it may take significant time
+		go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
+
+		var render renderResult
+		select {
+		case render = <-ch:
+		case <-time.After(500 * time.Millisecond):
+			select {
+			case render = <-ch:
+			case <-time.After(15 * time.Second):
+				render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+			}
+		}
+		if render.err == nil {
+			result := blackfriday.Run([]byte(render.out))
+			// make our links targets
+			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
+			})
+			changeLog = result
+		}
+	}
+
+	summary := APIReleaseInfo{
+		Name:         tagInfo.Tag,
+		Results:      verificationJobs,
+		UpgradesTo:   c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom: c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:    changeLog,
+	}
+
+	data, err := json.MarshalIndent(&summary, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
@@ -623,10 +692,14 @@ func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Re
 	http.Redirect(w, req, u, http.StatusFound)
 }
 
-func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+type releaseTagInfo struct {
+	Tag                 string
+	Info                *ReleaseStreamTag
+	TagPullSpec         string
+	PreviousTagPullSpec string
+}
 
+func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, error) {
 	vars := mux.Vars(req)
 	release := vars["release"]
 	tag := vars["tag"]
@@ -634,14 +707,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	tags, ok := c.findReleaseStreamTags(true, tag, from)
 	if !ok {
-		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
-		return
+		return nil, fmt.Errorf("unable to find release tag %s, it may have been deleted", tag)
 	}
 
 	info := tags[tag]
 	if len(release) > 0 && info.Release.Config.Name != release {
-		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
-		return
+		return nil, fmt.Errorf("release tag %s does not belong to release %s", tag, release)
 	}
 
 	if previous := tags[from]; previous != nil {
@@ -670,10 +741,28 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if info.Previous != nil {
 		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
 	}
-	mirror, _ := c.getMirror(info.Release, info.Tag.Name)
+
+	return &releaseTagInfo{
+		Tag:                 tag,
+		Info:                info,
+		TagPullSpec:         tagPull,
+		PreviousTagPullSpec: previousTagPull,
+	}, nil
+}
+
+func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
+
+	mirror, _ := c.getMirror(tagInfo.Info.Release, tagInfo.Info.Tag.Name)
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
-	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tag)))
+	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tagInfo.Tag)))
 	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
 
 	// minor changelog styling tweaks
@@ -688,12 +777,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		`)
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tag))
+	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
 
-	switch info.Tag.Annotations[releaseAnnotationPhase] {
+	switch tagInfo.Info.Tag.Annotations[releaseAnnotationPhase] {
 	case releasePhaseFailed:
-		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(info.Tag.Annotations[releaseAnnotationMessage]))
-		if log := info.Tag.Annotations[releaseAnnotationLog]; len(log) > 0 {
+		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(tagInfo.Info.Tag.Annotations[releaseAnnotationMessage]))
+		if log := tagInfo.Info.Tag.Annotations[releaseAnnotationLog]; len(log) > 0 {
 			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
 		} else {
 			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
@@ -702,15 +791,15 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	renderInstallInstructions(w, mirror, info.Tag, tagPull, c.artifactsHost)
+	renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 
-	renderVerifyLinks(w, *info.Tag, info.Release)
+	renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
 
-	upgradesTo := c.graph.UpgradesTo(tag)
+	upgradesTo := c.graph.UpgradesTo(tagInfo.Tag)
 
 	var missingUpgrades []string
 	upgradeFound := make(map[string]bool)
-	supportedUpgrades, _ := c.getSupportedUpgrades(tagPull)
+	supportedUpgrades, _ := c.getSupportedUpgrades(tagInfo.TagPullSpec)
 	if len(supportedUpgrades) > 0 {
 		for _, u := range upgradesTo {
 			upgradeFound[u.From] = true
@@ -719,7 +808,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			if !upgradeFound[from] {
 				upgradesTo = append(upgradesTo, UpgradeHistory{
 					From:  from,
-					To:    tag,
+					To:    tagInfo.Tag,
 					Total: -1,
 				})
 				missingUpgrades = append(missingUpgrades, fmt.Sprintf(`<a class="text-monospace" href="/releasetag/%s">%s</a>`, from, from))
@@ -745,7 +834,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				continue
 			}
 			fmt.Fprintf(w, `<li><a class="text-monospace %s" href="/releasetag/%s">%s</a>`, style, upgrade.From, upgrade.From)
-			if info.Previous == nil || upgrade.From != info.Previous.Name {
+			if tagInfo.Info.Previous == nil || upgrade.From != tagInfo.Info.Previous.Name {
 				fmt.Fprintf(w, ` (<a href="?from=%s">changes</a>)`, upgrade.From)
 			}
 			if upgrade.Total > 0 {
@@ -783,7 +872,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	if upgradesFrom := c.graph.UpgradesFrom(tag); len(upgradesFrom) > 0 {
+	if upgradesFrom := c.graph.UpgradesFrom(tagInfo.Tag); len(upgradesFrom) > 0 {
 		sort.Sort(newNewestSemVerToSummaries(upgradesFrom))
 		fmt.Fprintf(w, `<p id="upgrades-to">Upgrades to:</p><ul>`)
 		for _, upgrade := range upgradesFrom {
@@ -832,21 +921,21 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	if info.Previous != nil && len(previousTagPull) > 0 && len(tagPull) > 0 {
+	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		fmt.Fprintln(w, "<hr>")
-		c.renderChangeLog(w, previousTagPull, info.Previous.Name, tagPull, info.Tag.Name)
+		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
 	}
 
 	var options []string
-	for _, tag := range info.Older {
+	for _, tag := range tagInfo.Info.Older {
 		var selected string
-		if tag.Name == info.Previous.Name {
+		if tag.Name == tagInfo.Info.Previous.Name {
 			selected = `selected="true"`
 		}
 		options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
 	}
-	for _, release := range info.Stable.Releases {
-		if release.Release == info.Release {
+	for _, release := range tagInfo.Info.Stable.Releases {
+		if release.Release == tagInfo.Info.Release {
 			continue
 		}
 		for j, version := range release.Versions {
@@ -854,7 +943,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				options = append(options, `<option disabled>───</option>`)
 			}
 			var selected string
-			if info.Previous != nil && version.Tag.Name == info.Previous.Name {
+			if tagInfo.Info.Previous != nil && version.Tag.Name == tagInfo.Info.Previous.Name {
 				selected = `selected="true"`
 			}
 			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
@@ -862,8 +951,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 	if len(options) > 0 {
 		fmt.Fprint(w, `<p><form class="form-inline" method="GET">`)
-		if info.Previous != nil {
-			fmt.Fprintf(w, `<a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label>`, info.Previous.Name, info.Tag.Name)
+		if tagInfo.Info.Previous != nil {
+			fmt.Fprintf(w, `<a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label>`, tagInfo.Info.Previous.Name, tagInfo.Info.Tag.Name)
 		} else {
 			fmt.Fprint(w, `<label for="from">change previous release:&nbsp;</label>`)
 		}
