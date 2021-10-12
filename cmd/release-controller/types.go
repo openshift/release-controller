@@ -42,6 +42,8 @@ type APIReleaseInfo struct {
 	UpgradesTo []UpgradeHistory `json:"upgradesTo,omitempty"`
 	//UpgradesFrom is the list of UpgradeHistory "from" this release tag
 	UpgradesFrom []UpgradeHistory `json:"upgradesFrom,omitempty"`
+	//ChangeLog is the changes included in this release tag
+	ChangeLog []byte `json:"changeLog,omitempty"`
 }
 
 // Release holds information about the release used during processing.

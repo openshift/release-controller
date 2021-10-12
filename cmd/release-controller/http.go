@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -511,6 +512,28 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
 		return
 	}
+	if info.Previous == nil && len(info.Older) > 0 {
+		info.Previous = info.Older[0]
+		info.PreviousRelease = info.Release
+	}
+	if info.Previous == nil {
+		if version, err := semver.Parse(info.Tag.Name); err == nil {
+			for _, release := range info.Stable.Releases {
+				if release.Version.Major == version.Major && release.Version.Minor == version.Minor && len(release.Versions) > 0 {
+					info.Previous = release.Versions[0].Tag
+					info.PreviousRelease = release.Release
+					break
+				}
+			}
+		}
+	}
+
+	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
+	tagPull := findPublicImagePullSpec(info.Release.Target, info.Tag.Name)
+	var previousTagPull string
+	if info.Previous != nil {
+		previousTagPull = findPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
+	}
 
 	results := info.Tag.Annotations[releaseAnnotationVerify]
 	if len(results) == 0 {
@@ -524,11 +547,40 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var changeLog []byte
+
+	if info.Previous != nil && len(previousTagPull) > 0 && len(tagPull) > 0 {
+		ch := make(chan renderResult)
+
+		// run the changelog in a goroutine because it may take significant time
+		go c.getChangeLog(ch, previousTagPull, info.Previous.Name, tagPull, info.Tag.Name)
+
+		var render renderResult
+		select {
+		case render = <-ch:
+		case <-time.After(500 * time.Millisecond):
+			select {
+			case render = <-ch:
+			case <-time.After(15 * time.Second):
+				render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+			}
+		}
+		if render.err == nil {
+			result := blackfriday.Run([]byte(render.out))
+			// make our links targets
+			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
+			})
+			changeLog = result
+		}
+	}
+
 	summary := APIReleaseInfo{
 		Name:         tag,
 		Results:      status,
 		UpgradesTo:   c.graph.UpgradesTo(tag),
 		UpgradesFrom: c.graph.UpgradesFrom(tag),
+		ChangeLog:    changeLog,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
