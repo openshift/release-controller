@@ -416,18 +416,15 @@ func links(tag imagev1.TagReference, release *Release) string {
 	return buf.String()
 }
 
-func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
+func getVerificationJobs(tag imagev1.TagReference, release *Release) (*VerificationJobsSummary, string) {
 	links := tag.Annotations[releaseAnnotationVerify]
 	if len(links) == 0 {
-		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
-		return
+		return nil, fmt.Sprintf(`<p><em>No tests for this release</em>`)
 	}
 	var status VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
-		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load test info</em>`)
-		return
+		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load test info</em>`)
 	}
-	buf := &bytes.Buffer{}
 	blockingJobs := make(VerificationStatusMap)
 	informingJobs := make(VerificationStatusMap)
 	pendingJobs := make(VerificationStatusMap)
@@ -447,20 +444,34 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 			pendingJobs[key] = nil
 		}
 	}
+	return &VerificationJobsSummary{
+		BlockingJobs:  blockingJobs,
+		InformingJobs: informingJobs,
+		PendingJobs:   pendingJobs,
+	}, ""
+}
+
+func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
+	verificationJobs, msg := getVerificationJobs(tag, release)
+	if len(msg) > 0 {
+		fmt.Fprintf(w, msg)
+		return
+	}
+	buf := &bytes.Buffer{}
 	final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
-	if len(blockingJobs) > 0 {
+	if len(verificationJobs.BlockingJobs) > 0 {
 		buf.WriteString("<li>Blocking jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(blockingJobs, release, final))
+		buf.WriteString(renderVerificationJobsList(verificationJobs.BlockingJobs, release, final))
 		buf.WriteString("</ul></li>")
 	}
-	if len(informingJobs) > 0 {
+	if len(verificationJobs.InformingJobs) > 0 {
 		buf.WriteString("<li>Informing jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(informingJobs, release, final))
+		buf.WriteString(renderVerificationJobsList(verificationJobs.InformingJobs, release, final))
 		buf.WriteString("</ul></li>")
 	}
-	if len(pendingJobs) > 0 {
+	if len(verificationJobs.PendingJobs) > 0 {
 		buf.WriteString("<li>Pending jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(pendingJobs, release, final))
+		buf.WriteString(renderVerificationJobsList(verificationJobs.PendingJobs, release, final))
 		buf.WriteString("</ul></li>")
 	}
 	if out := buf.String(); len(out) > 0 {

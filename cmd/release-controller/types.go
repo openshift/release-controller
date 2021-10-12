@@ -37,7 +37,7 @@ type APIReleaseInfo struct {
 	// Name is the name of the release tag.
 	Name string `json:"name"`
 	// Results is the status of the release verification jobs for this release tag
-	Results VerificationStatusMap `json:"results,omitempty"`
+	Results *VerificationJobsSummary `json:"results,omitempty"`
 	// UpgradesTo is the list of UpgradeHistory "to" this release tag
 	UpgradesTo []UpgradeHistory `json:"upgradesTo,omitempty"`
 	//UpgradesFrom is the list of UpgradeHistory "from" this release tag
@@ -337,6 +337,13 @@ type VerificationStatus struct {
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
+
+// VerificationJobsSummary an organized, by job type, collection of VerificationStatusMap objects
+type VerificationJobsSummary struct {
+	BlockingJobs  VerificationStatusMap `json:"blockingJobs,omitempty"`
+	InformingJobs VerificationStatusMap `json:"informingJobs,omitempty"`
+	PendingJobs   VerificationStatusMap `json:"pendingJobs,omitempty"`
+}
 
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
