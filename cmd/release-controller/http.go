@@ -300,22 +300,28 @@ func semverParseTolerant(v string) (semver.Version, error) {
 
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
+	mux.HandleFunc("/", c.httpReleases)
 	mux.HandleFunc("/graph", c.graphHandler)
 	mux.HandleFunc("/changelog", c.httpReleaseChangelog)
-	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/archive/graph", c.httpGraphSave)
-	mux.HandleFunc("/api/v1/releasestream/{release}/tags", c.apiReleaseTags)
-	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
+
+	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
+
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
-	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
-	mux.HandleFunc("/", c.httpReleases)
+
 	mux.HandleFunc("/dashboards/overview", c.httpDashboardOverview)
 	mux.HandleFunc("/dashboards/compare", c.httpDashboardCompare)
+
+	// APIs
+	mux.HandleFunc("/api/v1/releasestream/{release}/tags", c.apiReleaseTags)
+	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
+	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
+	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	return mux
 }
 
@@ -482,8 +488,58 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		w.Write(data)
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf(("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL")), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL"), http.StatusBadRequest)
 	}
+}
+
+func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	release := vars["release"]
+	tag := vars["tag"]
+
+	tags, ok := c.findReleaseStreamTags(true, tag)
+	if !ok {
+		http.Error(w, fmt.Sprintf("Unable to find release tag %s, it may have been deleted", tag), http.StatusNotFound)
+		return
+	}
+
+	info := tags[tag]
+	if len(release) > 0 && info.Release.Config.Name != release {
+		http.Error(w, fmt.Sprintf("Release tag %s does not belong to release %s", tag, release), http.StatusNotFound)
+		return
+	}
+
+	results := info.Tag.Annotations[releaseAnnotationVerify]
+	if len(results) == 0 {
+		fmt.Fprintf(w, `No verification results found for this release`)
+		return
+	}
+
+	var status VerificationStatusMap
+	if err := json.Unmarshal([]byte(results), &status); err != nil {
+		fmt.Fprintf(w, `Unable to load verification results for this release`)
+		return
+	}
+
+	summary := APIReleaseInfo{
+		Name:         tag,
+		Results:      status,
+		UpgradesTo:   c.graph.UpgradesTo(tag),
+		UpgradesFrom: c.graph.UpgradesFrom(tag),
+	}
+
+	data, err := json.MarshalIndent(&summary, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {

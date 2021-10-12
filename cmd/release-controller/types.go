@@ -32,6 +32,18 @@ type APIRelease struct {
 	Tags []APITag `json:"tags"`
 }
 
+// APIReleaseInfo encapsulates the release verification results and upgrade history for a release tag.
+type APIReleaseInfo struct {
+	// Name is the name of the release tag.
+	Name string `json:"name"`
+	// Results is the status of the release verification jobs for this release tag
+	Results VerificationStatusMap `json:"results,omitempty"`
+	// UpgradesTo is the list of UpgradeHistory "to" this release tag
+	UpgradesTo []UpgradeHistory `json:"upgradesTo,omitempty"`
+	//UpgradesFrom is the list of UpgradeHistory "from" this release tag
+	UpgradesFrom []UpgradeHistory `json:"upgradesFrom,omitempty"`
+}
+
 // Release holds information about the release used during processing.
 type Release struct {
 	// Source is the image stream that the Config was loaded from and holds all
@@ -226,7 +238,7 @@ type ReleaseVerification struct {
 
 // AggregatedProwJobVerification identifies the name of a prow job that will be used to
 // aggregate the release analysis jobs.
-type AggregatedProwJobVerification struct{
+type AggregatedProwJobVerification struct {
 	// ProwJob requires that the named ProwJob from the prow config pass before the
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
