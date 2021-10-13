@@ -23,8 +23,8 @@ func (c *Controller) launchAnalysisJobs(release *Release, verifyName string, ver
 
 	for i := 0; i < verifyType.AggregatedProwJob.AnalysisJobCount; i++ {
 		// Postfix the name to differentiate it from the aggregator job
-		jobName := generateSafeProwJobName(verifyName, fmt.Sprintf("analysis-%d", i))
-		_, err := c.ensureProwJobForReleaseTag(release, jobName, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		jobNameSuffix := fmt.Sprintf("analysis-%d", i)
+		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 		if err != nil {
 			return err
 		}
