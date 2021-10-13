@@ -757,6 +757,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
 
 	mirror, _ := c.getMirror(tagInfo.Info.Release, tagInfo.Info.Tag.Name)
