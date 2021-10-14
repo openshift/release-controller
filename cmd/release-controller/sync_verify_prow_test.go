@@ -70,7 +70,7 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 			name:     "JobNameWithoutSuffixWithTruncation",
 			jobName:  "4.9.0-0.ci-2021-08-30-130010-this-is-a-really-long-job-name-fake",
 			suffix:   "",
-			expected: "4.9.0-0.ci-2021-08-30-130010-this-is-a-really-long-job-name-...",
+			expected: "4.9.0-0.ci-2021-08-30-130010-this-is-a-really-long-job-fwm2xib",
 		},
 		{
 			name:     "JobNameWithSuffixWithNoTruncation",
@@ -82,7 +82,7 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 			name:     "JobNameWithSuffixWithTruncation",
 			jobName:  "4.9.0-0.ci-2021-08-30-133010-this-is-a-really-long-job-name",
 			suffix:   "analysis-1",
-			expected: "4.9.0-0.ci-2021-08-30-133010-this-is-a-really-lon...-analysis-1",
+			expected: "4.9.0-0.ci-2021-08-30-133010-this-is-a-reall-18k93xt-analysis-1",
 		},
 		{
 			name:     "MaxSizeJobNameWithSuffixWithNoTruncation",
@@ -94,7 +94,7 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 			name:     "ExtremelyLongJobNameWithSuffixWithTruncation",
 			jobName:  "4.9.0-0.ci-2021-08-30-133010-this-is-a-really-really-really-really-really-really-long-job-name",
 			suffix:   "analysis-1",
-			expected: "4.9.0-0.ci-2021-08-30-133010-this-is-a-really-rea...-analysis-1",
+			expected: "4.9.0-0.ci-2021-08-30-133010-this-is-a-reall-gmlwrnb-analysis-1",
 		},
 	}
 

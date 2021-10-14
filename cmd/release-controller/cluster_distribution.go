@@ -15,8 +15,8 @@ type ClusterDistribution interface {
 var ErrEmptyItems = errors.New("cannot create cluster distribution with no items")
 
 type RandomClusterDistribution struct {
-	random  *rand.Rand
-	pool    []string
+	random *rand.Rand
+	pool   []string
 }
 
 func NewRandomClusterDistribution(items ...string) (ClusterDistribution, error) {
@@ -25,7 +25,7 @@ func NewRandomClusterDistribution(items ...string) (ClusterDistribution, error) 
 	}
 	cd := &RandomClusterDistribution{
 		random: rand.New(rand.NewSource(time.Now().UnixNano())),
-		pool: items,
+		pool:   items,
 	}
 	return cd, nil
 }

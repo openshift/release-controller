@@ -101,7 +101,7 @@ func TestRandomDistribution(t *testing.T) {
 				"build01",
 			},
 			expectedErr: nil,
-			wants: 25,
+			wants:       25,
 		},
 		{
 			name: "TwoItemsFiftyTimes",
@@ -110,7 +110,7 @@ func TestRandomDistribution(t *testing.T) {
 				"build02",
 			},
 			expectedErr: nil,
-			wants: 50,
+			wants:       50,
 		},
 		{
 			name: "ThreeItemsOneHundredTimes",
@@ -120,7 +120,7 @@ func TestRandomDistribution(t *testing.T) {
 				"build03",
 			},
 			expectedErr: nil,
-			wants: 100,
+			wants:       100,
 		},
 		{
 			name: "FiveItemsOneThousandTimes",
@@ -132,7 +132,7 @@ func TestRandomDistribution(t *testing.T) {
 				"build05",
 			},
 			expectedErr: nil,
-			wants: 1000,
+			wants:       1000,
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestRandomDistribution(t *testing.T) {
 
 		if err != nil && err != tc.expectedErr {
 			t.Errorf("%s - expected error: %v, got: %v", tc.name, tc.expectedErr, err)
-		} else if err != nil && err == tc.expectedErr{
+		} else if err != nil && err == tc.expectedErr {
 			continue
 		}
 
@@ -156,7 +156,7 @@ func TestRandomDistribution(t *testing.T) {
 
 		var data = make(map[string]int, len(tc.items))
 		for _, item := range tc.items {
-			for _, result := range results{
+			for _, result := range results {
 				if result == item {
 					data[item]++
 				}

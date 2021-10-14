@@ -73,21 +73,21 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					return nil, err
 				}
 			}
-			jobName := generateSafeProwJobName(name, "")
+			jobNameSuffix := ""
 			if jobRetries > 0 {
-				jobName = generateSafeProwJobName(name, fmt.Sprintf("%d", jobRetries))
+				jobNameSuffix = fmt.Sprintf("%d", jobRetries)
 			}
 			jobLabels := map[string]string{
 				"release.openshift.io/verify": "true",
 			}
 			if verifyType.AggregatedProwJob != nil {
-				err := c.launchAnalysisJobs(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
 				if err != nil {
 					return nil, err
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
-			job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+			job, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 			if err != nil {
 				return nil, err
 			}
