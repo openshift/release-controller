@@ -138,7 +138,7 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			}
 			var alreadyCommented bool
 			for _, comment := range comments {
-				if comment.Text == message && comment.Creator == "openshift-bugzilla-robot" {
+				if comment.Text == message && (comment.Creator == "openshift-bugzilla-robot" || comment.Creator == "openshift-bugzilla-robot@redhat.com") {
 					alreadyCommented = true
 					break
 				}
