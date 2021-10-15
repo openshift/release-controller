@@ -1,6 +1,6 @@
 module github.com/openshift/release-controller
 
-go 1.13
+go 1.16
 
 replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
@@ -28,6 +28,7 @@ require (
 	github.com/gorilla/mux v1.7.4
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/openshift/api v0.0.0-20200521101457-60c476765272
+	github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc
 	github.com/openshift/ci-tools v0.0.0-20201112214423-2f4cc3d7672d
 	github.com/openshift/client-go v3.9.0+incompatible
 	github.com/openshift/library-go v0.0.0-20200127110935-527e40ed17d9
@@ -42,6 +43,7 @@ require (
 	k8s.io/api v0.21.3
 	k8s.io/apimachinery v0.21.3
 	k8s.io/client-go v11.0.1-0.20190805182717-6502b5e7b1b5+incompatible
+	k8s.io/code-generator v0.21.3
 	k8s.io/klog v1.0.0
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
 	k8s.io/test-infra v0.0.0-20211014223256-1433e96a1f3d
