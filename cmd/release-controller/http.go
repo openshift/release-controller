@@ -323,6 +323,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
+	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
 	return mux
 }
 
@@ -1365,4 +1366,96 @@ func (c *Controller) getSupportedUpgrades(tagPull string) ([]string, error) {
 		supportedUpgrades = tagUpgradeInfo.Metadata.Previous
 	}
 	return supportedUpgrades, nil
+}
+
+func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+	jobType := req.URL.Query().Get("jobType")
+
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		code := http.StatusInternalServerError
+		if err == errStreamNotFound || err == errStreamTagNotFound {
+			code = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+
+	var release *Release
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.Name != streamName {
+			continue
+		}
+		release = r
+		break
+	}
+
+	if release == nil {
+		http.Error(w, fmt.Sprintf("error: unknown release stream specified: %s", streamName), http.StatusBadRequest)
+		return
+	}
+
+	displayConfig := false
+	periodicJobs := make(map[string]ReleasePeriodic)
+	verificationJobs := make(map[string]ReleaseVerification)
+
+	if jobType == "periodic" {
+		for name, periodic := range release.Config.Periodic {
+			periodicJobs[name] = periodic
+		}
+	} else {
+	Loop:
+		for name, verify := range release.Config.Verify {
+			switch jobType {
+			case "informing":
+				if verify.Optional {
+					verificationJobs[name] = verify
+				}
+			case "blocking":
+				if !verify.Optional {
+					verificationJobs[name] = verify
+				}
+			case "disabled":
+				if verify.Disabled {
+					verificationJobs[name] = verify
+				}
+			case "":
+				displayConfig = true
+				break Loop
+			default:
+				http.Error(w, fmt.Sprintf("error: jobType must be one of '', 'informing', 'blocking', 'disabled' or 'periodic'"), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	var data []byte
+
+	if displayConfig {
+		data, err = json.MarshalIndent(&release.Config, "", "  ")
+	} else {
+		if jobType == "periodic" {
+			data, err = json.MarshalIndent(&periodicJobs, "", "  ")
+		} else {
+			data, err = json.MarshalIndent(&verificationJobs, "", "  ")
+		}
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
 }
