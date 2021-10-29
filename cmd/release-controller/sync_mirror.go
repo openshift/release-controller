@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"strconv"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
 )
 
-func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
+func (c *Controller) ensureReleaseMirror(release *release_controller.Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
 	mirrorName := mirrorName(release, releaseTagName)
 	is, err := c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 	if err == nil {
@@ -30,17 +31,17 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 			Name:      mirrorName,
 			Namespace: release.Source.Namespace,
 			Annotations: map[string]string{
-				releaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-				releaseAnnotationTarget:     fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name),
-				releaseAnnotationReleaseTag: releaseTagName,
-				releaseAnnotationImageHash:  inputImageHash,
-				releaseAnnotationGeneration: strconv.FormatInt(release.Target.Generation, 10),
+				release_controller.ReleaseAnnotationSource:     fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+				release_controller.ReleaseAnnotationTarget:     fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name),
+				release_controller.ReleaseAnnotationReleaseTag: releaseTagName,
+				release_controller.ReleaseAnnotationImageHash:  inputImageHash,
+				release_controller.ReleaseAnnotationGeneration: strconv.FormatInt(release.Target.Generation, 10),
 			},
 		},
 	}
 
 	switch release.Config.As {
-	case releaseConfigModeStable:
+	case release_controller.ReleaseConfigModeStable:
 		// stream will be populated later
 	default:
 		if err := calculateMirrorImageStream(release, is); err != nil {
@@ -66,13 +67,13 @@ func (c *Controller) ensureReleaseMirror(release *Release, releaseTagName, input
 	return is, err
 }
 
-func (c *Controller) getMirror(release *Release, releaseTagName string) (*imagev1.ImageStream, error) {
+func (c *Controller) getMirror(release *release_controller.Release, releaseTagName string) (*imagev1.ImageStream, error) {
 	return c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
 }
 
-func mirrorName(release *Release, releaseTagName string) string {
+func mirrorName(release *release_controller.Release, releaseTagName string) string {
 	switch release.Config.As {
-	case releaseConfigModeStable:
+	case release_controller.ReleaseConfigModeStable:
 		return releaseTagName
 	default:
 		suffix := strings.TrimPrefix(releaseTagName, release.Config.Name)
@@ -83,7 +84,7 @@ func mirrorName(release *Release, releaseTagName string) string {
 	}
 }
 
-func calculateMirrorImageStream(release *Release, is *imagev1.ImageStream) error {
+func calculateMirrorImageStream(release *release_controller.Release, is *imagev1.ImageStream) error {
 	// this block is mostly identical to the logic in openshift/origin pkg/oc/cli/admin/release/new which
 	// calculates the spec tags - it preserves the desired source location of the image and errors when
 	// we can't resolve or the result might be ambiguous

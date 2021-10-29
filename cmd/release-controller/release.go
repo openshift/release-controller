@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,14 +19,14 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool, error) {
-	src, ok := is.Annotations[releaseAnnotationConfig]
+func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*release_controller.Release, bool, error) {
+	src, ok := is.Annotations[release_controller.ReleaseAnnotationConfig]
 	if !ok {
 		return nil, false, nil
 	}
 	cfg, err := parseReleaseConfig(src, c.parsedReleaseConfigCache)
 	if err != nil {
-		err = fmt.Errorf("the %s annotation for %s is invalid: %v", releaseAnnotationConfig, is.Name, err)
+		err = fmt.Errorf("the %s annotation for %s is invalid: %v", release_controller.ReleaseAnnotationConfig, is.Name, err)
 		c.eventRecorder.Eventf(is, corev1.EventTypeWarning, "InvalidReleaseDefinition", "%v", err)
 		return nil, false, terminalError{err}
 	}
@@ -41,8 +42,8 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 
 	switch cfg.As {
-	case releaseConfigModeStable:
-		r := &Release{
+	case release_controller.ReleaseConfigModeStable:
+		r := &release_controller.Release{
 			Source: is,
 			Target: is,
 			Config: cfg,
@@ -58,7 +59,7 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 		if err != nil {
 			return nil, false, fmt.Errorf("unable to lookup release image stream: %v", err)
 		}
-		r := &Release{
+		r := &release_controller.Release{
 			Source: is,
 			Target: targetImageStream,
 			Config: cfg,
@@ -67,25 +68,25 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool,
 	}
 }
 
-func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, error) {
+func parseReleaseConfig(data string, configCache *lru.Cache) (*release_controller.ReleaseConfig, error) {
 	if len(data) > 8*1024 {
 		return nil, fmt.Errorf("release config must be less than 8k")
 	}
 	if configCache != nil {
 		obj, ok := configCache.Get(data)
 		if ok {
-			cfg := obj.(ReleaseConfig)
+			cfg := obj.(release_controller.ReleaseConfig)
 			return &cfg, nil
 		}
 	}
-	cfg := &ReleaseConfig{}
+	cfg := &release_controller.ReleaseConfig{}
 	if err := json.Unmarshal([]byte(data), cfg); err != nil {
 		return nil, err
 	}
 	if len(cfg.Name) == 0 {
 		return nil, fmt.Errorf("release config must have a valid name")
 	}
-	if len(cfg.To) == 0 && cfg.As != releaseConfigModeStable {
+	if len(cfg.To) == 0 && cfg.As != release_controller.ReleaseConfigModeStable {
 		return nil, fmt.Errorf("release must specify 'to' unless 'as' is 'Stable'")
 	}
 	for name, verify := range cfg.Verify {
@@ -93,7 +94,7 @@ func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 			return nil, fmt.Errorf("verify config has no name")
 		}
 		switch verify.UpgradeFrom {
-		case releaseUpgradeFromPreviousMinor, releaseUpgradeFromPreviousPatch, releaseUpgradeFromPrevious, "":
+		case release_controller.ReleaseUpgradeFromPreviousMinor, release_controller.ReleaseUpgradeFromPreviousPatch, release_controller.ReleaseUpgradeFromPrevious, "":
 		default:
 			return nil, fmt.Errorf("verify config %s has an invalid upgradeFrom: %s", name, verify.UpgradeFrom)
 		}
@@ -126,11 +127,11 @@ func parseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 }
 
 func releaseGenerationFromObject(name string, annotations map[string]string) (int64, bool) {
-	_, ok := annotations[releaseAnnotationSource]
+	_, ok := annotations[release_controller.ReleaseAnnotationSource]
 	if !ok {
 		return 0, false
 	}
-	s, ok := annotations[releaseAnnotationGeneration]
+	s, ok := annotations[release_controller.ReleaseAnnotationGeneration]
 	if !ok {
 		klog.V(4).Infof("Can't check %s, no generation", name)
 		return 0, false
@@ -280,21 +281,21 @@ func findPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
 // unsortedSemanticReleaseTags returns the tags in the release as a sortable array, but
 // does not sort the array. If phases is specified only tags in the provided phases
 // are returned.
-func unsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVersions {
+func unsortedSemanticReleaseTags(release *release_controller.Release, phases ...string) SemanticVersions {
 	is := release.Target
 	sourceName := fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
 	versions := make(SemanticVersions, 0, len(is.Spec.Tags))
 	for i := range is.Spec.Tags {
 		tag := &is.Spec.Tags[i]
-		if tag.Annotations[releaseAnnotationSource] != sourceName {
+		if tag.Annotations[release_controller.ReleaseAnnotationSource] != sourceName {
 			continue
 		}
 
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+		if tag.Annotations[release_controller.ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if len(phases) > 0 && !stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
+		if len(phases) > 0 && !release_controller.StringSliceContains(phases, tag.Annotations[release_controller.ReleaseAnnotationPhase]) {
 			continue
 		}
 
@@ -322,45 +323,36 @@ func firstTagWithMajorMinorSemanticVersion(versions SemanticVersions, version se
 // sortedReleaseTags returns the tags for a given release in the most appropriate order -
 // by creation date for iterative streams, by semantic version for stable streams. If
 // phase is specified the list will be filtered.
-func sortedReleaseTags(release *Release, phases ...string) []*imagev1.TagReference {
+func sortedReleaseTags(release *release_controller.Release, phases ...string) []*imagev1.TagReference {
 	versions := unsortedSemanticReleaseTags(release, phases...)
 	switch release.Config.As {
-	case releaseConfigModeStable:
+	case release_controller.ReleaseConfigModeStable:
 		sort.Sort(versions)
 		return versions.Tags()
 	default:
 		tags := versions.Tags()
-		sort.Sort(tagReferencesByAge(tags))
+		sort.Sort(release_controller.TagReferencesByAge(tags))
 		return tags
 	}
-}
-
-func stringSliceContains(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
 
 // sortedRawReleaseTags returns the tags for the given release in order of their creation
 // if they are in one of the provided phases. Use sortedReleaseTags if you are trying to get the
 // most appropriate recent tag. Intended for use only within the release.
-func sortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagReference {
+func sortedRawReleaseTags(release *release_controller.Release, phases ...string) []*imagev1.TagReference {
 	var tags []*imagev1.TagReference
 	for i := range release.Target.Spec.Tags {
 		tag := &release.Target.Spec.Tags[i]
-		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+		if tag.Annotations[release_controller.ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+		if tag.Annotations[release_controller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
-		if stringSliceContains(phases, tag.Annotations[releaseAnnotationPhase]) {
+		if release_controller.StringSliceContains(phases, tag.Annotations[release_controller.ReleaseAnnotationPhase]) {
 			tags = append(tags, tag)
 		}
 	}
-	sort.Sort(tagReferencesByAge(tags))
+	sort.Sort(release_controller.TagReferencesByAge(tags))
 	return tags
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"net/http"
 	"sort"
 	"strings"
@@ -117,7 +118,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 	}
 
 	if releaseCandidateList[releaseStreamName] == nil {
-		releaseCandidateList[releaseStreamName] = &ReleaseCandidateList{}
+		releaseCandidateList[releaseStreamName] = &release_controller.ReleaseCandidateList{}
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -132,7 +133,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 		fmt.Fprintf(w, htmlPageStart, "Release Status")
 		page := template.Must(template.New("candidatePage").Funcs(
 			template.FuncMap{
-				"nextReleaseName": func(list *ReleaseCandidateList) string {
+				"nextReleaseName": func(list *release_controller.ReleaseCandidateList) string {
 					if list == nil || list.Items == nil || len(list.Items) == 0 {
 						return "next release"
 					}
@@ -164,12 +165,12 @@ func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var candidate *ReleasePromoteJobParameters
+	var candidate *release_controller.ReleasePromoteJobParameters
 	if releaseCandidateList[releaseStreamName] != nil && len(releaseCandidateList[releaseStreamName].Items) != 0 {
 		candidate = &(releaseCandidateList[releaseStreamName].Items[0].ReleasePromoteJobParameters)
 	}
 
-	data, err := json.MarshalIndent(map[string]*ReleasePromoteJobParameters{"candidate": candidate}, "", "  ")
+	data, err := json.MarshalIndent(map[string]*release_controller.ReleasePromoteJobParameters{"candidate": candidate}, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -184,8 +185,8 @@ type releaseInfoShort struct {
 	References *imagev1.ImageStream `json:"references"`
 }
 
-func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
-	releaseCandidates := make(map[string]*ReleaseCandidateList)
+func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releaseStreams ...string) (map[string]*release_controller.ReleaseCandidateList, error) {
+	releaseCandidates := make(map[string]*release_controller.ReleaseCandidateList)
 	if len(releaseStreams) == 0 {
 		return releaseCandidates, nil
 	}
@@ -203,7 +204,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 	}
 	for _, r := range stable.Releases {
 		for _, tag := range r.Release.Source.Spec.Tags {
-			if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
+			if tag.Annotations[release_controller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
 				continue
 			}
 			// Only consider stable versions with a parseable version
@@ -229,12 +230,12 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		nextReleaseName = nextVersion.String()
 		latestPromotedTime = promotedTime.Unix()
 
-		candidates := make([]*ReleaseCandidate, 0)
+		candidates := make([]*release_controller.ReleaseCandidate, 0)
 		releaseTags := sortedReleaseTags(releaseStreamTagMap[stream].Release)
 		for _, tag := range releaseTags {
-			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
-				tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
-				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+			if tag.Annotations != nil && tag.Annotations[release_controller.ReleaseAnnotationPhase] == release_controller.ReleasePhaseAccepted &&
+				tag.Annotations[release_controller.ReleaseAnnotationCreationTimestamp] != "" {
+				t, _ := time.Parse(time.RFC3339, tag.Annotations[release_controller.ReleaseAnnotationCreationTimestamp])
 				ts := t.Unix()
 				if ts > latestPromotedTime {
 
@@ -250,8 +251,8 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 					}
 					sort.Strings(upgradeSuccess)
 
-					candidates = append(candidates, &ReleaseCandidate{
-						ReleasePromoteJobParameters: ReleasePromoteJobParameters{
+					candidates = append(candidates, &release_controller.ReleaseCandidate{
+						ReleasePromoteJobParameters: release_controller.ReleasePromoteJobParameters{
 							FromTag:     tag.Name,
 							Name:        nextReleaseName,
 							UpgradeFrom: upgradeSuccess,
@@ -265,7 +266,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		sort.Slice(candidates, func(i, j int) bool {
 			return candidates[i].CreationTime > candidates[j].CreationTime
 		})
-		releaseCandidates[stream] = &ReleaseCandidateList{Items: candidates}
+		releaseCandidates[stream] = &release_controller.ReleaseCandidateList{Items: candidates}
 	}
 	return releaseCandidates, nil
 }
@@ -297,7 +298,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		}
 
 		if includeStableTags {
-			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
+			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == release_controller.ReleaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
 					Release: r,
 					Version: version,
@@ -348,7 +349,7 @@ func (c *Controller) stableReleases() (*StableReferences, error) {
 			continue
 		}
 
-		if r.Config.As == releaseConfigModeStable {
+		if r.Config.As == release_controller.ReleaseConfigModeStable {
 			version, _ := semverParseTolerant(r.Source.Name)
 			stable.Releases = append(stable.Releases, StableRelease{
 				Release: r,
@@ -374,7 +375,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("could not unmarshal release info for tag %s: %v", tag.From.Name, err)
 	}
 
-	latestPromotedFrom := releaseInfo.References.Annotations[releaseAnnotationFromImageStream]
+	latestPromotedFrom := releaseInfo.References.Annotations[release_controller.ReleaseAnnotationFromImageStream]
 	// latestPromotedFrom has the format <namespace>/<imagestream name>
 	isTokens := strings.Split(latestPromotedFrom, "/")
 	if len(isTokens) != 2 {
@@ -390,11 +391,11 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, fmt.Errorf("no such imagestream %s", isTokens[1])
 	}
 
-	if len(is.Annotations) == 0 || len(is.Annotations[releaseAnnotationReleaseTag]) == 0 || len(is.Annotations[releaseAnnotationTarget]) == 0 {
+	if len(is.Annotations) == 0 || len(is.Annotations[release_controller.ReleaseAnnotationReleaseTag]) == 0 || len(is.Annotations[release_controller.ReleaseAnnotationTarget]) == 0 {
 		return nil, fmt.Errorf("required annotations missing from imagestream %s", isTokens[1])
 	}
 
-	fromIsTokens := strings.Split(is.Annotations[releaseAnnotationTarget], "/")
+	fromIsTokens := strings.Split(is.Annotations[release_controller.ReleaseAnnotationTarget], "/")
 	if len(fromIsTokens) != 2 {
 		// not of the format <namespace>/<imagestream name>
 		return nil, fmt.Errorf("unrecognized imagestream format %s", latestPromotedFrom)
@@ -405,7 +406,7 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 		return nil, err
 	}
 
-	fromTag := findTagReference(fromStream, is.Annotations[releaseAnnotationReleaseTag])
+	fromTag := findTagReference(fromStream, is.Annotations[release_controller.ReleaseAnnotationReleaseTag])
 
 	if fromTag != nil {
 		return fromTag, nil
@@ -432,13 +433,13 @@ func (c *Controller) nextVersionDetails(stream string, stable []imagev1.TagRefer
 			return nil, nil, err
 		}
 
-		if fromTag.Annotations[releaseAnnotationName] != stream {
+		if fromTag.Annotations[release_controller.ReleaseAnnotationName] != stream {
 			continue
 		}
 
-		pt, err := time.Parse(time.RFC3339, fromTag.Annotations[releaseAnnotationCreationTimestamp])
+		pt, err := time.Parse(time.RFC3339, fromTag.Annotations[release_controller.ReleaseAnnotationCreationTimestamp])
 		if err != nil {
-			klog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[releaseAnnotationCreationTimestamp], err)
+			klog.Errorf("Unable to parse timestamp %s: %v", fromTag.Annotations[release_controller.ReleaseAnnotationCreationTimestamp], err)
 			continue
 		}
 

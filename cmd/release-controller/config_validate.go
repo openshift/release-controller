@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,14 +16,14 @@ import (
 
 func validateConfigs(configDir string) error {
 	errors := []error{}
-	releaseConfigs := []ReleaseConfig{}
+	releaseConfigs := []release_controller.ReleaseConfig{}
 	err := filepath.Walk(configDir, func(path string, info os.FileInfo, err error) error {
 		if info != nil && filepath.Ext(info.Name()) == ".json" {
 			raw, err := ioutil.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			config := ReleaseConfig{}
+			config := release_controller.ReleaseConfig{}
 			dec := json.NewDecoder(bytes.NewReader(raw))
 			dec.DisallowUnknownFields() // Force errors on unknown fields
 			if err := dec.Decode(&config); err != nil {
@@ -41,7 +42,7 @@ func validateConfigs(configDir string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func validateUpgradeJobs(releaseConfigs []ReleaseConfig) []error {
+func validateUpgradeJobs(releaseConfigs []release_controller.ReleaseConfig) []error {
 	errors := []error{}
 	for _, config := range releaseConfigs {
 		for name, verify := range config.Verify {
@@ -58,7 +59,7 @@ func validateUpgradeJobs(releaseConfigs []ReleaseConfig) []error {
 	return errors
 }
 
-func verifyPeriodicFields(releaseConfigs []ReleaseConfig) []error {
+func verifyPeriodicFields(releaseConfigs []release_controller.ReleaseConfig) []error {
 	errors := []error{}
 	for _, config := range releaseConfigs {
 		for stepName, periodic := range config.Periodic {
@@ -83,7 +84,7 @@ func verifyPeriodicFields(releaseConfigs []ReleaseConfig) []error {
 	return errors
 }
 
-func findDuplicatePeriodics(releaseConfigs []ReleaseConfig) []error {
+func findDuplicatePeriodics(releaseConfigs []release_controller.ReleaseConfig) []error {
 	seen := make(map[string][]string)
 	for _, config := range releaseConfigs {
 		for stepName, periodic := range config.Periodic {

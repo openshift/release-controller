@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"strings"
 	"time"
 
@@ -322,14 +323,14 @@ func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
 		// this job should wake the audit queue
-		if t.Annotations[releaseAnnotationJobPurpose] == "audit" {
-			if name, ok := t.Annotations[releaseAnnotationReleaseTag]; ok {
+		if t.Annotations[release_controller.ReleaseAnnotationJobPurpose] == "audit" {
+			if name, ok := t.Annotations[release_controller.ReleaseAnnotationReleaseTag]; ok {
 				c.auditQueue.Add(name)
 			}
 			return
 		}
 
-		key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource])
+		key, ok := queueKeyFor(t.Annotations[release_controller.ReleaseAnnotationSource])
 		if !ok {
 			return
 		}
@@ -358,7 +359,7 @@ func (c *Controller) processJobIfComplete(obj interface{}) {
 func (c *Controller) processProwJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *unstructured.Unstructured:
-		key, ok := queueKeyFor(t.GetAnnotations()[releaseAnnotationSource])
+		key, ok := queueKeyFor(t.GetAnnotations()[release_controller.ReleaseAnnotationSource])
 		if !ok {
 			return
 		}
@@ -377,18 +378,18 @@ func (c *Controller) processImageStream(obj interface{}) {
 		c.expectations.Clear(t.Namespace, t.Name)
 
 		// if this image stream is a mirror for releases, requeue any that it touches
-		if _, ok := t.Annotations[releaseAnnotationConfig]; ok {
+		if _, ok := t.Annotations[release_controller.ReleaseAnnotationConfig]; ok {
 			klog.V(6).Infof("Image stream %s is a release input and will be queued", t.Name)
 			c.addQueueKey(queueKey{namespace: t.Namespace, name: t.Name})
 			return
 		}
-		if key, ok := queueKeyFor(t.Annotations[releaseAnnotationSource]); ok {
+		if key, ok := queueKeyFor(t.Annotations[release_controller.ReleaseAnnotationSource]); ok {
 			klog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
 			c.addBugzillaQueueKey(key)
 			return
 		}
-		if _, ok := t.Annotations[releaseAnnotationHasReleases]; ok {
+		if _, ok := t.Annotations[release_controller.ReleaseAnnotationHasReleases]; ok {
 			// if the release image stream is modified, tags might have been deleted so retrigger
 			// everything
 			klog.V(6).Infof("Image stream %s is a release target, requeue release namespace", t.Name)
@@ -482,7 +483,7 @@ func (c *Controller) processNextNamespace(ns string) error {
 		return err
 	}
 	for _, imageStream := range imageStreams {
-		if _, ok := imageStream.Annotations[releaseAnnotationConfig]; ok {
+		if _, ok := imageStream.Annotations[release_controller.ReleaseAnnotationConfig]; ok {
 			c.addQueueKey(queueKey{namespace: imageStream.Namespace, name: imageStream.Name})
 		}
 	}

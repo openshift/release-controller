@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"testing"
 
@@ -35,14 +36,14 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		}, {
 			Name: "test1",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}},
 		expectedCurrent: &v1.TagReference{Name: "test2"},
 		expectedPrevious: &v1.TagReference{
 			Name: "test1",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		},
 	}, {
@@ -53,17 +54,17 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		}, {
 			Name: "test3",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}, {
 			Name: "test2",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}, {
 			Name: "test1",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}},
 		expectedCurrent: &v1.TagReference{
@@ -73,7 +74,7 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		expectedPrevious: &v1.TagReference{
 			Name: "test3",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		},
 	}, {
@@ -84,7 +85,7 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		}, {
 			Name: "test3",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}, {
 			Name:        "test2",
@@ -92,7 +93,7 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		}, {
 			Name: "test1",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		}},
 		expectedCurrent: &v1.TagReference{
@@ -102,7 +103,7 @@ func TestGetNonVerifiedTags(t *testing.T) {
 		expectedPrevious: &v1.TagReference{
 			Name: "test1",
 			Annotations: map[string]string{
-				releaseAnnotationBugsVerified: "true",
+				release_controller.ReleaseAnnotationBugsVerified: "true",
 			},
 		},
 	}}

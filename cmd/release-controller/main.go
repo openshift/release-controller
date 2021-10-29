@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"net/http"
 	"net/url"
 	"os"
@@ -489,15 +490,15 @@ func (o *options) Run() error {
 						continue
 					}
 					annotations := job.GetAnnotations()
-					from, ok := annotations[releaseAnnotationFromTag]
+					from, ok := annotations[release_controller.ReleaseAnnotationFromTag]
 					if !ok {
 						continue
 					}
-					to, ok := annotations[releaseAnnotationToTag]
+					to, ok := annotations[release_controller.ReleaseAnnotationToTag]
 					if !ok {
 						continue
 					}
-					jobArchitecture, ok := annotations[releaseAnnotationArchitecture]
+					jobArchitecture, ok := annotations[release_controller.ReleaseAnnotationArchitecture]
 					if !ok {
 						continue
 					}
@@ -508,7 +509,7 @@ func (o *options) Run() error {
 					if !ok {
 						continue
 					}
-					graph.Add(from, to, UpgradeResult{
+					graph.Add(from, to, release_controller.UpgradeResult{
 						State: status.State,
 						URL:   status.URL,
 					})
@@ -699,7 +700,7 @@ func (c *latestImageCache) Get() (string, error) {
 			continue
 		}
 
-		value, ok := item.Annotations[releaseAnnotationConfig]
+		value, ok := item.Annotations[release_controller.ReleaseAnnotationConfig]
 		if !ok {
 			continue
 		}
@@ -710,7 +711,7 @@ func (c *latestImageCache) Get() (string, error) {
 		if err != nil {
 			continue
 		}
-		if config.As == releaseConfigModeStable {
+		if config.As == release_controller.ReleaseConfigModeStable {
 			continue
 		}
 

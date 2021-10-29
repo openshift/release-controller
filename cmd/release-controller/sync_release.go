@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"strconv"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+func (c *Controller) ensureReleaseJob(release *release_controller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
 		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
@@ -36,21 +37,21 @@ func (c *Controller) ensureReleaseJob(release *Release, name string, mirror *ima
 			name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode,
 		}
 
-		job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
-		job.Annotations[releaseAnnotationTarget] = mirror.Annotations[releaseAnnotationTarget]
-		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
-		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
+		job.Annotations[release_controller.ReleaseAnnotationSource] = mirror.Annotations[release_controller.ReleaseAnnotationSource]
+		job.Annotations[release_controller.ReleaseAnnotationTarget] = mirror.Annotations[release_controller.ReleaseAnnotationTarget]
+		job.Annotations[release_controller.ReleaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
+		job.Annotations[release_controller.ReleaseAnnotationReleaseTag] = mirror.Annotations[release_controller.ReleaseAnnotationReleaseTag]
 
 		klog.V(2).Infof("Running release creation job %s/%s for %s", c.jobNamespace, job.Name, name)
 		return job, nil
 	})
 }
 
-func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *imagev1.ImageStream, metadataJSON string) (*batchv1.Job, error) {
+func (c *Controller) ensureRewriteJob(release *release_controller.Release, name string, mirror *imagev1.ImageStream, metadataJSON string) (*batchv1.Job, error) {
 	ref := findTagReference(release.Source, name)
 	generation := *ref.Generation
 	preconditions := map[string]string{
-		releaseAnnotationGeneration: strconv.FormatInt(generation, 10),
+		release_controller.ReleaseAnnotationGeneration: strconv.FormatInt(generation, 10),
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
@@ -86,7 +87,7 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 			toImage, mirror.Name, mirror.Namespace,
 		}
 		// rebuild the payload using the provided metadata
-		if _, ok := ref.Annotations[releaseAnnotationMirrorImages]; ok {
+		if _, ok := ref.Annotations[release_controller.ReleaseAnnotationMirrorImages]; ok {
 			job.Spec.Template.Spec.Containers[0].Command = []string{
 				"/bin/bash", "-c",
 				prefix + `
@@ -106,20 +107,20 @@ func (c *Controller) ensureRewriteJob(release *Release, name string, mirror *ima
 			}
 		}
 
-		job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
-		job.Annotations[releaseAnnotationTarget] = mirror.Annotations[releaseAnnotationTarget]
-		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
-		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
+		job.Annotations[release_controller.ReleaseAnnotationSource] = mirror.Annotations[release_controller.ReleaseAnnotationSource]
+		job.Annotations[release_controller.ReleaseAnnotationTarget] = mirror.Annotations[release_controller.ReleaseAnnotationTarget]
+		job.Annotations[release_controller.ReleaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
+		job.Annotations[release_controller.ReleaseAnnotationReleaseTag] = mirror.Annotations[release_controller.ReleaseAnnotationReleaseTag]
 
 		klog.V(2).Infof("Running release rewrite job for %s", name)
 		return job, nil
 	})
 }
 
-func (c *Controller) ensureImportJob(release *Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+func (c *Controller) ensureImportJob(release *release_controller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	generation := *findTagReference(release.Source, name).Generation
 	preconditions := map[string]string{
-		releaseAnnotationGeneration: strconv.FormatInt(generation, 10),
+		release_controller.ReleaseAnnotationGeneration: strconv.FormatInt(generation, 10),
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
@@ -152,10 +153,10 @@ func (c *Controller) ensureImportJob(release *Release, name string, mirror *imag
 			toImage, mirror.Name, mirror.Namespace,
 		}
 
-		job.Annotations[releaseAnnotationSource] = mirror.Annotations[releaseAnnotationSource]
-		job.Annotations[releaseAnnotationTarget] = mirror.Annotations[releaseAnnotationTarget]
-		job.Annotations[releaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
-		job.Annotations[releaseAnnotationReleaseTag] = mirror.Annotations[releaseAnnotationReleaseTag]
+		job.Annotations[release_controller.ReleaseAnnotationSource] = mirror.Annotations[release_controller.ReleaseAnnotationSource]
+		job.Annotations[release_controller.ReleaseAnnotationTarget] = mirror.Annotations[release_controller.ReleaseAnnotationTarget]
+		job.Annotations[release_controller.ReleaseAnnotationGeneration] = strconv.FormatInt(generation, 10)
+		job.Annotations[release_controller.ReleaseAnnotationReleaseTag] = mirror.Annotations[release_controller.ReleaseAnnotationReleaseTag]
 
 		klog.V(2).Infof("Running release import job for %s", name)
 		return job, nil
@@ -201,7 +202,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 	return c.jobClient.Jobs(c.jobNamespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
-func (c *Controller) ensureRewriteJobImageRetrieved(release *Release, job *batchv1.Job, mirror *imagev1.ImageStream) error {
+func (c *Controller) ensureRewriteJobImageRetrieved(release *release_controller.Release, job *batchv1.Job, mirror *imagev1.ImageStream) error {
 	if findTagReference(mirror, "cli") != nil {
 		return nil
 	}

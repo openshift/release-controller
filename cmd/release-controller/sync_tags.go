@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"time"
 
@@ -15,17 +16,17 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
+func (c *Controller) createReleaseTag(release *release_controller.Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
 	target := release.Target.DeepCopy()
 	now = now.UTC().Truncate(time.Second)
 	t := now.Format("2006-01-02-150405")
 	tag := imagev1.TagReference{
 		Name: fmt.Sprintf("%s-%s", release.Config.Name, t),
 		Annotations: map[string]string{
-			releaseAnnotationName:              release.Config.Name,
-			releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-			releaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
-			releaseAnnotationPhase:             releasePhasePending,
+			release_controller.ReleaseAnnotationName:              release.Config.Name,
+			release_controller.ReleaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+			release_controller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
+			release_controller.ReleaseAnnotationPhase:             release_controller.ReleasePhasePending,
 		},
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
@@ -44,7 +45,7 @@ func (c *Controller) createReleaseTag(release *Release, now time.Time, inputImag
 	return &is.Spec.Tags[len(is.Spec.Tags)-1], nil
 }
 
-func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.TagReference) error {
+func (c *Controller) replaceReleaseTagWithNext(release *release_controller.Release, tag *imagev1.TagReference) error {
 	var semanticTags []semver.Version
 	for _, tag := range sortedReleaseTags(release) {
 		version, err := semver.Parse(tag.Name)
@@ -57,7 +58,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 	// we don't want to leave the tag pending, because there is no tag to increment from and
 	// a future update shouldn't change it
 	if len(semanticTags) == 0 {
-		return c.transitionReleasePhaseFailure(release, []string{"", releasePhasePending}, releasePhaseFailed, reasonAndMessage("NoExistingTags", "The next tag requires at least one existing semantic version tag in this image stream."), tag.Name)
+		return c.transitionReleasePhaseFailure(release, []string{"", release_controller.ReleasePhasePending}, release_controller.ReleasePhaseFailed, reasonAndMessage("NoExistingTags", "The next tag requires at least one existing semantic version tag in this image stream."), tag.Name)
 	}
 
 	// find the next tag
@@ -73,14 +74,14 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 	origin := findTagReference(target, tag.Name)
 	origin.Name = next.String()
 	origin.Annotations = map[string]string{
-		releaseAnnotationName:              release.Config.Name,
-		releaseAnnotationCreationTimestamp: time.Now().Format(time.RFC3339),
-		releaseAnnotationPhase:             releasePhasePending,
-		releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-		releaseAnnotationRewrite:           "true",
+		release_controller.ReleaseAnnotationName:              release.Config.Name,
+		release_controller.ReleaseAnnotationCreationTimestamp: time.Now().Format(time.RFC3339),
+		release_controller.ReleaseAnnotationPhase:             release_controller.ReleasePhasePending,
+		release_controller.ReleaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+		release_controller.ReleaseAnnotationRewrite:           "true",
 	}
-	if value, ok := tag.Annotations[releaseAnnotationMirrorImages]; ok {
-		origin.Annotations[releaseAnnotationMirrorImages] = value
+	if value, ok := tag.Annotations[release_controller.ReleaseAnnotationMirrorImages]; ok {
+		origin.Annotations[release_controller.ReleaseAnnotationMirrorImages] = value
 	}
 	origin.From = tag.From
 	origin.ImportPolicy = tag.ImportPolicy
@@ -94,7 +95,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *Release, tag *imagev1.Ta
 	return nil
 }
 
-func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.TagReference) error {
+func (c *Controller) removeReleaseTags(release *release_controller.Release, removeTags []*imagev1.TagReference) error {
 	for _, tag := range removeTags {
 		ctx := context.TODO()
 		name := fmt.Sprintf("%s:%s", release.Target.Name, tag.Name)
@@ -111,8 +112,8 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 			if isTag.Annotations == nil {
 				isTag.Annotations = map[string]string{}
 			}
-			if _, ok := isTag.Annotations[releaseAnnotationSoftDelete]; !ok {
-				isTag.Annotations[releaseAnnotationSoftDelete] = time.Now().Format(time.RFC3339)
+			if _, ok := isTag.Annotations[release_controller.ReleaseAnnotationSoftDelete]; !ok {
+				isTag.Annotations[release_controller.ReleaseAnnotationSoftDelete] = time.Now().Format(time.RFC3339)
 				if _, err := c.imageClient.ImageStreamTags(release.Target.Namespace).Update(context.TODO(), isTag, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
 					return err
 				}
@@ -130,7 +131,7 @@ func (c *Controller) removeReleaseTags(release *Release, removeTags []*imagev1.T
 	return nil
 }
 
-func (c *Controller) setReleaseAnnotation(release *Release, phase string, annotations map[string]string, names ...string) error {
+func (c *Controller) setReleaseAnnotation(release *release_controller.Release, phase string, annotations map[string]string, names ...string) error {
 	is := release.Target
 
 	if len(names) == 0 {
@@ -147,7 +148,7 @@ func (c *Controller) setReleaseAnnotation(release *Release, phase string, annota
 		if tag.Annotations == nil {
 			tag.Annotations = make(map[string]string)
 		}
-		if current := tag.Annotations[releaseAnnotationPhase]; current != phase {
+		if current := tag.Annotations[release_controller.ReleaseAnnotationPhase]; current != phase {
 			return fmt.Errorf("release %s is not in phase %v (%s)", name, phase, current)
 		}
 		for k, v := range annotations {
@@ -180,15 +181,15 @@ func (c *Controller) setReleaseAnnotation(release *Release, phase string, annota
 	return nil
 }
 
-func (c *Controller) markReleaseReady(release *Release, annotations map[string]string, names ...string) error {
-	return c.ensureReleaseTagPhase(release, []string{releasePhasePending, releasePhaseReady, ""}, releasePhaseReady, annotations, names...)
+func (c *Controller) markReleaseReady(release *release_controller.Release, annotations map[string]string, names ...string) error {
+	return c.ensureReleaseTagPhase(release, []string{release_controller.ReleasePhasePending, release_controller.ReleasePhaseReady, ""}, release_controller.ReleasePhaseReady, annotations, names...)
 }
 
-func (c *Controller) markReleaseAccepted(release *Release, annotations map[string]string, names ...string) error {
-	return c.ensureReleaseTagPhase(release, []string{releasePhaseReady}, releasePhaseAccepted, annotations, names...)
+func (c *Controller) markReleaseAccepted(release *release_controller.Release, annotations map[string]string, names ...string) error {
+	return c.ensureReleaseTagPhase(release, []string{release_controller.ReleasePhaseReady}, release_controller.ReleasePhaseAccepted, annotations, names...)
 }
 
-func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
+func (c *Controller) ensureReleaseTagPhase(release *release_controller.Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
 	if len(names) == 0 {
 		return nil
 	}
@@ -201,15 +202,15 @@ func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases 
 			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
 		}
 
-		if current := tag.Annotations[releaseAnnotationPhase]; !containsString(preconditionPhases, current) {
+		if current := tag.Annotations[release_controller.ReleaseAnnotationPhase]; !containsString(preconditionPhases, current) {
 			return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 		}
 		if tag.Annotations == nil {
 			tag.Annotations = make(map[string]string)
 		}
-		tag.Annotations[releaseAnnotationPhase] = phase
-		delete(tag.Annotations, releaseAnnotationReason)
-		delete(tag.Annotations, releaseAnnotationMessage)
+		tag.Annotations[release_controller.ReleaseAnnotationPhase] = phase
+		delete(tag.Annotations, release_controller.ReleaseAnnotationReason)
+		delete(tag.Annotations, release_controller.ReleaseAnnotationMessage)
 		for k, v := range annotations {
 			if len(v) == 0 {
 				delete(tag.Annotations, k)
@@ -240,18 +241,18 @@ func (c *Controller) ensureReleaseTagPhase(release *Release, preconditionPhases 
 	return nil
 }
 
-func (c *Controller) transitionReleasePhaseFailure(release *Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
+func (c *Controller) transitionReleasePhaseFailure(release *release_controller.Release, preconditionPhases []string, phase string, annotations map[string]string, names ...string) error {
 	target := release.Target.DeepCopy()
 	changed := 0
 	for _, name := range names {
 		if tag := findTagReference(target, name); tag != nil {
-			if current := tag.Annotations[releaseAnnotationPhase]; !containsString(preconditionPhases, current) {
+			if current := tag.Annotations[release_controller.ReleaseAnnotationPhase]; !containsString(preconditionPhases, current) {
 				return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 			}
 			if tag.Annotations == nil {
 				tag.Annotations = make(map[string]string)
 			}
-			tag.Annotations[releaseAnnotationPhase] = phase
+			tag.Annotations[release_controller.ReleaseAnnotationPhase] = phase
 			for k, v := range annotations {
 				tag.Annotations[k] = v
 			}
@@ -293,20 +294,20 @@ func incrementSemanticVersion(v semver.Version) (semver.Version, error) {
 
 func reasonAndMessage(reason, message string) map[string]string {
 	return map[string]string{
-		releaseAnnotationReason:  reason,
-		releaseAnnotationMessage: message,
+		release_controller.ReleaseAnnotationReason:  reason,
+		release_controller.ReleaseAnnotationMessage: message,
 	}
 }
 
 func withLog(annotations map[string]string, log string) map[string]string {
 	if len(log) > 0 {
-		annotations[releaseAnnotationLog] = log
+		annotations[release_controller.ReleaseAnnotationLog] = log
 	}
 	return annotations
 }
 
-func updateReleaseTarget(release *Release, is *imagev1.ImageStream) {
-	if release.Config.As == releaseConfigModeStable {
+func updateReleaseTarget(release *release_controller.Release, is *imagev1.ImageStream) {
+	if release.Config.As == release_controller.ReleaseConfigModeStable {
 		release.Source = is
 	}
 	release.Target = is

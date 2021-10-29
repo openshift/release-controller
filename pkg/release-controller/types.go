@@ -1,4 +1,4 @@
-package main
+package release_controller
 
 import (
 	"bytes"
@@ -369,7 +369,7 @@ type ReleaseCandidateList struct {
 func (m VerificationStatusMap) Failures() ([]string, bool) {
 	var names []string
 	for name, s := range m {
-		if s.State == releaseVerificationStateFailed {
+		if s.State == ReleaseVerificationStateFailed {
 			names = append(names, name)
 		}
 	}
@@ -382,14 +382,14 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 		if definition.Disabled {
 			continue
 		}
-		if s, ok := m[name]; !ok || !stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+		if s, ok := m[name]; !ok || !StringSliceContains([]string{ReleaseVerificationStateSucceeded, ReleaseVerificationStateFailed}, s.State) {
 			names = append(names, name)
 		}
 	}
 	return names, len(names) > 0
 }
 
-func verificationJobsWithRetries(jobs map[string]ReleaseVerification, result VerificationStatusMap) ([]string, bool) {
+func VerificationJobsWithRetries(jobs map[string]ReleaseVerification, result VerificationStatusMap) ([]string, bool) {
 	var names []string
 	blockingJobFailure := false
 	for name, definition := range jobs {
@@ -401,7 +401,7 @@ func verificationJobsWithRetries(jobs map[string]ReleaseVerification, result Ver
 			names = append(names, name)
 			continue
 		}
-		if !stringSliceContains([]string{releaseVerificationStateFailed}, s.State) {
+		if !StringSliceContains([]string{ReleaseVerificationStateFailed}, s.State) {
 			continue
 		}
 		if s.Retries >= definition.MaxRetries {
@@ -415,7 +415,7 @@ func verificationJobsWithRetries(jobs map[string]ReleaseVerification, result Ver
 	return names, blockingJobFailure
 }
 
-func allOptional(all map[string]ReleaseVerification, names ...string) bool {
+func AllOptional(all map[string]ReleaseVerification, names ...string) bool {
 	for _, name := range names {
 		if v, ok := all[name]; ok && !v.Optional {
 			return false
@@ -425,88 +425,88 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 }
 
 const (
-	// releasePhasePending is assigned to release tags that are waiting for an update
+	// ReleasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
 	//
 	// This phase may transition to Failed or Ready.
-	releasePhasePending = "Pending"
-	// releasePhaseFailed occurs when an update payload image cannot be created for
+	ReleasePhasePending = "Pending"
+	// ReleasePhaseFailed occurs when an update payload image cannot be created for
 	// a given set of image mirrors.
 	//
 	// This phase is a terminal phase. Pending is the only input phase.
-	releasePhaseFailed = "Failed"
-	// releasePhaseReady represents an image tag that has a valid update payload image
+	ReleasePhaseFailed = "Failed"
+	// ReleasePhaseReady represents an image tag that has a valid update payload image
 	// created and pushed to the release image stream. It may not have completed all
 	// possible verification.
 	//
 	// This phase may transition to Accepted or Rejected. Pending is the only input phase.
-	releasePhaseReady = "Ready"
-	// releasePhaseAccepted represents an image tag that has passed its verification
+	ReleasePhaseReady = "Ready"
+	// ReleasePhaseAccepted represents an image tag that has passed its verification
 	// criteria and can safely be promoted to an external location.
 	//
 	// This phase is a terminal phase. Ready is the only input phase.
-	releasePhaseAccepted = "Accepted"
-	// releasePhaseRejected represents an image tag that has failed one or more of the
+	ReleasePhaseAccepted = "Accepted"
+	// ReleasePhaseRejected represents an image tag that has failed one or more of the
 	// verification criteria.
 	//
 	// The controller will take no more action in this phase, but a human may set the
 	// phase back to Ready to retry and the controller will attempt verification again.
-	releasePhaseRejected = "Rejected"
+	ReleasePhaseRejected = "Rejected"
 
-	releaseVerificationStateSucceeded = "Succeeded"
-	releaseVerificationStateFailed    = "Failed"
-	releaseVerificationStatePending   = "Pending"
+	ReleaseVerificationStateSucceeded = "Succeeded"
+	ReleaseVerificationStateFailed    = "Failed"
+	ReleaseVerificationStatePending   = "Pending"
 
-	releaseConfigModeStable = "Stable"
+	ReleaseConfigModeStable = "Stable"
 
-	releaseUpgradeFromPreviousMinor  = "PreviousMinor"
-	releaseUpgradeFromPreviousPatch  = "PreviousPatch"
-	releaseUpgradeFromPrevious       = "Previous"
-	releaseUpgradeFromPreviousMinus1 = "PreviousMinus1"
+	ReleaseUpgradeFromPreviousMinor  = "PreviousMinor"
+	ReleaseUpgradeFromPreviousPatch  = "PreviousPatch"
+	ReleaseUpgradeFromPrevious       = "Previous"
+	ReleaseUpgradeFromPreviousMinus1 = "PreviousMinus1"
 
-	// releaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
+	// ReleaseAnnotationConfig is the JSON serialized representation of the ReleaseConfig
 	// struct. It is only accepted on image streams. An image stream with this annotation
 	// is considered an input image stream for creating releases.
-	releaseAnnotationConfig = "release.openshift.io/config"
+	ReleaseAnnotationConfig = "release.openshift.io/config"
 
-	releaseAnnotationKeep              = "release.openshift.io/keep"
-	releaseAnnotationGeneration        = "release.openshift.io/generation"
-	releaseAnnotationSource            = "release.openshift.io/source"
-	releaseAnnotationTarget            = "release.openshift.io/target"
-	releaseAnnotationName              = "release.openshift.io/name"
-	releaseAnnotationReleaseTag        = "release.openshift.io/releaseTag"
-	releaseAnnotationImageHash         = "release.openshift.io/hash"
-	releaseAnnotationPhase             = "release.openshift.io/phase"
-	releaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
-	releaseAnnotationVerify            = "release.openshift.io/verify"
-	// if true, the release controller should rewrite this release
-	releaseAnnotationRewrite = "release.openshift.io/rewrite"
-	// an image stream with this annotation holds release tags
-	releaseAnnotationHasReleases = "release.openshift.io/hasReleases"
-	// if set, when rewriting a stable tag use the images locally
-	releaseAnnotationMirrorImages = "release.openshift.io/mirrorImages"
-	// when set on a job, controls which queue the job is notified on
-	releaseAnnotationJobPurpose = "release.openshift.io/purpose"
+	ReleaseAnnotationKeep              = "release.openshift.io/keep"
+	ReleaseAnnotationGeneration        = "release.openshift.io/generation"
+	ReleaseAnnotationSource            = "release.openshift.io/source"
+	ReleaseAnnotationTarget            = "release.openshift.io/target"
+	ReleaseAnnotationName              = "release.openshift.io/name"
+	ReleaseAnnotationReleaseTag        = "release.openshift.io/releaseTag"
+	ReleaseAnnotationImageHash         = "release.openshift.io/hash"
+	ReleaseAnnotationPhase             = "release.openshift.io/phase"
+	ReleaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
+	ReleaseAnnotationVerify            = "release.openshift.io/verify"
+	// ReleaseAnnotationRewrite if true, the release controller should rewrite this release
+	ReleaseAnnotationRewrite = "release.openshift.io/rewrite"
+	// ReleaseAnnotationHasReleases an image stream with this annotation holds release tags
+	ReleaseAnnotationHasReleases = "release.openshift.io/hasReleases"
+	// ReleaseAnnotationMirrorImages if set, when rewriting a stable tag use the images locally
+	ReleaseAnnotationMirrorImages = "release.openshift.io/mirrorImages"
+	// ReleaseAnnotationJobPurpose when set on a job, controls which queue the job is notified on
+	ReleaseAnnotationJobPurpose = "release.openshift.io/purpose"
 
-	releaseAnnotationReason  = "release.openshift.io/reason"
-	releaseAnnotationMessage = "release.openshift.io/message"
-	releaseAnnotationLog     = "release.openshift.io/log"
+	ReleaseAnnotationReason  = "release.openshift.io/reason"
+	ReleaseAnnotationMessage = "release.openshift.io/message"
+	ReleaseAnnotationLog     = "release.openshift.io/log"
 
-	releaseAnnotationFromTag = "release.openshift.io/from-tag"
-	releaseAnnotationToTag   = "release.openshift.io/tag"
-	// releaseAnnotationFromImageStream specifies the imagestream
+	ReleaseAnnotationFromTag = "release.openshift.io/from-tag"
+	ReleaseAnnotationToTag   = "release.openshift.io/tag"
+	// ReleaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
-	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
+	ReleaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
 
-	// releaseAnnotationBugsVerified indicates whether or not the release has been
+	// ReleaseAnnotationBugsVerified indicates whether or not the release has been
 	// processed by the BugzillaVerifier
-	releaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
+	ReleaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
 
-	// releaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
-	releaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
+	// ReleaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
+	ReleaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
 
-	// releaseAnnotationArchitecture indicates the architecture of the release
-	releaseAnnotationArchitecture = "release.openshift.io/architecture"
+	// ReleaseAnnotationArchitecture indicates the architecture of the release
+	ReleaseAnnotationArchitecture = "release.openshift.io/architecture"
 )
 
 type Duration time.Duration
@@ -533,16 +533,16 @@ func (d Duration) Duration() time.Duration {
 	return time.Duration(d)
 }
 
-// tagReferencesByAge returns the newest tag first, the oldest tag last
-type tagReferencesByAge []*imagev1.TagReference
+// TagReferencesByAge returns the newest tag first, the oldest tag last
+type TagReferencesByAge []*imagev1.TagReference
 
-func (a tagReferencesByAge) Less(i, j int) bool {
-	return a[j].Annotations[releaseAnnotationCreationTimestamp] < a[i].Annotations[releaseAnnotationCreationTimestamp]
+func (a TagReferencesByAge) Less(i, j int) bool {
+	return a[j].Annotations[ReleaseAnnotationCreationTimestamp] < a[i].Annotations[ReleaseAnnotationCreationTimestamp]
 }
-func (a tagReferencesByAge) Len() int      { return len(a) }
-func (a tagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a TagReferencesByAge) Len() int      { return len(a) }
+func (a TagReferencesByAge) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
-func calculateBackoff(retryCount int, initialTime, currentTime *metav1.Time) time.Duration {
+func CalculateBackoff(retryCount int, initialTime, currentTime *metav1.Time) time.Duration {
 	var backoffDuration time.Duration
 	if retryCount < 1 {
 		return backoffDuration
@@ -604,4 +604,26 @@ func (in *AggregatedProwJobVerification) DeepCopyInto(out *AggregatedProwJobVeri
 		(*in).DeepCopyInto(*out)
 	}
 	return
+}
+
+type UpgradeResult struct {
+	State string `json:"state"`
+	URL   string `json:"url"`
+}
+
+type UpgradeRecord struct {
+	From    string          `json:"from"`
+	To      string          `json:"to"`
+	Results []UpgradeResult `json:"results"`
+}
+
+type UpgradeHistory struct {
+	From string
+	To   string
+
+	Success int
+	Failure int
+	Total   int
+
+	History map[string]UpgradeResult
 }
