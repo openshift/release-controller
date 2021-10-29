@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"sort"
 	"strings"
 	"time"
@@ -9,7 +10,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func checkConsistentImages(release, parent *Release) ReleaseCheckResult {
+func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCheckResult {
 	var result ReleaseCheckResult
 	source := parent.Source
 	target := release.Source

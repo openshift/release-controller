@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"sort"
 	"testing"
@@ -13,7 +14,7 @@ import (
 func Test_calculateReleaseUpgrades(t *testing.T) {
 	tests := []struct {
 		name    string
-		release *Release
+		release *releasecontroller.Release
 		tags    []*imagev1.TagReference
 		graph   func() *UpgradeGraph
 		want    *ReleaseUpgrades
@@ -55,11 +56,11 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			},
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph("amd64")
-				g.Add("4.0.0", "4.0.1", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
+				g.Add("4.0.0", "4.0.1", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateFailed, URL: "https://test.com/1"})
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
-				internal0 := []UpgradeHistory{{From: "4.0.0", To: "4.0.1", Success: 0, Failure: 1, Total: 1}}
+				internal0 := []releasecontroller.UpgradeHistory{{From: "4.0.0", To: "4.0.1", Success: 0, Failure: 1, Total: 1}}
 				u := &ReleaseUpgrades{
 					Width: 1,
 					Tags: []ReleaseTagUpgrade{
@@ -90,13 +91,13 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			},
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph("amd64")
-				g.Add("4.0.4", "4.0.5", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
-				g.Add("4.0.3", "4.0.5", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
-				g.Add("4.0.0", "4.0.2", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
+				g.Add("4.0.4", "4.0.5", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateFailed, URL: "https://test.com/1"})
+				g.Add("4.0.3", "4.0.5", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "https://test.com/2"})
+				g.Add("4.0.0", "4.0.2", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "https://test.com/2"})
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
-				internal0 := []UpgradeHistory{
+				internal0 := []releasecontroller.UpgradeHistory{
 					{From: "4.0.4", To: "4.0.5", Success: 0, Failure: 1, Total: 1},
 					{From: "4.0.3", To: "4.0.5", Success: 1, Failure: 0, Total: 1},
 				}
@@ -123,7 +124,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 							},
 						},
 						{
-							External: []UpgradeHistory{{From: "4.0.0", To: "4.0.2", Success: 1, Total: 1}},
+							External: []releasecontroller.UpgradeHistory{{From: "4.0.0", To: "4.0.2", Success: 1, Total: 1}},
 						},
 						{},
 					},
@@ -142,16 +143,16 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 			},
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph("amd64")
-				g.Add("4.1.0-0.test-08", "4.1.0-0.test-09", UpgradeResult{State: releaseVerificationStateFailed, URL: "https://test.com/1"})
-				g.Add("4.1.0-0.test-07", "4.1.0-0.test-08", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
-				g.Add("4.1.0-rc.0", "4.1.0-0.test-08", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "https://test.com/2"})
+				g.Add("4.1.0-0.test-08", "4.1.0-0.test-09", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateFailed, URL: "https://test.com/1"})
+				g.Add("4.1.0-0.test-07", "4.1.0-0.test-08", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "https://test.com/2"})
+				g.Add("4.1.0-rc.0", "4.1.0-0.test-08", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "https://test.com/2"})
 				return g
 			},
 			wantFn: func() *ReleaseUpgrades {
-				internal0 := []UpgradeHistory{
+				internal0 := []releasecontroller.UpgradeHistory{
 					{From: "4.1.0-0.test-08", To: "4.1.0-0.test-09", Success: 0, Failure: 1, Total: 1},
 				}
-				internal1 := []UpgradeHistory{
+				internal1 := []releasecontroller.UpgradeHistory{
 					{From: "4.1.0-0.test-07", To: "4.1.0-0.test-08", Success: 1, Failure: 0, Total: 1},
 				}
 				u := &ReleaseUpgrades{
@@ -170,7 +171,7 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 								{End: &internal0[0]},
 								{Begin: &internal1[0]},
 							},
-							External: []UpgradeHistory{{From: "4.1.0-rc.0", To: "4.1.0-0.test-08", Success: 1, Total: 1}},
+							External: []releasecontroller.UpgradeHistory{{From: "4.1.0-rc.0", To: "4.1.0-0.test-08", Success: 1, Total: 1}},
 						},
 						{
 							Visual: []ReleaseTagUpgradeVisual{
@@ -191,8 +192,8 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 				tt.want = tt.wantFn()
 			}
 			if tt.release == nil {
-				tt.release = &Release{
-					Config: &ReleaseConfig{},
+				tt.release = &releasecontroller.Release{
+					Config: &releasecontroller.ReleaseConfig{},
 				}
 			}
 			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph(), false); !reflect.DeepEqual(got, tt.want) {
@@ -246,45 +247,45 @@ func TestSemVer(t *testing.T) {
 func Test_takeUpgradesFromNames(t *testing.T) {
 	tests := []struct {
 		name             string
-		summaries        []UpgradeHistory
+		summaries        []releasecontroller.UpgradeHistory
 		names            map[string]int
-		wantWithNames    []UpgradeHistory
-		wantWithoutNames []UpgradeHistory
+		wantWithNames    []releasecontroller.UpgradeHistory
+		wantWithoutNames []releasecontroller.UpgradeHistory
 	}{
 		{
-			summaries: []UpgradeHistory{
+			summaries: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 				{From: "b", To: "c"},
 			},
 			names: map[string]int{"a": 1, "c": 3},
-			wantWithNames: []UpgradeHistory{
+			wantWithNames: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 			},
-			wantWithoutNames: []UpgradeHistory{
+			wantWithoutNames: []releasecontroller.UpgradeHistory{
 				{From: "b", To: "c"},
 			},
 		},
 		{
-			summaries: []UpgradeHistory{
+			summaries: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 				{From: "b", To: "c"},
 			},
 			names: map[string]int{"a": 1, "b": 2, "c": 3},
-			wantWithNames: []UpgradeHistory{
+			wantWithNames: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 				{From: "b", To: "c"},
 			},
 		},
 		{
-			summaries: []UpgradeHistory{
+			summaries: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 				{From: "b", To: "c"},
 			},
 			names: map[string]int{"b": 2, "c": 3},
-			wantWithNames: []UpgradeHistory{
+			wantWithNames: []releasecontroller.UpgradeHistory{
 				{From: "b", To: "c"},
 			},
-			wantWithoutNames: []UpgradeHistory{
+			wantWithoutNames: []releasecontroller.UpgradeHistory{
 				{From: "a", To: "c"},
 			},
 		},

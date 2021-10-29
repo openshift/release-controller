@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"sort"
 	"testing"
@@ -13,28 +14,28 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 		name      string
 		graph     func() *UpgradeGraph
 		fromNames []string
-		want      []UpgradeHistory
+		want      []releasecontroller.UpgradeHistory
 	}{
 		{
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph("amd64")
-				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"})
-				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"})
-				g.Add("1.0.1", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://3"})
-				g.Add("0.0.1", "1.0.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://4"})
-				g.Add("1.0.0", "1.1.1", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://5"})
+				g.Add("1.0.0", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://1"})
+				g.Add("1.0.0", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://2"})
+				g.Add("1.0.1", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://3"})
+				g.Add("0.0.1", "1.0.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://4"})
+				g.Add("1.0.0", "1.1.1", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://5"})
 				return g
 			},
 			fromNames: []string{"1.0.0"},
-			want: []UpgradeHistory{
+			want: []releasecontroller.UpgradeHistory{
 				{
 					From:    "1.0.0",
 					To:      "1.1.0",
 					Success: 2,
 					Total:   2,
-					History: map[string]UpgradeResult{
-						"http://1": {State: releaseVerificationStateSucceeded, URL: "http://1"},
-						"http://2": {State: releaseVerificationStateSucceeded, URL: "http://2"},
+					History: map[string]releasecontroller.UpgradeResult{
+						"http://1": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://1"},
+						"http://2": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://2"},
 					},
 				},
 				{
@@ -42,8 +43,8 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 					To:      "1.1.1",
 					Success: 1,
 					Total:   1,
-					History: map[string]UpgradeResult{
-						"http://5": {State: releaseVerificationStateSucceeded, URL: "http://5"},
+					History: map[string]releasecontroller.UpgradeResult{
+						"http://5": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://5"},
 					},
 				},
 			},
@@ -66,27 +67,27 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 		name    string
 		graph   func() *UpgradeGraph
 		toNames []string
-		want    []UpgradeHistory
+		want    []releasecontroller.UpgradeHistory
 	}{
 		{
 			graph: func() *UpgradeGraph {
 				g := NewUpgradeGraph("amd64")
-				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://1"})
-				g.Add("1.0.0", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://2"})
-				g.Add("1.0.1", "1.1.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://3"})
-				g.Add("0.0.1", "1.0.0", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://4"})
-				g.Add("1.0.0", "1.1.1", UpgradeResult{State: releaseVerificationStateSucceeded, URL: "http://5"})
+				g.Add("1.0.0", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://1"})
+				g.Add("1.0.0", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://2"})
+				g.Add("1.0.1", "1.1.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://3"})
+				g.Add("0.0.1", "1.0.0", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://4"})
+				g.Add("1.0.0", "1.1.1", releasecontroller.UpgradeResult{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://5"})
 				return g
 			},
 			toNames: []string{"1.1.0"},
-			want: []UpgradeHistory{
+			want: []releasecontroller.UpgradeHistory{
 				{
 					From:    "1.0.1",
 					To:      "1.1.0",
 					Success: 1,
 					Total:   1,
-					History: map[string]UpgradeResult{
-						"http://3": {State: releaseVerificationStateSucceeded, URL: "http://3"},
+					History: map[string]releasecontroller.UpgradeResult{
+						"http://3": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://3"},
 					},
 				},
 				{
@@ -94,9 +95,9 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 					To:      "1.1.0",
 					Success: 2,
 					Total:   2,
-					History: map[string]UpgradeResult{
-						"http://1": {State: releaseVerificationStateSucceeded, URL: "http://1"},
-						"http://2": {State: releaseVerificationStateSucceeded, URL: "http://2"},
+					History: map[string]releasecontroller.UpgradeResult{
+						"http://1": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://1"},
+						"http://2": {State: releasecontroller.ReleaseVerificationStateSucceeded, URL: "http://2"},
 					},
 				},
 			},

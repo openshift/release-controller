@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -11,27 +12,27 @@ import (
 	prowjobsv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 )
 
-func prowJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationStatus, bool) {
+func prowJobVerificationStatus(obj *unstructured.Unstructured) (*releasecontroller.VerificationStatus, bool) {
 	s, _, err := unstructured.NestedString(obj.Object, "status", "state")
 	if err != nil {
 		return nil, false
 	}
 	url, _, _ := unstructured.NestedString(obj.Object, "status", "url")
 	var transitionTime string
-	var status *VerificationStatus
+	var status *releasecontroller.VerificationStatus
 	switch prowjobsv1.ProwJobState(s) {
 	case prowjobsv1.SuccessState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
-		status = &VerificationStatus{State: releaseVerificationStateSucceeded, URL: url}
+		status = &releasecontroller.VerificationStatus{State: releasecontroller.ReleaseVerificationStateSucceeded, URL: url}
 	case prowjobsv1.FailureState, prowjobsv1.ErrorState, prowjobsv1.AbortedState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
-		status = &VerificationStatus{State: releaseVerificationStateFailed, URL: url}
+		status = &releasecontroller.VerificationStatus{State: releasecontroller.ReleaseVerificationStateFailed, URL: url}
 	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.ProwJobState(""):
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "pendingTime")
 		if transitionTime == "" {
 			transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "startTime")
 		}
-		status = &VerificationStatus{State: releaseVerificationStatePending, URL: url}
+		status = &releasecontroller.VerificationStatus{State: releasecontroller.ReleaseVerificationStatePending, URL: url}
 	default:
 		klog.Errorf("Unrecognized prow job state %q on job %s", s, obj.GetName())
 		return nil, false

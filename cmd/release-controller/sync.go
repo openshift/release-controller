@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"sort"
 	"strings"
 	"time"
@@ -43,12 +44,12 @@ func (c *Controller) sync(key queueKey) error {
 
 	// ensure that the target image stream always carries the annotation indicating it is
 	// a target for backreferencing from GC and other check points
-	if _, ok := release.Target.Annotations[releaseAnnotationHasReleases]; !ok {
+	if _, ok := release.Target.Annotations[releasecontroller.ReleaseAnnotationHasReleases]; !ok {
 		target := release.Target.DeepCopy()
 		if target.Annotations == nil {
 			target.Annotations = make(map[string]string)
 		}
-		target.Annotations[releaseAnnotationHasReleases] = "true"
+		target.Annotations[releasecontroller.ReleaseAnnotationHasReleases] = "true"
 		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
@@ -126,64 +127,64 @@ func (c *Controller) sync(key queueKey) error {
 	return nil
 }
 
-func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
+func calculateSyncActions(release *releasecontroller.Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
 	hasNewImages = true
 	inputImageHash = hashSpecTagImageDigests(release.Source)
 	var (
-		removeFailures  tagReferencesByAge
-		removeAccepted  tagReferencesByAge
-		removeRejected  tagReferencesByAge
+		removeFailures  releasecontroller.TagReferencesByAge
+		removeAccepted  releasecontroller.TagReferencesByAge
+		removeRejected  releasecontroller.TagReferencesByAge
 		unreadyTagCount int
 	)
 	target := release.Target
 
-	shouldAdopt := release.Config.As == releaseConfigModeStable
+	shouldAdopt := release.Config.As == releasecontroller.ReleaseConfigModeStable
 
 	tags := make([]*imagev1.TagReference, 0, len(target.Spec.Tags))
 	for i := range target.Spec.Tags {
 		tags = append(tags, &target.Spec.Tags[i])
 	}
-	sort.Sort(tagReferencesByAge(tags))
+	sort.Sort(releasecontroller.TagReferencesByAge(tags))
 
 	var firstTag *imagev1.TagReference
 	removeFailuresAfter, removeRejectedAfter := -1, -1
 	for _, tag := range tags {
 		if shouldAdopt {
-			if len(tag.Annotations[releaseAnnotationSource]) == 0 && len(tag.Annotations[releaseAnnotationPhase]) == 0 {
+			if len(tag.Annotations[releasecontroller.ReleaseAnnotationSource]) == 0 && len(tag.Annotations[releasecontroller.ReleaseAnnotationPhase]) == 0 {
 				adoptTags = append(adoptTags, tag)
 				continue
 			}
 		}
 
 		// always skip pinned tags
-		if _, ok := tag.Annotations[releaseAnnotationKeep]; ok {
+		if _, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
 			continue
 		}
 		// check annotations when using the target as tag source
-		if release.Config.As != releaseConfigModeStable && tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+		if release.Config.As != releasecontroller.ReleaseConfigModeStable && tag.Annotations[releasecontroller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+		if tag.Annotations[releasecontroller.ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
 		if firstTag == nil {
 			firstTag = tag
 		}
-		if tag.Annotations[releaseAnnotationImageHash] == inputImageHash {
+		if tag.Annotations[releasecontroller.ReleaseAnnotationImageHash] == inputImageHash {
 			hasNewImages = false
 		}
 
-		phase := tag.Annotations[releaseAnnotationPhase]
+		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 		switch phase {
-		case releasePhasePending, "":
+		case releasecontroller.ReleasePhasePending, "":
 			unreadyTagCount++
 			pendingTags = append(pendingTags, tag)
-		case releasePhaseFailed:
+		case releasecontroller.ReleasePhaseFailed:
 			removeFailures = append(removeFailures, tag)
-		case releasePhaseRejected:
+		case releasecontroller.ReleasePhaseRejected:
 			removeRejected = append(removeRejected, tag)
-		case releasePhaseAccepted:
+		case releasecontroller.ReleasePhaseAccepted:
 			removeAccepted = append(removeAccepted, tag)
 			removeRejectedAfter = len(removeRejected)
 			removeFailuresAfter = len(removeFailures)
@@ -215,7 +216,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	if expires := release.Config.Expires.Duration(); expires > 0 && len(removeAccepted) > keepTagsOfType {
 		klog.V(5).Infof("Checking for tags that are more than %s old", expires)
 		for _, tag := range removeAccepted[keepTagsOfType:] {
-			created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+			created, err := time.Parse(time.RFC3339, tag.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp])
 			if err != nil {
 				klog.Errorf("Unparseable timestamp on release tag %s:%s: %v", release.Target.Name, tag.Name, err)
 				continue
@@ -227,7 +228,7 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	}
 
 	switch release.Config.As {
-	case releaseConfigModeStable:
+	case releasecontroller.ReleaseConfigModeStable:
 		hasNewImages = false
 		inputImageHash = ""
 		removeTags = nil
@@ -250,25 +251,25 @@ func calculateSyncActions(release *Release, now time.Time) (adoptTags, pendingTa
 	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter
 }
 
-func countUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
+func countUnreadyReleases(release *releasecontroller.Release, tags []*imagev1.TagReference) int {
 	unreadyTagCount := 0
 	for _, tag := range tags {
 		// always skip pinned tags
-		if _, ok := tag.Annotations[releaseAnnotationKeep]; ok {
+		if _, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
 			continue
 		}
 		// check annotations when using the target as tag source
-		if release.Config.As != releaseConfigModeStable && tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+		if release.Config.As != releasecontroller.ReleaseConfigModeStable && tag.Annotations[releasecontroller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
-		if tag.Annotations[releaseAnnotationName] != release.Config.Name {
+		if tag.Annotations[releasecontroller.ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
 
-		phase := tag.Annotations[releaseAnnotationPhase]
+		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 		switch phase {
-		case releasePhaseFailed, releasePhaseRejected, releasePhaseAccepted:
+		case releasecontroller.ReleasePhaseFailed, releasecontroller.ReleasePhaseRejected, releasecontroller.ReleasePhaseAccepted:
 			// terminal don't count
 		default:
 			unreadyTagCount++
@@ -277,14 +278,14 @@ func countUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 	return unreadyTagCount
 }
 
-func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (bool, string, time.Duration) {
+func isReleaseDelayedForInterval(release *releasecontroller.Release, tag *imagev1.TagReference) (bool, string, time.Duration) {
 	if release.Config.MinCreationIntervalSeconds == 0 {
 		return false, "", 0
 	}
 	if tag == nil {
 		return false, "", 0
 	}
-	created, err := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
+	created, err := time.Parse(time.RFC3339, tag.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp])
 	if err != nil {
 		return false, "", 0
 	}
@@ -295,7 +296,7 @@ func isReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (b
 	return false, "", 0
 }
 
-func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {
+func (c *Controller) syncAdopted(release *releasecontroller.Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {
 	names := make([]string, 0, len(adoptTags))
 	for _, tag := range adoptTags {
 		if tag.Name == "next" {
@@ -311,20 +312,20 @@ func (c *Controller) syncAdopted(release *Release, adoptTags []*imagev1.TagRefer
 	}
 	return true, c.ensureReleaseTagPhase(
 		release,
-		[]string{"", releasePhasePending},
-		releasePhasePending,
+		[]string{"", releasecontroller.ReleasePhasePending},
+		releasecontroller.ReleasePhasePending,
 		map[string]string{
-			releaseAnnotationName:              release.Config.Name,
-			releaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-			releaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
+			releasecontroller.ReleaseAnnotationName:              release.Config.Name,
+			releasecontroller.ReleaseAnnotationSource:            fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+			releasecontroller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 		},
 		names...,
 	)
 }
 
-func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagReference, inputImageHash string) (err error) {
+func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags []*imagev1.TagReference, inputImageHash string) (err error) {
 	switch release.Config.As {
-	case releaseConfigModeStable:
+	case releasecontroller.ReleaseConfigModeStable:
 		for _, tag := range pendingTags {
 			// wait for import, then determine whether the requested version (tag name) matches the source version (label on image)
 			id := findImageIDForTag(release.Source, tag.Name)
@@ -333,7 +334,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				continue
 			}
 			klog.V(2).Infof("Processing pending release %s", tag.Name)
-			rewriteValue := tag.Annotations[releaseAnnotationRewrite]
+			rewriteValue := tag.Annotations[releasecontroller.ReleaseAnnotationRewrite]
 			if len(rewriteValue) == 0 {
 				klog.V(2).Infof("Rewriting pending release %s", tag.Name)
 				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
@@ -352,7 +353,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 					name = metadata.Config.Labels["io.openshift.release"]
 				}
 				rewriteValue = fmt.Sprintf("%t", name != tag.Name)
-				if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationRewrite: rewriteValue}, tag.Name); err != nil {
+				if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationRewrite: rewriteValue}, tag.Name); err != nil {
 					return err
 				}
 				continue
@@ -366,13 +367,13 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 			if err != nil {
 				return err
 			}
-			if len(tag.Annotations[releaseAnnotationImageHash]) == 0 {
-				if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationImageHash: mirror.Annotations[releaseAnnotationImageHash]}, tag.Name); err != nil {
+			if len(tag.Annotations[releasecontroller.ReleaseAnnotationImageHash]) == 0 {
+				if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationImageHash: mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash]}, tag.Name); err != nil {
 					return err
 				}
 				continue
 			}
-			if mirror.Annotations[releaseAnnotationImageHash] != tag.Annotations[releaseAnnotationImageHash] {
+			if mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash] != tag.Annotations[releasecontroller.ReleaseAnnotationImageHash] {
 				// delete the mirror and exit
 				return fmt.Errorf("unimplemented, should regenerate contents of tag")
 			}
@@ -395,14 +396,14 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
 			case !success:
 				// TODO: extract termination message from the job
-				if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
+				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
 					return err
 				}
 			default:
 				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 					return err
 				}
-				if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
+				if tags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
 						if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
 							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
@@ -415,7 +416,7 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 	}
 
 	if len(pendingTags) > 1 {
-		if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, reasonAndMessage("Aborted", "Multiple releases were found simultaneously running."), tagNames(pendingTags[1:])...); err != nil {
+		if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, reasonAndMessage("Aborted", "Multiple releases were found simultaneously running."), tagNames(pendingTags[1:])...); err != nil {
 			return err
 		}
 	}
@@ -427,10 +428,10 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		if err != nil {
 			return err
 		}
-		if len(tag.Annotations[releaseAnnotationImageHash]) == 0 {
-			return c.setReleaseAnnotation(release, releasePhasePending, map[string]string{releaseAnnotationImageHash: mirror.Annotations[releaseAnnotationImageHash]}, tag.Name)
+		if len(tag.Annotations[releasecontroller.ReleaseAnnotationImageHash]) == 0 {
+			return c.setReleaseAnnotation(release, releasecontroller.ReleasePhasePending, map[string]string{releasecontroller.ReleaseAnnotationImageHash: mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash]}, tag.Name)
 		}
-		if mirror.Annotations[releaseAnnotationImageHash] != tag.Annotations[releaseAnnotationImageHash] {
+		if mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash] != tag.Annotations[releasecontroller.ReleaseAnnotationImageHash] {
 			return fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
 
@@ -446,14 +447,14 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 		case !success:
 			// try to get the last termination message
 			log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
-			if err := c.transitionReleasePhaseFailure(release, []string{releasePhasePending}, releasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
+			if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
 				return err
 			}
 		default:
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
-			if tags := sortedRawReleaseTags(release, releasePhaseReady); len(tags) > 0 {
+			if tags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 				go func() {
 					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
 						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
@@ -466,8 +467,8 @@ func (c *Controller) syncPending(release *Release, pendingTags []*imagev1.TagRef
 	return nil
 }
 
-func (c *Controller) syncReady(release *Release) error {
-	readyTags := sortedRawReleaseTags(release, releasePhaseReady)
+func (c *Controller) syncReady(release *releasecontroller.Release) error {
+	readyTags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady)
 
 	if klog.V(5) && len(readyTags) > 0 {
 		klog.Infof("ready=%v", tagNames(readyTags))
@@ -481,26 +482,26 @@ func (c *Controller) syncReady(release *Release) error {
 
 		if names, ok := status.Incomplete(release.Config.Verify); ok {
 			klog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
-			if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+			if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 				return err
 			}
 			continue
 		}
 
 		if names, ok := status.Failures(); ok {
-			retryNames, blockingJobFailed := verificationJobsWithRetries(release.Config.Verify, status)
+			retryNames, blockingJobFailed := releasecontroller.VerificationJobsWithRetries(release.Config.Verify, status)
 			if !blockingJobFailed && len(retryNames) > 0 {
 				klog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
-				if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+				if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 					return err
 				}
 				continue
 			}
-			if !allOptional(release.Config.Verify, names...) {
+			if !releasecontroller.AllOptional(release.Config.Verify, names...) {
 				klog.V(4).Infof("Release %s was rejected", releaseTag.Name)
 				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
-				annotations[releaseAnnotationVerify] = toJSONString(status)
-				if err := c.transitionReleasePhaseFailure(release, []string{releasePhaseReady}, releasePhaseRejected, annotations, releaseTag.Name); err != nil {
+				annotations[releasecontroller.ReleaseAnnotationVerify] = toJSONString(status)
+				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhaseReady}, releasecontroller.ReleasePhaseRejected, annotations, releaseTag.Name); err != nil {
 					return err
 				}
 				continue
@@ -509,7 +510,7 @@ func (c *Controller) syncReady(release *Release) error {
 		}
 
 		// if all jobs are complete and there are no failures, this is accepted
-		if err := c.markReleaseAccepted(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+		if err := c.markReleaseAccepted(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 			return err
 		}
 		klog.V(4).Infof("Release %s accepted", releaseTag.Name)
@@ -518,8 +519,8 @@ func (c *Controller) syncReady(release *Release) error {
 	return nil
 }
 
-func (c *Controller) syncAccepted(release *Release) error {
-	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
+func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
+	acceptedTags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
 
 	if klog.V(5) && len(acceptedTags) > 0 {
 		klog.Infof("release=%s accepted=%v", release.Config.Name, tagNames(acceptedTags))
@@ -557,7 +558,7 @@ func (c *Controller) syncAccepted(release *Release) error {
 	return nil
 }
 
-func (c *Controller) loadReleaseForSync(namespace, name string) (*Release, error) {
+func (c *Controller) loadReleaseForSync(namespace, name string) (*releasecontroller.Release, error) {
 	// locate the release definition off the image stream, or clean up any remaining
 	// artifacts if the release no longer points to those
 	isLister := c.releaseLister.ImageStreams(namespace)

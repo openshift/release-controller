@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -39,7 +40,7 @@ func (c *Controller) garbageCollectSync() error {
 	active := sets.NewString()
 	targets := make(map[string]int64)
 	for _, imageStream := range imageStreams {
-		if _, ok := imageStream.Annotations[releaseAnnotationHasReleases]; ok {
+		if _, ok := imageStream.Annotations[releasecontroller.ReleaseAnnotationHasReleases]; ok {
 			for _, tag := range imageStream.Spec.Tags {
 				active.Insert(tag.Name)
 			}
@@ -47,7 +48,7 @@ func (c *Controller) garbageCollectSync() error {
 			continue
 		}
 
-		value, ok := imageStream.Annotations[releaseAnnotationConfig]
+		value, ok := imageStream.Annotations[releasecontroller.ReleaseAnnotationConfig]
 		if !ok {
 			continue
 		}
@@ -55,7 +56,7 @@ func (c *Controller) garbageCollectSync() error {
 		if err != nil {
 			continue
 		}
-		if config.As == releaseConfigModeStable {
+		if config.As == releasecontroller.ReleaseConfigModeStable {
 			for _, tag := range imageStream.Spec.Tags {
 				active.Insert(tag.Name)
 			}
@@ -65,10 +66,10 @@ func (c *Controller) garbageCollectSync() error {
 
 	// all jobs created for a release that no longer exists should be deleted
 	for _, job := range jobs {
-		if active.Has(job.Annotations[releaseAnnotationReleaseTag]) {
+		if active.Has(job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]) {
 			continue
 		}
-		targetGeneration, ok := targets[job.Annotations[releaseAnnotationTarget]]
+		targetGeneration, ok := targets[job.Annotations[releasecontroller.ReleaseAnnotationTarget]]
 		if !ok {
 			continue
 		}
@@ -94,10 +95,10 @@ func (c *Controller) garbageCollectSync() error {
 
 	// all image mirrors created for a release that no longer exists should be deleted
 	for _, mirror := range mirrors {
-		if active.Has(mirror.Annotations[releaseAnnotationReleaseTag]) {
+		if active.Has(mirror.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]) {
 			continue
 		}
-		targetGeneration, ok := targets[mirror.Annotations[releaseAnnotationTarget]]
+		targetGeneration, ok := targets[mirror.Annotations[releasecontroller.ReleaseAnnotationTarget]]
 		if !ok {
 			continue
 		}

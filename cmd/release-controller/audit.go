@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"os/exec"
 	"sort"
 	"strings"
@@ -146,7 +147,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	return nil
 }
 
-var auditVerifyJobSelector = labels.SelectorFromSet(labels.Set{releaseAnnotationJobPurpose: "audit"})
+var auditVerifyJobSelector = labels.SelectorFromSet(labels.Set{releasecontroller.ReleaseAnnotationJobPurpose: "audit"})
 
 func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.Duration) (bool, error) {
 	result, err := c.jobLister.Jobs(c.jobNamespace).List(auditVerifyJobSelector)
@@ -171,7 +172,7 @@ func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.D
 	return count < maximum, lastErr
 }
 
-func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord) (*batchv1.Job, error) {
+func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord) (*batchv1.Job, error) {
 	// create a safe job name
 	name := record.ID
 	parts := strings.SplitN(record.ID, ":", 2)
@@ -202,10 +203,10 @@ func (c *Controller) ensureAuditVerifyJob(release *Release, record *AuditRecord)
 		if job.Labels == nil {
 			job.Labels = make(map[string]string)
 		}
-		job.Labels[releaseAnnotationJobPurpose] = "audit"
-		job.Annotations[releaseAnnotationTarget] = fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name)
-		job.Annotations[releaseAnnotationReleaseTag] = record.Name
-		job.Annotations[releaseAnnotationJobPurpose] = "audit"
+		job.Labels[releasecontroller.ReleaseAnnotationJobPurpose] = "audit"
+		job.Annotations[releasecontroller.ReleaseAnnotationTarget] = fmt.Sprintf("%s/%s", release.Target.Namespace, release.Target.Name)
+		job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag] = record.Name
+		job.Annotations[releasecontroller.ReleaseAnnotationJobPurpose] = "audit"
 
 		klog.V(2).Infof("Running release verify job for %s (%s)", record.ID, record.Name)
 		return job, nil
@@ -312,8 +313,8 @@ func (a *AuditTracker) Get(name string) (*AuditRecord, bool) {
 	return &copied, true
 }
 
-func (a *AuditTracker) Sync(release *Release) {
-	if release.Config.As != releaseConfigModeStable {
+func (a *AuditTracker) Sync(release *releasecontroller.Release) {
+	if release.Config.As != releasecontroller.ReleaseConfigModeStable {
 		return
 	}
 
@@ -325,13 +326,13 @@ func (a *AuditTracker) Sync(release *Release) {
 	found := sets.NewString()
 	from := release.Target
 	for _, tag := range from.Spec.Tags {
-		if _, ok := tag.Annotations[releaseAnnotationSource]; !ok {
+		if _, ok := tag.Annotations[releasecontroller.ReleaseAnnotationSource]; !ok {
 			continue
 		}
 		if len(tag.Name) == 0 {
 			continue
 		}
-		phase := tag.Annotations[releaseAnnotationPhase]
+		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 		if phase != "Accepted" && phase != "Ready" && phase != "Rejected" {
 			continue
 		}

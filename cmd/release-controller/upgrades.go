@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"io"
 	"sort"
 	"sync"
@@ -19,27 +20,16 @@ import (
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-type UpgradeResult struct {
-	State string `json:"state"`
-	URL   string `json:"url"`
-}
-
-type UpgradeRecord struct {
-	From    string          `json:"from"`
-	To      string          `json:"to"`
-	Results []UpgradeResult `json:"results"`
-}
-
 type UpgradeGraph struct {
 	lock         sync.Mutex
-	to           map[string]map[string]*UpgradeHistory
+	to           map[string]map[string]*releasecontroller.UpgradeHistory
 	from         map[string]sets.String
 	architecture string
 }
 
 func NewUpgradeGraph(architecture string) *UpgradeGraph {
 	return &UpgradeGraph{
-		to:           make(map[string]map[string]*UpgradeHistory),
+		to:           make(map[string]map[string]*releasecontroller.UpgradeHistory),
 		from:         make(map[string]sets.String),
 		architecture: architecture,
 	}
@@ -50,24 +40,13 @@ type upgradeEdge struct {
 	To   string
 }
 
-type UpgradeHistory struct {
-	From string
-	To   string
-
-	Success int
-	Failure int
-	Total   int
-
-	History map[string]UpgradeResult
-}
-
-func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeHistory {
+func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []releasecontroller.UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
+	summaries := make([]releasecontroller.UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
 		for _, h := range g.to[to] {
-			summaries = append(summaries, UpgradeHistory{
+			summaries = append(summaries, releasecontroller.UpgradeHistory{
 				From:    h.From,
 				To:      to,
 				Success: h.Success,
@@ -79,14 +58,14 @@ func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeHistory {
 	return summaries
 }
 
-func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []UpgradeHistory {
+func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []releasecontroller.UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
+	summaries := make([]releasecontroller.UpgradeHistory, 0, len(fromNames)*2)
 	for _, from := range fromNames {
 		for to := range g.from[from] {
 			for _, h := range g.to[to] {
-				summaries = append(summaries, UpgradeHistory{
+				summaries = append(summaries, releasecontroller.UpgradeHistory{
 					From:    from,
 					To:      to,
 					Success: h.Success,
@@ -99,13 +78,13 @@ func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []UpgradeHisto
 	return summaries
 }
 
-func (g *UpgradeGraph) UpgradesTo(toNames ...string) []UpgradeHistory {
+func (g *UpgradeGraph) UpgradesTo(toNames ...string) []releasecontroller.UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
+	summaries := make([]releasecontroller.UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
 		for _, h := range g.to[to] {
-			summaries = append(summaries, UpgradeHistory{
+			summaries = append(summaries, releasecontroller.UpgradeHistory{
 				From:    h.From,
 				To:      to,
 				Success: h.Success,
@@ -123,11 +102,11 @@ type historyEdgeReference struct {
 	to   string
 }
 
-func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
+func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []releasecontroller.UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
-	refs := make(map[historyEdgeReference]*UpgradeHistory)
+	summaries := make([]releasecontroller.UpgradeHistory, 0, len(fromNames)*2)
+	refs := make(map[historyEdgeReference]*releasecontroller.UpgradeHistory)
 	for _, from := range fromNames {
 		for to := range g.from[from] {
 			history := g.to[to][from]
@@ -137,10 +116,10 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 			key := historyEdgeReference{from, to}
 			ref, ok := refs[key]
 			if !ok {
-				summaries = append(summaries, UpgradeHistory{
+				summaries = append(summaries, releasecontroller.UpgradeHistory{
 					From:    from,
 					To:      to,
-					History: make(map[string]UpgradeResult),
+					History: make(map[string]releasecontroller.UpgradeResult),
 				})
 				ref = &summaries[len(summaries)-1]
 				refs[key] = ref
@@ -157,15 +136,15 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 	return summaries
 }
 
-func copyHistory(h map[string]UpgradeResult) map[string]UpgradeResult {
-	copied := make(map[string]UpgradeResult, len(h))
+func copyHistory(h map[string]releasecontroller.UpgradeResult) map[string]releasecontroller.UpgradeResult {
+	copied := make(map[string]releasecontroller.UpgradeResult, len(h))
 	for k, v := range h {
 		copied[k] = v
 	}
 	return copied
 }
 
-func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
+func (g *UpgradeGraph) Add(fromTag, toTag string, results ...releasecontroller.UpgradeResult) {
 	if len(results) == 0 || len(fromTag) == 0 || len(toTag) == 0 {
 		return
 	}
@@ -175,15 +154,15 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 	g.addWithLock(fromTag, toTag, results...)
 }
 
-func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResult) {
+func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...releasecontroller.UpgradeResult) {
 	to, ok := g.to[toTag]
 	if !ok {
-		to = make(map[string]*UpgradeHistory)
+		to = make(map[string]*releasecontroller.UpgradeHistory)
 		g.to[toTag] = to
 	}
 	from, ok := to[fromTag]
 	if !ok {
-		from = &UpgradeHistory{
+		from = &releasecontroller.UpgradeHistory{
 			From: fromTag,
 			To:   toTag,
 		}
@@ -196,30 +175,30 @@ func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResu
 		set.Insert(toTag)
 	}
 	if from.History == nil {
-		from.History = make(map[string]UpgradeResult)
+		from.History = make(map[string]releasecontroller.UpgradeResult)
 	}
 	for _, result := range results {
 		if len(result.URL) == 0 {
 			continue
 		}
 		existing, ok := from.History[result.URL]
-		if !ok || existing.State == releaseVerificationStatePending && result.State != releaseVerificationStatePending {
+		if !ok || existing.State == releasecontroller.ReleaseVerificationStatePending && result.State != releasecontroller.ReleaseVerificationStatePending {
 			from.History[result.URL] = result
 			switch result.State {
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				from.Failure++
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				from.Success++
 			}
 		}
 	}
 }
 
-func (g *UpgradeGraph) Histories() []UpgradeHistory {
+func (g *UpgradeGraph) Histories() []releasecontroller.UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	results := make([]UpgradeHistory, 0, len(g.to)*5)
+	results := make([]releasecontroller.UpgradeHistory, 0, len(g.to)*5)
 	for _, targets := range g.to {
 		for _, history := range targets {
 			copied := *history
@@ -230,14 +209,14 @@ func (g *UpgradeGraph) Histories() []UpgradeHistory {
 	return results
 }
 
-func (g *UpgradeGraph) Records() []UpgradeRecord {
+func (g *UpgradeGraph) Records() []releasecontroller.UpgradeRecord {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	records := make([]UpgradeRecord, 0, len(g.to)*5)
+	records := make([]releasecontroller.UpgradeRecord, 0, len(g.to)*5)
 	for to, targets := range g.to {
 		for from, history := range targets {
-			record := UpgradeRecord{From: from, To: to, Results: make([]UpgradeResult, 0, len(history.History))}
+			record := releasecontroller.UpgradeRecord{From: from, To: to, Results: make([]releasecontroller.UpgradeResult, 0, len(history.History))}
 			for _, result := range history.History {
 				record.Results = append(record.Results, result)
 			}
@@ -280,7 +259,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	var records []UpgradeRecord
+	var records []releasecontroller.UpgradeRecord
 	if err := json.NewDecoder(gr).Decode(&records); err != nil {
 		return err
 	}

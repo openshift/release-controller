@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	imagev1 "github.com/openshift/api/image/v1"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"time"
 )
@@ -12,7 +13,7 @@ const (
 	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
 )
 
-func (c *Controller) launchAnalysisJobs(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
+func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
 	jobLabels := map[string]string{
 		"release.openshift.io/analysis": releaseTag.Name,
 	}

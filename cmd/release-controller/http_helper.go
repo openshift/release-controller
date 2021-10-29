@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"io"
 	"net/url"
 	"sort"
@@ -25,7 +26,7 @@ type ReleasePage struct {
 }
 
 type ReleaseStream struct {
-	Release *Release
+	Release *releasecontroller.Release
 	Tags    []*imagev1.TagReference
 
 	// Delayed is set if there is a pending release
@@ -54,10 +55,10 @@ type ReleaseCheckResult struct {
 }
 
 type ReleaseStreamTag struct {
-	Release *Release
+	Release *releasecontroller.Release
 	Tag     *imagev1.TagReference
 
-	PreviousRelease *Release
+	PreviousRelease *releasecontroller.Release
 	Previous        *imagev1.TagReference
 
 	Older  []*imagev1.TagReference
@@ -82,7 +83,7 @@ func (v StableReleases) Len() int      { return len(v) }
 func (v StableReleases) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
 
 type StableRelease struct {
-	Release  *Release
+	Release  *releasecontroller.Release
 	Version  semver.Version
 	Versions SemanticVersions
 }
@@ -143,22 +144,22 @@ type ReleaseUpgrades struct {
 }
 
 type ReleaseTagUpgrade struct {
-	Internal []UpgradeHistory
-	External []UpgradeHistory
+	Internal []releasecontroller.UpgradeHistory
+	External []releasecontroller.UpgradeHistory
 	Visual   []ReleaseTagUpgradeVisual
 }
 
 type ReleaseTagUpgradeVisual struct {
-	Begin, Current, End *UpgradeHistory
+	Begin, Current, End *releasecontroller.UpgradeHistory
 }
 
 func phaseCell(tag imagev1.TagReference) string {
-	phase := tag.Annotations[releaseAnnotationPhase]
+	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 	switch phase {
-	case releasePhaseRejected:
+	case releasecontroller.ReleasePhaseRejected:
 		return fmt.Sprintf("<td class=\"%s\" title=\"%s\">%s</td>",
 			phaseAlert(tag),
-			template.HTMLEscapeString(tag.Annotations[releaseAnnotationMessage]),
+			template.HTMLEscapeString(tag.Annotations[releasecontroller.ReleaseAnnotationMessage]),
 			template.HTMLEscapeString(phase),
 		)
 	}
@@ -166,28 +167,28 @@ func phaseCell(tag imagev1.TagReference) string {
 }
 
 func phaseAlert(tag imagev1.TagReference) string {
-	phase := tag.Annotations[releaseAnnotationPhase]
+	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 	switch phase {
-	case releasePhasePending:
+	case releasecontroller.ReleasePhasePending:
 		return ""
-	case releasePhaseReady:
+	case releasecontroller.ReleasePhaseReady:
 		return ""
-	case releasePhaseAccepted:
+	case releasecontroller.ReleasePhaseAccepted:
 		return "text-success"
-	case releasePhaseFailed:
+	case releasecontroller.ReleasePhaseFailed:
 		return "text-danger"
-	case releasePhaseRejected:
+	case releasecontroller.ReleasePhaseRejected:
 		return "text-danger"
 	default:
 		return "text-danger"
 	}
 }
 
-func styleForUpgrade(upgrade *UpgradeHistory) string {
+func styleForUpgrade(upgrade *releasecontroller.UpgradeHistory) string {
 	switch upgradeSummaryState(upgrade) {
-	case releaseVerificationStateFailed:
+	case releasecontroller.ReleaseVerificationStateFailed:
 		return "border-color: #dc3545"
-	case releaseVerificationStateSucceeded:
+	case releasecontroller.ReleaseVerificationStateSucceeded:
 		return "border-color: #28a745"
 	default:
 		return "border-color: #007bff"
@@ -272,9 +273,9 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 		}
 		for url, result := range visual.Begin.History {
 			switch result.State {
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				successCount++
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, visual.Begin.From))
 			default:
 				otherCount++
@@ -285,9 +286,9 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 	for _, external := range upgrades.Tags[index].External {
 		for url, result := range external.History {
 			switch result.State {
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				successCount++
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, external.From))
 			default:
 				otherCount++
@@ -303,17 +304,17 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 	return buf2.String()
 }
 func canLink(tag imagev1.TagReference) bool {
-	switch tag.Annotations[releaseAnnotationPhase] {
-	case releasePhasePending:
+	switch tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
+	case releasecontroller.ReleasePhasePending:
 		return false
 	default:
 		return true
 	}
 }
 
-func tableLink(config *ReleaseConfig, tag imagev1.TagReference) string {
+func tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference) string {
 	if canLink(tag) {
-		if value, ok := tag.Annotations[releaseAnnotationKeep]; ok {
+		if value, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
 			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
 		return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
@@ -321,12 +322,12 @@ func tableLink(config *ReleaseConfig, tag imagev1.TagReference) string {
 	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
 }
 
-func links(tag imagev1.TagReference, release *Release) string {
-	links := tag.Annotations[releaseAnnotationVerify]
+func links(tag imagev1.TagReference, release *releasecontroller.Release) string {
+	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
 	if len(links) == 0 {
 		return ""
 	}
-	var status VerificationStatusMap
+	var status releasecontroller.VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
 		return "error"
 	}
@@ -340,9 +341,9 @@ func links(tag imagev1.TagReference, release *Release) string {
 			continue
 		}
 		switch s.State {
-		case releaseVerificationStateSucceeded:
+		case releasecontroller.ReleaseVerificationStateSucceeded:
 			continue
-		case releaseVerificationStateFailed:
+		case releasecontroller.ReleaseVerificationStateFailed:
 			failing = append(failing, k)
 		default:
 			pending = append(pending, k)
@@ -366,9 +367,9 @@ func links(tag imagev1.TagReference, release *Release) string {
 		if s, ok := status[key]; ok {
 			if len(s.URL) > 0 {
 				switch s.State {
-				case releaseVerificationStateSucceeded:
+				case releasecontroller.ReleaseVerificationStateSucceeded:
 					continue
-				case releaseVerificationStateFailed:
+				case releasecontroller.ReleaseVerificationStateFailed:
 					buf.WriteString(" <a title=\"Failed\" class=\"text-danger\" href=\"")
 				default:
 					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
@@ -380,9 +381,9 @@ func links(tag imagev1.TagReference, release *Release) string {
 				continue
 			}
 			switch s.State {
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				continue
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString(" <span title=\"Failed\" class=\"text-danger\">")
 			default:
 				buf.WriteString(" <span title=\"Pending\" class=\"\">")
@@ -391,7 +392,7 @@ func links(tag imagev1.TagReference, release *Release) string {
 			buf.WriteString("</span>")
 			continue
 		}
-		final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
+		final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
 		if !release.Config.Verify[key].Disabled && !final {
 			buf.WriteString(" <span title=\"Pending\">")
 			buf.WriteString(template.HTMLEscapeString(key))
@@ -416,18 +417,18 @@ func links(tag imagev1.TagReference, release *Release) string {
 	return buf.String()
 }
 
-func getVerificationJobs(tag imagev1.TagReference, release *Release) (*VerificationJobsSummary, string) {
-	links := tag.Annotations[releaseAnnotationVerify]
+func getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Release) (*releasecontroller.VerificationJobsSummary, string) {
+	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
 	if len(links) == 0 {
 		return nil, fmt.Sprintf(`<p><em>No tests for this release</em>`)
 	}
-	var status VerificationStatusMap
+	var status releasecontroller.VerificationStatusMap
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
 		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load test info</em>`)
 	}
-	blockingJobs := make(VerificationStatusMap)
-	informingJobs := make(VerificationStatusMap)
-	pendingJobs := make(VerificationStatusMap)
+	blockingJobs := make(releasecontroller.VerificationStatusMap)
+	informingJobs := make(releasecontroller.VerificationStatusMap)
+	pendingJobs := make(releasecontroller.VerificationStatusMap)
 	keys := make([]string, 0, len(release.Config.Verify))
 	for k := range release.Config.Verify {
 		keys = append(keys, k)
@@ -444,21 +445,21 @@ func getVerificationJobs(tag imagev1.TagReference, release *Release) (*Verificat
 			pendingJobs[key] = nil
 		}
 	}
-	return &VerificationJobsSummary{
+	return &releasecontroller.VerificationJobsSummary{
 		BlockingJobs:  blockingJobs,
 		InformingJobs: informingJobs,
 		PendingJobs:   pendingJobs,
 	}, ""
 }
 
-func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) {
+func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releasecontroller.Release) {
 	verificationJobs, msg := getVerificationJobs(tag, release)
 	if len(msg) > 0 {
 		fmt.Fprintf(w, msg)
 		return
 	}
 	buf := &bytes.Buffer{}
-	final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
+	final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
 	if len(verificationJobs.BlockingJobs) > 0 {
 		buf.WriteString("<li>Blocking jobs<ul>")
 		buf.WriteString(renderVerificationJobsList(verificationJobs.BlockingJobs, release, final))
@@ -481,7 +482,7 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	}
 }
 
-func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, final bool) string {
+func renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, release *releasecontroller.Release, final bool) string {
 	buf := &bytes.Buffer{}
 	keys := make([]string, 0, len(jobs))
 	for k := range jobs {
@@ -500,9 +501,9 @@ func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, fi
 		}
 		if len(value.URL) > 0 {
 			switch value.State {
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString("<li><a class=\"text-danger\" href=\"")
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				buf.WriteString("<li><a class=\"text-success\" href=\"")
 			default:
 				buf.WriteString("<li><a class=\"\" href=\"")
@@ -511,9 +512,9 @@ func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, fi
 			buf.WriteString("\">")
 			buf.WriteString(template.HTMLEscapeString(key))
 			switch value.State {
-			case releaseVerificationStateFailed:
+			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString(" Failed")
-			case releaseVerificationStateSucceeded:
+			case releasecontroller.ReleaseVerificationStateSucceeded:
 				buf.WriteString(" Succeeded")
 			default:
 				buf.WriteString(" Pending")
@@ -529,18 +530,18 @@ func renderVerificationJobsList(jobs VerificationStatusMap, release *Release, fi
 			continue
 		}
 		switch value.State {
-		case releaseVerificationStateFailed:
+		case releasecontroller.ReleaseVerificationStateFailed:
 			buf.WriteString("<li><span class=\"text-danger\">")
-		case releaseVerificationStateSucceeded:
+		case releasecontroller.ReleaseVerificationStateSucceeded:
 			buf.WriteString("<li><span class=\"text-success\">")
 		default:
 			buf.WriteString("<li><span class=\"\">")
 		}
 		buf.WriteString(template.HTMLEscapeString(key))
 		switch value.State {
-		case releaseVerificationStateFailed:
+		case releasecontroller.ReleaseVerificationStateFailed:
 			buf.WriteString(" Failed")
-		case releaseVerificationStateSucceeded:
+		case releasecontroller.ReleaseVerificationStateSucceeded:
 			buf.WriteString(" Succeeded")
 		default:
 			buf.WriteString(" Pending")
@@ -579,7 +580,7 @@ func releaseJoin(streams []ReleaseStream) string {
 	return strings.Join(releases, " | ")
 }
 
-func hasPublishTag(config *ReleaseConfig) (string, bool) {
+func hasPublishTag(config *releasecontroller.ReleaseConfig) (string, bool) {
 	for _, v := range config.Publish {
 		if v.TagRef != nil {
 			return v.TagRef.Name, true
@@ -588,7 +589,7 @@ func hasPublishTag(config *ReleaseConfig) (string, bool) {
 	return "", false
 }
 
-func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReference, release *Release) *imagev1.TagReference {
+func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReference, release *releasecontroller.Release) *imagev1.TagReference {
 	if len(older) == 0 {
 		return nil
 	}
@@ -603,7 +604,7 @@ func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReferenc
 		}
 	}
 	for _, old := range older {
-		if old.Annotations[releaseAnnotationPhase] == releasePhaseAccepted {
+		if old.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted {
 			return old
 		}
 	}
@@ -617,7 +618,7 @@ type nopFlusher struct{}
 
 func (_ nopFlusher) Flush() {}
 
-func upgradeSummaryToString(history []UpgradeHistory) string {
+func upgradeSummaryToString(history []releasecontroller.UpgradeHistory) string {
 	var out []string
 	for _, h := range history {
 		out = append(out, fmt.Sprintf("%s->%s", h.From, h.To))
@@ -625,7 +626,7 @@ func upgradeSummaryToString(history []UpgradeHistory) string {
 	return strings.Join(out, ",")
 }
 
-func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, graph *UpgradeGraph, fullHistory bool) *ReleaseUpgrades {
+func calculateReleaseUpgrades(release *releasecontroller.Release, tags []*imagev1.TagReference, graph *UpgradeGraph, fullHistory bool) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))
 	internalTags := make(map[string]int)
 	for i, tag := range tags {
@@ -639,14 +640,14 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 	// tabular form with indicators whether a row is starting, continuing, or
 	// ending
 	var visual []ReleaseTagUpgradeVisual
-	var summaries []UpgradeHistory
+	var summaries []releasecontroller.UpgradeHistory
 	if fullHistory {
 		summaries = graph.UpgradesTo(tagNames...)
 	} else {
 		summaries = graph.SummarizeUpgradesTo(tagNames...)
 	}
 	for _, name := range tagNames {
-		var internal, external []UpgradeHistory
+		var internal, external []releasecontroller.UpgradeHistory
 		internal, summaries = takeUpgradesTo(summaries, name)
 		internal, external = takeUpgradesFromNames(internal, internalTags)
 		sort.Slice(internal, func(i, j int) bool {
@@ -726,19 +727,19 @@ func calculateReleaseUpgrades(release *Release, tags []*imagev1.TagReference, gr
 	}
 }
 
-func upgradeSummaryState(summary *UpgradeHistory) string {
+func upgradeSummaryState(summary *releasecontroller.UpgradeHistory) string {
 	if summary.Success > 0 {
-		return releaseVerificationStateSucceeded
+		return releasecontroller.ReleaseVerificationStateSucceeded
 	}
 	if summary.Failure > 0 {
-		return releaseVerificationStateFailed
+		return releasecontroller.ReleaseVerificationStateFailed
 	}
-	return releaseVerificationStatePending
+	return releasecontroller.ReleaseVerificationStatePending
 }
 
 // takeUpgradesTo returns all leading summaries with To equal to tag, and the rest of the
 // slice.
-func takeUpgradesTo(summaries []UpgradeHistory, tag string) ([]UpgradeHistory, []UpgradeHistory) {
+func takeUpgradesTo(summaries []releasecontroller.UpgradeHistory, tag string) ([]releasecontroller.UpgradeHistory, []releasecontroller.UpgradeHistory) {
 	for i, summary := range summaries {
 		if summary.To == tag {
 			continue
@@ -750,14 +751,14 @@ func takeUpgradesTo(summaries []UpgradeHistory, tag string) ([]UpgradeHistory, [
 
 // takeUpgradesFromNames splits the provided summaries slice into two slices - those with Froms
 // in names and those without.
-func takeUpgradesFromNames(summaries []UpgradeHistory, names map[string]int) (withNames []UpgradeHistory, withoutNames []UpgradeHistory) {
+func takeUpgradesFromNames(summaries []releasecontroller.UpgradeHistory, names map[string]int) (withNames []releasecontroller.UpgradeHistory, withoutNames []releasecontroller.UpgradeHistory) {
 	for i := range summaries {
 		if _, ok := names[summaries[i].From]; ok {
 			continue
 		}
-		left := make([]UpgradeHistory, i, len(summaries))
+		left := make([]releasecontroller.UpgradeHistory, i, len(summaries))
 		copy(left, summaries[:i])
-		var right []UpgradeHistory
+		var right []releasecontroller.UpgradeHistory
 		for j, summary := range summaries[i:] {
 			if _, ok := names[summaries[i+j].From]; ok {
 				left = append(left, summary)
@@ -772,7 +773,7 @@ func takeUpgradesFromNames(summaries []UpgradeHistory, names map[string]int) (wi
 
 // filterWithPrefix removes any summary from summaries that has a From that starts with
 // prefix.
-func filterWithPrefix(summaries []UpgradeHistory, prefix string) []UpgradeHistory {
+func filterWithPrefix(summaries []releasecontroller.UpgradeHistory, prefix string) []releasecontroller.UpgradeHistory {
 	if len(prefix) == 0 {
 		return summaries
 	}
@@ -780,7 +781,7 @@ func filterWithPrefix(summaries []UpgradeHistory, prefix string) []UpgradeHistor
 		if !strings.HasPrefix(summaries[i].From, prefix) {
 			continue
 		}
-		valid := make([]UpgradeHistory, 0, len(summaries)-i)
+		valid := make([]releasecontroller.UpgradeHistory, 0, len(summaries)-i)
 		for _, summary := range summaries {
 			if !strings.HasPrefix(summary.From, prefix) {
 				valid = append(valid, summary)
@@ -801,7 +802,7 @@ func (r preferredReleases) Less(i, j int) bool {
 	if a.Release.Config.Hide && !b.Release.Config.Hide {
 		return false
 	}
-	aStable, bStable := a.Release.Config.As == releaseConfigModeStable, b.Release.Config.As == releaseConfigModeStable
+	aStable, bStable := a.Release.Config.As == releasecontroller.ReleaseConfigModeStable, b.Release.Config.As == releasecontroller.ReleaseConfigModeStable
 	if aStable && !bStable {
 		return true
 	}
@@ -826,10 +827,10 @@ func (r preferredReleases) Len() int      { return len(r) }
 
 type newestSemVerFromSummaries struct {
 	versions  []semver.Version
-	summaries []UpgradeHistory
+	summaries []releasecontroller.UpgradeHistory
 }
 
-func newNewestSemVerFromSummaries(summaries []UpgradeHistory) newestSemVerFromSummaries {
+func newNewestSemVerFromSummaries(summaries []releasecontroller.UpgradeHistory) newestSemVerFromSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
 		if v, err := semver.Parse(summary.From); err == nil {
@@ -866,10 +867,10 @@ func (s newestSemVerFromSummaries) Len() int { return len(s.summaries) }
 
 type newestSemVerToSummaries struct {
 	versions  []semver.Version
-	summaries []UpgradeHistory
+	summaries []releasecontroller.UpgradeHistory
 }
 
-func newNewestSemVerToSummaries(summaries []UpgradeHistory) newestSemVerToSummaries {
+func newNewestSemVerToSummaries(summaries []releasecontroller.UpgradeHistory) newestSemVerToSummaries {
 	versions := make([]semver.Version, len(summaries))
 	for i, summary := range summaries {
 		if v, err := semver.Parse(summary.To); err == nil {

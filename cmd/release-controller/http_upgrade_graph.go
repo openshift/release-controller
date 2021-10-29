@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -155,7 +156,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 					string(viz.Shape): "record",
 					string(viz.HREF):  fmt.Sprintf(`"/releasetag/%s"`, template.HTMLEscapeString(tag.Name)),
 				}
-				if phase := tag.Annotations[releaseAnnotationPhase]; phase == releasePhaseRejected {
+				if phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; phase == releasecontroller.ReleasePhaseRejected {
 					attrs[string(viz.Color)] = "red"
 				}
 				if err := g.AddNode(subgraphName, dotNodeName(index), attrs); err != nil {

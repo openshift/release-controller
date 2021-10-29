@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,10 +22,10 @@ import (
 
 type PeriodicWithRelease struct {
 	Periodic           *config.Periodic
-	Release            *Release
+	Release            *releasecontroller.Release
 	Upgrade            bool
 	UpgradeFrom        string
-	UpgradeFromRelease *UpgradeRelease
+	UpgradeFromRelease *releasecontroller.UpgradeRelease
 }
 
 func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, stopCh <-chan struct{}) {
@@ -142,7 +143,7 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease PeriodicWithRelease) error {
 	// get release info
 	release := periodicWithRelease.Release
-	acceptedTags := sortedRawReleaseTags(release, releasePhaseAccepted)
+	acceptedTags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
 	if len(acceptedTags) == 0 {
 		return fmt.Errorf("no accepted tags found for release %s", release.Config.Name)
 	}
@@ -164,13 +165,13 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		return fmt.Errorf("failed to add release env to periodic %s: %v", periodicWithRelease.Periodic.Name, err)
 	}
 	prowJob := pjutil.NewProwJob(spec, periodicWithRelease.Periodic.Labels, periodicWithRelease.Periodic.Annotations)
-	prowJob.Labels[releaseAnnotationVerify] = "true"
-	prowJob.Annotations[releaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
-	prowJob.Annotations[releaseAnnotationToTag] = latestTag.Name
+	prowJob.Labels[releasecontroller.ReleaseAnnotationVerify] = "true"
+	prowJob.Annotations[releasecontroller.ReleaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
+	prowJob.Annotations[releasecontroller.ReleaseAnnotationToTag] = latestTag.Name
 	if periodicWithRelease.Upgrade && len(previousTag) > 0 {
-		prowJob.Annotations[releaseAnnotationFromTag] = previousTag
+		prowJob.Annotations[releasecontroller.ReleaseAnnotationFromTag] = previousTag
 	}
-	prowJob.Annotations[releaseAnnotationArchitecture] = c.graph.architecture
+	prowJob.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.architecture
 
 	_, err = c.prowClient.Create(context.TODO(), objectToUnstructured(&prowJob), metav1.CreateOptions{})
 	if err != nil {
