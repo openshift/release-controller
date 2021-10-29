@@ -15,8 +15,8 @@ import (
 	"k8s.io/klog"
 )
 
-func (c *Controller) ensureVerificationJobs(release *release_controller.Release, releaseTag *imagev1.TagReference) (release_controller.VerificationStatusMap, error) {
-	var verifyStatus release_controller.VerificationStatusMap
+func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) (releasecontroller.VerificationStatusMap, error) {
+	var verifyStatus releasecontroller.VerificationStatusMap
 	retryQueueDelay := 0 * time.Second
 	for name, verifyType := range release.Config.Verify {
 		if verifyType.Disabled {
@@ -27,8 +27,8 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 		switch {
 		case verifyType.ProwJob != nil:
 			if verifyStatus == nil {
-				if data := releaseTag.Annotations[release_controller.ReleaseAnnotationVerify]; len(data) > 0 {
-					verifyStatus = make(release_controller.VerificationStatusMap)
+				if data := releaseTag.Annotations[releasecontroller.ReleaseAnnotationVerify]; len(data) > 0 {
+					verifyStatus = make(releasecontroller.VerificationStatusMap)
 					if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
 						klog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
 					}
@@ -39,16 +39,16 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 			if status, ok := verifyStatus[name]; ok {
 				jobRetries = status.Retries
 				switch status.State {
-				case release_controller.ReleaseVerificationStateSucceeded:
+				case releasecontroller.ReleaseVerificationStateSucceeded:
 					continue
-				case release_controller.ReleaseVerificationStateFailed:
+				case releasecontroller.ReleaseVerificationStateFailed:
 					jobRetries++
 					if jobRetries > verifyType.MaxRetries {
 						continue
 					}
 					// find the next time, if ok run.
 					if status.TransitionTime != nil {
-						backoffDuration := release_controller.CalculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{Time: time.Now()})
+						backoffDuration := releasecontroller.CalculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{Time: time.Now()})
 						if backoffDuration > 0 {
 							klog.V(6).Infof("%s: Release verification step %s failed %d times, last failure: %s, backoff till: %s",
 								releaseTag.Name, name, jobRetries, status.TransitionTime.Format(time.RFC3339), time.Now().Add(backoffDuration).Format(time.RFC3339))
@@ -58,7 +58,7 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 							continue
 						}
 					}
-				case release_controller.ReleaseVerificationStatePending:
+				case releasecontroller.ReleaseVerificationStatePending:
 					// we need to process this
 				default:
 					klog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
@@ -96,11 +96,11 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 			if !ok {
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
-			if status.State == release_controller.ReleaseVerificationStateSucceeded {
+			if status.State == releasecontroller.ReleaseVerificationStateSucceeded {
 				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
 			}
 			if verifyStatus == nil {
-				verifyStatus = make(release_controller.VerificationStatusMap)
+				verifyStatus = make(releasecontroller.VerificationStatusMap)
 			}
 			status.Retries = jobRetries
 			verifyStatus[name] = status
@@ -110,9 +110,9 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 				continue
 			}
 
-			if status.State == release_controller.ReleaseVerificationStateFailed {
+			if status.State == releasecontroller.ReleaseVerificationStateFailed {
 				// Queue for retry if at least one retryable job at earliest interval
-				backoffDuration := release_controller.CalculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{Time: time.Now()})
+				backoffDuration := releasecontroller.CalculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{Time: time.Now()})
 				if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
 					retryQueueDelay = backoffDuration
 				}
@@ -132,39 +132,39 @@ func (c *Controller) ensureVerificationJobs(release *release_controller.Release,
 	return verifyStatus, nil
 }
 
-func (c *Controller) getUpgradeTagAndPullSpec(release *release_controller.Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *release_controller.UpgradeRelease, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
+func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *releasecontroller.UpgradeRelease, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
 	if upgradeFromRelease != nil {
 		return c.resolveUpgradeRelease(upgradeFromRelease, release)
 	}
 	var upgradeType string
 	if periodic {
-		upgradeType = release_controller.ReleaseUpgradeFromPreviousMinus1
+		upgradeType = releasecontroller.ReleaseUpgradeFromPreviousMinus1
 	} else {
-		upgradeType = release_controller.ReleaseUpgradeFromPrevious
+		upgradeType = releasecontroller.ReleaseUpgradeFromPrevious
 	}
-	if release.Config.As == release_controller.ReleaseConfigModeStable {
-		upgradeType = release_controller.ReleaseUpgradeFromPreviousPatch
+	if release.Config.As == releasecontroller.ReleaseConfigModeStable {
+		upgradeType = releasecontroller.ReleaseUpgradeFromPreviousPatch
 	}
 	if len(upgradeFrom) > 0 {
 		upgradeType = upgradeFrom
 	}
 	switch upgradeType {
-	case release_controller.ReleaseUpgradeFromPrevious:
-		if tags := sortedReleaseTags(release, release_controller.ReleasePhaseAccepted); len(tags) > 0 {
+	case releasecontroller.ReleaseUpgradeFromPrevious:
+		if tags := sortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 0 {
 			previousTag = tags[0].Name
 			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 		}
-	case release_controller.ReleaseUpgradeFromPreviousMinus1:
-		if tags := sortedReleaseTags(release, release_controller.ReleasePhaseAccepted); len(tags) > 1 {
+	case releasecontroller.ReleaseUpgradeFromPreviousMinus1:
+		if tags := sortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 1 {
 			previousTag = tags[1].Name
 			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 		}
-	case release_controller.ReleaseUpgradeFromPreviousMinor:
+	case releasecontroller.ReleaseUpgradeFromPreviousMinor:
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
 			version.Minor--
 			if ref, err := c.stableReleases(); err == nil {
 				for _, stable := range ref.Releases {
-					versions := unsortedSemanticReleaseTags(stable.Release, release_controller.ReleasePhaseAccepted)
+					versions := unsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
 					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 						previousTag = v.Tag.Name
@@ -174,11 +174,11 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *release_controller.Releas
 				}
 			}
 		}
-	case release_controller.ReleaseUpgradeFromPreviousPatch:
+	case releasecontroller.ReleaseUpgradeFromPreviousPatch:
 		if version, err := semver.Parse(releaseTag.Name); err == nil {
 			if ref, err := c.stableReleases(); err == nil {
 				for _, stable := range ref.Releases {
-					versions := unsortedSemanticReleaseTags(stable.Release, release_controller.ReleasePhaseAccepted)
+					versions := unsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
 					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 						previousTag = v.Tag.Name
@@ -194,7 +194,7 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *release_controller.Releas
 	return previousTag, previousReleasePullSpec, err
 }
 
-func (c *Controller) resolveUpgradeRelease(upgradeRelease *release_controller.UpgradeRelease, release *release_controller.Release) (string, string, error) {
+func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.UpgradeRelease, release *releasecontroller.Release) (string, string, error) {
 	if upgradeRelease.Prerelease != nil {
 		semverRange, err := semver.ParseRange(upgradeRelease.Prerelease.VersionBounds.Query())
 		if err != nil {

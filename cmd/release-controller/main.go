@@ -490,15 +490,15 @@ func (o *options) Run() error {
 						continue
 					}
 					annotations := job.GetAnnotations()
-					from, ok := annotations[release_controller.ReleaseAnnotationFromTag]
+					from, ok := annotations[releasecontroller.ReleaseAnnotationFromTag]
 					if !ok {
 						continue
 					}
-					to, ok := annotations[release_controller.ReleaseAnnotationToTag]
+					to, ok := annotations[releasecontroller.ReleaseAnnotationToTag]
 					if !ok {
 						continue
 					}
-					jobArchitecture, ok := annotations[release_controller.ReleaseAnnotationArchitecture]
+					jobArchitecture, ok := annotations[releasecontroller.ReleaseAnnotationArchitecture]
 					if !ok {
 						continue
 					}
@@ -509,7 +509,7 @@ func (o *options) Run() error {
 					if !ok {
 						continue
 					}
-					graph.Add(from, to, release_controller.UpgradeResult{
+					graph.Add(from, to, releasecontroller.UpgradeResult{
 						State: status.State,
 						URL:   status.URL,
 					})
@@ -700,7 +700,7 @@ func (c *latestImageCache) Get() (string, error) {
 			continue
 		}
 
-		value, ok := item.Annotations[release_controller.ReleaseAnnotationConfig]
+		value, ok := item.Annotations[releasecontroller.ReleaseAnnotationConfig]
 		if !ok {
 			continue
 		}
@@ -711,7 +711,7 @@ func (c *latestImageCache) Get() (string, error) {
 		if err != nil {
 			continue
 		}
-		if config.As == release_controller.ReleaseConfigModeStable {
+		if config.As == releasecontroller.ReleaseConfigModeStable {
 			continue
 		}
 

@@ -16,14 +16,14 @@ import (
 
 func validateConfigs(configDir string) error {
 	errors := []error{}
-	releaseConfigs := []release_controller.ReleaseConfig{}
+	releaseConfigs := []releasecontroller.ReleaseConfig{}
 	err := filepath.Walk(configDir, func(path string, info os.FileInfo, err error) error {
 		if info != nil && filepath.Ext(info.Name()) == ".json" {
 			raw, err := ioutil.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			config := release_controller.ReleaseConfig{}
+			config := releasecontroller.ReleaseConfig{}
 			dec := json.NewDecoder(bytes.NewReader(raw))
 			dec.DisallowUnknownFields() // Force errors on unknown fields
 			if err := dec.Decode(&config); err != nil {
@@ -42,7 +42,7 @@ func validateConfigs(configDir string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func validateUpgradeJobs(releaseConfigs []release_controller.ReleaseConfig) []error {
+func validateUpgradeJobs(releaseConfigs []releasecontroller.ReleaseConfig) []error {
 	errors := []error{}
 	for _, config := range releaseConfigs {
 		for name, verify := range config.Verify {
@@ -59,7 +59,7 @@ func validateUpgradeJobs(releaseConfigs []release_controller.ReleaseConfig) []er
 	return errors
 }
 
-func verifyPeriodicFields(releaseConfigs []release_controller.ReleaseConfig) []error {
+func verifyPeriodicFields(releaseConfigs []releasecontroller.ReleaseConfig) []error {
 	errors := []error{}
 	for _, config := range releaseConfigs {
 		for stepName, periodic := range config.Periodic {
@@ -84,7 +84,7 @@ func verifyPeriodicFields(releaseConfigs []release_controller.ReleaseConfig) []e
 	return errors
 }
 
-func findDuplicatePeriodics(releaseConfigs []release_controller.ReleaseConfig) []error {
+func findDuplicatePeriodics(releaseConfigs []releasecontroller.ReleaseConfig) []error {
 	seen := make(map[string][]string)
 	for _, config := range releaseConfigs {
 		for stepName, periodic := range config.Periodic {

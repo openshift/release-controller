@@ -62,7 +62,7 @@ func generateSafeProwJobName(name, suffix string) string {
 	return jobName
 }
 
-func (c *Controller) ensureProwJobForReleaseTag(release *release_controller.Release, verifyName, verifySuffix string, verifyType release_controller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Release, verifyName, verifySuffix string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	fullProwJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	prowJobName := generateSafeProwJobName(fullProwJobName, verifySuffix)
@@ -130,7 +130,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *release_controller.Rele
 		ok = ok && status
 	}
 	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
-		release_controller.ReleaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
+		releasecontroller.ReleaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
 	})
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
@@ -147,11 +147,11 @@ func (c *Controller) ensureProwJobForReleaseTag(release *release_controller.Rele
 		return objectToUnstructured(&pj), nil
 	}
 
-	pj.Annotations[release_controller.ReleaseAnnotationToTag] = releaseTag.Name
+	pj.Annotations[releasecontroller.ReleaseAnnotationToTag] = releaseTag.Name
 	if verifyType.Upgrade && len(previousTag) > 0 {
-		pj.Annotations[release_controller.ReleaseAnnotationFromTag] = previousTag
+		pj.Annotations[releasecontroller.ReleaseAnnotationFromTag] = previousTag
 	}
-	pj.Annotations[release_controller.ReleaseAnnotationArchitecture] = c.graph.architecture
+	pj.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.architecture
 	out, err := c.prowClient.Create(context.TODO(), objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
@@ -187,7 +187,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *release_controller.Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool, architecture string) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecontroller.Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool, architecture string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil

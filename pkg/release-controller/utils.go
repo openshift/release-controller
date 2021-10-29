@@ -1,4 +1,4 @@
-package release_controller
+package releasecontroller
 
 func StringSliceContains(slice []string, s string) bool {
 	for _, item := range slice {

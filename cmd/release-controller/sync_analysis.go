@@ -13,7 +13,7 @@ const (
 	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
 )
 
-func (c *Controller) launchAnalysisJobs(release *release_controller.Release, verifyName string, verifyType release_controller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
+func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
 	jobLabels := map[string]string{
 		"release.openshift.io/analysis": releaseTag.Name,
 	}

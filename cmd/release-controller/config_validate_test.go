@@ -10,83 +10,83 @@ import (
 func TestVerifyPeriodicFields(t *testing.T) {
 	testCases := []struct {
 		name        string
-		input       release_controller.ReleaseConfig
+		input       releasecontroller.ReleaseConfig
 		expectedErr bool
 	}{{
 		name: "Valid Cron",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
 					Cron:    "0 8,20 * * *",
-					ProwJob: &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob: &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: false,
 	}, {
 		name: "Valid Interval",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
 					Interval: "6h",
-					ProwJob:  &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob:  &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: false,
 	}, {
 		name: "Missing Fields",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
-					ProwJob: &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob: &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: true,
 	}, {
 		name: "Interval and Cron",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
 					Cron:     "0 8,20 * * *",
 					Interval: "6h",
-					ProwJob:  &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob:  &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: true,
 	}, {
 		name: "Invalid Cron",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
 					Cron:    "0 8,25 * * *",
-					ProwJob: &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob: &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: true,
 	}, {
 		name: "Invalid Interval",
-		input: release_controller.ReleaseConfig{
+		input: releasecontroller.ReleaseConfig{
 			Name: "TestRelease",
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"aws": {
 					Interval: "6g",
-					ProwJob:  &release_controller.ProwJobVerification{Name: "openshift-e2e-aws"},
+					ProwJob:  &releasecontroller.ProwJobVerification{Name: "openshift-e2e-aws"},
 				},
 			},
 		},
 		expectedErr: true,
 	}}
 	for _, testCase := range testCases {
-		errors := verifyPeriodicFields([]release_controller.ReleaseConfig{testCase.input})
+		errors := verifyPeriodicFields([]releasecontroller.ReleaseConfig{testCase.input})
 		if testCase.expectedErr && len(errors) == 0 {
 			t.Errorf("%s: Expected error but none given", testCase.name)
 		}
@@ -97,112 +97,112 @@ func TestVerifyPeriodicFields(t *testing.T) {
 }
 
 func TestFindDuplicatePeriodics(t *testing.T) {
-	goodConfigs := []release_controller.ReleaseConfig{{
+	goodConfigs := []releasecontroller.ReleaseConfig{{
 		Name: "4.5.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.4-stable-to-4.5-nightly",
 				},
 			},
 		},
 	}, {
 		Name: "4.6.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.6-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 				},
 			},
 		},
 	}}
-	sameConfigDuplicate := []release_controller.ReleaseConfig{{
+	sameConfigDuplicate := []releasecontroller.ReleaseConfig{{
 		Name: "4.5.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-nightly",
 				},
 			},
 			"upgrade2": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.4-stable-to-4.5-nightly",
 				},
 			},
 		},
 	}, {
 		Name: "4.6.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.6-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 				},
 			},
 		},
 	}}
-	differentConfigDuplicate := []release_controller.ReleaseConfig{{
+	differentConfigDuplicate := []releasecontroller.ReleaseConfig{{
 		Name: "4.5.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.4-stable-to-4.5-nightly",
 				},
 			},
 		},
 	}, {
 		Name: "4.6.0-0.nightly",
-		Periodic: map[string]release_controller.ReleasePeriodic{
+		Periodic: map[string]releasecontroller.ReleasePeriodic{
 			"upgrade": {
 				Upgrade: true,
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-nightly",
 				},
 			},
 			"upgrade-minor": {
 				Upgrade:     true,
 				UpgradeFrom: "PreviousMinor",
-				ProwJob: &release_controller.ProwJobVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
 					Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 				},
 			},
@@ -211,7 +211,7 @@ func TestFindDuplicatePeriodics(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		configs       []release_controller.ReleaseConfig
+		configs       []releasecontroller.ReleaseConfig
 		errorExpected bool
 	}{{
 		name:          "Valid configs",
@@ -240,33 +240,33 @@ func TestFindDuplicatePeriodics(t *testing.T) {
 func TestValidateUpgradeJobs(t *testing.T) {
 	testCases := []struct {
 		name        string
-		configs     []release_controller.ReleaseConfig
+		configs     []releasecontroller.ReleaseConfig
 		expectedErr bool
 	}{{
 		name: "Good config",
-		configs: []release_controller.ReleaseConfig{{
+		configs: []releasecontroller.ReleaseConfig{{
 			Name: "4.6.0-0.nightly",
-			Verify: map[string]release_controller.ReleaseVerification{
+			Verify: map[string]releasecontroller.ReleaseVerification{
 				"upgrade-minor": {
 					Upgrade:     true,
 					UpgradeFrom: "PreviousMinor",
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},
 			},
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"upgrade-minor": {
 					Upgrade: true,
-					UpgradeFromRelease: &release_controller.UpgradeRelease{
-						Prerelease: &release_controller.UpgradePrerelease{
-							VersionBounds: release_controller.UpgradeVersionBounds{
+					UpgradeFromRelease: &releasecontroller.UpgradeRelease{
+						Prerelease: &releasecontroller.UpgradePrerelease{
+							VersionBounds: releasecontroller.UpgradeVersionBounds{
 								Lower: "4.5.0",
 								Upper: "4.6.0-0",
 							},
 						},
 					},
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},
@@ -275,37 +275,37 @@ func TestValidateUpgradeJobs(t *testing.T) {
 		expectedErr: false,
 	}, {
 		name: "Bad Verification",
-		configs: []release_controller.ReleaseConfig{{
+		configs: []releasecontroller.ReleaseConfig{{
 			Name: "4.6.0-0.nightly",
-			Verify: map[string]release_controller.ReleaseVerification{
+			Verify: map[string]releasecontroller.ReleaseVerification{
 				"upgrade-minor": {
 					Upgrade:     true,
 					UpgradeFrom: "PreviousMinor",
-					UpgradeFromRelease: &release_controller.UpgradeRelease{
-						Prerelease: &release_controller.UpgradePrerelease{
-							VersionBounds: release_controller.UpgradeVersionBounds{
+					UpgradeFromRelease: &releasecontroller.UpgradeRelease{
+						Prerelease: &releasecontroller.UpgradePrerelease{
+							VersionBounds: releasecontroller.UpgradeVersionBounds{
 								Lower: "4.5.0",
 								Upper: "4.6.0-0",
 							},
 						},
 					},
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},
 			},
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"upgrade-minor": {
 					Upgrade: true,
-					UpgradeFromRelease: &release_controller.UpgradeRelease{
-						Prerelease: &release_controller.UpgradePrerelease{
-							VersionBounds: release_controller.UpgradeVersionBounds{
+					UpgradeFromRelease: &releasecontroller.UpgradeRelease{
+						Prerelease: &releasecontroller.UpgradePrerelease{
+							VersionBounds: releasecontroller.UpgradeVersionBounds{
 								Lower: "4.5.0",
 								Upper: "4.6.0-0",
 							},
 						},
 					},
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},
@@ -314,30 +314,30 @@ func TestValidateUpgradeJobs(t *testing.T) {
 		expectedErr: true,
 	}, {
 		name: "Bad Periodic",
-		configs: []release_controller.ReleaseConfig{{
+		configs: []releasecontroller.ReleaseConfig{{
 			Name: "4.6.0-0.nightly",
-			Verify: map[string]release_controller.ReleaseVerification{
+			Verify: map[string]releasecontroller.ReleaseVerification{
 				"upgrade-minor": {
 					Upgrade:     true,
 					UpgradeFrom: "PreviousMinor",
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},
 			},
-			Periodic: map[string]release_controller.ReleasePeriodic{
+			Periodic: map[string]releasecontroller.ReleasePeriodic{
 				"upgrade-minor": {
 					Upgrade:     true,
 					UpgradeFrom: "PreviousMinor",
-					UpgradeFromRelease: &release_controller.UpgradeRelease{
-						Prerelease: &release_controller.UpgradePrerelease{
-							VersionBounds: release_controller.UpgradeVersionBounds{
+					UpgradeFromRelease: &releasecontroller.UpgradeRelease{
+						Prerelease: &releasecontroller.UpgradePrerelease{
+							VersionBounds: releasecontroller.UpgradeVersionBounds{
 								Lower: "4.5.0",
 								Upper: "4.6.0-0",
 							},
 						},
 					},
-					ProwJob: &release_controller.ProwJobVerification{
+					ProwJob: &releasecontroller.ProwJobVerification{
 						Name: "release-openshift-origin-installer-e2e-aws-upgrade-4.5-stable-to-4.6-nightly",
 					},
 				},

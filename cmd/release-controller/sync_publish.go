@@ -17,7 +17,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func (c *Controller) ensureTagPointsToRelease(release *release_controller.Release, to, from string) error {
+func (c *Controller) ensureTagPointsToRelease(release *releasecontroller.Release, to, from string) error {
 	if to == from {
 		return nil
 	}
@@ -56,7 +56,7 @@ func (c *Controller) ensureTagPointsToRelease(release *release_controller.Releas
 	return nil
 }
 
-func (c *Controller) ensureImageStreamMatchesRelease(release *release_controller.Release, toNamespace, toName, from string, tags, excludeTags []string) error {
+func (c *Controller) ensureImageStreamMatchesRelease(release *releasecontroller.Release, toNamespace, toName, from string, tags, excludeTags []string) error {
 	if len(tags) == 0 {
 		klog.V(4).Infof("Ensure image stream %s/%s has contents of %s", toNamespace, toName, from)
 	} else {

@@ -252,7 +252,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		// TODO: should be refactored to be unsortedSemanticReleaseTags
 		releaseTags := sortedReleaseTags(r)
 		if includeStableTags {
-			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == release_controller.ReleaseConfigModeStable {
+			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
 					Release:  r,
 					Version:  version,
@@ -335,7 +335,7 @@ func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
 	return fmt.Sprintf("https://%s/%s", c.artifactsHost, url.PathEscape(tagName)), true
 }
 
-func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*release_controller.Release, *imagev1.TagReference, bool) {
+func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*releasecontroller.Release, *imagev1.TagReference, bool) {
 	vars := mux.Vars(req)
 	streamName := vars["release"]
 	var constraint semver.Range
@@ -383,11 +383,11 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	}
 
 	downloadURL, _ := c.urlForArtifacts(latest.Name)
-	resp := release_controller.APITag{
+	resp := releasecontroller.APITag{
 		Name:        latest.Name,
 		PullSpec:    findPublicImagePullSpec(r.Target, latest.Name),
 		DownloadURL: downloadURL,
-		Phase:       latest.Annotations[release_controller.ReleaseAnnotationPhase],
+		Phase:       latest.Annotations[releasecontroller.ReleaseAnnotationPhase],
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -459,14 +459,14 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var tags []release_controller.APITag
+	var tags []releasecontroller.APITag
 	for _, tag := range r.Tags {
 		downloadURL, _ := c.urlForArtifacts(tag.Name)
-		phase := tag.Annotations[release_controller.ReleaseAnnotationPhase]
+		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 		if len(filterPhase) > 0 && !containsString(filterPhase, phase) {
 			continue
 		}
-		tags = append(tags, release_controller.APITag{
+		tags = append(tags, releasecontroller.APITag{
 			Name:        tag.Name,
 			PullSpec:    findPublicImagePullSpec(r.Release.Target, tag.Name),
 			DownloadURL: downloadURL,
@@ -474,7 +474,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	resp := release_controller.APIRelease{
+	resp := releasecontroller.APIRelease{
 		Name: r.Release.Config.Name,
 		Tags: tags,
 	}
@@ -538,7 +538,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	summary := release_controller.APIReleaseInfo{
+	summary := releasecontroller.APIReleaseInfo{
 		Name:         tagInfo.Tag,
 		Results:      verificationJobs,
 		UpgradesTo:   c.graph.UpgradesTo(tagInfo.Tag),
@@ -782,10 +782,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
 
-	switch tagInfo.Info.Tag.Annotations[release_controller.ReleaseAnnotationPhase] {
-	case release_controller.ReleasePhaseFailed:
-		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(tagInfo.Info.Tag.Annotations[release_controller.ReleaseAnnotationMessage]))
-		if log := tagInfo.Info.Tag.Annotations[release_controller.ReleaseAnnotationLog]; len(log) > 0 {
+	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
+	case releasecontroller.ReleasePhaseFailed:
+		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationMessage]))
+		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
 			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
 		} else {
 			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
@@ -809,7 +809,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 		for _, from := range supportedUpgrades {
 			if !upgradeFound[from] {
-				upgradesTo = append(upgradesTo, release_controller.UpgradeHistory{
+				upgradesTo = append(upgradesTo, releasecontroller.UpgradeHistory{
 					From:  from,
 					To:    tagInfo.Tag,
 					Total: -1,
@@ -850,9 +850,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				if len(urls) > 2 {
 					for _, url := range urls {
 						switch upgrade.History[url].State {
-						case release_controller.ReleaseVerificationStateSucceeded:
+						case releasecontroller.ReleaseVerificationStateSucceeded:
 							fmt.Fprintf(w, ` <a class="text-success" href="%s">S</a>`, template.HTMLEscapeString(url))
-						case release_controller.ReleaseVerificationStateFailed:
+						case releasecontroller.ReleaseVerificationStateFailed:
 							fmt.Fprintf(w, ` <a class="text-danger" href="%s">F</a>`, template.HTMLEscapeString(url))
 						default:
 							fmt.Fprintf(w, ` <a class="" href="%s">P</a>`, template.HTMLEscapeString(url))
@@ -861,9 +861,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				} else {
 					for _, url := range urls {
 						switch upgrade.History[url].State {
-						case release_controller.ReleaseVerificationStateSucceeded:
+						case releasecontroller.ReleaseVerificationStateSucceeded:
 							fmt.Fprintf(w, ` <a class="text-success" href="%s">Success</a>`, template.HTMLEscapeString(url))
-						case release_controller.ReleaseVerificationStateFailed:
+						case releasecontroller.ReleaseVerificationStateFailed:
 							fmt.Fprintf(w, ` <a class="text-danger" href="%s">Failed</a>`, template.HTMLEscapeString(url))
 						default:
 							fmt.Fprintf(w, ` <a class="" href="%s">Pending</a>`, template.HTMLEscapeString(url))
@@ -899,9 +899,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				if len(urls) > 2 {
 					for _, url := range urls {
 						switch upgrade.History[url].State {
-						case release_controller.ReleaseVerificationStateSucceeded:
+						case releasecontroller.ReleaseVerificationStateSucceeded:
 							fmt.Fprintf(w, ` <a class="text-success" href="%s">S</a>`, template.HTMLEscapeString(url))
-						case release_controller.ReleaseVerificationStateFailed:
+						case releasecontroller.ReleaseVerificationStateFailed:
 							fmt.Fprintf(w, ` <a class="text-danger" href="%s">F</a>`, template.HTMLEscapeString(url))
 						default:
 							fmt.Fprintf(w, ` <a class="" href="%s">P</a>`, template.HTMLEscapeString(url))
@@ -910,9 +910,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				} else {
 					for _, url := range urls {
 						switch upgrade.History[url].State {
-						case release_controller.ReleaseVerificationStateSucceeded:
+						case releasecontroller.ReleaseVerificationStateSucceeded:
 							fmt.Fprintf(w, ` <a class="text-success" href="%s">Success</a>`, template.HTMLEscapeString(url))
-						case release_controller.ReleaseVerificationStateFailed:
+						case releasecontroller.ReleaseVerificationStateFailed:
 							fmt.Fprintf(w, ` <a class="text-danger" href="%s">Failed</a>`, template.HTMLEscapeString(url))
 						default:
 							fmt.Fprintf(w, ` <a class="" href="%s">Pending</a>`, template.HTMLEscapeString(url))
@@ -969,7 +969,7 @@ var (
 	errStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
 )
 
-func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*release_controller.Release, *imagev1.TagReference, error) {
+func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*releasecontroller.Release, *imagev1.TagReference, error) {
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -983,7 +983,7 @@ func (c *Controller) latestForStream(streamName string, constraint semver.Range,
 			continue
 		}
 		// find all accepted tags, then sort by semantic version
-		tags := unsortedSemanticReleaseTags(r, release_controller.ReleasePhaseAccepted)
+		tags := unsortedSemanticReleaseTags(r, releasecontroller.ReleasePhaseAccepted)
 		sort.Sort(tags)
 		for _, ver := range tags {
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
@@ -1073,7 +1073,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				var out []string
 				switch r.Release.Config.As {
-				case release_controller.ReleaseConfigModeStable:
+				case releasecontroller.ReleaseConfigModeStable:
 					if len(r.Release.Config.Message) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
@@ -1153,7 +1153,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			Tags:    sortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != release_controller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
 			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
@@ -1164,7 +1164,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		if r.Config.As != release_controller.ReleaseConfigModeStable {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 		}
 		page.Streams = append(page.Streams, s)
@@ -1219,7 +1219,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				}
 				var out []string
 				switch r.Release.Config.As {
-				case release_controller.ReleaseConfigModeStable:
+				case releasecontroller.ReleaseConfigModeStable:
 					if len(r.Release.Config.Message) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
@@ -1296,7 +1296,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			Tags:    sortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != release_controller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
 			if ok, _, queueAfter := isReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
@@ -1311,7 +1311,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		if r.Config.As != release_controller.ReleaseConfigModeStable {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
 		}
 		page.Streams = append(page.Streams, s)
@@ -1330,10 +1330,10 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
 	unreadyCount := 0
 	for i := 0; unreadyCount < maxUnready && i < len(tags); i++ {
-		switch tags[i].Annotations[release_controller.ReleaseAnnotationPhase] {
-		case release_controller.ReleasePhaseReady:
+		switch tags[i].Annotations[releasecontroller.ReleaseAnnotationPhase] {
+		case releasecontroller.ReleasePhaseReady:
 			continue
-		case release_controller.ReleasePhaseAccepted:
+		case releasecontroller.ReleasePhaseAccepted:
 			return false
 		default:
 			unreadyCount++
@@ -1387,7 +1387,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	var release *release_controller.Release
+	var release *releasecontroller.Release
 
 	for _, stream := range imageStreams {
 		r, ok, err := c.releaseDefinition(stream)
@@ -1407,8 +1407,8 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	}
 
 	displayConfig := false
-	periodicJobs := make(map[string]release_controller.ReleasePeriodic)
-	verificationJobs := make(map[string]release_controller.ReleaseVerification)
+	periodicJobs := make(map[string]releasecontroller.ReleasePeriodic)
+	verificationJobs := make(map[string]releasecontroller.ReleaseVerification)
 
 	if jobType == "periodic" {
 		for name, periodic := range release.Config.Periodic {

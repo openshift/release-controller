@@ -1,4 +1,4 @@
-package release_controller
+package releasecontroller
 
 import (
 	"bytes"
