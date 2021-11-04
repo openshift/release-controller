@@ -53,7 +53,7 @@ var (
 
 // VerifyBugs takes a list of bugzilla bug IDs and for each bug changes the bug status to VERIFIED if bug was reviewed and
 // lgtm'd by the bug's QA Contect
-func (c *Verifier) VerifyBugs(bugs []int) []error {
+func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 	bzPRs, errs := getPRs(bugs, c.bzClient)
 	for bugID, extPRs := range bzPRs {
 		bug, err := c.bzClient.GetBug(bugID)
@@ -62,16 +62,16 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 			continue
 		}
 		var success bool
-		message := ""
+		message := fmt.Sprintf("Bugfix included in accepted release %s", tagName)
 		if bug.Status != "ON_QA" {
 			// In case bug has already been moved to VERIFIED, completely ignore
-			if bug.Status != "VERIFIED" {
-				message = "Bug is not in ON_QA status; bug will not be automatically moved to VERIFIED"
+			if bug.Status == "VERIFIED" {
+				message = ""
+			} else {
+				message = fmt.Sprintf("%s\nBug is not in ON_QA status; bug will not be automatically moved to VERIFIED", message)
 			}
-			continue
 		} else {
 			var unapprovedPRs []pr
-			var unlabeledPRs []pr
 			var bugErrs []error
 			for _, extPR := range extPRs {
 				comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
@@ -91,44 +91,22 @@ func (c *Verifier) VerifyBugs(bugs []int) []error {
 				if !prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(extPR.org, extPR.repo).ReviewActsAsLgtm) {
 					unapprovedPRs = append(unapprovedPRs, extPR)
 				}
-				labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
-				if err != nil {
-					newErr := fmt.Errorf("Unable to get labels for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
-					errs = append(errs, newErr)
-					bugErrs = append(bugErrs, newErr)
-				}
-				var hasLabel bool
-				for _, label := range labels {
-					if label.Name == "qe-approved" {
-						hasLabel = true
-						break
-					}
-				}
-				if !hasLabel {
-					unlabeledPRs = append(unlabeledPRs, extPR)
-				}
 			}
-			bzCFVerified := (len(bug.Verified) == 1 && bug.Verified[0] == "Tested")
-			if len(unapprovedPRs) > 0 || len(unlabeledPRs) > 0 || len(bugErrs) > 0 || !bzCFVerified {
-				message = "Bug will not be automatically moved to VERIFIED for the following reasons:"
+			if len(unapprovedPRs) > 0 || len(bugErrs) > 0 {
+				message = fmt.Sprintf("%s\nBug will not be automatically moved to VERIFIED for the following reasons:", message)
 				for _, extPR := range unapprovedPRs {
-					message = fmt.Sprintf("%s\n- PR %s/%s#%d not appoved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
-				}
-				for _, extPR := range unlabeledPRs {
-					message = fmt.Sprintf("%s\n- PR %s/%s#%d does not have the qe-approved label", message, extPR.org, extPR.repo, extPR.prNum)
-				}
-				if !bzCFVerified {
-					message = fmt.Sprintf("%s\n- `Verified` field of this bug is not set to `Tested`", message)
+					message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
 				}
 				for _, err := range bugErrs {
 					message = fmt.Sprintf("%s\n- %s", message, err)
 				}
+				message = fmt.Sprintf("%s\n\nThis bug must now be manually moved to VERIFIED by %s", message, bug.QAContactDetail.Name)
 			} else {
 				success = true
 			}
 		}
 		if success {
-			message = "All linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED"
+			message = fmt.Sprintf("%s\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED", message)
 		}
 		if message != "" {
 			comments, err := c.bzClient.GetComments(bugID)
