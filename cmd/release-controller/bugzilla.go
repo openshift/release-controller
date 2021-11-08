@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
-
-	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	v1 "github.com/openshift/api/image/v1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -138,7 +137,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
 	var errs []error
-	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs, tag.Name)...); len(errs) != 0 {
+	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs)...); len(errs) != 0 {
 		klog.V(4).Infof("Error(s) in bugzilla verifier: %v", utilerrors.NewAggregate(errs))
 		c.bugzillaErrorMetrics.WithLabelValues(bzVerifier).Inc()
 		return utilerrors.NewAggregate(errs)
