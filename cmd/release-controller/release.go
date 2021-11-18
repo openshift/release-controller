@@ -69,7 +69,8 @@ func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*releasecontrol
 }
 
 func parseReleaseConfig(data string, configCache *lru.Cache) (*releasecontroller.ReleaseConfig, error) {
-	if len(data) > 8*1024 {
+	// TODO: bumping this from 8 to 12 to allow for current releases to continue processing.  We need to consider improvements in the space before bumping again.
+	if len(data) > 12*1024 {
 		return nil, fmt.Errorf("release config must be less than 8k")
 	}
 	if configCache != nil {
