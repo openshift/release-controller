@@ -36,7 +36,7 @@ github.com/PuerkitoBio/purell
 github.com/PuerkitoBio/urlesc
 # github.com/andygrunwald/go-gerrit v0.0.0-20210709065208-9d38b0be0268
 github.com/andygrunwald/go-gerrit
-# github.com/andygrunwald/go-jira v1.13.0
+# github.com/andygrunwald/go-jira v1.14.0
 github.com/andygrunwald/go-jira
 # github.com/awalterschulze/gographviz v0.0.0-20190221210632-1e9ccb565bca
 ## explicit
@@ -113,8 +113,6 @@ github.com/cespare/xxhash/v2
 github.com/clarketm/json
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/dgrijalva/jwt-go v3.2.0+incompatible
-github.com/dgrijalva/jwt-go
 # github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 github.com/dgrijalva/jwt-go/v4
 # github.com/dustin/go-humanize v1.0.0
@@ -125,7 +123,7 @@ github.com/emicklei/go-restful
 github.com/emicklei/go-restful/log
 # github.com/evanphx/json-patch v4.11.0+incompatible
 github.com/evanphx/json-patch
-# github.com/fatih/structs v1.0.0
+# github.com/fatih/structs v1.1.0
 github.com/fatih/structs
 # github.com/felixge/fgprof v0.9.1
 github.com/felixge/fgprof
@@ -153,6 +151,8 @@ github.com/go-openapi/swag
 # github.com/gogo/protobuf v1.3.2
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
+# github.com/golang-jwt/jwt v3.2.1+incompatible
+github.com/golang-jwt/jwt
 # github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 ## explicit
 github.com/golang/groupcache
@@ -331,7 +331,7 @@ github.com/tektoncd/pipeline/pkg/contexts
 github.com/tektoncd/pipeline/pkg/list
 github.com/tektoncd/pipeline/pkg/reconciler/pipeline/dag
 github.com/tektoncd/pipeline/pkg/substitution
-# github.com/trivago/tgo v1.0.1
+# github.com/trivago/tgo v1.0.7
 github.com/trivago/tgo/tcontainer
 github.com/trivago/tgo/treflect
 # go.opencensus.io v0.23.0
@@ -556,6 +556,8 @@ google.golang.org/protobuf/types/pluginpb
 gopkg.in/fsnotify.v1
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
+# gopkg.in/ini.v1 v1.62.0
+gopkg.in/ini.v1
 # gopkg.in/robfig/cron.v2 v2.0.0-20150107220207-be2e0b0deed5
 ## explicit
 gopkg.in/robfig/cron.v2
@@ -955,7 +957,7 @@ k8s.io/kube-openapi/pkg/generators
 k8s.io/kube-openapi/pkg/generators/rules
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
-# k8s.io/test-infra v0.0.0-20211110153326-74a5a2f770f3
+# k8s.io/test-infra v0.0.0-20211130120656-618b931b1fca
 ## explicit
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
