@@ -46,5 +46,5 @@ require (
 	k8s.io/code-generator v0.21.3
 	k8s.io/klog v1.0.0
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
-	k8s.io/test-infra v0.0.0-20211130120656-618b931b1fca
+	k8s.io/test-infra v0.0.0-20211201201517-885e4a13b661
 )
