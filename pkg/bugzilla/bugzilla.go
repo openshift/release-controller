@@ -2,12 +2,8 @@ package bugzilla
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
-	"time"
 
 	"k8s.io/klog"
-	"k8s.io/kube-openapi/pkg/util/sets"
 	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/plugins"
@@ -43,14 +39,6 @@ type pr struct {
 	prNum int
 }
 
-var (
-	// bzAssignRegex matches the QA assignment comment made by the openshift-ci-robot
-	bzAssignRegex = regexp.MustCompile(`Requesting review from QA contact:[[:space:]]+/cc @[[:alnum:]]+`)
-	// from prow lgtm plugin
-	lgtmRe       = regexp.MustCompile(`(?mi)^/lgtm(?: no-issue)?\s*$`)
-	lgtmCancelRe = regexp.MustCompile(`(?mi)^/lgtm cancel\s*$`)
-)
-
 // VerifyBugs takes a list of bugzilla bug IDs and for each bug changes the bug status to VERIFIED if bug was reviewed and
 // lgtm'd by the bug's QA Contect
 func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
@@ -71,31 +59,30 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 				message = fmt.Sprintf("%s\nBug is not in ON_QA status; bug will not be automatically moved to VERIFIED", message)
 			}
 		} else {
-			var unapprovedPRs []pr
+			var unlabeledPRs []pr
 			var bugErrs []error
 			for _, extPR := range extPRs {
-				comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
+				labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
 				if err != nil {
-					newErr := fmt.Errorf("Unable to get comments for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
+					newErr := fmt.Errorf("Unable to get labels for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
 					errs = append(errs, newErr)
 					bugErrs = append(bugErrs, newErr)
-					continue
 				}
-				reviews, err := c.ghClient.ListReviews(extPR.org, extPR.repo, extPR.prNum)
-				if err != nil {
-					newErr := fmt.Errorf("Unable to get reviews for github pull %s/%s#%d: %v", extPR.org, extPR.repo, extPR.prNum, err)
-					errs = append(errs, newErr)
-					bugErrs = append(bugErrs, newErr)
-					continue
+				var hasLabel bool
+				for _, label := range labels {
+					if label.Name == "qe-approved" {
+						hasLabel = true
+						break
+					}
 				}
-				if !prReviewedByQA(comments, reviews, c.pluginConfig.LgtmFor(extPR.org, extPR.repo).ReviewActsAsLgtm) {
-					unapprovedPRs = append(unapprovedPRs, extPR)
+				if !hasLabel {
+					unlabeledPRs = append(unlabeledPRs, extPR)
 				}
 			}
-			if len(unapprovedPRs) > 0 || len(bugErrs) > 0 {
+			if len(unlabeledPRs) > 0 || len(bugErrs) > 0 {
 				message = fmt.Sprintf("%s\nBug will not be automatically moved to VERIFIED for the following reasons:", message)
-				for _, extPR := range unapprovedPRs {
-					message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
+				for _, extPR := range unlabeledPRs {
+					message = fmt.Sprintf("%s\n- PR %s/%s#%d does not have the qe-approved label", message, extPR.org, extPR.repo, extPR.prNum)
 				}
 				for _, err := range bugErrs {
 					message = fmt.Sprintf("%s\n- %s", message, err)
@@ -176,64 +163,4 @@ func getPRs(input []int, bzClient bugzilla.Client) (map[int][]pr, []error) {
 		}
 	}
 	return bzPRs, errs
-}
-
-func updateLGTMs(lgtms map[string]time.Time, lgtmCancels map[string]time.Time, body, login string, submitted time.Time) {
-	if lgtmRe.MatchString(body) {
-		lgtms[login] = submitted
-		return
-	}
-	if lgtmCancelRe.MatchString(body) {
-		lgtmCancels[login] = submitted
-		return
-	}
-}
-
-// prReviewedByQA looks through PR comments and identifies if an assigned
-// QA contact lgtm'd the PR
-func prReviewedByQA(comments []github.IssueComment, reviews []github.Review, reviewAsLGTM bool) bool {
-	lgtms := make(map[string]time.Time)
-	lgtmCancels := make(map[string]time.Time)
-	qaContacts := sets.NewString()
-	for _, comment := range comments {
-		updateLGTMs(lgtms, lgtmCancels, comment.Body, comment.User.Login, comment.UpdatedAt)
-		bz := bzAssignRegex.FindString(comment.Body)
-		if bz != "" {
-			splitbz := strings.Split(bz, "@")
-			if len(splitbz) == 2 {
-				qaContacts.Insert(splitbz[1])
-			}
-		}
-	}
-	for _, review := range reviews {
-		updateLGTMs(lgtms, lgtmCancels, review.Body, review.User.Login, review.SubmittedAt)
-		if reviewAsLGTM {
-			if review.State == github.ReviewStateApproved {
-				lgtms[review.User.Login] = review.SubmittedAt
-				continue
-			}
-			if review.State == github.ReviewStateChangesRequested {
-				lgtmCancels[review.User.Login] = review.SubmittedAt
-				continue
-			}
-		}
-	}
-	finalLGTMs := sets.NewString()
-	for user, lgtmTime := range lgtms {
-		if cancelTime, ok := lgtmCancels[user]; ok {
-			if cancelTime.After(lgtmTime) {
-				continue
-			}
-		}
-		finalLGTMs.Insert(user)
-	}
-	for contact := range qaContacts {
-		for lgtm := range finalLGTMs {
-			if contact == lgtm {
-				klog.V(4).Infof("QA Contact %s lgtm'd this PR", contact)
-				return true
-			}
-		}
-	}
-	return false
 }
