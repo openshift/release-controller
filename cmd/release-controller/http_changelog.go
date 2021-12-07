@@ -21,10 +21,20 @@ var (
 
 type dockerImageConfig struct {
 	Architecture string `json:"architecture"`
+	Os           string `json:"os"`
 }
 
-type releaseInfoConfig struct {
+type imageInfoConfig struct {
 	Config *dockerImageConfig `json:"config"`
+	Digest string             `json:"digest"`
+	Name   string             `json:"name"`
+}
+
+func (c imageInfoConfig) generateDigestPullSpec() string {
+	if strings.Contains(c.Name, "@sha256:") {
+		return fmt.Sprintf("%s@%s", strings.Split(c.Name, "@sha256:")[0], c.Digest)
+	}
+	return fmt.Sprintf("%s@%s", strings.Split(c.Name, ":")[0], c.Digest)
 }
 
 type renderResult struct {
@@ -32,23 +42,36 @@ type renderResult struct {
 	err error
 }
 
+func (c *Controller) getImageInfo(pullSpec string) (*imageInfoConfig, error) {
+	// Get the ImageInfo
+	imageInfo, err := c.releaseInfo.ImageInfo(pullSpec, c.architecture)
+	if err != nil {
+		return nil, fmt.Errorf("could not get image info for from pullSpec %s: %v", pullSpec, err)
+	}
+	config := imageInfoConfig{}
+	if err := json.Unmarshal([]byte(imageInfo), &config); err != nil {
+		return nil, fmt.Errorf("could not unmarshal image info for from pullSpec %s: %v", pullSpec, err)
+	}
+	return &config, nil
+}
+
 func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag string, toPull string, toTag string) {
-	out, err := c.releaseInfo.ChangeLog(fromPull, toPull)
+	fromImage, err := c.getImageInfo(fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
 		return
 	}
 
-	op, err := c.releaseInfo.ReleaseInfo(toPull)
+	toImage, err := c.getImageInfo(toPull)
 	if err != nil {
-		ch <- renderResult{err: fmt.Errorf("could not get release info for pullSpec %s: %v", toPull, err)}
+		ch <- renderResult{err: err}
 		return
 	}
 
-	// Extract the architecture out of the ReleaseInfo
-	releaseInfo := releaseInfoConfig{}
-	if err := json.Unmarshal([]byte(op), &releaseInfo); err != nil {
-		ch <- renderResult{err: fmt.Errorf("could not unmarshal release info for pullSpec %s: %v", toPull, err)}
+	// Generate the change log from image digests
+	out, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec())
+	if err != nil {
+		ch <- renderResult{err: err}
 		return
 	}
 
@@ -56,13 +79,13 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 	// needs to be passed into the RHCOS diff engine (x86_64).
 	var architecture, archExtension string
 
-	if releaseInfo.Config.Architecture == "amd64" {
+	if toImage.Config.Architecture == "amd64" {
 		architecture = "x86_64"
-	} else if releaseInfo.Config.Architecture == "arm64" {
+	} else if toImage.Config.Architecture == "arm64" {
 		architecture = "aarch64"
 		archExtension = fmt.Sprintf("-%s", architecture)
 	} else {
-		architecture = releaseInfo.Config.Architecture
+		architecture = toImage.Config.Architecture
 		archExtension = fmt.Sprintf("-%s", architecture)
 	}
 

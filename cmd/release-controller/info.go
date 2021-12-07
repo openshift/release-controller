@@ -30,7 +30,7 @@ type CachingReleaseInfo struct {
 	cache *groupcache.Group
 }
 
-func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
+func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) ReleaseInfo {
 	cache := groupcache.NewGroup("release", size, groupcache.GetterFunc(func(ctx context.Context, key string, sink groupcache.Sink) error {
 		var s string
 		var err error
@@ -59,6 +59,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 			}
 		case "releaseinfo":
 			s, err = info.ReleaseInfo(parts[1])
+		case "imageinfo":
+			s, err = info.ImageInfo(parts[1], architecture)
 		}
 		if err != nil {
 			return err
@@ -101,12 +103,19 @@ func (c *CachingReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, erro
 	return releaseInfoToUpgradeInfo(s)
 }
 
+func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"imageinfo", image}, "\x00"), groupcache.StringSink(&s))
+	return s, err
+}
+
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]int, error)
 	ChangeLog(from, to string) (string, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
+	ImageInfo(image, architecture string) (string, error)
 }
 
 type ExecReleaseInfo struct {
@@ -277,10 +286,21 @@ func releaseInfoToUpgradeInfo(s string) (ReleaseUpgradeInfo, error) {
 }
 
 func (r *ExecReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, error) {
-	if _, err := imagereference.Parse(image); err != nil {
-		return ReleaseUpgradeInfo{}, fmt.Errorf("%s is not an image reference: %v", image, err)
+	out, err := r.ReleaseInfo(image)
+	if err != nil {
+		return ReleaseUpgradeInfo{}, fmt.Errorf("could not get upgrade info for %s: %v", image, err)
 	}
-	cmd := []string{"oc", "adm", "release", "info", "-o", "json", image}
+	return releaseInfoToUpgradeInfo(out)
+}
+
+func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) {
+	if _, err := imagereference.Parse(image); err != nil {
+		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
+	}
+	if len(architecture) == 0 || architecture == "multi" {
+		architecture = "amd64"
+	}
+	cmd := []string{"oc", "image", "info", "--filter-by-os", fmt.Sprintf("linux/%s", architecture), "-o", "json", image}
 
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
@@ -291,7 +311,7 @@ func (r *ExecReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, error) 
 
 	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
 	if err != nil {
-		return ReleaseUpgradeInfo{}, fmt.Errorf("could not initialize a new SPDY executor: %v", err)
+		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
 	}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	if err := e.Stream(remotecommand.StreamOptions{
@@ -299,14 +319,14 @@ func (r *ExecReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, error) 
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+		klog.V(4).Infof("Failed to get image info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
 		}
-		return ReleaseUpgradeInfo{}, fmt.Errorf("could not get release info for %s: %v", image, msg)
+		return "", fmt.Errorf("could not get image info for %s: %v", image, msg)
 	}
-	return releaseInfoToUpgradeInfo(out.String())
+	return out.String(), nil
 }
 
 func (r *ExecReleaseInfo) refreshPod() error {
@@ -352,6 +372,7 @@ func (r *ExecReleaseInfo) refreshPod() error {
 }
 
 func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
+	isTrue := true
 	spec := appsv1.StatefulSetSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
@@ -388,6 +409,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
 					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
+					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-pull-secret", Optional: &isTrue}}},
 				},
 				Containers: []corev1.Container{
 					{
@@ -401,6 +423,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "git", MountPath: "/tmp/git/"},
 							{Name: "git-credentials", MountPath: "/tmp/.git-credentials", SubPath: ".git-credentials"},
+							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
@@ -411,17 +434,21 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							"/bin/bash",
 							"-c",
 							`#!/bin/bash
-              set -euo pipefail
-              trap 'kill $(jobs -p); exit 0' TERM
+							set -euo pipefail
+							trap 'kill $(jobs -p); exit 0' TERM
 
-              git config --global credential.helper store
-              git config --global user.name test
-              git config --global user.email test@test.com
-              oc registry login
-              while true; do
-                sleep 180 & wait
-              done
-              `,
+							# ensure we are logged in to our registry
+							mkdir -p /tmp/.docker/
+							cp /tmp/pull-secret/* /tmp/.docker/ || true
+
+							git config --global credential.helper store
+							git config --global user.name test
+							git config --global user.email test@test.com
+							oc registry login
+							while true; do
+							  sleep 180 & wait
+							done
+							`,
 						},
 					},
 				},

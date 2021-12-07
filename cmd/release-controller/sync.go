@@ -405,7 +405,19 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				}
 				if tags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
-						if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
+						fromImage, err := c.getImageInfo(tags[0].Name)
+						if err != nil {
+							klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
+							return
+						}
+
+						toImage, err := c.getImageInfo(tag.Name)
+						if err != nil {
+							klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
+							return
+						}
+
+						if _, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec()); err != nil {
 							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 						}
 					}()
@@ -456,7 +468,19 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			}
 			if tags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 				go func() {
-					if _, err := c.releaseInfo.ChangeLog(tags[0].Name, tag.Name); err != nil {
+					fromImage, err := c.getImageInfo(tags[0].Name)
+					if err != nil {
+						klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
+						return
+					}
+
+					toImage, err := c.getImageInfo(tag.Name)
+					if err != nil {
+						klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
+						return
+					}
+
+					if _, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec()); err != nil {
 						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 					}
 				}()

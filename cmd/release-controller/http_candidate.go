@@ -363,8 +363,13 @@ func (c *Controller) stableReleases() (*StableReferences, error) {
 }
 
 func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagReference, error) {
+	imageInfo, err := c.getImageInfo(tag.From.Name)
+	if err != nil {
+		return nil, fmt.Errorf("unable to determine image info for %s: %v", tag.From.Name, err)
+	}
+
 	// Call oc adm release info to get previous nightly info for the stable release
-	op, err := c.releaseInfo.ReleaseInfo(tag.From.Name)
+	op, err := c.releaseInfo.ReleaseInfo(imageInfo.generateDigestPullSpec())
 	if err != nil {
 		// releaseinfo not found, old tag
 		return nil, fmt.Errorf("could not get release info for tag %s: %v", tag.From.Name, err)

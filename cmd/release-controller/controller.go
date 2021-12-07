@@ -138,6 +138,8 @@ type Controller struct {
 	authenticationMessage string
 
 	buildClusterDistributions []ClusterDistribution
+
+	architecture string
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -156,6 +158,7 @@ func NewController(
 	softDeleteReleaseTags bool,
 	authenticationMessage string,
 	clusterGroups []string,
+	architecture string,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -212,6 +215,8 @@ func NewController(
 
 		softDeleteReleaseTags: softDeleteReleaseTags,
 		authenticationMessage: authenticationMessage,
+
+		architecture: architecture,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)

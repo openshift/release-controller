@@ -656,7 +656,13 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	out, err := c.releaseInfo.ReleaseInfo(tagPullSpec)
+	imageInfo, err := c.getImageInfo(tagPullSpec)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to determine image info for %s: %v", tagPullSpec, err), http.StatusBadRequest)
+		return
+	}
+
+	out, err := c.releaseInfo.ReleaseInfo(imageInfo.generateDigestPullSpec())
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal error: %v", err), http.StatusInternalServerError)
 		return
@@ -1358,7 +1364,11 @@ func relTime(a, b time.Time, albl, blbl string) string {
 }
 
 func (c *Controller) getSupportedUpgrades(tagPull string) ([]string, error) {
-	tagUpgradeInfo, err := c.releaseInfo.UpgradeInfo(tagPull)
+	imageInfo, err := c.getImageInfo(tagPull)
+	if err != nil {
+		return nil, fmt.Errorf("unable to determine image info for %s: %v", tagPull, err)
+	}
+	tagUpgradeInfo, err := c.releaseInfo.UpgradeInfo(imageInfo.generateDigestPullSpec())
 	if err != nil {
 		return nil, fmt.Errorf("could not get release info for tag %s: %v", tagPull, err)
 	}
