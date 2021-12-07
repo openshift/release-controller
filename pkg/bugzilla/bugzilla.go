@@ -51,16 +51,16 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 		}
 		var success bool
 		message := fmt.Sprintf("Bugfix included in accepted release %s", tagName)
+		var unlabeledPRs []pr
+		var bugErrs []error
 		if bug.Status != "ON_QA" {
 			// In case bug has already been moved to VERIFIED, completely ignore
 			if bug.Status == "VERIFIED" {
 				message = ""
 			} else {
-				message = fmt.Sprintf("%s\nBug is not in ON_QA status; bug will not be automatically moved to VERIFIED", message)
+				bugErrs = append(bugErrs, fmt.Errorf("Bug is not in ON_QA status"))
 			}
 		} else {
-			var unlabeledPRs []pr
-			var bugErrs []error
 			for _, extPR := range extPRs {
 				labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
 				if err != nil {
@@ -79,22 +79,22 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 					unlabeledPRs = append(unlabeledPRs, extPR)
 				}
 			}
-			if len(unlabeledPRs) > 0 || len(bugErrs) > 0 {
-				message = fmt.Sprintf("%s\nBug will not be automatically moved to VERIFIED for the following reasons:", message)
-				for _, extPR := range unlabeledPRs {
-					message = fmt.Sprintf("%s\n- PR %s/%s#%d does not have the qe-approved label", message, extPR.org, extPR.repo, extPR.prNum)
-				}
-				for _, err := range bugErrs {
-					message = fmt.Sprintf("%s\n- %s", message, err)
-				}
-				message = fmt.Sprintf("%s\n\nThis bug must now be manually moved to VERIFIED", message)
-				// Sometimes the QAContactDetail is nil; if not nil, include name of QA contact in message
-				if bug.QAContactDetail != nil {
-					message = fmt.Sprintf("%s by %s", message, bug.QAContactDetail.Name)
-				}
-			} else {
-				success = true
+		}
+		if len(unlabeledPRs) > 0 || len(bugErrs) > 0 {
+			message = fmt.Sprintf("%s\nBug will not be automatically moved to VERIFIED for the following reasons:", message)
+			for _, extPR := range unlabeledPRs {
+				message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
 			}
+			for _, err := range bugErrs {
+				message = fmt.Sprintf("%s\n- %s", message, err)
+			}
+			message = fmt.Sprintf("%s\n\nThis bug must now be manually moved to VERIFIED", message)
+			// Sometimes the QAContactDetail is nil; if not nil, include name of QA contact in message
+			if bug.QAContactDetail != nil {
+				message = fmt.Sprintf("%s by %s", message, bug.QAContactDetail.Name)
+			}
+		} else {
+			success = true
 		}
 		if success {
 			message = fmt.Sprintf("%s\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED", message)
