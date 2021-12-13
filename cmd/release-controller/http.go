@@ -800,7 +800,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+	// Disable the installation instructions for manifest list based releases
+	if c.architecture != "multi" {
+		renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+	}
 
 	renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
 
