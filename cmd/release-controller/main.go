@@ -326,7 +326,7 @@ func (o *options) Run() error {
 	start = time.Now()
 	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
-	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024)
+	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
 	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
 	klog.V(4).Infof("5: %v", time.Now().Sub(start))
@@ -351,6 +351,7 @@ func (o *options) Run() error {
 		o.softDeleteReleaseTags,
 		o.AuthenticationMessage,
 		o.ClusterGroups,
+		architecture,
 	)
 	klog.V(4).Infof("7: %v", time.Now().Sub(start))
 
