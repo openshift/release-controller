@@ -6,8 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"strings"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -91,18 +92,18 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if config == nil {
 		err := fmt.Errorf("the prow job %s is not valid: no prow jobs have been defined", jobName)
 		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
+		return nil, releasecontroller.CreateTerminalError(err)
 	}
 	periodicConfig, ok := hasProwJob(config, jobName)
 	if !ok {
 		err := fmt.Errorf("the prow job %s is not valid: no job with that name", jobName)
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
+		return nil, releasecontroller.CreateTerminalError(err)
 	}
 	if err := validateProwJob(periodicConfig); err != nil {
 		err := fmt.Errorf("the prowjob %s is not valid: %v", jobName, err)
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
-		return nil, terminalError{err}
+		return nil, releasecontroller.CreateTerminalError(err)
 	}
 
 	spec := prowutil.PeriodicSpec(*periodicConfig)
@@ -117,8 +118,8 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			spec.Cluster = buildClusterDistribution.Get()
 		}
 	}
-	mirror, _ := c.getMirror(release, releaseTag.Name)
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.architecture)
+	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if verifyType.Upgrade && len(previousTag) > 0 {
 		pj.Annotations[releasecontroller.ReleaseAnnotationFromTag] = previousTag
 	}
-	pj.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.architecture
+	pj.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.Architecture
 	out, err := c.prowClient.Create(context.TODO(), objectToUnstructured(&pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
@@ -166,7 +167,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	}
 	if errors.IsInvalid(err) {
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", "the prow job %s is not valid: %v", jobName, err)
-		return nil, terminalError{err}
+		return nil, releasecontroller.CreateTerminalError(err)
 	}
 	if err != nil {
 		return nil, err

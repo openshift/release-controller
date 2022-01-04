@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"os/exec"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -339,9 +340,9 @@ func (a *AuditTracker) Sync(release *releasecontroller.Release) {
 
 		found.Insert(tag.Name)
 
-		id := findImageIDForTag(from, tag.Name)
+		id := releasecontroller.FindImageIDForTag(from, tag.Name)
 		// TODO: this should really be the digest
-		location := findPublicImagePullSpec(from, tag.Name)
+		location := releasecontroller.FindPublicImagePullSpec(from, tag.Name)
 		existing, ok := a.records[tag.Name]
 		if !ok {
 			a.records[tag.Name] = &AuditRecord{

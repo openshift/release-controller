@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"sort"
 	"strings"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -150,12 +151,12 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 	}
 	switch upgradeType {
 	case releasecontroller.ReleaseUpgradeFromPrevious:
-		if tags := sortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 0 {
+		if tags := releasecontroller.SortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 0 {
 			previousTag = tags[0].Name
 			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousMinus1:
-		if tags := sortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 1 {
+		if tags := releasecontroller.SortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 1 {
 			previousTag = tags[1].Name
 			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 		}
@@ -164,9 +165,9 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 			version.Minor--
 			if ref, err := c.stableReleases(); err == nil {
 				for _, stable := range ref.Releases {
-					versions := unsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
+					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
-					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
+					if v := releasecontroller.FirstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 						previousTag = v.Tag.Name
 						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 						break
@@ -178,9 +179,9 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 		if version, err := semver.Parse(releaseTag.Name); err == nil {
 			if ref, err := c.stableReleases(); err == nil {
 				for _, stable := range ref.Releases {
-					versions := unsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
+					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
-					if v := firstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
+					if v := releasecontroller.FirstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
 						previousTag = v.Tag.Name
 						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 						break

@@ -1,11 +1,10 @@
-package main
+package releasecontroller
 
 import (
 	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"io"
 	"sort"
 	"sync"
@@ -22,16 +21,16 @@ import (
 
 type UpgradeGraph struct {
 	lock         sync.Mutex
-	to           map[string]map[string]*releasecontroller.UpgradeHistory
+	to           map[string]map[string]*UpgradeHistory
 	from         map[string]sets.String
-	architecture string
+	Architecture string
 }
 
 func NewUpgradeGraph(architecture string) *UpgradeGraph {
 	return &UpgradeGraph{
-		to:           make(map[string]map[string]*releasecontroller.UpgradeHistory),
+		to:           make(map[string]map[string]*UpgradeHistory),
 		from:         make(map[string]sets.String),
-		architecture: architecture,
+		Architecture: architecture,
 	}
 }
 
@@ -40,13 +39,13 @@ type upgradeEdge struct {
 	To   string
 }
 
-func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []releasecontroller.UpgradeHistory {
+func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]releasecontroller.UpgradeHistory, 0, len(toNames)*2)
+	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
 		for _, h := range g.to[to] {
-			summaries = append(summaries, releasecontroller.UpgradeHistory{
+			summaries = append(summaries, UpgradeHistory{
 				From:    h.From,
 				To:      to,
 				Success: h.Success,
@@ -58,14 +57,14 @@ func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []releasecontrolle
 	return summaries
 }
 
-func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []releasecontroller.UpgradeHistory {
+func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]releasecontroller.UpgradeHistory, 0, len(fromNames)*2)
+	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
 	for _, from := range fromNames {
 		for to := range g.from[from] {
 			for _, h := range g.to[to] {
-				summaries = append(summaries, releasecontroller.UpgradeHistory{
+				summaries = append(summaries, UpgradeHistory{
 					From:    from,
 					To:      to,
 					Success: h.Success,
@@ -78,13 +77,13 @@ func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []releasecontr
 	return summaries
 }
 
-func (g *UpgradeGraph) UpgradesTo(toNames ...string) []releasecontroller.UpgradeHistory {
+func (g *UpgradeGraph) UpgradesTo(toNames ...string) []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]releasecontroller.UpgradeHistory, 0, len(toNames)*2)
+	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
 		for _, h := range g.to[to] {
-			summaries = append(summaries, releasecontroller.UpgradeHistory{
+			summaries = append(summaries, UpgradeHistory{
 				From:    h.From,
 				To:      to,
 				Success: h.Success,
@@ -102,11 +101,11 @@ type historyEdgeReference struct {
 	to   string
 }
 
-func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []releasecontroller.UpgradeHistory {
+func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	summaries := make([]releasecontroller.UpgradeHistory, 0, len(fromNames)*2)
-	refs := make(map[historyEdgeReference]*releasecontroller.UpgradeHistory)
+	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
+	refs := make(map[historyEdgeReference]*UpgradeHistory)
 	for _, from := range fromNames {
 		for to := range g.from[from] {
 			history := g.to[to][from]
@@ -116,10 +115,10 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []releasecontroller.Upg
 			key := historyEdgeReference{from, to}
 			ref, ok := refs[key]
 			if !ok {
-				summaries = append(summaries, releasecontroller.UpgradeHistory{
+				summaries = append(summaries, UpgradeHistory{
 					From:    from,
 					To:      to,
-					History: make(map[string]releasecontroller.UpgradeResult),
+					History: make(map[string]UpgradeResult),
 				})
 				ref = &summaries[len(summaries)-1]
 				refs[key] = ref
@@ -136,15 +135,15 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []releasecontroller.Upg
 	return summaries
 }
 
-func copyHistory(h map[string]releasecontroller.UpgradeResult) map[string]releasecontroller.UpgradeResult {
-	copied := make(map[string]releasecontroller.UpgradeResult, len(h))
+func copyHistory(h map[string]UpgradeResult) map[string]UpgradeResult {
+	copied := make(map[string]UpgradeResult, len(h))
 	for k, v := range h {
 		copied[k] = v
 	}
 	return copied
 }
 
-func (g *UpgradeGraph) Add(fromTag, toTag string, results ...releasecontroller.UpgradeResult) {
+func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 	if len(results) == 0 || len(fromTag) == 0 || len(toTag) == 0 {
 		return
 	}
@@ -154,15 +153,15 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...releasecontroller.U
 	g.addWithLock(fromTag, toTag, results...)
 }
 
-func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...releasecontroller.UpgradeResult) {
+func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResult) {
 	to, ok := g.to[toTag]
 	if !ok {
-		to = make(map[string]*releasecontroller.UpgradeHistory)
+		to = make(map[string]*UpgradeHistory)
 		g.to[toTag] = to
 	}
 	from, ok := to[fromTag]
 	if !ok {
-		from = &releasecontroller.UpgradeHistory{
+		from = &UpgradeHistory{
 			From: fromTag,
 			To:   toTag,
 		}
@@ -175,30 +174,30 @@ func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...releasecont
 		set.Insert(toTag)
 	}
 	if from.History == nil {
-		from.History = make(map[string]releasecontroller.UpgradeResult)
+		from.History = make(map[string]UpgradeResult)
 	}
 	for _, result := range results {
 		if len(result.URL) == 0 {
 			continue
 		}
 		existing, ok := from.History[result.URL]
-		if !ok || existing.State == releasecontroller.ReleaseVerificationStatePending && result.State != releasecontroller.ReleaseVerificationStatePending {
+		if !ok || existing.State == ReleaseVerificationStatePending && result.State != ReleaseVerificationStatePending {
 			from.History[result.URL] = result
 			switch result.State {
-			case releasecontroller.ReleaseVerificationStateFailed:
+			case ReleaseVerificationStateFailed:
 				from.Failure++
-			case releasecontroller.ReleaseVerificationStateSucceeded:
+			case ReleaseVerificationStateSucceeded:
 				from.Success++
 			}
 		}
 	}
 }
 
-func (g *UpgradeGraph) Histories() []releasecontroller.UpgradeHistory {
+func (g *UpgradeGraph) Histories() []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	results := make([]releasecontroller.UpgradeHistory, 0, len(g.to)*5)
+	results := make([]UpgradeHistory, 0, len(g.to)*5)
 	for _, targets := range g.to {
 		for _, history := range targets {
 			copied := *history
@@ -209,14 +208,14 @@ func (g *UpgradeGraph) Histories() []releasecontroller.UpgradeHistory {
 	return results
 }
 
-func (g *UpgradeGraph) Records() []releasecontroller.UpgradeRecord {
+func (g *UpgradeGraph) Records() []UpgradeRecord {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	records := make([]releasecontroller.UpgradeRecord, 0, len(g.to)*5)
+	records := make([]UpgradeRecord, 0, len(g.to)*5)
 	for to, targets := range g.to {
 		for from, history := range targets {
-			record := releasecontroller.UpgradeRecord{From: from, To: to, Results: make([]releasecontroller.UpgradeResult, 0, len(history.History))}
+			record := UpgradeRecord{From: from, To: to, Results: make([]UpgradeResult, 0, len(history.History))}
 			for _, result := range history.History {
 				record.Results = append(record.Results, result)
 			}
@@ -259,7 +258,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	var records []releasecontroller.UpgradeRecord
+	var records []UpgradeRecord
 	if err := json.NewDecoder(gr).Decode(&records); err != nil {
 		return err
 	}
@@ -273,7 +272,7 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 	return err
 }
 
-func syncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})

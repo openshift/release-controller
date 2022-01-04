@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"sort"
 	"strings"
@@ -15,14 +14,15 @@ import (
 	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
 
 func (c *Controller) ensureTagPointsToRelease(release *releasecontroller.Release, to, from string) error {
 	if to == from {
 		return nil
 	}
-	fromTag := findTagReference(release.Target, from)
-	toTag := findTagReference(release.Target, to)
+	fromTag := releasecontroller.FindTagReference(release.Target, from)
+	toTag := releasecontroller.FindTagReference(release.Target, to)
 	if fromTag == nil {
 		// tag was deleted
 		return nil
@@ -34,7 +34,7 @@ func (c *Controller) ensureTagPointsToRelease(release *releasecontroller.Release
 		}
 	}
 	target := release.Target.DeepCopy()
-	toTag = findTagReference(target, to)
+	toTag = releasecontroller.FindTagReference(target, to)
 	if toTag == nil {
 		target.Spec.Tags = append(target.Spec.Tags, imagev1.TagReference{
 			Name: to,
@@ -65,13 +65,13 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *releasecontroller.
 	if toNamespace == release.Source.Namespace && toName == release.Source.Name {
 		return nil
 	}
-	fromTag := findTagReference(release.Target, from)
+	fromTag := releasecontroller.FindTagReference(release.Target, from)
 	if fromTag == nil {
 		// tag was deleted
 		return nil
 	}
 
-	mirror, err := c.getMirror(release, from)
+	mirror, err := releasecontroller.GetMirror(release, from, c.releaseLister)
 	if err != nil {
 		klog.V(2).Infof("Error getting release mirror image stream: %v", err)
 		return nil
@@ -136,12 +136,12 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *releasecontroller.
 			}
 			processed.Insert(tag)
 
-			sourceTag := findTagReference(mirror, tag)
+			sourceTag := releasecontroller.FindTagReference(mirror, tag)
 			if sourceTag == nil {
 				klog.Warningf("The tag %s should be mirrored from %s to %s, but is not in the source tags", tag, release.Config.Name, toName)
 				continue
 			}
-			targetTag := findTagReference(target, tag)
+			targetTag := releasecontroller.FindTagReference(target, tag)
 			if targetTag != nil && reflect.DeepEqual(targetTag.From, sourceTag.From) {
 				// tag is identical
 				continue
@@ -152,7 +152,7 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *releasecontroller.
 			if targetTag == nil {
 				copied.Spec.Tags = append(copied.Spec.Tags, *sourceTag)
 			} else {
-				targetTag = findTagReference(copied, tag)
+				targetTag = releasecontroller.FindTagReference(copied, tag)
 				*targetTag = *sourceTag
 			}
 		}

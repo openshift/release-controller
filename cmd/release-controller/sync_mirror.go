@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"strconv"
 	"strings"
 
@@ -14,10 +13,11 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
 
 func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, releaseTagName, inputImageHash string) (*imagev1.ImageStream, error) {
-	mirrorName := mirrorName(release, releaseTagName)
+	mirrorName := releasecontroller.MirrorName(release, releaseTagName)
 	is, err := c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 	if err == nil {
 		return is, nil
@@ -67,23 +67,6 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 	return is, err
 }
 
-func (c *Controller) getMirror(release *releasecontroller.Release, releaseTagName string) (*imagev1.ImageStream, error) {
-	return c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName(release, releaseTagName))
-}
-
-func mirrorName(release *releasecontroller.Release, releaseTagName string) string {
-	switch release.Config.As {
-	case releasecontroller.ReleaseConfigModeStable:
-		return releaseTagName
-	default:
-		suffix := strings.TrimPrefix(releaseTagName, release.Config.Name)
-		if len(release.Config.MirrorPrefix) > 0 {
-			return fmt.Sprintf("%s%s", release.Config.MirrorPrefix, suffix)
-		}
-		return fmt.Sprintf("%s%s", release.Source.Name, suffix)
-	}
-}
-
 func calculateMirrorImageStream(release *releasecontroller.Release, is *imagev1.ImageStream) error {
 	// this block is mostly identical to the logic in openshift/origin pkg/oc/cli/admin/release/new which
 	// calculates the spec tags - it preserves the desired source location of the image and errors when
@@ -111,7 +94,7 @@ func calculateMirrorImageStream(release *releasecontroller.Release, is *imagev1.
 				source = ""
 			}
 		}
-		ref := findSpecTag(release.Source.Spec.Tags, tag.Tag)
+		ref := releasecontroller.FindSpecTag(release.Source.Spec.Tags, tag.Tag)
 		if ref == nil {
 			ref = &imagev1.TagReference{Name: tag.Tag}
 		} else {

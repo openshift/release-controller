@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"strconv"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -48,7 +49,7 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 }
 
 func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream, metadataJSON string) (*batchv1.Job, error) {
-	ref := findTagReference(release.Source, name)
+	ref := releasecontroller.FindTagReference(release.Source, name)
 	generation := *ref.Generation
 	preconditions := map[string]string{
 		releasecontroller.ReleaseAnnotationGeneration: strconv.FormatInt(generation, 10),
@@ -118,7 +119,7 @@ func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name s
 }
 
 func (c *Controller) ensureImportJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
-	generation := *findTagReference(release.Source, name).Generation
+	generation := *releasecontroller.FindTagReference(release.Source, name).Generation
 	preconditions := map[string]string{
 		releasecontroller.ReleaseAnnotationGeneration: strconv.FormatInt(generation, 10),
 	}
@@ -203,7 +204,7 @@ func (c *Controller) ensureJob(name string, preconditions map[string]string, cre
 }
 
 func (c *Controller) ensureRewriteJobImageRetrieved(release *releasecontroller.Release, job *batchv1.Job, mirror *imagev1.ImageStream) error {
-	if findTagReference(mirror, "cli") != nil {
+	if releasecontroller.FindTagReference(mirror, "cli") != nil {
 		return nil
 	}
 	defer c.queue.AddAfter(queueKey{namespace: release.Source.Namespace, name: release.Source.Name}, 10*time.Second)
@@ -294,8 +295,8 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 			Annotations: map[string]string{},
 		},
 		Spec: batchv1.JobSpec{
-			Parallelism:  int32p(1),
-			BackoffLimit: int32p(3),
+			Parallelism:  releasecontroller.Int32p(1),
+			BackoffLimit: releasecontroller.Int32p(3),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "builder",

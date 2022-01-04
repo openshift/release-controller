@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"strings"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/prometheus/client_golang/prometheus"
@@ -68,8 +69,8 @@ type Controller struct {
 	eventRecorder record.EventRecorder
 
 	imageClient   imageclient.ImageV1Interface
-	releaseLister *multiImageStreamLister
-	publishLister *multiImageStreamLister
+	releaseLister *releasecontroller.MultiImageStreamLister
+	publishLister *releasecontroller.MultiImageStreamLister
 	jobClient     batchclient.JobsGetter
 	jobLister     batchlisters.JobLister
 
@@ -121,9 +122,9 @@ type Controller struct {
 	// onlySources if set controls which image stream names can be synced
 	onlySources sets.String
 
-	releaseInfo ReleaseInfo
+	releaseInfo releasecontroller.ReleaseInfo
 
-	graph *UpgradeGraph
+	graph *releasecontroller.UpgradeGraph
 
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
@@ -153,8 +154,8 @@ func NewController(
 	prowClient dynamic.ResourceInterface,
 	jobNamespace string,
 	artifactsHost string,
-	releaseInfo ReleaseInfo,
-	graph *UpgradeGraph,
+	releaseInfo releasecontroller.ReleaseInfo,
+	graph *releasecontroller.UpgradeGraph,
 	softDeleteReleaseTags bool,
 	authenticationMessage string,
 	clusterGroups []string,
@@ -190,8 +191,8 @@ func NewController(
 		expectationDelay: 2 * time.Second,
 
 		imageClient:   imageClient,
-		releaseLister: &multiImageStreamLister{listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
-		publishLister: &multiImageStreamLister{listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
+		releaseLister: &releasecontroller.MultiImageStreamLister{Listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
+		publishLister: &releasecontroller.MultiImageStreamLister{Listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
 
 		jobClient: jobClient,
 		jobLister: jobs.Lister(),
@@ -253,34 +254,11 @@ type ProwConfigLoader interface {
 	Config() *prowconfig.Config
 }
 
-// multiImageStreamLister uses multiple independent namespace listers
-// to simulate a full lister so that multiple namespaces can be watched
-// for image streams.
-type multiImageStreamLister struct {
-	listers map[string]imagelisters.ImageStreamNamespaceLister
-}
-
-func (l *multiImageStreamLister) List(label labels.Selector) ([]*imagev1.ImageStream, error) {
-	var streams []*imagev1.ImageStream
-	for _, ns := range l.listers {
-		is, err := ns.List(label)
-		if err != nil {
-			return nil, err
-		}
-		streams = append(streams, is...)
-	}
-	return streams, nil
-}
-
-func (l *multiImageStreamLister) ImageStreams(ns string) imagelisters.ImageStreamNamespaceLister {
-	return l.listers[ns]
-}
-
 // AddReleaseNamespace adds a new namespace scoped informer to the controller, which will be watched
 // for image streams containing release configuration.
 func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.ImageStreamInformer) {
-	c.releaseLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
-	c.publishLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
+	c.releaseLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
+	c.publishLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
 
 	imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processImageStream,
@@ -294,7 +272,7 @@ func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.
 // AddPublishNamespace adds a new namespace scoped informer to the controller which is used to look up
 // images by stream, but which may not contain release streams.
 func (c *Controller) AddPublishNamespace(ns string, imagestreams imageinformers.ImageStreamInformer) {
-	c.publishLister.listers[ns] = imagestreams.Lister().ImageStreams(ns)
+	c.publishLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
 }
 
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the
@@ -565,19 +543,13 @@ func (c *Controller) processNextBugzilla() bool {
 	return true
 }
 
-// terminalError is a wrapper that indicates the error should be logged but the queue
-// key should not be requeued.
-type terminalError struct {
-	error
-}
-
 func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, err error, key interface{}) {
 	if err == nil {
 		queue.Forget(key)
 		return
 	}
 
-	if _, ok := err.(terminalError); ok {
+	if releasecontroller.IsTerminalError(err) {
 		klog.V(2).Infof("Unable to sync %v, no retry: %v", key, err)
 		return
 	}

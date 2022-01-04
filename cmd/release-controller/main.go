@@ -4,19 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"net/http"
 	"net/url"
 	"os"
 	goruntime "runtime"
-	"sort"
 	"strings"
-	"sync"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	_ "net/http/pprof" // until openshift/library-go#309 merges
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -42,10 +40,8 @@ import (
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
 
-	imagev1 "github.com/openshift/api/image/v1"
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
-	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowconfig "k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/config/secret"
@@ -324,15 +320,15 @@ func (o *options) Run() error {
 	klog.V(4).Infof("4: %v", time.Now().Sub(start))
 
 	start = time.Now()
-	imageCache := newLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
-	releaseInfo := NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
+	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
+	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
+	releaseInfo := releasecontroller.NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
-	execReleaseFiles := NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
+	execReleaseFiles := releasecontroller.NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
 	klog.V(4).Infof("5: %v", time.Now().Sub(start))
 
 	start = time.Now()
-	graph := NewUpgradeGraph(architecture)
+	graph := releasecontroller.NewUpgradeGraph(architecture)
 	klog.V(4).Infof("6: %v", time.Now().Sub(start))
 
 	start = time.Now()
@@ -531,7 +527,7 @@ func (o *options) Run() error {
 		klog.Infof("Dry run mode (no changes will be made)")
 
 		// read the graph
-		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go releasecontroller.SyncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		<-stopCh
 		return nil
@@ -539,7 +535,7 @@ func (o *options) Run() error {
 		klog.Infof("Auditing releases to %s", o.AuditStorage)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go releasecontroller.SyncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		c.RunAudit(4, stopCh)
 		return nil
@@ -547,7 +543,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing only %s, no garbage collection", o.LimitSources)
 
 		// read the graph
-		go syncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go releasecontroller.SyncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 		c.RunSync(3, stopCh)
 		return nil
@@ -555,7 +551,7 @@ func (o *options) Run() error {
 		klog.Infof("Managing releases")
 
 		// keep the graph in a more persistent form
-		go syncGraphToSecret(graph, true, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
+		go releasecontroller.SyncGraphToSecret(graph, true, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 		// maintain the release pods
 		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
 
@@ -645,100 +641,7 @@ func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface
 	)
 }
 
-// latestImageCache tries to find the first valid tag matching
-// the requested image stream with the matching name (or the first
-// one when looking across all lexigraphically).
-type latestImageCache struct {
-	imageStream string
-	tag         string
-	interval    time.Duration
-
-	cache       *lru.Cache
-	lock        sync.Mutex
-	lister      imagelisters.ImageStreamNamespaceLister
-	last        string
-	lastChecked time.Time
-}
-
-func newLatestImageCache(imageStream string, tag string) *latestImageCache {
-	cache, _ := lru.New(64)
-	return &latestImageCache{
-		imageStream: imageStream,
-		tag:         tag,
-		interval:    10 * time.Minute,
-		cache:       cache,
-	}
-}
-
-func (c *latestImageCache) SetLister(lister imagelisters.ImageStreamNamespaceLister) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.lister = lister
-}
-
-func (c *latestImageCache) Get() (string, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.lister == nil {
-		return "", fmt.Errorf("not yet started")
-	}
-	if len(c.last) > 0 && c.lastChecked.After(time.Now().Add(-c.interval)) {
-		return c.last, nil
-	}
-
-	// Find the first image stream matching the desired stream name name, or the first
-	// one that isn't a stable image stream and has the requested tag. Stable image
-	// streams
-	var preferred *imagev1.ImageStream
-	items, _ := c.lister.List(labels.Everything())
-	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
-	for _, item := range items {
-		if len(c.imageStream) > 0 {
-			if c.imageStream == item.Name {
-				preferred = item
-				break
-			}
-			continue
-		}
-
-		value, ok := item.Annotations[releasecontroller.ReleaseAnnotationConfig]
-		if !ok {
-			continue
-		}
-		if spec := findImagePullSpec(item, c.tag); len(spec) == 0 {
-			continue
-		}
-		config, err := parseReleaseConfig(value, c.cache)
-		if err != nil {
-			continue
-		}
-		if config.As == releasecontroller.ReleaseConfigModeStable {
-			continue
-		}
-
-		if preferred == nil {
-			preferred = item
-			continue
-		}
-		if len(c.imageStream) > 0 && c.imageStream == item.Name {
-			preferred = item
-			break
-		}
-	}
-
-	if preferred != nil {
-		if spec := findImagePullSpec(preferred, c.tag); len(spec) > 0 {
-			c.last = spec
-			c.lastChecked = time.Now()
-			klog.V(4).Infof("Resolved %s:%s to %s", c.imageStream, c.tag, spec)
-			return spec, nil
-		}
-	}
-
-	return "", fmt.Errorf("could not find a release image stream with :%s (tools=%s)", c.tag, c.imageStream)
-}
-
-func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *ExecReleaseInfo, execReleaseFiles *ExecReleaseFiles, stopCh <-chan struct{}) {
+func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *releasecontroller.ExecReleaseInfo, execReleaseFiles *releasecontroller.ExecReleaseFiles, stopCh <-chan struct{}) {
 	wait.Until(func() {
 		err := wait.ExponentialBackoff(wait.Backoff{
 			Steps:    3,
@@ -746,11 +649,11 @@ func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *ExecRelea
 			Factor:   2,
 		}, func() (bool, error) {
 			success := true
-			if err := execReleaseInfo.refreshPod(); err != nil {
+			if err := execReleaseInfo.RefreshPod(); err != nil {
 				klog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
 				success = false
 			}
-			if err := execReleaseFiles.refreshPod(); err != nil {
+			if err := execReleaseFiles.RefreshPod(); err != nil {
 				klog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
 				success = false
 			}
