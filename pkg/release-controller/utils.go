@@ -8,3 +8,12 @@ func StringSliceContains(slice []string, s string) bool {
 	}
 	return false
 }
+
+func ContainsString(arr []string, s string) bool {
+	for _, str := range arr {
+		if s == str {
+			return true
+		}
+	}
+	return false
+}

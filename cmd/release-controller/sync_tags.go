@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"reflect"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"github.com/blang/semver"
 
@@ -47,7 +48,7 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 
 func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Release, tag *imagev1.TagReference) error {
 	var semanticTags []semver.Version
-	for _, tag := range sortedReleaseTags(release) {
+	for _, tag := range releasecontroller.SortedReleaseTags(release) {
 		version, err := semver.Parse(tag.Name)
 		if err != nil {
 			continue
@@ -64,14 +65,14 @@ func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Releas
 	// find the next tag
 	semver.Sort(semanticTags)
 	newest := semanticTags[len(semanticTags)-1]
-	next, err := incrementSemanticVersion(newest)
+	next, err := releasecontroller.IncrementSemanticVersion(newest)
 	if err != nil {
 		return err
 	}
 
 	// reset the nextTag with a new name
 	target := release.Target.DeepCopy()
-	origin := findTagReference(target, tag.Name)
+	origin := releasecontroller.FindTagReference(target, tag.Name)
 	origin.Name = next.String()
 	origin.Annotations = map[string]string{
 		releasecontroller.ReleaseAnnotationName:              release.Config.Name,
@@ -141,7 +142,7 @@ func (c *Controller) setReleaseAnnotation(release *releasecontroller.Release, ph
 	changes := 0
 	target := is.DeepCopy()
 	for _, name := range names {
-		tag := findTagReference(target, name)
+		tag := releasecontroller.FindTagReference(target, name)
 		if tag == nil {
 			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
 		}
@@ -160,7 +161,7 @@ func (c *Controller) setReleaseAnnotation(release *releasecontroller.Release, ph
 		}
 
 		// if there is no change, avoid updating anything
-		if oldTag := findTagReference(release.Target, name); oldTag != nil {
+		if oldTag := releasecontroller.FindTagReference(release.Target, name); oldTag != nil {
 			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
 				continue
 			}
@@ -197,12 +198,12 @@ func (c *Controller) ensureReleaseTagPhase(release *releasecontroller.Release, p
 	changes := 0
 	target := release.Target.DeepCopy()
 	for _, name := range names {
-		tag := findTagReference(target, name)
+		tag := releasecontroller.FindTagReference(target, name)
 		if tag == nil {
 			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
 		}
 
-		if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !containsString(preconditionPhases, current) {
+		if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !releasecontroller.ContainsString(preconditionPhases, current) {
 			return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 		}
 		if tag.Annotations == nil {
@@ -220,7 +221,7 @@ func (c *Controller) ensureReleaseTagPhase(release *releasecontroller.Release, p
 		}
 
 		// if there is no change, avoid updating anything
-		if oldTag := findTagReference(release.Target, name); oldTag != nil {
+		if oldTag := releasecontroller.FindTagReference(release.Target, name); oldTag != nil {
 			if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
 				continue
 			}
@@ -245,8 +246,8 @@ func (c *Controller) transitionReleasePhaseFailure(release *releasecontroller.Re
 	target := release.Target.DeepCopy()
 	changed := 0
 	for _, name := range names {
-		if tag := findTagReference(target, name); tag != nil {
-			if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !containsString(preconditionPhases, current) {
+		if tag := releasecontroller.FindTagReference(target, name); tag != nil {
+			if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !releasecontroller.ContainsString(preconditionPhases, current) {
 				return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 			}
 			if tag.Annotations == nil {
@@ -274,22 +275,6 @@ func (c *Controller) transitionReleasePhaseFailure(release *releasecontroller.Re
 	}
 	updateReleaseTarget(release, is)
 	return nil
-}
-
-func incrementSemanticVersion(v semver.Version) (semver.Version, error) {
-	if len(v.Pre) == 0 {
-		copied := v
-		copied.Patch++
-		return copied, nil
-	}
-	for i := len(v.Pre) - 1; i >= 0; i-- {
-		if v.Pre[i].IsNum {
-			copied := v
-			copied.Pre[i].VersionNum++
-			return copied, nil
-		}
-	}
-	return v, fmt.Errorf("the version %s cannot be incremented, no numeric prerelease portions", v.String())
 }
 
 func reasonAndMessage(reason, message string) map[string]string {

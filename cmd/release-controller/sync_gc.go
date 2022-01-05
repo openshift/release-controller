@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
 
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -52,7 +52,7 @@ func (c *Controller) garbageCollectSync() error {
 		if !ok {
 			continue
 		}
-		config, err := parseReleaseConfig(value, c.parsedReleaseConfigCache)
+		config, err := releasecontroller.ParseReleaseConfig(value, c.parsedReleaseConfigCache)
 		if err != nil {
 			continue
 		}
@@ -73,7 +73,7 @@ func (c *Controller) garbageCollectSync() error {
 		if !ok {
 			continue
 		}
-		generation, ok := releaseGenerationFromObject(job.Name, job.Annotations)
+		generation, ok := releasecontroller.ReleaseGenerationFromObject(job.Name, job.Annotations)
 		if !ok {
 			continue
 		}
@@ -102,7 +102,7 @@ func (c *Controller) garbageCollectSync() error {
 		if !ok {
 			continue
 		}
-		generation, ok := releaseGenerationFromObject(mirror.Name, mirror.Annotations)
+		generation, ok := releasecontroller.ReleaseGenerationFromObject(mirror.Name, mirror.Annotations)
 		if !ok {
 			continue
 		}

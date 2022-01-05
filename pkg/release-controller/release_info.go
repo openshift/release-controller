@@ -1,4 +1,4 @@
-package main
+package releasecontroller
 
 import (
 	"bytes"
@@ -329,7 +329,7 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 	return out.String(), nil
 }
 
-func (r *ExecReleaseInfo) refreshPod() error {
+func (r *ExecReleaseInfo) RefreshPod() error {
 	sts, err := r.client.AppsV1().StatefulSets(r.namespace).Get(context.TODO(), "git-cache", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -484,7 +484,7 @@ func NewExecReleaseFiles(client kubernetes.Interface, restConfig *rest.Config, n
 	}
 }
 
-func (r *ExecReleaseFiles) refreshPod() error {
+func (r *ExecReleaseFiles) RefreshPod() error {
 	sts, err := r.client.AppsV1().StatefulSets(r.namespace).Get(context.TODO(), "files-cache", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {

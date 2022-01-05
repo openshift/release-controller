@@ -94,7 +94,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	klog.V(4).Infof("Verifying fixed bugs in %s", release.Config.Name)
 
 	// get accepted tags
-	acceptedTags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
+	acceptedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
 	tag, prevTag := getNonVerifiedTags(acceptedTags)
 	if tag == nil {
 		klog.V(6).Infof("bugzilla: All accepted tags for %s have already been verified", release.Config.Name)
@@ -112,7 +112,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 			c.bugzillaErrorMetrics.WithLabelValues(bzPrevImagestreamGetErr).Inc()
 			return err
 		}
-		prevTag = findTagReference(stream, verifyBugs.PreviousReleaseTag.Tag)
+		prevTag = releasecontroller.FindTagReference(stream, verifyBugs.PreviousReleaseTag.Tag)
 		if prevTag == nil {
 			klog.V(2).Infof("bugzilla: failed to get tag %s in imagestream (%s/%s) when getting previous release for %s", verifyBugs.PreviousReleaseTag.Tag, verifyBugs.PreviousReleaseTag.Namespace, verifyBugs.PreviousReleaseTag.Name, release.Config.Name)
 			c.bugzillaErrorMetrics.WithLabelValues(bzMissingTag).Inc()
@@ -151,7 +151,7 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
 		return err
 	}
-	tagToBeUpdated := findTagReference(target, tag.Name)
+	tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)
 	if tagToBeUpdated == nil {
 		klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)
 		return fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)

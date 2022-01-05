@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -48,7 +49,7 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 		// to reuse cron code from k8s test-infra, we can create a fake prow Config that just has just the periodics specified in the release configs
 		cronConfig := &config.Config{}
 		for _, is := range imagestreams {
-			r, ok, err := c.releaseDefinition(is)
+			r, ok, err := releasecontroller.ReleaseDefinition(is, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
 			if err != nil || !ok {
 				continue
 			}
@@ -143,12 +144,12 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease PeriodicWithRelease) error {
 	// get release info
 	release := periodicWithRelease.Release
-	acceptedTags := sortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
+	acceptedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
 	if len(acceptedTags) == 0 {
 		return fmt.Errorf("no accepted tags found for release %s", release.Config.Name)
 	}
 	latestTag := acceptedTags[0]
-	mirror, err := c.getMirror(release, latestTag.Name)
+	mirror, err := releasecontroller.GetMirror(release, latestTag.Name, c.releaseLister)
 	if err != nil {
 		return fmt.Errorf("failed to get mirror for release %s tag %s: %v", release.Config.Name, latestTag.Name, err)
 	}
@@ -160,7 +161,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		}
 	}
 	spec := pjutil.PeriodicSpec(*periodicWithRelease.Periodic)
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec, periodicWithRelease.Upgrade, c.graph.architecture)
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec, periodicWithRelease.Upgrade, c.graph.Architecture)
 	if err != nil || !ok {
 		return fmt.Errorf("failed to add release env to periodic %s: %v", periodicWithRelease.Periodic.Name, err)
 	}
@@ -171,7 +172,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 	if periodicWithRelease.Upgrade && len(previousTag) > 0 {
 		prowJob.Annotations[releasecontroller.ReleaseAnnotationFromTag] = previousTag
 	}
-	prowJob.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.architecture
+	prowJob.Annotations[releasecontroller.ReleaseAnnotationArchitecture] = c.graph.Architecture
 
 	_, err = c.prowClient.Create(context.TODO(), objectToUnstructured(&prowJob), metav1.CreateOptions{})
 	if err != nil {
