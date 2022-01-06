@@ -1,6 +1,7 @@
 package releasecontroller
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -9,7 +10,13 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	imagev1 "github.com/openshift/api/image/v1"
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 )
 
@@ -104,4 +111,22 @@ func (c *latestImageCache) Get() (string, error) {
 	}
 
 	return "", fmt.Errorf("could not find a release image stream with :%s (tools=%s)", c.tag, c.imageStream)
+}
+
+func NewDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface, namespace string, resyncPeriod time.Duration, selector labels.Selector) cache.SharedIndexInformer {
+	return cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = selector.String()
+				return client.Namespace(namespace).List(context.TODO(), options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = selector.String()
+				return client.Namespace(namespace).Watch(context.TODO(), options)
+			},
+		},
+		&unstructured.Unstructured{},
+		resyncPeriod,
+		cache.Indexers{},
+	)
 }

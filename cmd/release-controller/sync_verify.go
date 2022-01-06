@@ -93,7 +93,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 			if err != nil {
 				return nil, err
 			}
-			status, ok := prowJobVerificationStatus(job)
+			status, ok := releasecontroller.ProwJobVerificationStatus(job)
 			if !ok {
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
