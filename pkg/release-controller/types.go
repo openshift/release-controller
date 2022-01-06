@@ -36,6 +36,8 @@ type APIRelease struct {
 type APIReleaseInfo struct {
 	// Name is the name of the release tag.
 	Name string `json:"name"`
+	// Phase is the phase of the release tag.
+	Phase string `json:"phase"`
 	// Results is the status of the release verification jobs for this release tag
 	Results *VerificationJobsSummary `json:"results,omitempty"`
 	// UpgradesTo is the list of UpgradeHistory "to" this release tag
