@@ -25,11 +25,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -472,7 +470,7 @@ func (o *options) Run() error {
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
 	if o.prowconfig.ConfigPath != "" {
-		prowInformers := newDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
+		prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
 		hasSynced = append(hasSynced, prowInformers.HasSynced)
 		c.AddProwInformer(o.ProwNamespace, prowInformers)
 		go prowInformers.Run(stopCh)
@@ -502,7 +500,7 @@ func (o *options) Run() error {
 					if jobArchitecture != architecture {
 						continue
 					}
-					status, ok := prowJobVerificationStatus(job)
+					status, ok := releasecontroller.ProwJobVerificationStatus(job)
 					if !ok {
 						continue
 					}
@@ -621,24 +619,6 @@ func loadClusterConfig() (*rest.Config, error) {
 		return nil, fmt.Errorf("could not load client configuration: %v", err)
 	}
 	return clusterConfig, nil
-}
-
-func newDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface, namespace string, resyncPeriod time.Duration, selector labels.Selector) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).List(context.TODO(), options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).Watch(context.TODO(), options)
-			},
-		},
-		&unstructured.Unstructured{},
-		resyncPeriod,
-		cache.Indexers{},
-	)
 }
 
 func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *releasecontroller.ExecReleaseInfo, execReleaseFiles *releasecontroller.ExecReleaseFiles, stopCh <-chan struct{}) {

@@ -20,10 +20,15 @@ import (
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/openshift/library-go/pkg/serviceability"
@@ -34,7 +39,9 @@ import (
 type options struct {
 	ReleaseNamespaces []string
 	JobNamespace      string
+	ProwNamespace     string
 
+	ProwJobKubeconfig    string
 	NonProwJobKubeconfig string
 	ReleasesKubeconfig   string
 	ToolsKubeconfig      string
@@ -73,12 +80,14 @@ func main() {
 	flagset := cmd.Flags()
 	flagset.StringVar(&opt.ToolsImageStreamTag, "tools-image-stream-tag", opt.ToolsImageStreamTag, "An image stream tag pointing to a release stream that contains the oc command and git (usually <master>:tests).")
 
+	flagset.StringVar(&opt.ProwJobKubeconfig, "prow-job-kubeconfig", opt.ProwJobKubeconfig, "The kubeconfig to use for interacting with ProwJobs. Defaults in-cluster config if unset.")
 	flagset.StringVar(&opt.NonProwJobKubeconfig, "non-prow-job-kubeconfig", opt.NonProwJobKubeconfig, "The kubeconfig to use for everything that is not prowjobs (namespaced, pods, batchjobs, ....). Falls back to incluster config if unset")
 	flagset.StringVar(&opt.ReleasesKubeconfig, "releases-kubeconfig", opt.ReleasesKubeconfig, "The kubeconfig to use for interacting with release imagestreams and jobs. Falls back to non-prow-job-kubeconfig and then incluster config if unset")
 	flagset.StringVar(&opt.ToolsKubeconfig, "tools-kubeconfig", opt.ToolsKubeconfig, "The kubeconfig to use for running the release-controller tools. Falls back to non-prow-job-kubeconfig and then incluster config if unset")
 
 	flagset.StringVar(&opt.JobNamespace, "job-namespace", opt.JobNamespace, "The namespace to execute jobs and hold temporary objects.")
 	flagset.StringSliceVar(&opt.ReleaseNamespaces, "release-namespace", opt.ReleaseNamespaces, "The namespace where the source image streams are located and where releases will be published to.")
+	flagset.StringVar(&opt.ProwNamespace, "prow-namespace", opt.ProwNamespace, "The namespace where the Prow jobs will be created (defaults to --job-namespace).")
 
 	flagset.AddGoFlagSet(flag.CommandLine)
 
@@ -111,6 +120,9 @@ func (o *options) Run() error {
 	if len(o.JobNamespace) == 0 {
 		return fmt.Errorf("no job namespace set, use --job-namespace")
 	}
+	if len(o.ProwNamespace) == 0 {
+		o.ProwNamespace = o.JobNamespace
+	}
 	var architecture = "amd64"
 	if len(o.ReleaseArchitecture) > 0 {
 		architecture = o.ReleaseArchitecture
@@ -140,6 +152,10 @@ func (o *options) Run() error {
 	if err != nil {
 		return fmt.Errorf("unable to create client: %v", err)
 	}
+	releasesClient, err := clientset.NewForConfig(releasesConfig)
+	if err != nil {
+		return fmt.Errorf("unable to create releases client: %v", err)
+	}
 	toolsClient, err := clientset.NewForConfig(toolsConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create tools client: %v", err)
@@ -160,6 +176,11 @@ func (o *options) Run() error {
 		return fmt.Errorf("unable to create image client: %v", err)
 	}
 
+	prowClient, err := o.prowJobClient(inClusterCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create prowjob client: %v", err)
+	}
+
 	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
@@ -177,14 +198,63 @@ func (o *options) Run() error {
 		architecture,
 	)
 
+	var hasSynced []cache.InformerSynced
 	stopCh := wait.NeverStop
 	for _, ns := range o.ReleaseNamespaces {
 		factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
 		streams := factory.Image().V1().ImageStreams()
 		c.releaseLister.Listers[ns] = streams.Lister().ImageStreams(ns)
+		hasSynced = append(hasSynced, streams.Informer().HasSynced)
 		factory.Start(stopCh)
 	}
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
+
+	prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
+	hasSynced = append(hasSynced, prowInformers.HasSynced)
+	go prowInformers.Run(stopCh)
+
+	go func() {
+		index := prowInformers.GetIndexer()
+		cache.WaitForCacheSync(stopCh, prowInformers.HasSynced)
+		wait.Until(func() {
+			for _, item := range index.List() {
+				job, ok := item.(*unstructured.Unstructured)
+				if !ok {
+					continue
+				}
+				annotations := job.GetAnnotations()
+				from, ok := annotations[releasecontroller.ReleaseAnnotationFromTag]
+				if !ok {
+					continue
+				}
+				to, ok := annotations[releasecontroller.ReleaseAnnotationToTag]
+				if !ok {
+					continue
+				}
+				jobArchitecture, ok := annotations[releasecontroller.ReleaseAnnotationArchitecture]
+				if !ok {
+					continue
+				}
+				if jobArchitecture != architecture {
+					continue
+				}
+				status, ok := releasecontroller.ProwJobVerificationStatus(job)
+				if !ok {
+					continue
+				}
+				graph.Add(from, to, releasecontroller.UpgradeResult{
+					State: status.State,
+					URL:   status.URL,
+				})
+			}
+		}, 2*time.Minute, stopCh)
+	}()
+
+	klog.Infof("Waiting for caches to sync")
+	cache.WaitForCacheSync(stopCh, hasSynced...)
+
+	// read the graph
+	go releasecontroller.SyncGraphToSecret(graph, false, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 
 	http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 	http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
@@ -246,7 +316,7 @@ func setupKubeconfigWatches(o *options) error {
 	if err != nil {
 		return fmt.Errorf("failed to set up watcher: %w", err)
 	}
-	for _, candidate := range []string{o.NonProwJobKubeconfig} {
+	for _, candidate := range []string{o.ProwJobKubeconfig, o.NonProwJobKubeconfig} {
 		if _, err := os.Stat(candidate); err != nil {
 			continue
 		}
@@ -267,4 +337,24 @@ func setupKubeconfigWatches(o *options) error {
 	}()
 
 	return nil
+}
+
+func (o *options) prowJobClient(cfg *rest.Config) (dynamic.NamespaceableResourceInterface, error) {
+	if o.ProwJobKubeconfig != "" {
+		var err error
+		cfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: o.ProwJobKubeconfig},
+			&clientcmd.ConfigOverrides{},
+		).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load prowjob kubeconfig from path %q: %v", o.ProwJobKubeconfig, err)
+		}
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create prow client: %v", err)
+	}
+
+	return dynamicClient.Resource(schema.GroupVersionResource{Group: "prow.k8s.io", Version: "v1", Resource: "prowjobs"}), nil
 }
