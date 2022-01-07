@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
+	"k8s.io/test-infra/prow/pjutil"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
@@ -202,6 +203,8 @@ func main() {
 }
 
 func (o *options) Run() error {
+	// report liveness on default prow health port 8081
+	health := pjutil.NewHealthOnPort(flagutil.DefaultHealthPort)
 	if o.validateConfigs != "" {
 		return validateConfigs(o.validateConfigs)
 	}
@@ -519,6 +522,9 @@ func (o *options) Run() error {
 
 	klog.Infof("Waiting for caches to sync")
 	cache.WaitForCacheSync(stopCh, hasSynced...)
+
+	// always report as ready is this part of the code has been reached; may make sense to add a better ready check in the future
+	health.ServeReady(func() bool { return true })
 
 	switch {
 	case o.DryRun:
