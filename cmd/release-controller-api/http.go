@@ -538,9 +538,9 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			changeLog = result
 		}
 	}
-
 	summary := releasecontroller.APIReleaseInfo{
 		Name:         tagInfo.Tag,
+		Phase:        tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
 		Results:      verificationJobs,
 		UpgradesTo:   c.graph.UpgradesTo(tagInfo.Tag),
 		UpgradesFrom: c.graph.UpgradesFrom(tagInfo.Tag),
