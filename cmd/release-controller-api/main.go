@@ -33,7 +33,9 @@ import (
 
 	"github.com/openshift/library-go/pkg/serviceability"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
+	"k8s.io/test-infra/prow/pjutil"
 )
 
 type options struct {
@@ -110,6 +112,8 @@ func main() {
 }
 
 func (o *options) Run() error {
+	// report liveness on default prow health port 8081
+	health := pjutil.NewHealthOnPort(flagutil.DefaultHealthPort)
 	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
 	if len(tagParts) != 2 || len(tagParts[1]) == 0 {
 		return fmt.Errorf("--tools-image-stream-tag must be STREAM:TAG or :TAG (default STREAM is the oldest release stream)")
@@ -258,13 +262,20 @@ func (o *options) Run() error {
 
 	http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 	http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
-	http.DefaultServeMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
-	http.DefaultServeMux.HandleFunc("/healthz/ready", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
+	http.DefaultServeMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {})
 	http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 	klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
-	if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {
-		klog.Exitf("Server exited: %v", err)
-	}
+	interrupts.ListenAndServe(&http.Server{Addr: o.ListenAddr}, time.Second*10)
+	// report that this release-controller-api is ready while http server is responding
+	health.ServeReady(func() bool {
+		// current listen address is ":8080"; we should probably change that to "8080" and rename the option to "listen port"
+		resp, err := http.DefaultClient.Get("http://127.0.0.1" + o.ListenAddr + "/readyz")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return err == nil && resp.StatusCode == 200
+	})
+	interrupts.WaitForGracefulShutdown()
 	return nil
 }
 
