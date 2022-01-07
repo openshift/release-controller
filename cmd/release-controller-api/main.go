@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type options struct {
 	ToolsImageStreamTag  string
 
 	ListenAddr    string
+	ListenPort    int
 	ArtifactsHost string
 
 	ReleaseArchitecture string
@@ -95,7 +97,8 @@ func main() {
 
 	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
 
-	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
+	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "UNUSED: The address to serve release information on")
+	flagset.IntVar(&opt.ListenPort, "port", 8080, "Port to run server on")
 
 	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
 
@@ -264,12 +267,11 @@ func (o *options) Run() error {
 	http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
 	http.DefaultServeMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {})
 	http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
-	klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
-	interrupts.ListenAndServe(&http.Server{Addr: o.ListenAddr}, time.Second*10)
+	klog.Infof("Listening on port %s for UI and metrics", strconv.Itoa(o.ListenPort))
+	interrupts.ListenAndServe(&http.Server{Addr: ":" + strconv.Itoa(o.ListenPort)}, time.Second*10)
 	// report that this release-controller-api is ready while http server is responding
 	health.ServeReady(func() bool {
-		// current listen address is ":8080"; we should probably change that to "8080" and rename the option to "listen port"
-		resp, err := http.DefaultClient.Get("http://127.0.0.1" + o.ListenAddr + "/readyz")
+		resp, err := http.DefaultClient.Get("http://127.0.0.1:" + strconv.Itoa(o.ListenPort) + "/readyz")
 		if resp != nil {
 			resp.Body.Close()
 		}
