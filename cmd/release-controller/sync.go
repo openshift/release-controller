@@ -361,19 +361,19 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				}
 				if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
-						fromImage, err := c.getImageInfo(tags[0].Name)
+						fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tags[0].Name)
 						if err != nil {
 							klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
 							return
 						}
 
-						toImage, err := c.getImageInfo(tag.Name)
+						toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tag.Name)
 						if err != nil {
 							klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
 							return
 						}
 
-						if _, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec()); err != nil {
+						if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec()); err != nil {
 							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 						}
 					}()
@@ -424,19 +424,19 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			}
 			if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 				go func() {
-					fromImage, err := c.getImageInfo(tags[0].Name)
+					fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tags[0].Name)
 					if err != nil {
 						klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
 						return
 					}
 
-					toImage, err := c.getImageInfo(tag.Name)
+					toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tag.Name)
 					if err != nil {
 						klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
 						return
 					}
 
-					if _, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec()); err != nil {
+					if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec()); err != nil {
 						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 					}
 				}()

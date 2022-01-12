@@ -146,3 +146,17 @@ func IncrementSemanticVersion(v semver.Version) (semver.Version, error) {
 	}
 	return v, fmt.Errorf("the version %s cannot be incremented, no numeric prerelease portions", v.String())
 }
+
+// semverParseTolerant works around https://github.com/blang/semver/issues/55 until
+// it is resolved.
+func SemverParseTolerant(v string) (semver.Version, error) {
+	ver, err := semver.ParseTolerant(v)
+	if err == nil {
+		return ver, nil
+	}
+	ver, strictErr := semver.Parse(v)
+	if strictErr == nil {
+		return ver, nil
+	}
+	return semver.Version{}, err
+}

@@ -2,14 +2,15 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"github.com/russross/blackfriday"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/russross/blackfriday"
 )
 
 var (
@@ -19,57 +20,26 @@ var (
 	reRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 )
 
-type dockerImageConfig struct {
-	Architecture string `json:"architecture"`
-	Os           string `json:"os"`
-}
-
-type imageInfoConfig struct {
-	Config *dockerImageConfig `json:"config"`
-	Digest string             `json:"digest"`
-	Name   string             `json:"name"`
-}
-
-func (c imageInfoConfig) generateDigestPullSpec() string {
-	if strings.Contains(c.Name, "@sha256:") {
-		return fmt.Sprintf("%s@%s", strings.Split(c.Name, "@sha256:")[0], c.Digest)
-	}
-	return fmt.Sprintf("%s@%s", strings.Split(c.Name, ":")[0], c.Digest)
-}
-
 type renderResult struct {
 	out string
 	err error
 }
 
-func (c *Controller) getImageInfo(pullSpec string) (*imageInfoConfig, error) {
-	// Get the ImageInfo
-	imageInfo, err := c.releaseInfo.ImageInfo(pullSpec, c.architecture)
-	if err != nil {
-		return nil, fmt.Errorf("could not get image info for from pullSpec %s: %v", pullSpec, err)
-	}
-	config := imageInfoConfig{}
-	if err := json.Unmarshal([]byte(imageInfo), &config); err != nil {
-		return nil, fmt.Errorf("could not unmarshal image info for from pullSpec %s: %v", pullSpec, err)
-	}
-	return &config, nil
-}
-
 func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag string, toPull string, toTag string) {
-	fromImage, err := c.getImageInfo(fromPull)
+	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
 		return
 	}
 
-	toImage, err := c.getImageInfo(toPull)
+	toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPull)
 	if err != nil {
 		ch <- renderResult{err: err}
 		return
 	}
 
 	// Generate the change log from image digests
-	out, err := c.releaseInfo.ChangeLog(fromImage.generateDigestPullSpec(), toImage.generateDigestPullSpec())
+	out, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec())
 	if err != nil {
 		ch <- renderResult{err: err}
 		return

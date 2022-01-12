@@ -163,7 +163,7 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 	case releasecontroller.ReleaseUpgradeFromPreviousMinor:
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
 			version.Minor--
-			if ref, err := c.stableReleases(); err == nil {
+			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
 				for _, stable := range ref.Releases {
 					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
@@ -177,7 +177,7 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousPatch:
 		if version, err := semver.Parse(releaseTag.Name); err == nil {
-			if ref, err := c.stableReleases(); err == nil {
+			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
 				for _, stable := range ref.Releases {
 					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
 					sort.Sort(versions)
@@ -201,7 +201,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		if err != nil {
 			return "", "", fmt.Errorf("invalid semver range `%s`: %w", upgradeRelease.Prerelease.VersionBounds.Query(), err)
 		}
-		r, latest, err := c.latestForStream("4-stable", semverRange, 0)
+		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, "4-stable", semverRange, 0)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get latest tag in 4-stable stream: %w", err)
 		}
@@ -212,7 +212,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		// create blank semver.Range
 		var constraint semver.Range
 		stream := fmt.Sprintf("%s.0-0.%s%s", upgradeRelease.Candidate.Version, upgradeRelease.Candidate.Stream, strings.TrimPrefix(release.Config.To, "release"))
-		r, latest, err := c.latestForStream(stream, constraint, upgradeRelease.Candidate.Relative)
+		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, stream, constraint, upgradeRelease.Candidate.Relative)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", stream, err)
 		}
