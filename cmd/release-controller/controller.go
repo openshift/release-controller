@@ -112,8 +112,6 @@ type Controller struct {
 	jobNamespace string
 	// prowNamespace is the namespace where ProwJobs are created.
 	prowNamespace string
-	// artifactsHost if set is the location to build download links for client tools from
-	artifactsHost string
 
 	prowConfigLoader ProwConfigLoader
 	prowClient       dynamic.ResourceInterface
@@ -133,8 +131,6 @@ type Controller struct {
 	bugzillaVerifier     *bugzilla.Verifier
 	bugzillaErrorMetrics *prometheus.CounterVec
 
-	dashboards []Dashboard
-
 	softDeleteReleaseTags bool
 	authenticationMessage string
 
@@ -153,7 +149,6 @@ func NewController(
 	prowConfigLoader ProwConfigLoader,
 	prowClient dynamic.ResourceInterface,
 	jobNamespace string,
-	artifactsHost string,
 	releaseInfo releasecontroller.ReleaseInfo,
 	graph *releasecontroller.UpgradeGraph,
 	softDeleteReleaseTags bool,
@@ -206,8 +201,6 @@ func NewController(
 
 		jobNamespace: jobNamespace,
 
-		artifactsHost: artifactsHost,
-
 		releaseInfo: releaseInfo,
 
 		graph: graph,
@@ -228,12 +221,6 @@ func NewController(
 		DeleteFunc: c.processJob,
 		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
 	})
-
-	c.dashboards = []Dashboard{
-		{"Index", "/"},
-		{"Overview", "/dashboards/overview"},
-		{"Compare", "/dashboards/compare"},
-	}
 
 	for _, memberList := range clusterGroups {
 		members := strings.Split(memberList, ",")

@@ -63,30 +63,7 @@ type ReleaseStreamTag struct {
 	Previous        *imagev1.TagReference
 
 	Older  []*imagev1.TagReference
-	Stable *StableReferences
-}
-
-type StableReferences struct {
-	Releases StableReleases
-}
-
-type StableReleases []StableRelease
-
-func (v StableReleases) Less(i, j int) bool {
-	c := v[i].Version.Compare(v[j].Version)
-	if c > 0 {
-		return true
-	}
-	return false
-}
-
-func (v StableReleases) Len() int      { return len(v) }
-func (v StableReleases) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
-
-type StableRelease struct {
-	Release  *releasecontroller.Release
-	Version  semver.Version
-	Versions releasecontroller.SemanticVersions
+	Stable *releasecontroller.StableReferences
 }
 
 type ReleaseUpgrades struct {

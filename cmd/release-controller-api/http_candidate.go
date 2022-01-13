@@ -110,7 +110,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 	successPercent := 80.0
 	releaseCandidateList, err := c.findReleaseCandidates(successPercent, releaseStreamName)
 	if err != nil {
-		if err == errStreamNotFound {
+		if err == releasecontroller.ErrStreamNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -158,7 +158,7 @@ func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Reques
 	successPercent := 80.0
 	releaseCandidateList, err := c.findReleaseCandidates(successPercent, releaseStreamName)
 	if err != nil {
-		if err == errStreamNotFound {
+		if err == releasecontroller.ErrStreamNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -194,12 +194,12 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 
 	releaseStreamTagMap, ok := c.findReleaseByName(true, releaseStreams...)
 	if !ok || len(releaseStreamTagMap) == 0 {
-		return releaseCandidates, errStreamNotFound
+		return releaseCandidates, releasecontroller.ErrStreamNotFound
 	}
 
 	stableReleases := make([]imagev1.TagReference, 0)
 
-	stable, err := c.stableReleases()
+	stable, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
 	if err != nil {
 		return releaseCandidates, err
 	}
@@ -209,14 +209,14 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 				continue
 			}
 			// Only consider stable versions with a parseable version
-			if _, err := semverParseTolerant(tag.Name); err == nil {
+			if _, err := releasecontroller.SemverParseTolerant(tag.Name); err == nil {
 				stableReleases = append(stableReleases, tag)
 			}
 		}
 	}
 	sort.Slice(stableReleases, func(i, j int) bool {
-		vi, _ := semverParseTolerant(stableReleases[i].Name)
-		vj, _ := semverParseTolerant(stableReleases[j].Name)
+		vi, _ := releasecontroller.SemverParseTolerant(stableReleases[i].Name)
+		vj, _ := releasecontroller.SemverParseTolerant(stableReleases[j].Name)
 		return vi.GT(vj)
 	})
 
@@ -287,9 +287,9 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		return nil, false
 	}
 
-	var stable *StableReferences
+	var stable *releasecontroller.StableReferences
 	if includeStableTags {
-		stable = &StableReferences{}
+		stable = &releasecontroller.StableReferences{}
 	}
 
 	for _, stream := range imageStreams {
@@ -299,8 +299,8 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		}
 
 		if includeStableTags {
-			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
-				stable.Releases = append(stable.Releases, StableRelease{
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
+				stable.Releases = append(stable.Releases, releasecontroller.StableRelease{
 					Release: r,
 					Version: version,
 				})
@@ -335,42 +335,14 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	return needed, remaining == 0
 }
 
-// TODO: Add support for returning stable releases after rally point
-func (c *Controller) stableReleases() (*StableReferences, error) {
-	imageStreams, err := c.releaseLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
-	stable := &StableReferences{}
-
-	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
-		if err != nil || !ok {
-			continue
-		}
-
-		if r.Config.As == releasecontroller.ReleaseConfigModeStable {
-			version, _ := semverParseTolerant(r.Source.Name)
-			stable.Releases = append(stable.Releases, StableRelease{
-				Release: r,
-				Version: version,
-			})
-		}
-	}
-
-	sort.Sort(stable.Releases)
-	return stable, nil
-}
-
 func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagReference, error) {
-	imageInfo, err := c.getImageInfo(tag.From.Name)
+	imageInfo, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tag.From.Name)
 	if err != nil {
 		return nil, fmt.Errorf("unable to determine image info for %s: %v", tag.From.Name, err)
 	}
 
 	// Call oc adm release info to get previous nightly info for the stable release
-	op, err := c.releaseInfo.ReleaseInfo(imageInfo.generateDigestPullSpec())
+	op, err := c.releaseInfo.ReleaseInfo(imageInfo.GenerateDigestPullSpec())
 	if err != nil {
 		// releaseinfo not found, old tag
 		return nil, fmt.Errorf("could not get release info for tag %s: %v", tag.From.Name, err)
@@ -417,18 +389,18 @@ func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagRef
 	if fromTag != nil {
 		return fromTag, nil
 	}
-	return nil, errStreamTagNotFound
+	return nil, releasecontroller.ErrStreamTagNotFound
 }
 
 func (c *Controller) nextVersionDetails(stream string, stable []imagev1.TagReference) (*semver.Version, *time.Time, error) {
 	for _, tag := range stable {
 		// Check if the stable version's <MAJOR>.<MINOR> matches any release stream that we are processing
-		streamVersion, err := semverParseTolerant(stream)
+		streamVersion, err := releasecontroller.SemverParseTolerant(stream)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		stableVersion, err := semverParseTolerant(tag.Name)
+		stableVersion, err := releasecontroller.SemverParseTolerant(tag.Name)
 		if err != nil || streamVersion.Major != stableVersion.Major && streamVersion.Minor != stableVersion.Minor {
 			continue
 		}

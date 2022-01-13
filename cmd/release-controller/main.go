@@ -160,9 +160,9 @@ func main() {
 	opt.prowconfig.AddFlags(flag.CommandLine)
 	flagset.AddGoFlagSet(flag.CommandLine)
 
-	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "The public hostname of the artifacts server.")
+	flagset.StringVar(&opt.ArtifactsHost, "artifacts", opt.ArtifactsHost, "REMOVED: The public hostname of the artifacts server.")
 
-	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve release information on")
+	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve metrics on")
 
 	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
 	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
@@ -342,7 +342,6 @@ func (o *options) Run() error {
 		configAgent,
 		prowClient.Namespace(o.ProwNamespace),
 		o.JobNamespace,
-		o.ArtifactsHost,
 		releaseInfo,
 		graph,
 		o.softDeleteReleaseTags,
@@ -443,12 +442,8 @@ func (o *options) Run() error {
 
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
-		http.DefaultServeMux.HandleFunc("/graph", c.graphHandler)
-		http.DefaultServeMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
-		http.DefaultServeMux.HandleFunc("/healthz/ready", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "OK") })
-		http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 		go func() {
-			klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
+			klog.Infof("Listening on %s for metrics", o.ListenAddr)
 			if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {
 				klog.Exitf("Server exited: %v", err)
 			}

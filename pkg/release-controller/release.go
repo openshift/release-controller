@@ -14,11 +14,58 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
+
+var (
+	ErrStreamNotFound    = fmt.Errorf("no release configuration exists with the requested name")
+	ErrStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
+)
+
+type StableReferences struct {
+	Releases StableReleases
+}
+
+type StableReleases []StableRelease
+
+func (v StableReleases) Less(i, j int) bool {
+	c := v[i].Version.Compare(v[j].Version)
+	if c > 0 {
+		return true
+	}
+	return false
+}
+
+func (v StableReleases) Len() int      { return len(v) }
+func (v StableReleases) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
+
+type StableRelease struct {
+	Release  *Release
+	Version  semver.Version
+	Versions SemanticVersions
+}
+
+type dockerImageConfig struct {
+	Architecture string `json:"architecture"`
+	Os           string `json:"os"`
+}
+
+type imageInfoConfig struct {
+	Config *dockerImageConfig `json:"config"`
+	Digest string             `json:"digest"`
+	Name   string             `json:"name"`
+}
+
+func (c imageInfoConfig) GenerateDigestPullSpec() string {
+	if strings.Contains(c.Name, "@sha256:") {
+		return fmt.Sprintf("%s@%s", strings.Split(c.Name, "@sha256:")[0], c.Digest)
+	}
+	return fmt.Sprintf("%s@%s", strings.Split(c.Name, ":")[0], c.Digest)
+}
 
 func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, eventRecorder record.EventRecorder, releaseLister MultiImageStreamLister) (*Release, bool, error) {
 	src, ok := is.Annotations[ReleaseAnnotationConfig]
@@ -401,4 +448,75 @@ func CountUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 		}
 	}
 	return unreadyTagCount
+}
+
+func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister) (*StableReferences, error) {
+	imageStreams, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	stable := &StableReferences{}
+
+	for _, stream := range imageStreams {
+		r, ok, err := ReleaseDefinition(stream, rcCache, eventRecorder, *lister)
+		if err != nil || !ok {
+			continue
+		}
+
+		if r.Config.As == ReleaseConfigModeStable {
+			version, _ := SemverParseTolerant(r.Source.Name)
+			stable.Releases = append(stable.Releases, StableRelease{
+				Release: r,
+				Version: version,
+			})
+		}
+	}
+
+	sort.Sort(stable.Releases)
+	return stable, nil
+}
+
+func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
+	imageStreams, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, stream := range imageStreams {
+		r, ok, err := ReleaseDefinition(stream, rcCache, eventRecorder, *lister)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.Name != streamName {
+			continue
+		}
+		// find all accepted tags, then sort by semantic version
+		tags := UnsortedSemanticReleaseTags(r, ReleasePhaseAccepted)
+		sort.Sort(tags)
+		for _, ver := range tags {
+			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
+				continue
+			}
+			if relativeIndex > 0 {
+				relativeIndex--
+				continue
+			}
+			return r, ver.Tag, nil
+		}
+		return nil, nil, ErrStreamTagNotFound
+	}
+	return nil, nil, ErrStreamNotFound
+}
+
+func GetImageInfo(releaseInfo ReleaseInfo, architecture, pullSpec string) (*imageInfoConfig, error) {
+	// Get the ImageInfo
+	imageInfo, err := releaseInfo.ImageInfo(pullSpec, architecture)
+	if err != nil {
+		return nil, fmt.Errorf("could not get image info for from pullSpec %s: %v", pullSpec, err)
+	}
+	config := imageInfoConfig{}
+	if err := json.Unmarshal([]byte(imageInfo), &config); err != nil {
+		return nil, fmt.Errorf("could not unmarshal image info for from pullSpec %s: %v", pullSpec, err)
+	}
+	return &config, nil
 }

@@ -240,9 +240,9 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		return nil, false
 	}
 
-	var stable *StableReferences
+	var stable *releasecontroller.StableReferences
 	if includeStableTags {
-		stable = &StableReferences{}
+		stable = &releasecontroller.StableReferences{}
 	}
 
 	for _, stream := range imageStreams {
@@ -253,8 +253,8 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		// TODO: should be refactored to be unsortedSemanticReleaseTags
 		releaseTags := releasecontroller.SortedReleaseTags(r)
 		if includeStableTags {
-			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
-				stable.Releases = append(stable.Releases, StableRelease{
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
+				stable.Releases = append(stable.Releases, releasecontroller.StableRelease{
 					Release:  r,
 					Version:  version,
 					Versions: releasecontroller.NewSemanticVersions(releaseTags),
@@ -285,20 +285,6 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		sort.Sort(stable.Releases)
 	}
 	return needed, remaining == 0
-}
-
-// semverParseTolerant works around https://github.com/blang/semver/issues/55 until
-// it is resolved.
-func semverParseTolerant(v string) (semver.Version, error) {
-	ver, err := semver.ParseTolerant(v)
-	if err == nil {
-		return ver, nil
-	}
-	ver, strictErr := semver.Parse(v)
-	if strictErr == nil {
-		return ver, nil
-	}
-	return semver.Version{}, err
 }
 
 func (c *Controller) userInterfaceHandler() http.Handler {
@@ -362,10 +348,10 @@ func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*re
 		relativeIndex = i
 	}
 
-	r, latest, err := c.latestForStream(streamName, constraint, relativeIndex)
+	r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, streamName, constraint, relativeIndex)
 	if err != nil {
 		code := http.StatusInternalServerError
-		if err == errStreamNotFound || err == errStreamTagNotFound {
+		if err == releasecontroller.ErrStreamNotFound || err == releasecontroller.ErrStreamTagNotFound {
 			code = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), code)
@@ -437,7 +423,7 @@ func (c *Controller) locateStream(streamName string, phases ...string) (*Release
 			Tags:    tags.Tags(),
 		}, nil
 	}
-	return nil, errStreamNotFound
+	return nil, releasecontroller.ErrStreamNotFound
 
 }
 
@@ -452,7 +438,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 
 	r, err := c.locateStream(streamName)
 	if err != nil {
-		if err == errStreamNotFound {
+		if err == releasecontroller.ErrStreamNotFound {
 			http.Error(w, fmt.Sprintf("Unable to find release %s", streamName), http.StatusNotFound)
 		} else {
 			http.Error(w, fmt.Sprintf("Unable to find release %s: %v", streamName, err), http.StatusInternalServerError)
@@ -657,13 +643,13 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	imageInfo, err := c.getImageInfo(tagPullSpec)
+	imageInfo, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tagPullSpec)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("unable to determine image info for %s: %v", tagPullSpec, err), http.StatusBadRequest)
 		return
 	}
 
-	out, err := c.releaseInfo.ReleaseInfo(imageInfo.generateDigestPullSpec())
+	out, err := c.releaseInfo.ReleaseInfo(imageInfo.GenerateDigestPullSpec())
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal error: %v", err), http.StatusInternalServerError)
 		return
@@ -972,42 +958,6 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `<select onchange="this.form.submit()" id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare">`, strings.Join(options, ""))
 		fmt.Fprint(w, `</form></p>`)
 	}
-}
-
-var (
-	errStreamNotFound    = fmt.Errorf("no release configuration exists with the requested name")
-	errStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
-)
-
-func (c *Controller) latestForStream(streamName string, constraint semver.Range, relativeIndex int) (*releasecontroller.Release, *imagev1.TagReference, error) {
-	imageStreams, err := c.releaseLister.List(labels.Everything())
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
-		if err != nil || !ok {
-			continue
-		}
-		if r.Config.Name != streamName {
-			continue
-		}
-		// find all accepted tags, then sort by semantic version
-		tags := releasecontroller.UnsortedSemanticReleaseTags(r, releasecontroller.ReleasePhaseAccepted)
-		sort.Sort(tags)
-		for _, ver := range tags {
-			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
-				continue
-			}
-			if relativeIndex > 0 {
-				relativeIndex--
-				continue
-			}
-			return r, ver.Tag, nil
-		}
-		return nil, nil, errStreamTagNotFound
-	}
-	return nil, nil, errStreamNotFound
 }
 
 func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request) {
@@ -1368,11 +1318,11 @@ func relTime(a, b time.Time, albl, blbl string) string {
 }
 
 func (c *Controller) getSupportedUpgrades(tagPull string) ([]string, error) {
-	imageInfo, err := c.getImageInfo(tagPull)
+	imageInfo, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tagPull)
 	if err != nil {
 		return nil, fmt.Errorf("unable to determine image info for %s: %v", tagPull, err)
 	}
-	tagUpgradeInfo, err := c.releaseInfo.UpgradeInfo(imageInfo.generateDigestPullSpec())
+	tagUpgradeInfo, err := c.releaseInfo.UpgradeInfo(imageInfo.GenerateDigestPullSpec())
 	if err != nil {
 		return nil, fmt.Errorf("could not get release info for tag %s: %v", tagPull, err)
 	}
@@ -1394,7 +1344,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		code := http.StatusInternalServerError
-		if err == errStreamNotFound || err == errStreamTagNotFound {
+		if err == releasecontroller.ErrStreamNotFound || err == releasecontroller.ErrStreamTagNotFound {
 			code = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), code)
