@@ -443,7 +443,7 @@ func (o *options) Run() error {
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
 		go func() {
-			klog.Infof("Listening on %s for UI and metrics", o.ListenAddr)
+			klog.Infof("Listening on %s for metrics", o.ListenAddr)
 			if err := http.ListenAndServe(o.ListenAddr, nil); err != nil {
 				klog.Exitf("Server exited: %v", err)
 			}
