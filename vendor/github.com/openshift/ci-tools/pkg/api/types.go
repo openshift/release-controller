@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+	prowv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"k8s.io/test-infra/prow/repoowners"
 )
 
@@ -135,12 +137,13 @@ func (config ReleaseBuildConfiguration) IsPipelineImage(name string) bool {
 		string(PipelineImageStreamTagReferenceBinaries),
 		string(PipelineImageStreamTagReferenceTestBinaries),
 		string(PipelineImageStreamTagReferenceRPMs),
-		string(PipelineImageStreamTagReferenceBundleSource),
-		string(PipelineImageStreamTagReferenceIndexImageGenerator),
-		string(PipelineImageStreamTagReferenceIndexImage):
+		string(PipelineImageStreamTagReferenceBundleSource):
 		return true
 	}
-	return IsBundleImage(name)
+	if IsIndexImage(name) {
+		return true
+	}
+	return config.IsBundleImage(name)
 }
 
 // ResourceConfiguration defines resource overrides for jobs run
@@ -167,12 +170,20 @@ func (c ResourceConfiguration) RequirementsForStep(name string) ResourceRequirem
 // to the individual steps in the job. They are passed directly to
 // builds or pods.
 type ResourceRequirements struct {
+	// Requests are resource requests applied to an individual step in the job.
+	// These are directly used in creating the Pods that execute the Job.
 	Requests ResourceList `json:"requests,omitempty"`
-	Limits   ResourceList `json:"limits,omitempty"`
+	// Limits are resource limits applied to an individual step in the job.
+	// These are directly used in creating the Pods that execute the Job.
+	Limits ResourceList `json:"limits,omitempty"`
 }
 
 // ResourceList is a map of string resource names and resource
-// quantities, as defined on Kubernetes objects.
+// quantities, as defined on Kubernetes objects. Common resources
+// to request or limit are `cpu` and `memory`. For `cpu`, values
+// are provided in vCPUs - for instance, `2` or `200m`. For
+// `memory`, values are provided in bytes - for instance, `20Mi`
+// or `3Gi`.
 type ResourceList map[string]string
 
 func (l ResourceList) Add(values ResourceList) {
@@ -216,12 +227,25 @@ type InputConfiguration struct {
 // UnresolvedRelease describes a semantic release payload
 // identifier we need to resolve to a pull spec.
 type UnresolvedRelease struct {
+	// Integration describes an integration stream which we can create a payload out of
+	Integration *Integration `json:"integration,omitempty"`
 	// Candidate describes a candidate release payload
 	Candidate *Candidate `json:"candidate,omitempty"`
 	// Prerelease describes a yet-to-be released payload
 	Prerelease *Prerelease `json:"prerelease,omitempty"`
 	// Release describes a released payload
 	Release *Release `json:"release,omitempty"`
+}
+
+// Integration is an ImageStream holding the latest images from development builds of OCP.
+type Integration struct {
+	// Namespace is the namespace in which the integration stream lives.
+	Namespace string `json:"namespace"`
+	// Name is the name of the ImageStream
+	Name string `json:"name"`
+	// IncludeBuiltImages determines if the release we assemble will include
+	// images built during the test itself.
+	IncludeBuiltImages bool `json:"include_built_images,omitempty"`
 }
 
 // Candidate describes a validated candidate release payload
@@ -263,6 +287,18 @@ func (b *VersionBounds) Query() string {
 	return fmt.Sprintf(">%s <%s", b.Lower, b.Upper)
 }
 
+func BoundsFromQuery(query string) (*VersionBounds, error) {
+	splitParts := strings.Split(query, " ")
+	if len(splitParts) != 2 || !strings.HasPrefix(splitParts[0], ">") || !strings.HasPrefix(splitParts[1], "<") {
+		return nil, fmt.Errorf("Invalid version range `%s`. Must be in form `>4.x.y <4.a.b-c`", query)
+
+	}
+	return &VersionBounds{
+		Lower: strings.TrimPrefix(splitParts[0], ">"),
+		Upper: strings.TrimPrefix(splitParts[1], "<"),
+	}, nil
+}
+
 // ReleaseProduct describes the product being released
 type ReleaseProduct string
 
@@ -278,6 +314,7 @@ const (
 	ReleaseArchitectureAMD64   ReleaseArchitecture = "amd64"
 	ReleaseArchitecturePPC64le ReleaseArchitecture = "ppc64le"
 	ReleaseArchitectureS390x   ReleaseArchitecture = "s390x"
+	ReleaseArchitectureARM64   ReleaseArchitecture = "arm64"
 )
 
 type ReleaseStream string
@@ -322,6 +359,11 @@ type BuildRootImageConfiguration struct {
 	ProjectImageBuild       *ProjectDirectoryImageBuildInputs `json:"project_image,omitempty"`
 	// If the BuildRoot images pullspec should be read from a file in the repository (BuildRootImageFileName).
 	FromRepository bool `json:"from_repository,omitempty"`
+
+	// UseBuildCache enables the import and use of the prior `bin` image
+	// as a build cache, if the underlying build root has not changed since
+	// the previous cache was published.
+	UseBuildCache bool `json:"use_build_cache,omitempty"`
 }
 
 // ImageStreamTagReference identifies an ImageStreamTag
@@ -332,6 +374,10 @@ type ImageStreamTagReference struct {
 
 	// As is an optional string to use as the intermediate name for this reference.
 	As string `json:"as,omitempty"`
+}
+
+func (i *ImageStreamTagReference) ISTagName() string {
+	return fmt.Sprintf("%s/%s:%s", i.Namespace, i.Name, i.Tag)
 }
 
 // ReleaseTagConfiguration describes how a release is
@@ -348,9 +394,17 @@ type ReleaseTagConfiguration struct {
 	// component tags.
 	Name string `json:"name"`
 
-	// NamePrefix is prepended to the final output image name
-	// if specified.
-	NamePrefix string `json:"name_prefix,omitempty"`
+	// IncludeBuiltImages determines if the release we assemble will include
+	// images built during the test itself.
+	IncludeBuiltImages bool `json:"include_built_images,omitempty"`
+}
+
+func (config ReleaseTagConfiguration) InputsName() string {
+	return "[release-inputs]"
+}
+
+func (config ReleaseTagConfiguration) TargetName(name string) string {
+	return fmt.Sprintf("[release:%s]", name)
 }
 
 // ReleaseConfiguration records a resolved release with its name.
@@ -360,6 +414,10 @@ type ReleaseTagConfiguration struct {
 type ReleaseConfiguration struct {
 	Name              string `json:"name"`
 	UnresolvedRelease `json:",inline"`
+}
+
+func (config ReleaseConfiguration) TargetName() string {
+	return fmt.Sprintf("[release:%s]", config.Name)
 }
 
 // PromotionConfiguration describes where images created by this
@@ -378,10 +436,6 @@ type PromotionConfiguration struct {
 	// Tag is the ImageStreamTag tagged in for each
 	// build image's ImageStream.
 	Tag string `json:"tag,omitempty"`
-
-	// NamePrefix is prepended to the final output image name
-	// if specified.
-	NamePrefix string `json:"name_prefix,omitempty"`
 
 	// ExcludedImages are image names that will not be promoted.
 	// Exclusions are made before additional_images are included.
@@ -402,6 +456,18 @@ type PromotionConfiguration struct {
 	// never concurrently, and you want to have promotion config
 	// in the ci-operator configuration files all the time.
 	Disabled bool `json:"disabled,omitempty"`
+
+	// RegistryOverride is an override for the registry domain to
+	// which we will mirror images. This is an advanced option and
+	// should *not* be used in common test workflows. The CI chat
+	// bot uses this option to facilitate image sharing.
+	RegistryOverride string `json:"registry_override,omitempty"`
+
+	// DisableBuildCache stops us from uploading the build cache.
+	// This is useful (only) for CI chat bot invocations where
+	// promotion does not imply output artifacts are being created
+	// for posterity.
+	DisableBuildCache bool `json:"disable_build_cache,omitempty"`
 }
 
 // StepConfiguration holds one step configuration.
@@ -427,8 +493,64 @@ type StepConfiguration struct {
 // if no explicit output tag is provided, the name
 // of the image is used as the tag.
 type InputImageTagStepConfiguration struct {
+	InputImage `json:",inline"`
+	Sources    []ImageStreamSource `json:"-"`
+}
+
+func (config InputImageTagStepConfiguration) TargetName() string {
+	return fmt.Sprintf("[input:%s]", config.To)
+}
+
+func (config InputImageTagStepConfiguration) Matches(other InputImage) bool {
+	return config.InputImage == other
+}
+
+func (config InputImageTagStepConfiguration) FormattedSources() string {
+	var formattedSources []string
+	tests := sets.String{}
+	for _, source := range config.Sources {
+		switch source.SourceType {
+		case ImageStreamSourceTest:
+			tests.Insert(source.Name)
+		default:
+			item := string(source.SourceType)
+			if source.Name != "" {
+				item += ": " + source.Name
+			}
+			formattedSources = append(formattedSources, item)
+		}
+	}
+
+	if len(tests) > 0 {
+		formattedSources = append(formattedSources, fmt.Sprintf("test steps: %s", strings.Join(tests.List(), ",")))
+
+	}
+
+	return strings.Join(formattedSources, "|")
+
+}
+
+func (config *InputImageTagStepConfiguration) AddSources(sources ...ImageStreamSource) {
+	config.Sources = append(config.Sources, sources...)
+}
+
+type InputImage struct {
 	BaseImage ImageStreamTagReference         `json:"base_image"`
 	To        PipelineImageStreamTagReference `json:"to,omitempty"`
+}
+
+type ImageStreamSourceType string
+
+const (
+	ImageStreamSourceRoot    ImageStreamSourceType = "root"
+	ImageStreamSourceBase    ImageStreamSourceType = "base_image"
+	ImageStreamSourceBaseRpm ImageStreamSourceType = "base_rpm_image"
+	ImageStreamSourceTest    ImageStreamSourceType = "test step"
+)
+
+type ImageStreamSource struct {
+	SourceType ImageStreamSourceType
+	Name       string
 }
 
 // OutputImageTagStepConfiguration describes a step that
@@ -441,6 +563,13 @@ type OutputImageTagStepConfiguration struct {
 	// promoted unless explicitly targeted. Use for builds which
 	// are invoked only when testing certain parts of the repo.
 	Optional bool `json:"optional"`
+}
+
+func (config OutputImageTagStepConfiguration) TargetName() string {
+	if len(config.To.As) == 0 {
+		return fmt.Sprintf("[output:%s:%s]", config.To.Name, config.To.Tag)
+	}
+	return config.To.As
 }
 
 // PipelineImageCacheStepConfiguration describes a
@@ -456,6 +585,23 @@ type PipelineImageCacheStepConfiguration struct {
 	Commands string `json:"commands"`
 }
 
+func (config PipelineImageCacheStepConfiguration) TargetName() string {
+	return string(config.To)
+}
+
+// Cluster is the name of a cluster in CI build farm.
+type Cluster string
+
+const (
+	ClusterAPPCI   Cluster = "app.ci"
+	ClusterBuild01 Cluster = "build01"
+	ClusterBuild02 Cluster = "build02"
+	ClusterBuild03 Cluster = "build03"
+	ClusterVSphere Cluster = "vsphere"
+	ClusterARM01   Cluster = "arm01"
+	ClusterHive    Cluster = "hive"
+)
+
 // TestStepConfiguration describes a step that runs a
 // command in one of the previously built images and then
 // gathers artifacts from that step.
@@ -465,10 +611,9 @@ type TestStepConfiguration struct {
 	// Commands are the shell commands to run in
 	// the repository root to execute tests.
 	Commands string `json:"commands,omitempty"`
-	// ArtifactDir is an optional directory that contains the
-	// artifacts to upload. If unset, this will default to
-	// "/tmp/artifacts".
-	ArtifactDir string `json:"artifact_dir,omitempty"`
+
+	// Cluster specifies the name of the cluster where the test runs.
+	Cluster Cluster `json:"cluster,omitempty"`
 
 	// Secret is an optional secret object which
 	// will be mounted inside the test container.
@@ -487,8 +632,34 @@ type TestStepConfiguration struct {
 	// create a periodic job instead of a presubmit
 	Cron *string `json:"cron,omitempty"`
 
+	// Interval is how frequently the test should be run based
+	// on the last time the test ran. Setting this field will
+	// create a periodic job instead of a presubmit
+	Interval *string `json:"interval,omitempty"`
+
+	// ReleaseController configures prowgen to create a periodic that
+	// does not get run by prow and instead is run by release-controller.
+	// The job must be configured as a verification or periodic job in a
+	// release-controller config file when this field is set to `true`.
+	ReleaseController bool `json:"release_controller,omitempty"`
+
 	// Postsubmit configures prowgen to generate the job as a postsubmit rather than a presubmit
 	Postsubmit bool `json:"postsubmit,omitempty"`
+
+	// ClusterClaim claims an OpenShift cluster and exposes environment variable ${KUBECONFIG} to the test container
+	ClusterClaim *ClusterClaim `json:"cluster_claim,omitempty"`
+
+	// RunIfChanged is a regex that will result in the test only running if something that matches it was changed.
+	RunIfChanged string `json:"run_if_changed,omitempty"`
+
+	// Optional indicates that the job's status context, that is generated from the corresponding test, should not be required for merge.
+	Optional bool `json:"optional,omitempty"`
+
+	// SkipIfOnlyChanged is a regex that will result in the test being skipped if all changed files match that regex.
+	SkipIfOnlyChanged string `json:"skip_if_only_changed,omitempty"`
+
+	// Timeout overrides maximum prowjob duration
+	Timeout *prowv1.Duration `json:"timeout,omitempty"`
 
 	// Only one of the following can be not-null.
 	ContainerTestConfiguration                                *ContainerTestConfiguration                                `json:"container,omitempty"`
@@ -497,12 +668,64 @@ type TestStepConfiguration struct {
 	OpenshiftAnsibleClusterTestConfiguration                  *OpenshiftAnsibleClusterTestConfiguration                  `json:"openshift_ansible,omitempty"`
 	OpenshiftAnsibleSrcClusterTestConfiguration               *OpenshiftAnsibleSrcClusterTestConfiguration               `json:"openshift_ansible_src,omitempty"`
 	OpenshiftAnsibleCustomClusterTestConfiguration            *OpenshiftAnsibleCustomClusterTestConfiguration            `json:"openshift_ansible_custom,omitempty"`
-	OpenshiftAnsible40ClusterTestConfiguration                *OpenshiftAnsible40ClusterTestConfiguration                `json:"openshift_ansible_40,omitempty"`
 	OpenshiftInstallerClusterTestConfiguration                *OpenshiftInstallerClusterTestConfiguration                `json:"openshift_installer,omitempty"`
-	OpenshiftInstallerSrcClusterTestConfiguration             *OpenshiftInstallerSrcClusterTestConfiguration             `json:"openshift_installer_src,omitempty"`
 	OpenshiftInstallerUPIClusterTestConfiguration             *OpenshiftInstallerUPIClusterTestConfiguration             `json:"openshift_installer_upi,omitempty"`
 	OpenshiftInstallerUPISrcClusterTestConfiguration          *OpenshiftInstallerUPISrcClusterTestConfiguration          `json:"openshift_installer_upi_src,omitempty"`
 	OpenshiftInstallerCustomTestImageClusterTestConfiguration *OpenshiftInstallerCustomTestImageClusterTestConfiguration `json:"openshift_installer_custom_test_image,omitempty"`
+}
+
+func (config TestStepConfiguration) TargetName() string {
+	return config.As
+}
+
+// Cloud is the name of a cloud provider, e.g., aws cluster topology, etc.
+type Cloud string
+
+const (
+	CloudAWS Cloud = "aws"
+	CloudGCP Cloud = "gcp"
+)
+
+// ClusterClaim claims an OpenShift cluster for the job.
+type ClusterClaim struct {
+	// As is the name to use when importing the cluster claim release payload.
+	// If unset, claim release will be imported as `latest`.
+	As string `json:"as,omitempty"`
+	// Product is the name of the product being released.
+	// Defaults to ocp.
+	Product ReleaseProduct `json:"product,omitempty"`
+	// Version is the version of the product
+	Version string `json:"version"`
+	// Architecture is the architecture for the product.
+	// Defaults to amd64.
+	Architecture ReleaseArchitecture `json:"architecture,omitempty"`
+	// Cloud is the cloud where the product is installed, e.g., aws.
+	Cloud Cloud `json:"cloud"`
+	// Owner is the owner of cloud account used to install the product, e.g., dpp.
+	Owner string `json:"owner"`
+	// Labels is the labels to select the cluster pools
+	Labels map[string]string `json:"labels,omitempty"`
+	// Timeout is how long ci-operator will wait for the cluster to be ready.
+	// Defaults to 1h.
+	Timeout *prowv1.Duration `json:"timeout,omitempty"`
+}
+
+type ClaimRelease struct {
+	ReleaseName  string
+	OverrideName string
+}
+
+func (c *ClusterClaim) ClaimRelease(testName string) *ClaimRelease {
+	var as string
+	if c.As == "" {
+		as = LatestReleaseName
+	} else {
+		as = c.As
+	}
+	return &ClaimRelease{
+		ReleaseName:  fmt.Sprintf("%s-%s", as, testName),
+		OverrideName: as,
+	}
 }
 
 // RegistryReferenceConfig is the struct that step references are unmarshalled into.
@@ -535,6 +758,8 @@ type RegistryChain struct {
 	Documentation string `json:"documentation,omitempty"`
 	// Environment lists parameters that should be set by the test.
 	Environment []StepParameter `json:"env,omitempty"`
+	// Leases lists resources that should be acquired for the test.
+	Leases []StepLease `json:"leases,omitempty"`
 }
 
 // RegistryWorkflowConfig is the struct that workflow references are unmarshalled into.
@@ -568,9 +793,11 @@ type RegistryObserver struct {
 }
 
 // RegistryMetadata maps the registry info for each step in the registry by filename
+// +k8s:deepcopy-gen=false
 type RegistryMetadata map[string]RegistryInfo
 
 // RegistryInfo contains metadata about a registry component that is useful for the web UI of the step registry
+// +k8s:deepcopy-gen=false
 type RegistryInfo struct {
 	// Path is the path of the directoryfor the registry component relative to the registry's base directory
 	Path string `json:"path,omitempty"`
@@ -612,15 +839,13 @@ type LiteralTestStep struct {
 	FromImage *ImageStreamTagReference `json:"from_image,omitempty"`
 	// Commands is the command(s) that will be run inside the image.
 	Commands string `json:"commands,omitempty"`
-	// ActiveDeadlineSeconds is passed directly through to the step's Pod.
-	ActiveDeadlineSeconds *int64 `json:"active_deadline_seconds,omitempty"`
-	// ArtifactDir is the directory from which artifacts will be extracted
-	// when the command finishes. Defaults to "/tmp/artifacts"
-	ArtifactDir string `json:"artifact_dir,omitempty"`
 	// Resources defines the resource requirements for the step.
 	Resources ResourceRequirements `json:"resources"`
-	// TerminationGracePeriodSeconds is passed directly through to the step's Pod.
-	TerminationGracePeriodSeconds *int64 `json:"termination_grace_period_seconds,omitempty"`
+	// Timeout is how long the we will wait before aborting a job with SIGINT.
+	Timeout *prowv1.Duration `json:"timeout,omitempty"`
+	// GracePeriod is how long the we will wait after sending SIGINT to send
+	// SIGKILL when aborting a Step.
+	GracePeriod *prowv1.Duration `json:"grace_period,omitempty"`
 	// Credentials defines the credentials we'll mount into this step.
 	Credentials []CredentialReference `json:"credentials,omitempty"`
 	// Environment lists parameters that should be set by the test.
@@ -628,19 +853,28 @@ type LiteralTestStep struct {
 	// Dependencies lists images which must be available before the test runs
 	// and the environment variables which are used to expose their pull specs.
 	Dependencies []StepDependency `json:"dependencies,omitempty"`
+	// DnsConfig for step's Pod.
+	DNSConfig *StepDNSConfig `json:"dnsConfig,omitempty"`
+	// Leases lists resources that should be acquired for the test.
+	Leases []StepLease `json:"leases,omitempty"`
 	// OptionalOnSuccess defines if this step should be skipped as long
 	// as all `pre` and `test` steps were successful and AllowSkipOnSuccess
 	// flag is set to true in MultiStageTestConfiguration. This option is
 	// applicable to `post` steps.
 	OptionalOnSuccess *bool `json:"optional_on_success,omitempty"`
-	// ReadonlySharedDir reduces the run time of steps that do not update the
-	// shared directory.
-	ReadonlySharedDir bool `json:"readonly_shared_dir,omitempty"`
+	// BestEffort defines if this step should cause the job to fail when the
+	// step fails. This only applies when AllowBestEffortPostSteps flag is set
+	// to true in MultiStageTestConfiguration. This option is applicable to
+	// `post` steps.
+	BestEffort *bool `json:"best_effort,omitempty"`
 	// Cli is the (optional) name of the release from which the `oc` binary
 	// will be injected into this step.
 	Cli string `json:"cli,omitempty"`
 	// Observers are the observers that should be running
 	Observers []string `json:"observers,omitempty"`
+	// RunAsScript defines if this step should be executed as a script mounted
+	// in the test container instead of being executed directly via bash
+	RunAsScript *bool `json:"run_as_script,omitempty"`
 }
 
 // StepParameter is a variable set by the test, with an optional default.
@@ -670,6 +904,17 @@ type StepDependency struct {
 	Name string `json:"name"`
 	// Env is the environment variable that the image's pull spec is exposed with
 	Env string `json:"env"`
+	// PullSpec allows the ci-operator user to pass in an external pull-spec that should be used when resolving the dependency
+	PullSpec string `json:"-"`
+}
+
+// StepDNSConfig defines a resource that needs to be acquired prior to execution.
+// Used to expose to the step via the specificed search list
+type StepDNSConfig struct {
+	// Nameservers is a list of IP addresses that will be used as DNS servers for the Pod
+	Nameservers []string `json:"nameservers,omitempty"`
+	// Searches is a list of DNS search domains for host-name lookup
+	Searches []string `json:"searches,omitempty"`
 }
 
 // StepLease defines a resource that needs to be acquired prior to execution.
@@ -680,6 +925,8 @@ type StepLease struct {
 	ResourceType string `json:"resource_type"`
 	// Env is the environment variable that will contain the resource name.
 	Env string `json:"env"`
+	// Count is the number of resources to acquire (optional, defaults to 1).
+	Count uint `json:"count,omitempty"`
 }
 
 // FromImageTag returns the internal name for the image tag that will be used
@@ -723,13 +970,25 @@ type MultiStageTestConfiguration struct {
 	Environment TestEnvironment `json:"env,omitempty"`
 	// Dependencies holds override values for dependency parameters.
 	Dependencies TestDependencies `json:"dependencies,omitempty"`
+	// DnsConfig for step's Pod.
+	DNSConfig *StepDNSConfig `json:"dnsConfig,omitempty"`
+	// Leases lists resources that should be acquired for the test.
+	Leases []StepLease `json:"leases,omitempty"`
 	// AllowSkipOnSuccess defines if any steps can be skipped when
 	// all previous `pre` and `test` steps were successful. The given step must explicitly
 	// ask for being skipped by setting the OptionalOnSuccess flag to true.
 	AllowSkipOnSuccess *bool `json:"allow_skip_on_success,omitempty"`
+	// AllowBestEffortPostSteps defines if any `post` steps can be ignored when
+	// they fail. The given step must explicitly ask for being ignored by setting
+	// the OptionalOnSuccess flag to true.
+	AllowBestEffortPostSteps *bool `json:"allow_best_effort_post_steps,omitempty"`
 	// Observers are the observers that should be running
 	Observers *Observers `json:"observers,omitempty"`
+	// DependencyOverrides allows a step to override a dependency with a fully-qualified pullspec. This will probably only ever
+	// be used with rehearsals. Otherwise, the overrides should be passed in as parameters to ci-operator.
+	DependencyOverrides DependencyOverrides `json:"dependency_overrides,omitempty"`
 }
+type DependencyOverrides map[string]string
 
 // MultiStageTestConfigurationLiteral is a form of the MultiStageTestConfiguration that does not include
 // references. It is the type that MultiStageTestConfigurations are converted to when parsed by the
@@ -748,12 +1007,26 @@ type MultiStageTestConfigurationLiteral struct {
 	Environment TestEnvironment `json:"env,omitempty"`
 	// Dependencies holds override values for dependency parameters.
 	Dependencies TestDependencies `json:"dependencies,omitempty"`
+	// DnsConfig for step's Pod.
+	DNSConfig *StepDNSConfig `json:"dnsConfig,omitempty"`
+	// Leases lists resources that should be acquired for the test.
+	Leases []StepLease `json:"leases,omitempty"`
 	// AllowSkipOnSuccess defines if any steps can be skipped when
 	// all previous `pre` and `test` steps were successful. The given step must explicitly
 	// ask for being skipped by setting the OptionalOnSuccess flag to true.
 	AllowSkipOnSuccess *bool `json:"allow_skip_on_success,omitempty"`
+	// AllowBestEffortPostSteps defines if any `post` steps can be ignored when
+	// they fail. The given step must explicitly ask for being ignored by setting
+	// the OptionalOnSuccess flag to true.
+	AllowBestEffortPostSteps *bool `json:"allow_best_effort_post_steps,omitempty"`
 	// Observers are the observers that need to be run
 	Observers []Observer `json:"observers,omitempty"`
+	// DependencyOverrides allows a step to override a dependency with a fully-qualified pullspec. This will probably only ever
+	// be used with rehearsals. Otherwise, the overrides should be passed in as parameters to ci-operator.
+	DependencyOverrides DependencyOverrides `json:"dependency_overrides,omitempty"`
+
+	// Override job timeout
+	Timeout *prowv1.Duration `json:"timeout,omitempty"`
 }
 
 // TestEnvironment has the values of parameters for multi-stage tests.
@@ -767,7 +1040,8 @@ type TestDependencies map[string]string
 type Secret struct {
 	// Secret name, used inside test containers
 	Name string `json:"name"`
-	// Secret mount path. Defaults to /usr/test-secret
+	// Secret mount path. Defaults to /usr/test-secrets for first
+	// secret. /usr/test-secrets-2 for second, and so on.
 	MountPath string `json:"mount_path"`
 }
 
@@ -790,6 +1064,9 @@ type ContainerTestConfiguration struct {
 	// MemoryBackedVolume mounts a volume of the specified size into
 	// the container at /tmp/volume.
 	MemoryBackedVolume *MemoryBackedVolume `json:"memory_backed_volume,omitempty"`
+	// If the step should clone the source code prior to running the command.
+	// Defaults to `true` for `base_images`, `false` otherwise.
+	Clone *bool `json:"clone,omitempty"`
 }
 
 // ClusterProfile is the name of a set of input variables
@@ -798,40 +1075,78 @@ type ContainerTestConfiguration struct {
 type ClusterProfile string
 
 const (
-	ClusterProfileAWS                ClusterProfile = "aws"
-	ClusterProfileAWSAtomic          ClusterProfile = "aws-atomic"
-	ClusterProfileAWSCentos          ClusterProfile = "aws-centos"
-	ClusterProfileAWSCentos40        ClusterProfile = "aws-centos-40"
-	ClusterProfileAWSGluster         ClusterProfile = "aws-gluster"
-	ClusterProfileAzure4             ClusterProfile = "azure4"
-	ClusterProfileGCP                ClusterProfile = "gcp"
-	ClusterProfileGCP40              ClusterProfile = "gcp-40"
-	ClusterProfileGCPHA              ClusterProfile = "gcp-ha"
-	ClusterProfileGCPCRIO            ClusterProfile = "gcp-crio"
-	ClusterProfileGCPLogging         ClusterProfile = "gcp-logging"
-	ClusterProfileGCPLoggingJournald ClusterProfile = "gcp-logging-journald"
-	ClusterProfileGCPLoggingJSONFile ClusterProfile = "gcp-logging-json-file"
-	ClusterProfileGCPLoggingCRIO     ClusterProfile = "gcp-logging-crio"
-	ClusterProfileLibvirtPpc64le     ClusterProfile = "libvirt-ppc64le"
-	ClusterProfileLibvirtS390x       ClusterProfile = "libvirt-s390x"
-	ClusterProfileOpenStack          ClusterProfile = "openstack"
-	ClusterProfileOpenStackOsuosl    ClusterProfile = "openstack-osuosl"
-	ClusterProfileOpenStackVexxhost  ClusterProfile = "openstack-vexxhost"
-	ClusterProfileOpenStackPpc64le   ClusterProfile = "openstack-ppc64le"
-	ClusterProfileOvirt              ClusterProfile = "ovirt"
-	ClusterProfilePacket             ClusterProfile = "packet"
-	ClusterProfileVSphere            ClusterProfile = "vsphere"
+	ClusterProfileAWS                   ClusterProfile = "aws"
+	ClusterProfileAWSArm64              ClusterProfile = "aws-arm64"
+	ClusterProfileAWSAtomic             ClusterProfile = "aws-atomic"
+	ClusterProfileAWSCentos             ClusterProfile = "aws-centos"
+	ClusterProfileAWSCentos40           ClusterProfile = "aws-centos-40"
+	ClusterProfileAWSC2S                ClusterProfile = "aws-c2s"
+	ClusterProfileAWSChina              ClusterProfile = "aws-china"
+	ClusterProfileAWSGovCloud           ClusterProfile = "aws-usgov"
+	ClusterProfileAWSGluster            ClusterProfile = "aws-gluster"
+	ClusterProfileAlibabaCloud          ClusterProfile = "alibabacloud"
+	ClusterProfileAzure                 ClusterProfile = "azure"
+	ClusterProfileAzure2                ClusterProfile = "azure-2"
+	ClusterProfileAzure4                ClusterProfile = "azure4"
+	ClusterProfileAzureArc              ClusterProfile = "azure-arc"
+	ClusterProfileAzureStack            ClusterProfile = "azurestack"
+	ClusterProfileAzureMag              ClusterProfile = "azuremag"
+	ClusterProfileEquinixOcpMetal       ClusterProfile = "equinix-ocp-metal"
+	ClusterProfileGCP                   ClusterProfile = "gcp"
+	ClusterProfileGCP40                 ClusterProfile = "gcp-40"
+	ClusterProfileGCPHA                 ClusterProfile = "gcp-ha"
+	ClusterProfileGCPCRIO               ClusterProfile = "gcp-crio"
+	ClusterProfileGCPLogging            ClusterProfile = "gcp-logging"
+	ClusterProfileGCPLoggingJournald    ClusterProfile = "gcp-logging-journald"
+	ClusterProfileGCPLoggingJSONFile    ClusterProfile = "gcp-logging-json-file"
+	ClusterProfileGCPLoggingCRIO        ClusterProfile = "gcp-logging-crio"
+	ClusterProfileGCP2                  ClusterProfile = "gcp-openshift-gce-devel-ci-2"
+	ClusterProfileIBMCloud              ClusterProfile = "ibmcloud"
+	ClusterProfileLibvirtPpc64le        ClusterProfile = "libvirt-ppc64le"
+	ClusterProfileLibvirtS390x          ClusterProfile = "libvirt-s390x"
+	ClusterProfileOpenStack             ClusterProfile = "openstack"
+	ClusterProfileOpenStackKuryr        ClusterProfile = "openstack-kuryr"
+	ClusterProfileOpenStackNFV          ClusterProfile = "openstack-nfv"
+	ClusterProfileOpenStackMechaCentral ClusterProfile = "openstack-vh-mecha-central"
+	ClusterProfileOpenStackMechaAz0     ClusterProfile = "openstack-vh-mecha-az0"
+	ClusterProfileOpenStackOsuosl       ClusterProfile = "openstack-osuosl"
+	ClusterProfileOpenStackVexxhost     ClusterProfile = "openstack-vexxhost"
+	ClusterProfileOpenStackPpc64le      ClusterProfile = "openstack-ppc64le"
+	ClusterProfileOvirt                 ClusterProfile = "ovirt"
+	ClusterProfilePacket                ClusterProfile = "packet"
+	ClusterProfilePacketAssisted        ClusterProfile = "packet-assisted"
+	ClusterProfilePacketSNO             ClusterProfile = "packet-sno"
+	ClusterProfileVSphere               ClusterProfile = "vsphere"
+	ClusterProfileVSphereDiscon         ClusterProfile = "vsphere-discon"
+	ClusterProfileVSphereClusterbot     ClusterProfile = "vsphere-clusterbot"
+	ClusterProfileVSpherePlatformNone   ClusterProfile = "vsphere-platform-none"
+	ClusterProfileVSphereMultizone      ClusterProfile = "vsphere-multizone"
+	ClusterProfileKubevirt              ClusterProfile = "kubevirt"
+	ClusterProfileAWSCPaaS              ClusterProfile = "aws-cpaas"
+	ClusterProfileOSDEphemeral          ClusterProfile = "osd-ephemeral"
+	ClusterProfileAWS2                  ClusterProfile = "aws-2"
+	ClusterProfileHyperShift            ClusterProfile = "hypershift"
 )
 
 // ClusterProfiles are all valid cluster profiles
 func ClusterProfiles() []ClusterProfile {
 	return []ClusterProfile{
 		ClusterProfileAWS,
+		ClusterProfileAWSArm64,
 		ClusterProfileAWSAtomic,
 		ClusterProfileAWSCentos,
 		ClusterProfileAWSCentos40,
+		ClusterProfileAWSC2S,
+		ClusterProfileAWSChina,
+		ClusterProfileAWSGovCloud,
 		ClusterProfileAWSGluster,
+		ClusterProfileAlibabaCloud,
+		ClusterProfileAzure2,
 		ClusterProfileAzure4,
+		ClusterProfileAzureArc,
+		ClusterProfileAzureStack,
+		ClusterProfileAzureMag,
+		ClusterProfileEquinixOcpMetal,
 		ClusterProfileGCP,
 		ClusterProfileGCP40,
 		ClusterProfileGCPHA,
@@ -840,15 +1155,32 @@ func ClusterProfiles() []ClusterProfile {
 		ClusterProfileGCPLoggingJournald,
 		ClusterProfileGCPLoggingJSONFile,
 		ClusterProfileGCPLoggingCRIO,
+		ClusterProfileIBMCloud,
 		ClusterProfileLibvirtPpc64le,
 		ClusterProfileLibvirtS390x,
 		ClusterProfileOpenStack,
+		ClusterProfileOpenStackKuryr,
+		ClusterProfileOpenStackNFV,
+		ClusterProfileOpenStackMechaCentral,
+		ClusterProfileOpenStackMechaAz0,
 		ClusterProfileOpenStackOsuosl,
 		ClusterProfileOpenStackVexxhost,
 		ClusterProfileOpenStackPpc64le,
 		ClusterProfileOvirt,
 		ClusterProfilePacket,
+		ClusterProfilePacketAssisted,
+		ClusterProfilePacketSNO,
 		ClusterProfileVSphere,
+		ClusterProfileVSphereDiscon,
+		ClusterProfileVSphereClusterbot,
+		ClusterProfileVSpherePlatformNone,
+		ClusterProfileVSphereMultizone,
+		ClusterProfileKubevirt,
+		ClusterProfileAWSCPaaS,
+		ClusterProfileOSDEphemeral,
+		ClusterProfileAWS2,
+		ClusterProfileGCP2,
+		ClusterProfileHyperShift,
 	}
 }
 
@@ -860,10 +1192,31 @@ func (p ClusterProfile) ClusterType() string {
 		ClusterProfileAWSAtomic,
 		ClusterProfileAWSCentos,
 		ClusterProfileAWSCentos40,
-		ClusterProfileAWSGluster:
-		return "aws"
-	case ClusterProfileAzure4:
+		ClusterProfileAWSGluster,
+		ClusterProfileAWSCPaaS,
+		ClusterProfileAWS2:
+		return string(CloudAWS)
+	case ClusterProfileAlibabaCloud:
+		return "alibabacloud"
+	case ClusterProfileAWSArm64:
+		return "aws-arm64"
+	case ClusterProfileAWSC2S:
+		return "aws-c2s"
+	case ClusterProfileAWSChina:
+		return "aws-china"
+	case ClusterProfileAWSGovCloud:
+		return "aws-usgov"
+	case
+		ClusterProfileAzure2,
+		ClusterProfileAzure4,
+		ClusterProfileAzureArc:
 		return "azure4"
+	case ClusterProfileAzureStack:
+		return "azurestack"
+	case ClusterProfileAzureMag:
+		return "azuremag"
+	case ClusterProfileEquinixOcpMetal:
+		return "equinix-ocp-metal"
 	case
 		ClusterProfileGCP,
 		ClusterProfileGCP40,
@@ -872,26 +1225,51 @@ func (p ClusterProfile) ClusterType() string {
 		ClusterProfileGCPLogging,
 		ClusterProfileGCPLoggingJournald,
 		ClusterProfileGCPLoggingJSONFile,
-		ClusterProfileGCPLoggingCRIO:
-		return "gcp"
+		ClusterProfileGCPLoggingCRIO,
+		ClusterProfileGCP2:
+		return string(CloudGCP)
+	case ClusterProfileIBMCloud:
+		return "ibmcloud"
 	case ClusterProfileLibvirtPpc64le:
 		return "libvirt-ppc64le"
 	case ClusterProfileLibvirtS390x:
 		return "libvirt-s390x"
 	case ClusterProfileOpenStack:
 		return "openstack"
+	case ClusterProfileOpenStackKuryr:
+		return "openstack-kuryr"
+	case ClusterProfileOpenStackNFV:
+		return "openstack-nfv"
+	case ClusterProfileOpenStackMechaCentral:
+		return "openstack-vh-mecha-central"
+	case ClusterProfileOpenStackMechaAz0:
+		return "openstack-vh-mecha-az0"
 	case ClusterProfileOpenStackOsuosl:
 		return "openstack-osuosl"
 	case ClusterProfileOpenStackVexxhost:
 		return "openstack-vexxhost"
 	case ClusterProfileOpenStackPpc64le:
 		return "openstack-ppc64le"
-	case ClusterProfileVSphere:
+	case
+		ClusterProfileVSphere,
+		ClusterProfileVSphereDiscon,
+		ClusterProfileVSphereClusterbot,
+		ClusterProfileVSpherePlatformNone,
+		ClusterProfileVSphereMultizone:
 		return "vsphere"
 	case ClusterProfileOvirt:
 		return "ovirt"
-	case ClusterProfilePacket:
+	case
+		ClusterProfilePacket,
+		ClusterProfilePacketAssisted,
+		ClusterProfilePacketSNO:
 		return "packet"
+	case ClusterProfileKubevirt:
+		return "kubevirt"
+	case ClusterProfileOSDEphemeral:
+		return "osd-ephemeral"
+	case ClusterProfileHyperShift:
+		return "hypershift"
 	default:
 		return ""
 	}
@@ -907,8 +1285,28 @@ func (p ClusterProfile) LeaseType() string {
 		ClusterProfileAWSCentos40,
 		ClusterProfileAWSGluster:
 		return "aws-quota-slice"
+	case ClusterProfileAWSArm64:
+		return "aws-arm64-quota-slice"
+	case ClusterProfileAWSC2S:
+		return "aws-c2s-quota-slice"
+	case ClusterProfileAWSChina:
+		return "aws-china-quota-slice"
+	case ClusterProfileAWSGovCloud:
+		return "aws-usgov-quota-slice"
+	case ClusterProfileAlibabaCloud:
+		return "alibabacloud-quota-slice"
+	case ClusterProfileAzure2:
+		return "azure-2-quota-slice"
 	case ClusterProfileAzure4:
 		return "azure4-quota-slice"
+	case ClusterProfileAzureArc:
+		return "azure-arc-quota-slice"
+	case ClusterProfileAzureStack:
+		return "azurestack-quota-slice"
+	case ClusterProfileAzureMag:
+		return "azuremag-quota-slice"
+	case ClusterProfileEquinixOcpMetal:
+		return "equinix-ocp-metal-quota-slice"
 	case
 		ClusterProfileGCP,
 		ClusterProfileGCP40,
@@ -919,12 +1317,24 @@ func (p ClusterProfile) LeaseType() string {
 		ClusterProfileGCPLoggingJSONFile,
 		ClusterProfileGCPLoggingCRIO:
 		return "gcp-quota-slice"
+	case ClusterProfileGCP2:
+		return "gcp-openshift-gce-devel-ci-2-quota-slice"
+	case ClusterProfileIBMCloud:
+		return "ibmcloud-quota-slice"
 	case ClusterProfileLibvirtPpc64le:
 		return "libvirt-ppc64le-quota-slice"
 	case ClusterProfileLibvirtS390x:
 		return "libvirt-s390x-quota-slice"
 	case ClusterProfileOpenStack:
 		return "openstack-quota-slice"
+	case ClusterProfileOpenStackKuryr:
+		return "openstack-kuryr-quota-slice"
+	case ClusterProfileOpenStackNFV:
+		return "openstack-nfv-quota-slice"
+	case ClusterProfileOpenStackMechaCentral:
+		return "openstack-vh-mecha-central-quota-slice"
+	case ClusterProfileOpenStackMechaAz0:
+		return "openstack-vh-mecha-az0-quota-slice"
 	case ClusterProfileOpenStackOsuosl:
 		return "openstack-osuosl-quota-slice"
 	case ClusterProfileOpenStackVexxhost:
@@ -935,8 +1345,30 @@ func (p ClusterProfile) LeaseType() string {
 		return "ovirt-quota-slice"
 	case ClusterProfilePacket:
 		return "packet-quota-slice"
+	case
+		ClusterProfilePacketAssisted,
+		ClusterProfilePacketSNO:
+		return "packet-edge-quota-slice"
 	case ClusterProfileVSphere:
 		return "vsphere-quota-slice"
+	case ClusterProfileVSphereDiscon:
+		return "vsphere-discon-quota-slice"
+	case ClusterProfileVSphereClusterbot:
+		return "vsphere-clusterbot-quota-slice"
+	case ClusterProfileVSpherePlatformNone:
+		return "vsphere-platform-none-quota-slice"
+	case ClusterProfileVSphereMultizone:
+		return "vsphere-multizone-quota-slice"
+	case ClusterProfileKubevirt:
+		return "kubevirt-quota-slice"
+	case ClusterProfileAWSCPaaS:
+		return "aws-cpaas-quota-slice"
+	case ClusterProfileOSDEphemeral:
+		return "osd-ephemeral-quota-slice"
+	case ClusterProfileAWS2:
+		return "aws-2-quota-slice"
+	case ClusterProfileHyperShift:
+		return "hypershift-quota-slice"
 	default:
 		return ""
 	}
@@ -945,7 +1377,7 @@ func (p ClusterProfile) LeaseType() string {
 // LeaseTypeFromClusterType maps cluster types to lease types
 func LeaseTypeFromClusterType(t string) (string, error) {
 	switch t {
-	case "aws", "azure4", "gcp", "libvirt-ppc64le", "libvirt-s390x", "openstack", "openstack-osuosl", "openstack-vexxhost", "openstack-ppc64le", "vsphere", "ovirt", "packet":
+	case "aws", "aws-arm64", "aws-c2s", "aws-china", "aws-usgov", "alibaba", "azure-2", "azure4", "azure-arc", "azurestack", "azuremag", "equinix-ocp-metal", "gcp", "libvirt-ppc64le", "libvirt-s390x", "openstack", "openstack-osuosl", "openstack-vexxhost", "openstack-ppc64le", "vsphere", "ovirt", "packet", "kubevirt", "aws-cpaas", "osd-ephemeral":
 		return t + "-quota-slice", nil
 	default:
 		return "", fmt.Errorf("invalid cluster type %q", t)
@@ -1081,6 +1513,10 @@ type SourceStepConfiguration struct {
 	ClonerefsPath string `json:"clonerefs_path"`
 }
 
+func (config SourceStepConfiguration) TargetName() string {
+	return string(config.To)
+}
+
 // OperatorStepConfiguration describes the locations of operator bundle information,
 // bundle build dockerfiles, and images the operator(s) depends on that must
 // be substituted to run in a CI test cluster
@@ -1093,10 +1529,28 @@ type OperatorStepConfiguration struct {
 	Substitutions []PullSpecSubstitution `json:"substitutions,omitempty"`
 }
 
-// Bundle contains the data needed to build a bundle from the bundle source image
+// IndexUpdate specifies the update mode for an operator being added to an index
+type IndexUpdate string
+
+const (
+	IndexUpdateSemver          = "semver"
+	IndexUpdateReplaces        = "replaces"
+	IndexUpdateSemverSkippatch = "semver-skippatch"
+)
+
+// Bundle contains the data needed to build a bundle from the bundle source image and update an index to include the new bundle
 type Bundle struct {
+	// As defines the name for this bundle. If not set, a name will be automatically generated for the bundle.
+	As string `json:"as,omitempty"`
+	// DockerfilePath defines where the dockerfile for build the bundle exists relative to the contextdir
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
-	ContextDir     string `json:"context_dir,omitempty"`
+	// ContextDir defines the source directory to build the bundle from relative to the repository root
+	ContextDir string `json:"context_dir,omitempty"`
+	// BaseIndex defines what index image to use as a base when adding the bundle to an index
+	BaseIndex string `json:"base_index,omitempty"`
+	// UpdateGraph defines the update mode to use when adding the bundle to the base index.
+	// Can be: semver (default), semver-skippatch, or replaces
+	UpdateGraph IndexUpdate `json:"update_graph,omitempty"`
 }
 
 // IndexGeneratorStepConfiguration describes a step that creates an index database and
@@ -1108,6 +1562,16 @@ type IndexGeneratorStepConfiguration struct {
 	// OperatorIndex is a list of the names of the bundle images that the
 	// index will contain in its database.
 	OperatorIndex []string `json:"operator_index,omitempty"`
+
+	// BaseIndex is the index image to add the bundle(s) to. If unset, a new index is created
+	BaseIndex string `json:"base_index,omitempty"`
+
+	// UpdateGraph defines the mode to us when updating the index graph
+	UpdateGraph IndexUpdate `json:"update_graph,omitempty"`
+}
+
+func (config IndexGeneratorStepConfiguration) TargetName() string {
+	return string(config.To)
 }
 
 // PipelineImageStreamTagReferenceIndexImageGenerator is the name of the index image generator built by ci-operator
@@ -1115,6 +1579,18 @@ const PipelineImageStreamTagReferenceIndexImageGenerator PipelineImageStreamTagR
 
 // PipelineImageStreamTagReferenceIndexImage is the name of the index image built by ci-operator
 const PipelineImageStreamTagReferenceIndexImage PipelineImageStreamTagReference = "ci-index"
+
+func IsIndexImage(imageName string) bool {
+	return strings.HasPrefix(imageName, string(PipelineImageStreamTagReferenceIndexImage))
+}
+
+func IndexName(bundleName string) string {
+	return fmt.Sprintf("%s-%s", PipelineImageStreamTagReferenceIndexImage, bundleName)
+}
+
+func IndexGeneratorName(indexName PipelineImageStreamTagReference) PipelineImageStreamTagReference {
+	return PipelineImageStreamTagReference(fmt.Sprintf("%s-gen", indexName))
+}
 
 // BundleSourceStepConfiguration describes a step that performs a set of
 // substitutions on all yaml files in the `src` image so that the
@@ -1126,18 +1602,33 @@ type BundleSourceStepConfiguration struct {
 	Substitutions []PullSpecSubstitution `json:"substitutions,omitempty"`
 }
 
+func (config BundleSourceStepConfiguration) TargetName() string {
+	return string(PipelineImageStreamTagReferenceBundleSource)
+}
+
 // PipelineImageStreamTagReferenceBundleSourceName is the name of the bundle source image built by the CI
 const PipelineImageStreamTagReferenceBundleSource PipelineImageStreamTagReference = "src-bundle"
 
-// bundlePrefix is the prefix used by ci-operator for bundle images
-const bundlePrefix = "ci-bundle"
+// BundlePrefix is the prefix used by ci-operator for bundle images without an explicitly configured name
+const BundlePrefix = "ci-bundle"
 
-func IsBundleImage(imageName string) bool {
-	return strings.HasPrefix(imageName, bundlePrefix)
+func (config ReleaseBuildConfiguration) IsBundleImage(imageName string) bool {
+	if config.Operator == nil {
+		return false
+	}
+	if strings.HasPrefix(imageName, BundlePrefix) {
+		return true
+	}
+	for _, bundle := range config.Operator.Bundles {
+		if bundle.As != "" && imageName == bundle.As {
+			return true
+		}
+	}
+	return false
 }
 
 func BundleName(index int) string {
-	return fmt.Sprintf("%s%d", bundlePrefix, index)
+	return fmt.Sprintf("%s%d", BundlePrefix, index)
 }
 
 // ProjectDirectoryImageBuildStepConfiguration describes an
@@ -1154,6 +1645,10 @@ type ProjectDirectoryImageBuildStepConfiguration struct {
 	Optional bool `json:"optional,omitempty"`
 }
 
+func (config ProjectDirectoryImageBuildStepConfiguration) TargetName() string {
+	return string(config.To)
+}
+
 // ProjectDirectoryImageBuildInputs holds inputs for an image build from the repo under test
 type ProjectDirectoryImageBuildInputs struct {
 	// ContextDir is the directory in the project
@@ -1164,10 +1659,26 @@ type ProjectDirectoryImageBuildInputs struct {
 	// project to run relative to the context_dir.
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
 
+	// DockerfileLiteral can be used to  provide an inline Dockerfile.
+	// Mutually exclusive with DockerfilePath.
+	DockerfileLiteral *string `json:"dockerfile_literal,omitempty"`
+
 	// Inputs is a map of tag reference name to image input changes
 	// that will populate the build context for the Dockerfile or
 	// alter the input image for a multi-stage build.
 	Inputs map[string]ImageBuildInputs `json:"inputs,omitempty"`
+
+	// BuildArgs contains build arguments that will be resolved in the Dockerfile.
+	// See https://docs.docker.com/engine/reference/builder/#/arg for more details.
+	BuildArgs []BuildArg `json:"build_args,omitempty"`
+}
+
+type BuildArg struct {
+	// Name of the build arg.
+	Name string `json:"name,omitempty"`
+
+	// Value of the build arg.
+	Value string `json:"value,omitempty"`
 }
 
 // PullSpecSubstitution contains a name of a pullspec that needs to
@@ -1212,14 +1723,22 @@ type RPMImageInjectionStepConfiguration struct {
 	To   PipelineImageStreamTagReference `json:"to,omitempty"`
 }
 
+func (config RPMImageInjectionStepConfiguration) TargetName() string {
+	return string(config.To)
+}
+
 // RPMServeStepConfiguration describes a step that launches
 // a server from an image with RPMs and exposes it to the web.
 type RPMServeStepConfiguration struct {
 	From PipelineImageStreamTagReference `json:"from"`
 }
 
+func (config RPMServeStepConfiguration) TargetName() string {
+	return "[serve:rpms]"
+}
+
 const (
-	// api.PipelineImageStream is the name of the
+	// PipelineImageStream is the name of the
 	// ImageStream used to hold images built
 	// to cache build steps in the pipeline.
 	PipelineImageStream = "pipeline"
@@ -1242,7 +1761,7 @@ const (
 	// the StableImageStream. Images for other versions of
 	// the stream are held in similarly-named streams.
 	LatestReleaseName = "latest"
-	// LatestReleaseName is the name of the special stable
+	// InitialReleaseName is the name of the special initial
 	// stream we copy at import to keep for upgrade tests.
 	// TODO(skuznets): remove these when they're not implicit
 	InitialReleaseName = "initial"
@@ -1253,3 +1772,12 @@ const (
 
 	ComponentFormatReplacement = "${component}"
 )
+
+type MetadataWithTest struct {
+	Metadata `json:",inline"`
+	Test     string `json:"test,omitempty"`
+}
+
+func (m *MetadataWithTest) JobName(prefix string) string {
+	return m.Metadata.JobName(prefix, m.Test)
+}

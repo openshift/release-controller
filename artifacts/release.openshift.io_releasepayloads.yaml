@@ -38,22 +38,28 @@ spec:
           marked `Rejected`   7) Publishes all results to the respective webpage \n
           Example: ART:   1) Publishes an update to the `ocp/4.9-art-latest` imagestream
           \n Release-controller:   1) Creates a mirror named: `ocp/4.9-art-latest-2021-09-27-105859`
-          \  2) Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859-<random-string>`
+          \  2) Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859`
           \      -Labels:         release.openshift.io/imagestream=release         release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
           \  3) Creates an OpenShift Release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
           \  4) Update ReleasePayload conditions with results of release creation
           job   If the release was created successfully, the release-controller:   5)
           Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-analysis-<count>
           \  6) Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-aggregator
-          \  7) Launches: 4.9.0-0.nightly-2021-09-27-105859-<name> \n Mapping from
-          a Release to ReleasePayload: A ReleasePayload will always be named after
-          the Release that it corresponds to, with the addition of a random string
-          suffix.  Both objects will reside in the same namespace.   For a release:
-          `ocp/release:4.9.0-0.nightly-2021-09-27-105859`   A corresponding ReleasePayload
-          will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859-<random-string>` \n Mapping
-          from ReleasePayload to Release: A ReleasePayload is decorated with a couple
-          labels that will point back to the Release that it corresponds to:   - release.openshift.io/imagestream=release
-          \  - release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
+          \  7) Launches: 4.9.0-0.nightly-2021-09-27-105859-<name> \n When ART promotes
+          a GA release, they will assemble releases themselves, publish it to quay.io,
+          and then update the \"stable\" release stream (i.e. ocp/release) with the
+          corresponding payload.  In this scenario, the release-controller will perform
+          all the same steps, mentioned above, but the mirror will be named after
+          the \"official\" release (i.e. 4.9.7) and not not contain a timestamp.  Likewise,
+          any verification tests will only contain the release name and the name of
+          the verification test as defined in the ReleaseConfig. \n Mapping from a
+          Release to ReleasePayload: A ReleasePayload will always be named after the
+          Release that it corresponds to, with the addition of a random string suffix.
+          \ Both objects will reside in the same namespace.   For a release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
+          \  A corresponding ReleasePayload will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859`
+          \n Mapping from ReleasePayload to Release: A ReleasePayload is decorated
+          with a couple labels that will point back to the Release that it corresponds
+          to:   - release.openshift.io/imagestream=release   - release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
           Because the ReleasePayload and the Release will both reside in the same
           namespace, the release that created the ReleasePayload will be located here:
           \  <namespace>/<release.openshift.io/imagestream>:<release.openshift.io/imagestreamtag-name>
@@ -84,7 +90,7 @@ spec:
               payloadCoordinates:
                 description: "PayloadCoordinates houses the information pointing to
                   the location of the imagesteamtag that this ReleasePayload is verifying.
-                  \n Example: For a ReleasePayload named: \"4.9.0-0.nightly-2021-09-27-105859-<random-string>\"
+                  \n Example: For a ReleasePayload named: \"4.9.0-0.nightly-2021-09-27-105859\"
                   in the \"ocp\" namespace, and configured to be written into the
                   \"release\" imagestream, we expect:   1) Namespace to equal \"ocp
                   \  2) ImagestreamName to equal \"release\"   3) ImagestreamTagName

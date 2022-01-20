@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/go-retryablehttp"
 	"sort"
 	"strings"
 	"time"
@@ -224,7 +225,9 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		pullSpec := r.Target.Status.PublicDockerImageRepository + ":" + tag
 		return tag, pullSpec, nil
 	} else if upgradeRelease.Official != nil {
-		pullspec, version, err := citools.ResolvePullSpecAndVersion(*upgradeRelease.Official)
+		httpClient := retryablehttp.NewClient()
+		httpClient.Logger = nil
+		pullspec, version, err := citools.ResolvePullSpecAndVersion(httpClient.StandardClient(), *upgradeRelease.Official)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to resolve official release: %w", err)
 		}

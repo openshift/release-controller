@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -36,6 +37,16 @@ func (m *Metadata) IsComplete() error {
 	return nil
 }
 
+// AsString returns a string representation of the metadata suitable for using
+// in human-oriented output
+func (m *Metadata) AsString() string {
+	identifier := fmt.Sprintf("%s/%s@%s", m.Org, m.Repo, m.Branch)
+	if m.Variant != "" {
+		identifier = fmt.Sprintf("%s [%s]", identifier, m.Variant)
+	}
+	return identifier
+}
+
 // TestNameFromJobName returns the name of the test from a given job name and prefix
 func (m *Metadata) TestNameFromJobName(jobName, prefix string) string {
 	return strings.TrimPrefix(jobName, m.JobName(prefix, ""))
@@ -56,6 +67,12 @@ func (m *Metadata) JobName(prefix, name string) string {
 	return fmt.Sprintf("%s-ci-%s-%s-%s-%s", prefix, m.Org, m.Repo, m.Branch, m.TestName(name))
 }
 
+// SimpleJobName returns the job name without the "ci" infix for a  job corresponding to a test defined in this
+// file, including variant, if present
+func (m *Metadata) SimpleJobName(prefix, name string) string {
+	return fmt.Sprintf("%s-%s-%s-%s-%s", prefix, m.Org, m.Repo, m.Branch, m.TestName(name))
+}
+
 // Basename returns the unique name for this file in the config
 func (m *Metadata) Basename() string {
 	basename := strings.Join([]string{m.Org, m.Repo, m.Branch}, "-")
@@ -63,6 +80,11 @@ func (m *Metadata) Basename() string {
 		basename = fmt.Sprintf("%s__%s", basename, m.Variant)
 	}
 	return fmt.Sprintf("%s.yaml", basename)
+}
+
+// JobFilePath returns the file path for the jobs of the supplied suffix type
+func (m *Metadata) JobFilePath(suffix string) string {
+	return filepath.Join(m.Org, m.Repo, fmt.Sprintf("%s-%s-%s-%s.yaml", m.Org, m.Repo, m.Branch, suffix))
 }
 
 // RelativePath returns the path to the config under the root config dir
@@ -107,4 +129,45 @@ func LogFieldsFor(metadata Metadata) logrus.Fields {
 		"branch":  metadata.Branch,
 		"variant": metadata.Variant,
 	}
+}
+
+func BuildCacheFor(metadata Metadata) ImageStreamTagReference {
+	tag := metadata.Branch
+	if metadata.Variant != "" {
+		tag = fmt.Sprintf("%s-%s", tag, metadata.Variant)
+	}
+	return ImageStreamTagReference{
+		Namespace: "build-cache",
+		Name:      fmt.Sprintf("%s-%s", metadata.Org, metadata.Repo),
+		Tag:       tag,
+	}
+}
+
+func ImageVersionLabel(fromTag PipelineImageStreamTagReference) string {
+	return fmt.Sprintf("io.openshift.ci.from.%s", fromTag)
+}
+
+var testPathRegex = regexp.MustCompile(`(?P<org>[^/]+)/(?P<repo>[^@]+)@(?P<branch>[^:]+):(?P<test>.+)`)
+
+func MetadataTestFromString(input string) (*MetadataWithTest, error) {
+	var ret MetadataWithTest
+	match := testPathRegex.FindStringSubmatch(input)
+	if match == nil || len(match) != 5 {
+		return &ret, fmt.Errorf("test path not in org/repo@branch:test or org/repo@branch__variant:test format: %s", input)
+	}
+	ret.Org = match[1]
+	ret.Repo = match[2]
+	ret.Test = match[4]
+
+	branchAndVariant := strings.Split(match[3], "__")
+	ret.Branch = branchAndVariant[0]
+	if len(branchAndVariant) > 1 {
+		ret.Variant = branchAndVariant[1]
+
+	}
+	if ret.Branch == "" || (len(branchAndVariant) > 1 && ret.Variant == "") {
+		return &ret, fmt.Errorf("test path not in org/repo@branch:test or org/repo@branch__variant:test format: %s", input)
+	}
+
+	return &ret, nil
 }

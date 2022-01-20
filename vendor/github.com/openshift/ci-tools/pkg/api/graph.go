@@ -2,16 +2,22 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Step is a self-contained bit of work that the
 // build pipeline needs to do.
+// +k8s:deepcopy-gen=false
 type Step interface {
 	Inputs() (InputDefinition, error)
 	// Validate checks inputs of steps that are part of the execution graph.
@@ -26,14 +32,18 @@ type Step interface {
 	Requires() []StepLink
 	Creates() []StepLink
 	Provides() ParameterMap
+	// Objects returns all objects the client for this step has seen
+	Objects() []ctrlruntimeclient.Object
 }
 
 type InputDefinition []string
 
+// +k8s:deepcopy-gen=false
 type ParameterMap map[string]func() (string, error)
 
 // StepLink abstracts the types of links that steps
 // require and create.
+// +k8s:deepcopy-gen=false
 type StepLink interface {
 	// SatisfiedBy determines if the other link satisfies
 	// the requirements of this one, either partially or
@@ -139,6 +149,7 @@ type StepLinkOptions struct {
 	UnsatisfiableError string
 }
 
+// +k8s:deepcopy-gen=false
 type StepLinkOption func(*StepLinkOptions)
 
 func StepLinkWithUnsatisfiableErrorMessage(msg string) StepLinkOption {
@@ -262,21 +273,46 @@ func IsReleasePayloadStream(stream string) bool {
 	return stream == ReleaseImageStream
 }
 
+// +k8s:deepcopy-gen=false
 type StepNode struct {
 	Step     Step
 	Children []*StepNode
 }
 
+// GraphConfiguration contains step data used to build the execution graph.
+type GraphConfiguration struct {
+	// Steps accumulates step configuration as the configuration is parsed.
+	Steps []StepConfiguration
+}
+
+func (c *GraphConfiguration) InputImages() (ret []*InputImageTagStepConfiguration) {
+	for _, s := range c.Steps {
+		if c := s.InputImageTagStepConfiguration; c != nil {
+			ret = append(ret, c)
+		}
+	}
+	return
+}
+
+// +k8s:deepcopy-gen=false
+// StepGraph is a DAG of steps referenced by its roots
+type StepGraph []*StepNode
+
+// +k8s:deepcopy-gen=false
+// OrderedStepList is a topologically-ordered sequence of steps
+// Edges are determined based on the Creates/Requires methods.
+type OrderedStepList []*StepNode
+
 // BuildGraph returns a graph or graphs that include
 // all steps given.
-func BuildGraph(steps []Step) []*StepNode {
+func BuildGraph(steps []Step) StepGraph {
 	var allNodes []*StepNode
 	for _, step := range steps {
 		node := StepNode{Step: step, Children: []*StepNode{}}
 		allNodes = append(allNodes, &node)
 	}
 
-	var roots []*StepNode
+	var ret StepGraph
 	for _, node := range allNodes {
 		isRoot := true
 		for _, other := range allNodes {
@@ -290,16 +326,16 @@ func BuildGraph(steps []Step) []*StepNode {
 			}
 		}
 		if isRoot {
-			roots = append(roots, node)
+			ret = append(ret, node)
 		}
 	}
 
-	return roots
+	return ret
 }
 
 // BuildPartialGraph returns a graph or graphs that include
 // only the dependencies of the named steps.
-func BuildPartialGraph(steps []Step, names []string) ([]*StepNode, error) {
+func BuildPartialGraph(steps []Step, names []string) (StepGraph, error) {
 	if len(names) == 0 {
 		return BuildGraph(steps), nil
 	}
@@ -350,20 +386,82 @@ func BuildPartialGraph(steps []Step, names []string) ([]*StepNode, error) {
 	return BuildGraph(targeted), nil
 }
 
-// ValidateGraph performs validations on each step in the graph once.
-func ValidateGraph(nodes []*StepNode) []error {
-	var errs []error
-	IterateAllEdges(nodes, func(n *StepNode) {
-		if err := n.Step.Validate(); err != nil {
-			errs = append(errs, fmt.Errorf("step %q failed validation: %w", n.Step.Name(), err))
+// TopologicalSort validates nodes form a DAG and orders them topologically.
+func (g StepGraph) TopologicalSort() (OrderedStepList, []error) {
+	var ret OrderedStepList
+	var satisfied []StepLink
+	if err := iterateDAG(g, nil, sets.NewString(), func(*StepNode) {}); err != nil {
+		return nil, err
+	}
+	seen := make(map[Step]struct{})
+	for len(g) > 0 {
+		var changed bool
+		var waiting []*StepNode
+		for _, node := range g {
+			for _, child := range node.Children {
+				if _, ok := seen[child.Step]; !ok {
+					waiting = append(waiting, child)
+				}
+			}
+			if _, ok := seen[node.Step]; ok {
+				continue
+			}
+			if !HasAllLinks(node.Step.Requires(), satisfied) {
+				waiting = append(waiting, node)
+				continue
+			}
+			satisfied = append(satisfied, node.Step.Creates()...)
+			ret = append(ret, node)
+			seen[node.Step] = struct{}{}
+			changed = true
 		}
-	})
-	return errs
+		if !changed && len(waiting) > 0 {
+			errMessages := sets.String{}
+			for _, node := range waiting {
+				missing := sets.String{}
+				for _, link := range node.Step.Requires() {
+					if !HasAllLinks([]StepLink{link}, satisfied) {
+						if msg := link.UnsatisfiableError(); msg != "" {
+							missing.Insert(msg)
+						} else {
+							missing.Insert(fmt.Sprintf("<%#v>", link))
+						}
+					}
+				}
+				// De-Duplicate errors
+				errMessages.Insert(fmt.Sprintf("step %s is missing dependencies: %s", node.Step.Name(), strings.Join(missing.List(), ", ")))
+			}
+			ret := make([]error, 0, errMessages.Len()+1)
+			ret = append(ret, errors.New("steps are missing dependencies"))
+			for _, message := range errMessages.List() {
+				ret = append(ret, errors.New(message))
+			}
+			return nil, ret
+		}
+		g = waiting
+	}
+	return ret, nil
+}
+
+// iterateDAG applies a function to every node of a DAG, detecting cycles.
+func iterateDAG(graph StepGraph, path []string, inPath sets.String, f func(*StepNode)) (ret []error) {
+	for _, node := range graph {
+		name := node.Step.Name()
+		if inPath.Has(name) {
+			ret = append(ret, fmt.Errorf("cycle in graph: %s -> %s", strings.Join(path, " -> "), name))
+			continue
+		}
+		inPath.Insert(name)
+		ret = append(ret, iterateDAG(node.Children, append(path, name), inPath, f)...)
+		inPath.Delete(name)
+		f(node)
+	}
+	return ret
 }
 
 // IterateAllEdges applies an operation to every node in the graph once.
-func IterateAllEdges(nodes []*StepNode, f func(*StepNode)) {
-	iterateAllEdges(nodes, sets.NewString(), f)
+func (g StepGraph) IterateAllEdges(f func(*StepNode)) {
+	iterateAllEdges(g, sets.NewString(), f)
 }
 
 func iterateAllEdges(nodes []*StepNode, alreadyIterated sets.String, f func(*StepNode)) {
@@ -416,11 +514,116 @@ func HasAllLinks(needles, haystack []StepLink) bool {
 	return true
 }
 
-type CIOperatorStepGraph []CIOperatorStepWithDependencies
+// +k8s:deepcopy-gen=false
+type CIOperatorStepGraph []CIOperatorStepDetails
 
-type CIOperatorStepWithDependencies struct {
-	StepName     string
-	Dependencies []string
+// MergeFrom merges two CIOperatorStepGraphs together using StepNames as merge keys.
+// The merging logic will never ovewrwrite data and only set unset fields.
+// Steps that do not exist in the first graph get appended.
+func (graph *CIOperatorStepGraph) MergeFrom(from ...CIOperatorStepDetails) {
+	for _, step := range from {
+		var found bool
+		for idx, existing := range *graph {
+			if step.StepName != existing.StepName {
+				continue
+			}
+			found = true
+			(*graph)[idx] = mergeSteps(existing, step)
+		}
+		if !found {
+			*graph = append(*graph, step)
+		}
+	}
+
+}
+
+func mergeSteps(into, from CIOperatorStepDetails) CIOperatorStepDetails {
+	if into.Description == "" {
+		into.Description = from.Description
+	}
+	if into.Dependencies == nil {
+		into.Dependencies = from.Dependencies
+	}
+	if into.StartedAt == nil {
+		into.StartedAt = from.StartedAt
+	}
+	if into.StartedAt == nil {
+		into.StartedAt = from.StartedAt
+	}
+	if into.FinishedAt == nil {
+		into.FinishedAt = from.FinishedAt
+	}
+	if into.Duration == nil {
+		into.Duration = from.Duration
+	}
+	if into.Manifests == nil {
+		into.Manifests = from.Manifests
+	}
+	if into.LogURL == "" {
+		into.LogURL = from.LogURL
+	}
+	if into.Failed == nil {
+		into.Failed = from.Failed
+	}
+	if into.Substeps == nil {
+		into.Substeps = from.Substeps
+	}
+
+	return into
+}
+
+// +k8s:deepcopy-gen=false
+type CIOperatorStepDetails struct {
+	CIOperatorStepDetailInfo `json:",inline"`
+	Substeps                 []CIOperatorStepDetailInfo `json:"substeps,omitempty"`
+}
+
+// +k8s:deepcopy-gen=false
+type CIOperatorStepDetailInfo struct {
+	StepName     string                     `json:"name"`
+	Description  string                     `json:"description"`
+	Dependencies []string                   `json:"dependencies"`
+	StartedAt    *time.Time                 `json:"started_at"`
+	FinishedAt   *time.Time                 `json:"finished_at"`
+	Duration     *time.Duration             `json:"duration,omitempty"`
+	Manifests    []ctrlruntimeclient.Object `json:"manifests,omitempty"`
+	LogURL       string                     `json:"log_url,omitempty"`
+	Failed       *bool                      `json:"failed,omitempty"`
+}
+
+func (c *CIOperatorStepDetailInfo) UnmarshalJSON(data []byte) error {
+	raw := map[string]interface{}{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	manifests := []*unstructured.Unstructured{}
+	if rawManifests, ok := raw["manifests"]; ok {
+		serializedManifests, err := json.Marshal(rawManifests)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(serializedManifests, &manifests); err != nil {
+			return err
+		}
+		delete(raw, "manifests")
+	}
+	reserializedWithoutManifests, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+
+	type silbling CIOperatorStepDetailInfo
+	var unmarshalTo silbling
+	if err := json.Unmarshal(reserializedWithoutManifests, &unmarshalTo); err != nil {
+		return err
+	}
+	*c = CIOperatorStepDetailInfo(unmarshalTo)
+	c.Manifests = nil
+	for _, manifest := range manifests {
+		c.Manifests = append(c.Manifests, manifest)
+	}
+	return nil
+
 }
 
 const CIOperatorStepGraphJSONFilename = "ci-operator-step-graph.json"
