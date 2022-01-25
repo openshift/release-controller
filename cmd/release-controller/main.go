@@ -93,6 +93,8 @@ type options struct {
 	Registry string
 
 	ClusterGroups []string
+
+	ARTSuffix string
 }
 
 // Add metrics for bugzilla verifier errors
@@ -175,6 +177,8 @@ func main() {
 	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
 
 	flagset.StringVar(&opt.Registry, "registry", opt.Registry, "Specify the registry, that the artifact server will use, to retrieve release images when located on remote clusters")
+
+	flagset.StringVar(&opt.ARTSuffix, "art-suffix", "", "Suffix for ART imagstreams (eg. `-art-latest`)")
 
 	// This option can be used to group, any number of, similar build cluster names into logical groups that will be used to
 	// randomly distribute prowjobs onto.  When the release-controller reads in the prowjob definition, it will check if
@@ -348,6 +352,7 @@ func (o *options) Run() error {
 		o.AuthenticationMessage,
 		o.ClusterGroups,
 		architecture,
+		o.ARTSuffix,
 	)
 	klog.V(4).Infof("7: %v", time.Now().Sub(start))
 

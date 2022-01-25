@@ -137,6 +137,7 @@ type Controller struct {
 	buildClusterDistributions []ClusterDistribution
 
 	architecture string
+	artSuffix    string
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -155,6 +156,7 @@ func NewController(
 	authenticationMessage string,
 	clusterGroups []string,
 	architecture string,
+	artSuffix string,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -211,6 +213,7 @@ func NewController(
 		authenticationMessage: authenticationMessage,
 
 		architecture: architecture,
+		artSuffix:    artSuffix,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)

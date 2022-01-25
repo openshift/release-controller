@@ -19,7 +19,11 @@ import (
 func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) (releasecontroller.VerificationStatusMap, error) {
 	var verifyStatus releasecontroller.VerificationStatusMap
 	retryQueueDelay := 0 * time.Second
-	for name, verifyType := range release.Config.Verify {
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
+	if err != nil {
+		return nil, err
+	}
+	for name, verifyType := range verificationJobs {
 		if verifyType.Disabled {
 			klog.V(2).Infof("Release verification step %s is disabled, ignoring", name)
 			continue
