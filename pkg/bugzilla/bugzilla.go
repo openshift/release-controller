@@ -56,7 +56,8 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 		if bug.Status != "ON_QA" {
 			// In case bug has already been moved to VERIFIED, completely ignore
 			if bug.Status == "VERIFIED" {
-				message = ""
+				klog.V(4).Infof("Bug %d already in VERIFIED status", bug.ID)
+				continue
 			} else {
 				bugErrs = append(bugErrs, fmt.Errorf("Bug is not in ON_QA status"))
 			}
