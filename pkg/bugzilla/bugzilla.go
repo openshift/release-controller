@@ -2,6 +2,7 @@ package bugzilla
 
 import (
 	"fmt"
+	"strings"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/klog"
@@ -60,13 +61,16 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 			errs = append(errs, fmt.Errorf("Bug %d does not have a target release", bug.ID))
 			continue
 		}
-		bugSemVer, err := releasecontroller.SemverParseTolerant(bug.TargetRelease[0])
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to parse semver for target release `%s`: %w", bug.TargetRelease[0], err))
+		// the format for target release is always `int.int.{0,z}`
+		bugSplitVer := strings.Split(bug.TargetRelease[0], ".")
+		if len(bugSplitVer) < 2 {
+			errs = append(errs, fmt.Errorf("length of target release `%s` after split by `.` is less than 2", bug.TargetRelease[0]))
+			continue
 		}
-		bugRelease := releasecontroller.SemverToMajorMinor(bugSemVer)
+		bugRelease := fmt.Sprintf("%s.%s", bugSplitVer[0], bugSplitVer[1])
 		if bugRelease != tagRelease {
 			// bugfix included in different release than target; ignore
+			klog.Infof("Bug %d is in different release (%s) than tag %s", bug.ID, bugRelease, tagName)
 			continue
 		}
 		var success bool
