@@ -160,3 +160,7 @@ func SemverParseTolerant(v string) (semver.Version, error) {
 	}
 	return semver.Version{}, err
 }
+
+func SemverToMajorMinor(sr semver.Version) string {
+	return fmt.Sprintf("%d.%d", sr.Major, sr.Minor)
+}

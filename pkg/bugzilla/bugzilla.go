@@ -3,6 +3,7 @@ package bugzilla
 import (
 	"fmt"
 
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/klog"
 	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/github"
@@ -42,11 +43,30 @@ type pr struct {
 // VerifyBugs takes a list of bugzilla bug IDs and for each bug changes the bug status to VERIFIED if bug was reviewed and
 // lgtm'd by the bug's QA Contect
 func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
+	tagSemVer, err := releasecontroller.SemverParseTolerant(tagName)
+	if err != nil {
+		return []error{fmt.Errorf("failed to parse tag `%s` semver: %w", tagName, err)}
+	}
+	tagRelease := releasecontroller.SemverToMajorMinor(tagSemVer)
 	bzPRs, errs := getPRs(bugs, c.bzClient)
 	for bugID, extPRs := range bzPRs {
 		bug, err := c.bzClient.GetBug(bugID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("Unable to get bugzilla number %d: %v", bugID, err))
+			continue
+		}
+		// this should never happen, but include this check just in case
+		if len(bug.TargetRelease) == 0 {
+			errs = append(errs, fmt.Errorf("Bug %d does not have a target release", bug.ID))
+			continue
+		}
+		bugSemVer, err := releasecontroller.SemverParseTolerant(bug.TargetRelease[0])
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse semver for target release `%s`: %w", bug.TargetRelease[0], err))
+		}
+		bugRelease := releasecontroller.SemverToMajorMinor(bugSemVer)
+		if bugRelease != tagRelease {
+			// bugfix included in different release than target; ignore
 			continue
 		}
 		var success bool
