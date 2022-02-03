@@ -378,7 +378,7 @@ func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *rele
 				blockingJobs[key] = value
 			}
 		} else {
-			pendingJobs[key] = nil
+			delete(pendingJobs, key)
 		}
 	}
 	return &releasecontroller.VerificationJobsSummary{
