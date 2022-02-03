@@ -523,7 +523,7 @@ func GetImageInfo(releaseInfo ReleaseInfo, architecture, pullSpec string) (*imag
 }
 
 func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, release *Release, releaseTag *imagev1.TagReference, artSuffix string) (map[string]ReleaseVerification, error) {
-	if release.Config.As != ReleaseConfigModeStable {
+	if release.Config.As != ReleaseConfigModeStable || artSuffix == "" {
 		return release.Config.Verify, nil
 	}
 	jobs := make(map[string]ReleaseVerification)
@@ -542,9 +542,7 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 	}
 	imageStream, err := isLister.Get(isName)
 	if err != nil {
-		// TODO: make this an error once the artSuffix flag has been added to all commands
-		//return nil, fmt.Errorf("failed to get imagestream %s/%s: %w", release.Target.Namespace, isName, err)
-		return release.Config.Verify, nil
+		return nil, fmt.Errorf("failed to get imagestream %s/%s: %w", release.Target.Namespace, isName, err)
 	}
 	versionedRelease, ok, err := ReleaseDefinition(imageStream, rcCache, eventRecorder, *lister)
 	if err != nil {
