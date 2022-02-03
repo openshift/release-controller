@@ -15,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
@@ -521,62 +520,3 @@ func GetImageInfo(releaseInfo ReleaseInfo, architecture, pullSpec string) (*imag
 	}
 	return &config, nil
 }
-
-func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, release *Release, releaseTag *imagev1.TagReference, artSuffix string) (map[string]ReleaseVerification, error) {
-	if release.Config.As != ReleaseConfigModeStable || artSuffix == "" {
-		return release.Config.Verify, nil
-	}
-	jobs := make(map[string]ReleaseVerification)
-	for k, v := range release.Config.Verify {
-		jobs[k] = v
-	}
-	version, err := SemverParseTolerant(releaseTag.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get full stable verification jobs: %w", err)
-	}
-	isName := fmt.Sprintf("%d.%d%s", version.Major, version.Minor, artSuffix)
-	klog.Infof("Getting imagestream %s/%s", release.Target.Namespace, isName)
-	isLister := lister.ImageStreams(release.Target.Namespace)
-	if isLister == nil {
-		return nil, fmt.Errorf("failed to get imagestream %s", release.Target.Namespace)
-	}
-	imageStream, err := isLister.Get(isName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get imagestream %s/%s: %w", release.Target.Namespace, isName, err)
-	}
-	versionedRelease, ok, err := ReleaseDefinition(imageStream, rcCache, eventRecorder, *lister)
-	if err != nil {
-		return nil, err
-	} else if !ok {
-		return nil, fmt.Errorf("failed to get release definition from stream %s/%s", release.Target.Namespace, isName)
-	}
-	nonOptionalE2EJobs := sets.NewString()
-	nonOptionalSerialJobs := sets.NewString()
-	for name, verify := range versionedRelease.Config.Verify {
-		if !verify.Optional {
-			splitName := strings.Split(name, "-")
-			if strings.HasSuffix(name, "-serial") && validTestSuffixes.Has(splitName[len(splitName)-2]) {
-				nonOptionalSerialJobs.Insert(name)
-			} else if validTestSuffixes.Has(splitName[len(splitName)-2]) {
-				nonOptionalE2EJobs.Insert(name)
-			}
-		}
-	}
-	// should we warn if there are no required e2e or e2e-serial jobs?
-	if nonOptionalE2EJobs.Len() > 0 {
-		// the List function is sorted, thus will always choose the same job on different runs (unless the versioned config changes)
-		job := versionedRelease.Config.Verify[nonOptionalE2EJobs.List()[0]]
-		job.Optional = true
-		jobs["e2e"] = job
-	}
-	if nonOptionalSerialJobs.Len() > 0 {
-		// the List function is sorted, thus will always choose the same job on different runs (unless the versioned config changes)
-		job := versionedRelease.Config.Verify[nonOptionalSerialJobs.List()[0]]
-		job.Optional = true
-		jobs["e2e-serial"] = job
-	}
-	return jobs, nil
-}
-
-// validTestSuffixes is a set containing all valid suffixes for tests used as verification jobs on stable streams
-var validTestSuffixes sets.String = sets.NewString([]string{"aws", "gcp", "azure", "vsphere", "metal", "hypershift", "ovirt", "openstack"}...)
