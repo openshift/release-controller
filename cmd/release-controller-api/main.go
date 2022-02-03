@@ -57,6 +57,8 @@ type options struct {
 	ReleaseArchitecture string
 
 	AuthenticationMessage string
+
+	ARTSuffix string
 }
 
 func main() {
@@ -103,6 +105,8 @@ func main() {
 	flagset.StringVar(&opt.ReleaseArchitecture, "release-architecture", opt.ReleaseArchitecture, "The architecture of the releases to be created (defaults to 'amd64' if not specified).")
 
 	flagset.StringVar(&opt.AuthenticationMessage, "authentication-message", opt.AuthenticationMessage, "HTML formatted string to display a registry authentication message")
+
+	flagset.StringVar(&opt.ARTSuffix, "art-suffix", "", "Suffix for ART imagstreams (eg. `-art-latest`)")
 
 	flagset.AddGoFlag(original.Lookup("v"))
 	if err := setupKubeconfigWatches(opt); err != nil {
@@ -203,6 +207,7 @@ func (o *options) Run() error {
 		graph,
 		o.AuthenticationMessage,
 		architecture,
+		o.ARTSuffix,
 	)
 
 	var hasSynced []cache.InformerSynced
