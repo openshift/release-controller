@@ -555,9 +555,9 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 	for name, verify := range versionedRelease.Config.Verify {
 		if !verify.Optional {
 			splitName := strings.Split(name, "-")
-			if strings.HasSuffix(name, "-serial") && validTestSuffixes.Has(splitName[len(splitName)-2]) {
+			if strings.HasSuffix(name, "-serial") && validTests.Has(splitName[len(splitName)-2]) {
 				nonOptionalSerialJobs.Insert(name)
-			} else if validTestSuffixes.Has(splitName[len(splitName)-2]) {
+			} else if validTests.Has(name) {
 				nonOptionalE2EJobs.Insert(name)
 			}
 		}
@@ -578,5 +578,5 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 	return jobs, nil
 }
 
-// validTestSuffixes is a set containing all valid suffixes for tests used as verification jobs on stable streams
-var validTestSuffixes sets.String = sets.NewString([]string{"aws", "gcp", "azure", "vsphere", "metal", "hypershift", "ovirt", "openstack"}...)
+// validTests is a set containing all valid suffixes for tests used as verification jobs on stable streams
+var validTests sets.String = sets.NewString([]string{"aws", "gcp", "azure", "vsphere", "metal", "metal-ipi", "hypershift", "ovirt", "openstack"}...)
