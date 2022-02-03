@@ -492,7 +492,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	verificationJobs, msg := c.getVerificationJobs(*tagInfo.Info.Tag, tagInfo.Info.Release)
+	verificationJobs, msg := getVerificationJobs(*tagInfo.Info.Tag, tagInfo.Info.Release)
 	if len(msg) > 0 {
 		klog.V(4).Infof("Unable to retrieve verification job results for: %s", tagInfo.Tag)
 	}
@@ -792,7 +792,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 	}
 
-	c.renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
+	renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
 
 	upgradesTo := c.graph.UpgradesTo(tagInfo.Tag)
 
@@ -1081,7 +1081,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"phaseCell":      phaseCell,
 			"phaseAlert":     phaseAlert,
 			"alerts":         renderAlerts,
-			"links":          c.links,
+			"links":          links,
 			"releaseJoin":    releaseJoin,
 			"dashboardsJoin": dashboardsJoin,
 			"inc":            func(i int) int { return i + 1 },

@@ -59,8 +59,6 @@ type Controller struct {
 	authenticationMessage string
 
 	architecture string
-
-	artSuffix string
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -71,7 +69,6 @@ func NewController(
 	graph *releasecontroller.UpgradeGraph,
 	authenticationMessage string,
 	architecture string,
-	artSuffix string,
 ) *Controller {
 	// log events at v2 and send them to the server
 	broadcaster := record.NewBroadcaster()
@@ -101,8 +98,6 @@ func NewController(
 		authenticationMessage: authenticationMessage,
 
 		architecture: architecture,
-
-		artSuffix: artSuffix,
 	}
 
 	c.dashboards = []Dashboard{
