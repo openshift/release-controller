@@ -460,7 +460,8 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 			return err
 		}
 
-		if names, ok := status.Incomplete(release.Config.Verify); ok {
+		verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
+		if names, ok := status.Incomplete(verificationJobs); ok {
 			klog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
 			if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
 				return err
@@ -469,7 +470,7 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 		}
 
 		if names, ok := status.Failures(); ok {
-			retryNames, blockingJobFailed := releasecontroller.VerificationJobsWithRetries(release.Config.Verify, status)
+			retryNames, blockingJobFailed := releasecontroller.VerificationJobsWithRetries(verificationJobs, status)
 			if !blockingJobFailed && len(retryNames) > 0 {
 				klog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
 				if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
@@ -477,7 +478,7 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 				}
 				continue
 			}
-			if !releasecontroller.AllOptional(release.Config.Verify, names...) {
+			if !releasecontroller.AllOptional(verificationJobs, names...) {
 				klog.V(4).Infof("Release %s was rejected", releaseTag.Name)
 				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
 				annotations[releasecontroller.ReleaseAnnotationVerify] = toJSONString(status)

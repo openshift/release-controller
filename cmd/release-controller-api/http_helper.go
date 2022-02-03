@@ -250,7 +250,7 @@ func tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference
 	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
 }
 
-func links(tag imagev1.TagReference, release *releasecontroller.Release) string {
+func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.Release) string {
 	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
 	if len(links) == 0 {
 		return ""
@@ -259,8 +259,12 @@ func links(tag imagev1.TagReference, release *releasecontroller.Release) string 
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
 		return "error"
 	}
-	pending, failing := make([]string, 0, len(release.Config.Verify)), make([]string, 0, len(release.Config.Verify))
-	for k, v := range release.Config.Verify {
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
+	if err != nil {
+		return "error"
+	}
+	pending, failing := make([]string, 0, len(verificationJobs)), make([]string, 0, len(verificationJobs))
+	for k, v := range verificationJobs {
 		if v.Upgrade {
 			continue
 		}
@@ -321,7 +325,7 @@ func links(tag imagev1.TagReference, release *releasecontroller.Release) string 
 			continue
 		}
 		final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
-		if !release.Config.Verify[key].Disabled && !final {
+		if !verificationJobs[key].Disabled && !final {
 			buf.WriteString(" <span title=\"Pending\">")
 			buf.WriteString(template.HTMLEscapeString(key))
 			buf.WriteString("</span>")
@@ -345,7 +349,7 @@ func links(tag imagev1.TagReference, release *releasecontroller.Release) string 
 	return buf.String()
 }
 
-func getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Release) (*releasecontroller.VerificationJobsSummary, string) {
+func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Release) (*releasecontroller.VerificationJobsSummary, string) {
 	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
 	if len(links) == 0 {
 		return nil, fmt.Sprintf(`<p><em>No tests for this release</em>`)
@@ -357,14 +361,18 @@ func getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Re
 	blockingJobs := make(releasecontroller.VerificationStatusMap)
 	informingJobs := make(releasecontroller.VerificationStatusMap)
 	pendingJobs := make(releasecontroller.VerificationStatusMap)
-	keys := make([]string, 0, len(release.Config.Verify))
-	for k := range release.Config.Verify {
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
+	if err != nil {
+		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load verification jobs</em>`)
+	}
+	keys := make([]string, 0, len(verificationJobs))
+	for k := range verificationJobs {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
 		if value, ok := status[key]; ok {
-			if release.Config.Verify[key].Optional {
+			if verificationJobs[key].Optional {
 				informingJobs[key] = value
 			} else {
 				blockingJobs[key] = value
@@ -380,8 +388,8 @@ func getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Re
 	}, ""
 }
 
-func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releasecontroller.Release) {
-	verificationJobs, msg := getVerificationJobs(tag, release)
+func (c *Controller) renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releasecontroller.Release) {
+	verificationJobs, msg := c.getVerificationJobs(tag, release)
 	if len(msg) > 0 {
 		fmt.Fprintf(w, msg)
 		return
@@ -390,17 +398,17 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releaseco
 	final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
 	if len(verificationJobs.BlockingJobs) > 0 {
 		buf.WriteString("<li>Blocking jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(verificationJobs.BlockingJobs, release, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.BlockingJobs, release, tag, final))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.InformingJobs) > 0 {
 		buf.WriteString("<li>Informing jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(verificationJobs.InformingJobs, release, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.InformingJobs, release, tag, final))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.PendingJobs) > 0 {
 		buf.WriteString("<li>Pending jobs<ul>")
-		buf.WriteString(renderVerificationJobsList(verificationJobs.PendingJobs, release, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.PendingJobs, release, tag, final))
 		buf.WriteString("</ul></li>")
 	}
 	if out := buf.String(); len(out) > 0 {
@@ -410,17 +418,21 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releaseco
 	}
 }
 
-func renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, release *releasecontroller.Release, final bool) string {
+func (c *Controller) renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, release *releasecontroller.Release, tag imagev1.TagReference, final bool) string {
 	buf := &bytes.Buffer{}
 	keys := make([]string, 0, len(jobs))
 	for k := range jobs {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
+	if err != nil {
+		return "error"
+	}
 	for _, key := range keys {
 		value := jobs[key]
 		if value == nil {
-			if !release.Config.Verify[key].Disabled && !final {
+			if !verificationJobs[key].Disabled && !final {
 				buf.WriteString("<li><span title=\"Pending\">")
 				buf.WriteString(template.HTMLEscapeString(key))
 				buf.WriteString("</span></li>")
@@ -451,7 +463,7 @@ func renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, re
 			if value.Retries > 0 {
 				buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", value.Retries))
 			}
-			if pj := release.Config.Verify[key].ProwJob; pj != nil {
+			if pj := verificationJobs[key].ProwJob; pj != nil {
 				buf.WriteString(" ")
 				buf.WriteString(pj.Name)
 			}
@@ -475,7 +487,7 @@ func renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, re
 			buf.WriteString(" Pending")
 		}
 		buf.WriteString("</span>")
-		if pj := release.Config.Verify[key].ProwJob; pj != nil {
+		if pj := verificationJobs[key].ProwJob; pj != nil {
 			buf.WriteString(" ")
 			buf.WriteString(pj.Name)
 		}
