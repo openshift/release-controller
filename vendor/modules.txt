@@ -1014,6 +1014,7 @@ k8s.io/client-go/util/flowcontrol
 k8s.io/client-go/util/homedir
 k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
+k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
 # k8s.io/code-generator v0.23.3
 ## explicit; go 1.16
@@ -1082,7 +1083,7 @@ k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/test-infra v0.0.0-20220113185629-d0856f1c7618
+# k8s.io/test-infra v0.0.0-20220204183202-5bc58aa2c904
 ## explicit; go 1.16
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
@@ -1098,6 +1099,7 @@ k8s.io/test-infra/prow/clonerefs
 k8s.io/test-infra/prow/commentpruner
 k8s.io/test-infra/prow/config
 k8s.io/test-infra/prow/config/secret
+k8s.io/test-infra/prow/crier/reporters/criercommonlib
 k8s.io/test-infra/prow/crier/reporters/github
 k8s.io/test-infra/prow/cron
 k8s.io/test-infra/prow/entrypoint
