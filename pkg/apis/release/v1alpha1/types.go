@@ -33,7 +33,7 @@ import (
 //
 // Release-controller:
 //   1) Creates a mirror named: `ocp/4.9-art-latest-2021-09-27-105859`
-//   2) Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859-<random-string>`
+//   2) Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859`
 //       -Labels:
 //         release.openshift.io/imagestream=release
 //         release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
@@ -54,7 +54,7 @@ import (
 // A ReleasePayload will always be named after the Release that it corresponds to, with the addition of a
 // random string suffix.  Both objects will reside in the same namespace.
 //   For a release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
-//   A corresponding ReleasePayload will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859-<random-string>`
+//   A corresponding ReleasePayload will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859`
 //
 // Mapping from ReleasePayload to Release:
 // A ReleasePayload is decorated with a couple labels that will point back to the Release that it corresponds to:
@@ -96,7 +96,7 @@ type ReleasePayloadSpec struct {
 // is verifying.
 //
 // Example:
-// For a ReleasePayload named: "4.9.0-0.nightly-2021-09-27-105859-<random-string>" in the "ocp" namespace, and configured
+// For a ReleasePayload named: "4.9.0-0.nightly-2021-09-27-105859" in the "ocp" namespace, and configured
 // to be written into the "release" imagestream, we expect:
 //   1) Namespace to equal "ocp
 //   2) ImagestreamName to equal "release"

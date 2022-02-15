@@ -101,7 +101,7 @@ func (c *FakeReleasePayloads) UpdateStatus(ctx context.Context, releasePayload *
 // Delete takes name of the releasePayload and deletes it. Returns an error if one occurs.
 func (c *FakeReleasePayloads) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(releasepayloadsResource, c.ns, name), &v1alpha1.ReleasePayload{})
+		Invokes(testing.NewDeleteActionWithOptions(releasepayloadsResource, c.ns, name, opts), &v1alpha1.ReleasePayload{})
 
 	return err
 }

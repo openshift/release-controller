@@ -4,14 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"log"
 	"runtime/debug"
+
+	"github.com/sirupsen/logrus"
 
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/test-infra/prow/pod-utils/downwardapi"
 )
 
 // JobSpec is a superset of the upstream spec.
+// +k8s:deepcopy-gen=false
 type JobSpec struct {
 	downwardapi.JobSpec `json:",inline"`
 
@@ -24,14 +26,17 @@ type JobSpec struct {
 
 	// if set, any new artifacts will be a child of this object
 	owner *meta.OwnerReference
+
+	Metadata Metadata
+	Target   string
 }
 
 // Namespace returns the namespace of the job. Must not be evaluated
 // at step construction time because its unset there
 func (s *JobSpec) Namespace() string {
 	if s.namespace == "" {
-		log.Println("Warning, namespace accessed before it was set, this is a bug in ci-operator. Stack:")
-		debug.PrintStack()
+		logrus.Warn("Warning, namespace accessed before it was set, this is a bug in ci-operator. Stack:")
+		logrus.Warn(string(debug.Stack()))
 	}
 	return s.namespace
 }
