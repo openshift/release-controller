@@ -56,15 +56,15 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 			errs = append(errs, fmt.Errorf("Unable to get bugzilla number %d: %v", bugID, err))
 			continue
 		}
-		// this should never happen, but include this check just in case
-		if len(bug.TargetRelease) == 0 {
-			errs = append(errs, fmt.Errorf("Bug %d does not have a target release", bug.ID))
+		// bugzilla usually denotes unset target releases with `---`
+		if len(bug.TargetRelease) == 0 || bug.TargetRelease[0] == "---" {
+			klog.Warningf("Bug %d does not have a target release", bug.ID)
 			continue
 		}
 		// the format for target release is always `int.int.{0,z}`
 		bugSplitVer := strings.Split(bug.TargetRelease[0], ".")
 		if len(bugSplitVer) < 2 {
-			errs = append(errs, fmt.Errorf("length of target release `%s` after split by `.` is less than 2", bug.TargetRelease[0]))
+			errs = append(errs, fmt.Errorf("Bug %d: length of target release `%s` after split by `.` is less than 2", bug.ID, bug.TargetRelease[0]))
 			continue
 		}
 		bugRelease := fmt.Sprintf("%s.%s", bugSplitVer[0], bugSplitVer[1])
