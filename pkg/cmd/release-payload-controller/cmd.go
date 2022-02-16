@@ -99,6 +99,12 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformerFactory := prowjobinformers.NewSharedInformerFactory(prowJobClient, controllerDefaultResyncDuration)
 	prowJobInformer := prowJobInformerFactory.Prow().V1().ProwJobs()
 
+	// Payload Verification Controller
+	payloadVerificationController, err := NewPayloadVerificationController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
 	// Release Creation Jobs Controller
 	releaseCreationJobsController, err := NewReleaseCreationJobController(o.releaseNamespace, releasePayloadInformer, o.jobNamespace, jobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
@@ -106,25 +112,25 @@ func (o *Options) Run(ctx context.Context) error {
 	}
 
 	// Payload Created Controller
-	payloadCreatedController, err := NewPayloadCreatedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient, o.controllerContext.EventRecorder)
+	payloadCreatedController, err := NewPayloadCreatedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Accepted Controller
-	payloadAcceptedController, err := NewPayloadAcceptedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient, o.controllerContext.EventRecorder)
+	payloadAcceptedController, err := NewPayloadAcceptedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Rejected Controller
-	payloadRejectedController, err := NewPayloadRejectedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient, o.controllerContext.EventRecorder)
+	payloadRejectedController, err := NewPayloadRejectedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Failed Controller
-	payloadFailedController, err := NewPayloadFailedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient, o.controllerContext.EventRecorder)
+	payloadFailedController, err := NewPayloadFailedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
@@ -141,6 +147,7 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformerFactory.Start(ctx.Done())
 
 	// Run the Controllers
+	go payloadVerificationController.Run(ctx)
 	go releaseCreationJobsController.Run(ctx)
 	go payloadCreatedController.Run(ctx)
 	go payloadAcceptedController.Run(ctx)

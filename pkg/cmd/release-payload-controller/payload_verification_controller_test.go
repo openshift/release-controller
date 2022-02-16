@@ -1,0 +1,517 @@
+package release_payload_controller
+
+import (
+	"context"
+	"fmt"
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
+	"reflect"
+	"testing"
+)
+
+func TestSync(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
+	}{{
+		name: "ReleasePayloadWithoutVerificationJobs",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+		},
+	}, {
+		name: "ReleasePayloadWithBlockingVerificationJobs",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+			},
+		},
+	}, {
+		name: "ReleasePayloadWithInformingVerificationJobs",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				InformingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "informing-job",
+						CIConfigurationJobName: "informing-prowjob",
+					},
+				},
+			},
+		},
+	}, {
+		name: "ReleasePayloadWithVerificationJobs",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+				InformingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "informing-job",
+						CIConfigurationJobName: "informing-prowjob",
+					},
+				},
+			},
+		},
+	}, {
+		name: "ReleasePayloadWithAnalysisJobs",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-analysis-job",
+							CIConfigurationJobName: "blocking-analysis-prowjob",
+							AnalysisJobCount:       10,
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-analysis-job",
+							CIConfigurationJobName: "informing-analysis-prowjob",
+							AnalysisJobCount:       10,
+						},
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-analysis-job",
+							CIConfigurationJobName: "blocking-analysis-prowjob",
+							AnalysisJobCount:       10,
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-analysis-job",
+							CIConfigurationJobName: "informing-analysis-prowjob",
+							AnalysisJobCount:       10,
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-analysis-job",
+						CIConfigurationJobName: "blocking-analysis-prowjob",
+						AnalysisJobCount:       10,
+					},
+				},
+				InformingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "informing-analysis-job",
+						CIConfigurationJobName: "informing-analysis-prowjob",
+						AnalysisJobCount:       10,
+					},
+				},
+			},
+		},
+	}, {
+		name: "ReleasePayloadWithStatus",
+		input: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+				InformingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ReleasePayload",
+				APIVersion: "release.openshift.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+				Labels: map[string]string{
+					"release.openshift.io/imagestream":         "release",
+					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
+				},
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadCoordinates: v1alpha1.PayloadCoordinates{
+					Namespace:          "ocp",
+					ImagestreamName:    "release",
+					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
+				},
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					BlockingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "blocking-job",
+							CIConfigurationJobName: "blocking-prowjob",
+						},
+					},
+					InformingJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "informing-job",
+							CIConfigurationJobName: "informing-prowjob",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+				InformingJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "blocking-job",
+						CIConfigurationJobName: "blocking-prowjob",
+					},
+				},
+			},
+		},
+	}}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			releasePayloadClient := fake.NewSimpleClientset(testCase.input)
+
+			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
+			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+
+			c := &PayloadVerificationController{
+				releasePayloadNamespace: testCase.input.Namespace,
+				releasePayloadLister:    releasePayloadInformer.Lister(),
+				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
+				eventRecorder:           events.NewInMemoryRecorder("payload-verification-controller-test"),
+				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController"),
+			}
+			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+
+			releasePayloadInformerFactory.Start(context.Background().Done())
+
+			if !cache.WaitForNamedCacheSync("PayloadVerificationController", context.Background().Done(), c.cachesToSync...) {
+				t.Errorf("%s: error waiting for caches to sync", testCase.name)
+				return
+			}
+
+			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
+			if err != nil {
+				t.Errorf("%s: unexpected err: %v", testCase.name, err)
+			}
+
+			// Performing a live lookup instead of having to wait for the cache to sink (again)...
+			output, err := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
+			if !reflect.DeepEqual(output, testCase.expected) {
+				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, output)
+			}
+		})
+	}
+}

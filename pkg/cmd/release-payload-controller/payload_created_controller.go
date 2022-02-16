@@ -3,7 +3,7 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/client/clientset/versioned"
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
 	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +21,7 @@ import (
 type PayloadCreatedController struct {
 	releasePayloadNamespace string
 	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClientSet *versioned.Clientset
+	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
 
 	eventRecorder events.Recorder
 
@@ -33,13 +33,13 @@ type PayloadCreatedController struct {
 func NewPayloadCreatedController(
 	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
-	releasePayloadClientSet *versioned.Clientset,
+	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 ) (*PayloadCreatedController, error) {
 	c := &PayloadCreatedController{
 		releasePayloadNamespace: releasePayloadNamespace,
 		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClientSet: releasePayloadClientSet,
+		releasePayloadClient:    releasePayloadClient,
 		eventRecorder:           eventRecorder.WithComponentSuffix("payload-created-controller"),
 		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadCreatedController"),
 	}
@@ -125,13 +125,14 @@ func (c *PayloadCreatedController) sync(ctx context.Context, key string) error {
 
 	// Get the ReleasePayload resource with this namespace/name
 	originalReleasePayload, err := c.releasePayloadLister.ReleasePayloads(namespace).Get(name)
+	// The ReleasePayload resource may no longer exist, in which case we stop processing.
+	if errors.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
-		// The ReleasePayload resource may no longer exist, in which case we stop processing.
-		if errors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
+
 	releasePayload := originalReleasePayload.DeepCopy()
 
 	klog.V(4).Infof("Syncing Payload Created for ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)

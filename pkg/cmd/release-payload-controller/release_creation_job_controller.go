@@ -163,13 +163,14 @@ func (c *ReleaseCreationJobController) sync(ctx context.Context, key string) err
 
 	// Get the ReleasePayload resource with this namespace/name
 	originalReleasePayload, err := c.releasePayloadLister.ReleasePayloads(namespace).Get(name)
+	// The ReleasePayload resource may no longer exist, in which case we stop processing.
+	if errors.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
-		// The ReleasePayload resource may no longer exist, in which case we stop processing.
-		if errors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
+
 	releasePayload := originalReleasePayload.DeepCopy()
 
 	klog.V(4).Infof("Syncing ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)
