@@ -51,7 +51,7 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.40.1
 	k8s.io/kubernetes v1.14.7
-	k8s.io/test-infra v0.0.0-20220204183202-5bc58aa2c904
+	k8s.io/test-infra v0.0.0-20220217031743-9703a3111217
 )
 
 require (
