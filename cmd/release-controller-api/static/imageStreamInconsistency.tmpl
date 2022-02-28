@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><title>Release Inconsistencies</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+</head>
+<style>
+    @media (max-width: 992px) {
+        .container {
+            width: 100%%;
+            max-width: none;
+        }
+    }
+</style>
+<body>
+<div class="container">
+    <p>
+        <a href="/">Release Controller</a> / <a href="/releasestream/{{.Release}}/release/{{.Tag}}">{{.Tag}}</a>
+    </p>
+    <h1>{{.Tag}} Inconsistencies</h1>
+    {{if .AssemblyWideInconsistencies}}
+    <p class="small">
+        Jump to:
+        <a href="#payloadWide">Assembly Wide Inconsistencies</a>
+        |
+        <a href="#imageSpecific">Payload Component Inconsistencies</a>
+    </p>
+    {{end}}
+</div>
+
+{{if .AssemblyWideInconsistencies}}
+<div class="mt-4 content-wrapper">
+    <section class="content">
+        <div class="container-fluid">
+            <section class="content">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-14">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title">Assembly Wide Inconsistencies</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table id="payloadWide" class="table table-bordered table-hover table-striped">
+                                        <thead class="thead-dark">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Message</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr>
+                                            <td>{{.Tag}}</td>
+                                            <td>{{.AssemblyWideInconsistencies}}</td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </section>
+</div>
+{{end}}
+<div class="mt-4 content-wrapper">
+    <section class="content">
+        <div class="container-fluid">
+            <section class="content">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-14">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title">Payload Component Inconsistencies</h5>
+                                </div>
+                                <div class="card-body table-responsive">
+                                    <table id="imageSpecific" class="table table-bordered table-striped table-hover">
+                                        <thead class="thead-dark">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>PullSpec</th>
+                                            <th>Message</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {{range $key, $value := .PayloadInconsistencies}}
+                                        <tr >
+                                            <td >{{$key}}</td>
+                                            <td>{{.PullSpec}}</td>
+                                            <td>{{.Message}}</td>
+                                        </tr>
+                                        {{end}}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </section>
+</div>
+</body>
+</html>

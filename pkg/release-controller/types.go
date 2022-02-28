@@ -471,6 +471,9 @@ const (
 	// is considered an input image stream for creating releases.
 	ReleaseAnnotationConfig = "release.openshift.io/config"
 
+	// ReleaseAnnotationInconsistency an imagestream with this annotation indicates an inconsistency
+	ReleaseAnnotationInconsistency = "release.openshift.io/inconsistency"
+
 	ReleaseAnnotationKeep              = "release.openshift.io/keep"
 	ReleaseAnnotationGeneration        = "release.openshift.io/generation"
 	ReleaseAnnotationSource            = "release.openshift.io/source"

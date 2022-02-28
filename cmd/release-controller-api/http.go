@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
@@ -25,6 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 )
+
+//go:embed static
+var static embed.FS
+var resources, _ = fs.Sub(static, "static")
 
 const htmlPageStart = `
 <!DOCTYPE html>
@@ -147,7 +153,7 @@ td.upgrade-track {
 		{{ range $index, $tag := .Tags }}
 			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
 			<tr>
-				{{ tableLink $release.Config . }}
+				{{ tableLink $release.Config $tag $release.HasInconsistencies }}
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
 				<td>{{ links . $release }}</td>
@@ -210,7 +216,7 @@ const releaseDashboardPageHtml = `
 				{{ if lt $index 10 }}
 						{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
 						<tr>
-							{{ tableLink $release.Config . }}
+							{{ tableLink $release.Config $tag $release.HasInconsistencies }}
 							{{ phaseCell . }}
 							<td title="{{ $created }}">{{ since $created }}</td>
 							{{ upgradeJobs $upgrades $index $created }}
@@ -299,6 +305,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
+	mux.HandleFunc("/releasestream/{release}/inconsistency/{tag}", c.httpInconsistencyInfo)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
@@ -312,6 +319,10 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
+
+	// static files
+	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
+
 	return mux
 }
 
@@ -1423,4 +1434,70 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 	fmt.Fprintln(w)
+}
+
+type Inconsistencies struct {
+	PayloadInconsistencies      map[string]PayloadInconsistencyDetails
+	AssemblyWideInconsistencies string
+	Tag                         string
+	Release                     string
+}
+
+type PayloadInconsistencyDetails struct {
+	PullSpec string
+	Message  string
+}
+
+func jsonArrayToString(messageArray string) (string, error) {
+	var arr []string
+	err := json.Unmarshal([]byte(messageArray), &arr)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(arr, "; "), nil
+}
+
+func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+
+	vars := mux.Vars(req)
+	imageStreamInconsistencies := Inconsistencies{}
+	type1Inconsistency := PayloadInconsistencyDetails{}
+	m := make(map[string]PayloadInconsistencyDetails)
+
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if inconsistencyMessage, ok := tagInfo.Info.Release.Source.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
+		message, err := jsonArrayToString(inconsistencyMessage)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		imageStreamInconsistencies.AssemblyWideInconsistencies = message
+	}
+	for _, tag := range tagInfo.Info.Release.Source.Spec.Tags {
+		if inconsistencyMessage, ok := tag.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
+			type1Inconsistency.PullSpec = tag.From.Name
+			message, err := jsonArrayToString(inconsistencyMessage)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			type1Inconsistency.Message = message
+			m[tag.Name] = type1Inconsistency
+		}
+	}
+	imageStreamInconsistencies.PayloadInconsistencies = m
+	imageStreamInconsistencies.Tag = vars["tag"]
+	imageStreamInconsistencies.Release = vars["release"]
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	tmpl := template.Must(template.ParseFS(resources, "imageStreamInconsistency.tmpl"))
+
+	err = tmpl.Execute(w, imageStreamInconsistencies)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
