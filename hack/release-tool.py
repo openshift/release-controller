@@ -11,11 +11,15 @@ from openshift import OpenShiftPythonException
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 logger = logging.getLogger('releaseTool')
 
+SUPPORTED_PRODUCTS = ['ocp', 'okd']
 SUPPORTED_ARCHITECTURES = ['amd64', 'arm64', 'ppc64le', 's390x', 'multi']
 
 
-def generate_resource_values(ns, name, architecture, private):
+def generate_resource_values(product, stream_name, architecture, private):
     arch_suffix, private_suffix = "", ""
+
+    if product == 'okd':
+        return 'origin', stream_name
 
     if architecture != 'amd64':
         arch_suffix = f'-{architecture}'
@@ -23,7 +27,7 @@ def generate_resource_values(ns, name, architecture, private):
     if private:
         private_suffix = '-priv'
 
-    return f'{ns}{arch_suffix}{private_suffix}', f'{name}{arch_suffix}{private_suffix}'
+    return f'{product}{arch_suffix}{private_suffix}', f'{stream_name}{arch_suffix}{private_suffix}'
 
 
 def validate_server_connection(ctx):
@@ -94,14 +98,14 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--message', help='Specifies a custom message to include with the update', default=None)
     parser.add_argument('-r', '--reason', help='Specifies a custom reason to include with the update', default=None)
     parser.add_argument('--execute', help='Specify to persist changes on the cluster', action='store_true')
-    parser.add_argument('--admin', help='Perform operations as "system:admin"', action='store_true')
 
     config_group = parser.add_argument_group('Configuration Options')
     config_group.add_argument('-v', '--verbose', help='Enable verbose output', action='store_true')
 
     ocp_group = parser.add_argument_group('Openshift Configuration Options')
     ocp_group.add_argument('-c', '--context', help='The OC context to use (default is "app.ci")', default='app.ci')
-    ocp_group.add_argument('-n', '--namespace', help='The namespace prefix to use (default is "ocp")', default='ocp')
+    ocp_group.add_argument('-k', '--kubeconfig', help='The kubeconfig to use (default is "~/.kube/config")', default='')
+    ocp_group.add_argument('-n', '--name', help='The product prefix to use (default is "ocp")', choices=SUPPORTED_PRODUCTS, default='ocp')
     ocp_group.add_argument('-i', '--imagestream', help='The name of the release imagestream to use (default is "release")', default='release')
     ocp_group.add_argument('-a', '--architecture', help='The architecture of the release to process (default is "amd64")', choices=SUPPORTED_ARCHITECTURES, default='amd64')
     ocp_group.add_argument('-p', '--private', help='Enable updates of "private" releases', action='store_true')
@@ -121,9 +125,9 @@ if __name__ == '__main__':
 
     context = {"context": args['context']}
 
-    if args['admin']:
-        context['as'] = 'system:admin'
+    if len(args['kubeconfig']) > 0:
+        context['kubeconfig'] = args['kubeconfig']
 
     validate_server_connection(context)
-    namespace, imagestream = generate_resource_values(args['namespace'], args['imagestream'], args['architecture'], args['private'])
+    namespace, imagestream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
     update(context, args['action'], namespace, imagestream, args['release'], args['message'], args['reason'], args['execute'])
