@@ -1420,7 +1420,7 @@ k8s.io/kube-openapi/pkg/validation/spec
 ## explicit
 k8s.io/kubernetes/pkg/apis/batch
 k8s.io/kubernetes/pkg/apis/core
-# k8s.io/test-infra v0.0.0-20220217031743-9703a3111217
+# k8s.io/test-infra v0.0.0-20220303220916-561c88850b98
 ## explicit; go 1.16
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
