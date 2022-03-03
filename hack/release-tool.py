@@ -41,7 +41,63 @@ def validate_server_connection(ctx):
             raise e
 
 
+def create_patch(action, custom_message, custom_reason):
+    data = {
+        'image': {
+            'metadata': {
+                'annotations': {}
+            }
+        },
+        'metadata': {
+            'annotations': {}
+        },
+        'tag': {
+            'annotations': {}
+        }
+    }
+
+    if action == 'accept':
+        phase = 'Accepted'
+    elif action == 'reject':
+        phase = 'Rejected'
+    else:
+        raise ValueError(f'Unsupported action specified: {action}')
+
+    data['image']['metadata']['annotations']['release.openshift.io/phase'] = phase
+    data['metadata']['annotations']['release.openshift.io/phase'] = phase
+    data['tag']['annotations']['release.openshift.io/phase'] = phase
+
+    message = f'Manually {action}ed per TRT'
+    if custom_message is not None:
+        message = custom_message
+
+    data['image']['metadata']['annotations']['release.openshift.io/message'] = message
+    data['metadata']['annotations']['release.openshift.io/message'] = message
+    data['tag']['annotations']['release.openshift.io/message'] = message
+
+    if custom_reason is not None:
+        data['image']['metadata']['annotations']['release.openshift.io/reason'] = custom_reason
+        data['metadata']['annotations']['release.openshift.io/reason'] = custom_reason
+        data['tag']['annotations']['release.openshift.io/reason'] = custom_reason
+
+    return data
+
+
+def write_backup_file(name, release, data):
+    ts = int(round(time.time() * 1000))
+    backup_filename = f'{name}_{release}-{ts}.json'
+
+    with open(backup_filename, mode='w+', encoding='utf-8') as backup:
+        logger.debug(f'Creating backup file: {backup_filename}')
+        backup.write(json.dumps(data, indent=4))
+
+    return backup_filename
+
+
 def update(ctx, action, ns, name, release, custom_message, custom_reason, execute):
+    patch = create_patch(action, custom_message, custom_reason)
+    logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
+
     with oc.options(ctx), oc.tracking(), oc.timeout(5*60):
         try:
             with oc.project(ns):
@@ -49,44 +105,17 @@ def update(ctx, action, ns, name, release, custom_message, custom_reason, execut
                 if not tag:
                     raise Exception(f'Unable to locate imagestreamtag: {ns}/{name}:{release}')
 
-                ts = int(round(time.time() * 1000))
-                backup_filename = f'{name}_{release}-{ts}.json'
+                logger.info(f'{action.capitalize()}ing: {ns}/{name}:{release}')
                 if execute:
-                    with open(backup_filename, mode='w+', encoding='utf-8') as backup:
-                        logger.debug(f'Creating backup file: {backup_filename}')
-                        backup.write(json.dumps(tag.model._primitive(), indent=4))
+                    backup_file = write_backup_file(name, release, tag.model._primitive())
 
-                def update_annotations(obj):
-                    message = f'Manually {action}ed per TRT'
-                    if custom_message is not None:
-                        message = custom_message
+                    tag.patch(patch)
 
-                    for annotations in (obj.model.image.metadata.annotations, obj.model.metadata.annotations, obj.model.tag.annotations):
-                        if action == 'accept':
-                            annotations['release.openshift.io/phase'] = 'Accepted'
-                        elif action == 'reject':
-                            annotations['release.openshift.io/phase'] = 'Rejected'
-                        else:
-                            raise ValueError(f'Unsupported action specified: {action}')
-
-                        annotations['release.openshift.io/message'] = message
-
-                        if custom_reason is not None:
-                            annotations['release.openshift.io/reason'] = custom_reason
-
-                    logger.info(f'{action.capitalize()}ing: {ns}/{name}:{release}')
-                    if execute:
-                        logger.debug(f'Updated payload:\n{json.dumps(obj.model._primitive(), indent=4)}')
-                        return True
-                    else:
-                        logger.info(f'Updated payload:\n{json.dumps(obj.model._primitive(), indent=4)}')
-                        logger.warning('You must specify "--execute" to permanently apply these changes')
-                        exit(0)
-
-                update_annotations(tag)
-                tag.replace()
-                logger.info(f'Release {release} updated successfully')
-                logger.info(f'Backup written to: {backup_filename}')
+                    logger.info(f'Release {release} updated successfully')
+                    logger.info(f'Backup written to: {backup_file}')
+                else:
+                    logger.info(f'[dry-run] Patching release {release} with patch:\n{json.dumps(patch, indent=4)}')
+                    logger.warning('You must specify "--execute" to permanently apply these changes')
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to update release: "{release}"')
