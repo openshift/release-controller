@@ -63,22 +63,24 @@ def create_patch(action, custom_message, custom_reason):
     else:
         raise ValueError(f'Unsupported action specified: {action}')
 
-    data['image']['metadata']['annotations']['release.openshift.io/phase'] = phase
-    data['metadata']['annotations']['release.openshift.io/phase'] = phase
-    data['tag']['annotations']['release.openshift.io/phase'] = phase
-
     message = f'Manually {action}ed per TRT'
     if custom_message is not None:
         message = custom_message
 
-    data['image']['metadata']['annotations']['release.openshift.io/message'] = message
-    data['metadata']['annotations']['release.openshift.io/message'] = message
-    data['tag']['annotations']['release.openshift.io/message'] = message
+    annotations = {
+        'phase': phase,
+        'message': message
+    }
 
     if custom_reason is not None:
-        data['image']['metadata']['annotations']['release.openshift.io/reason'] = custom_reason
-        data['metadata']['annotations']['release.openshift.io/reason'] = custom_reason
-        data['tag']['annotations']['release.openshift.io/reason'] = custom_reason
+        annotations['reason'] = custom_reason
+
+    for key, value in annotations.items():
+        if value is not None:
+            annotation = 'release.openshift.io/' + key
+            data['image']['metadata']['annotations'][annotation] = value
+            data['metadata']['annotations'][annotation] = value
+            data['tag']['annotations'][annotation] = value
 
     return data
 
@@ -98,7 +100,7 @@ def update(ctx, action, ns, name, release, custom_message, custom_reason, execut
     patch = create_patch(action, custom_message, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
-    with oc.options(ctx), oc.tracking(), oc.timeout(5*60):
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
         try:
             with oc.project(ns):
                 tag = oc.selector(f'imagestreamtag/{name}:{release}').object(ignore_not_found=True)
