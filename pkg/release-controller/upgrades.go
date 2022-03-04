@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -21,15 +23,15 @@ import (
 
 type UpgradeGraph struct {
 	lock         sync.Mutex
-	to           map[string]map[string]*UpgradeHistory
-	from         map[string]sets.String
+	To           map[string]map[string]*UpgradeHistory
+	From         map[string]sets.String
 	Architecture string
 }
 
 func NewUpgradeGraph(architecture string) *UpgradeGraph {
 	return &UpgradeGraph{
-		to:           make(map[string]map[string]*UpgradeHistory),
-		from:         make(map[string]sets.String),
+		To:           make(map[string]map[string]*UpgradeHistory),
+		From:         make(map[string]sets.String),
 		Architecture: architecture,
 	}
 }
@@ -44,7 +46,7 @@ func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeHistory {
 	defer g.lock.Unlock()
 	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
-		for _, h := range g.to[to] {
+		for _, h := range g.To[to] {
 			summaries = append(summaries, UpgradeHistory{
 				From:    h.From,
 				To:      to,
@@ -62,8 +64,8 @@ func (g *UpgradeGraph) SummarizeUpgradesFrom(fromNames ...string) []UpgradeHisto
 	defer g.lock.Unlock()
 	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
 	for _, from := range fromNames {
-		for to := range g.from[from] {
-			for _, h := range g.to[to] {
+		for to := range g.From[from] {
+			for _, h := range g.To[to] {
 				summaries = append(summaries, UpgradeHistory{
 					From:    from,
 					To:      to,
@@ -82,7 +84,7 @@ func (g *UpgradeGraph) UpgradesTo(toNames ...string) []UpgradeHistory {
 	defer g.lock.Unlock()
 	summaries := make([]UpgradeHistory, 0, len(toNames)*2)
 	for _, to := range toNames {
-		for _, h := range g.to[to] {
+		for _, h := range g.To[to] {
 			summaries = append(summaries, UpgradeHistory{
 				From:    h.From,
 				To:      to,
@@ -107,8 +109,8 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 	summaries := make([]UpgradeHistory, 0, len(fromNames)*2)
 	refs := make(map[historyEdgeReference]*UpgradeHistory)
 	for _, from := range fromNames {
-		for to := range g.from[from] {
-			history := g.to[to][from]
+		for to := range g.From[from] {
+			history := g.To[to][from]
 			if history == nil {
 				continue
 			}
@@ -154,10 +156,10 @@ func (g *UpgradeGraph) Add(fromTag, toTag string, results ...UpgradeResult) {
 }
 
 func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResult) {
-	to, ok := g.to[toTag]
+	to, ok := g.To[toTag]
 	if !ok {
 		to = make(map[string]*UpgradeHistory)
-		g.to[toTag] = to
+		g.To[toTag] = to
 	}
 	from, ok := to[fromTag]
 	if !ok {
@@ -166,10 +168,10 @@ func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResu
 			To:   toTag,
 		}
 		to[fromTag] = from
-		set, ok := g.from[fromTag]
+		set, ok := g.From[fromTag]
 		if !ok {
 			set = sets.NewString()
-			g.from[fromTag] = set
+			g.From[fromTag] = set
 		}
 		set.Insert(toTag)
 	}
@@ -197,8 +199,8 @@ func (g *UpgradeGraph) Histories() []UpgradeHistory {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	results := make([]UpgradeHistory, 0, len(g.to)*5)
-	for _, targets := range g.to {
+	results := make([]UpgradeHistory, 0, len(g.To)*5)
+	for _, targets := range g.To {
 		for _, history := range targets {
 			copied := *history
 			copied.History = nil
@@ -212,8 +214,8 @@ func (g *UpgradeGraph) Records() []UpgradeRecord {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	records := make([]UpgradeRecord, 0, len(g.to)*5)
-	for to, targets := range g.to {
+	records := make([]UpgradeRecord, 0, len(g.To)*5)
+	for to, targets := range g.To {
 		for from, history := range targets {
 			record := UpgradeRecord{From: from, To: to, Results: make([]UpgradeResult, 0, len(history.History))}
 			for _, result := range history.History {
@@ -226,23 +228,7 @@ func (g *UpgradeGraph) Records() []UpgradeRecord {
 }
 
 func (g *UpgradeGraph) Save(w io.Writer) error {
-	records := g.Records()
-
-	// put the records into a stable order
-	sort.Slice(records, func(i, j int) bool {
-		a, b := records[i], records[j]
-		if a.To == b.To {
-			return a.From < b.From
-		}
-		return a.To < b.To
-	})
-	for _, record := range records {
-		sort.Slice(record.Results, func(i, j int) bool {
-			return record.Results[i].URL < record.Results[j].URL
-		})
-	}
-
-	data, err := json.Marshal(records)
+	data, err := json.Marshal(g.OrderedRecords())
 	if err != nil {
 		return err
 	}
@@ -273,6 +259,27 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 }
 
 func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+	LoadUpgradeGraph(graph, secretClient, ns, name, stopCh)
+
+	if !update {
+		return
+	}
+
+	// wait a bit of time to let any other loops load what they can
+	time.Sleep(15 * time.Second)
+
+	// keep the secret up to date
+	buf := &bytes.Buffer{}
+	wait.Until(func() {
+		buf.Reset()
+		err := SaveUpgradeGraph(buf, graph, secretClient, ns, name)
+		if err != nil {
+			klog.Errorf("Unable to save upgrade graph: %v", err)
+		}
+	}, 5*time.Minute, stopCh)
+}
+
+func LoadUpgradeGraph(graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
 	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
 		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
@@ -295,34 +302,86 @@ func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 		}
 		return true, nil
 	}, stopCh)
+}
 
-	if !update {
+func SaveUpgradeGraph(buf *bytes.Buffer, graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string) error {
+	if err := graph.Save(buf); err != nil {
+		return fmt.Errorf("unable to calculate graph state: %v", err)
+	}
+	secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("can't read latest secret %s/%s: %v", ns, name, err)
+	}
+	if secret.Data == nil {
+		secret.Data = make(map[string][]byte)
+	}
+	secret.Data["latest"] = buf.Bytes()
+	if _, err := secretClient.Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("can't save state to secret %s/%s: %v", ns, name, err)
+	}
+	klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
+	return nil
+}
+
+func (g *UpgradeGraph) OrderedRecords() []UpgradeRecord {
+	records := g.Records()
+	// put the records into a stable order
+	sort.Slice(records, func(i, j int) bool {
+		a, b := records[i], records[j]
+		if a.To == b.To {
+			return a.From < b.From
+		}
+		return a.To < b.To
+	})
+	for _, record := range records {
+		sort.Slice(record.Results, func(i, j int) bool {
+			return record.Results[i].URL < record.Results[j].URL
+		})
+	}
+	return records
+}
+
+const (
+	PruneGraphPrintSecret = "secret"
+	PruneGraphPrintDebug  = "debug"
+)
+
+func (g *UpgradeGraph) PruneTags(pruneTagList []string) {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	for _, toTag := range pruneTagList {
+		for fromTag := range g.To[toTag] {
+			g.removeWithLock(fromTag, toTag)
+		}
+	}
+}
+
+func (g *UpgradeGraph) removeWithLock(fromTag, toTag string) {
+	delete(g.To[toTag], fromTag)
+	if len(g.To[toTag]) == 0 {
+		delete(g.To, toTag)
+	}
+	g.From[fromTag].Delete(toTag)
+	if g.From[fromTag].Len() == 0 {
+		delete(g.From, fromTag)
+	}
+}
+
+func (g *UpgradeGraph) PrettyPrint() {
+	json, err := json.MarshalIndent(g.OrderedRecords(), "", "    ")
+	if err != nil {
+		klog.V(1).Infof("Unable to marshal graph: %v", err)
+	}
+	fmt.Printf("%s\n", json)
+}
+
+func (g *UpgradeGraph) PrintSecretPayload() {
+	buf := &bytes.Buffer{}
+	if err := g.Save(buf); err != nil {
+		klog.Errorf("Unable to calculate graph state: %v", err)
 		return
 	}
-
-	// wait a bit of time to let any other loops load what they can
-	time.Sleep(15 * time.Second)
-
-	// keep the secret up to date
-	buf := &bytes.Buffer{}
-	wait.Until(func() {
-		buf.Reset()
-		if err := graph.Save(buf); err != nil {
-			klog.Errorf("Unable to calculate graph state: %v", err)
-			return
-		}
-		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Can't read latest secret %s/%s: %v", ns, name, err)
-			return
-		}
-		if secret.Data == nil {
-			secret.Data = make(map[string][]byte)
-		}
-		secret.Data["latest"] = buf.Bytes()
-		if _, err := secretClient.Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("Can't save state to secret %s/%s: %v", ns, name, err)
-		}
-		klog.V(2).Infof("Saved upgrade graph state to %s/%s", ns, name)
-	}, 5*time.Minute, stopCh)
+	str := base64.StdEncoding.EncodeToString(buf.Bytes())
+	fmt.Println(str)
 }
