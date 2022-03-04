@@ -523,7 +523,7 @@ func (o *options) Run() error {
 					if jobArchitecture != architecture {
 						continue
 					}
-					jobSource, ok := annotations[releaseAnnotationSource]
+					jobSource, ok := annotations[releasecontroller.ReleaseAnnotationSource]
 					if !ok {
 						continue
 					}
