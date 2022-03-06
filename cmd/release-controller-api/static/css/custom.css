@@ -1,0 +1,53 @@
+table.dataTable tr.group td {
+  font-weight:bold;
+  background-color:#f0f0f1
+}
+
+.upgrade-track-line {
+  position: absolute;
+  top: 0;
+  bottom: -1px;
+  left: 7px;
+  width: 0;
+  display: inline-block;
+  border-left: 2px solid #000;
+  display: none;
+  z-index: 200;
+}
+.upgrade-track-dot {
+  display: inline-block;
+  position: absolute;
+  top: 15px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  z-index: 300;
+  cursor: pointer;
+}
+.upgrade-track-dot {
+  border: 2px solid #000;
+  border-radius: 50%;
+}
+.upgrade-track-dot:hover {
+  border-width: 6px;
+}
+.upgrade-track-line.start {
+  top: 18px;
+  height: 31px;
+  display: block;
+}
+.upgrade-track-line.middle {
+  display: block;
+}
+.upgrade-track-line.end {
+  top: -1px;
+  height: 16px;
+  display: block;
+}
+td.upgrade-track {
+  width: 16px;
+  position: relative;
+  padding-left: 2px;
+  padding-right: 2px;
+}
