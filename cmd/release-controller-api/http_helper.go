@@ -902,13 +902,5 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 		sort.Strings(errDoesNotExist)
 		result.Errors = append(result.Errors, fmt.Sprintf("Found recent tags downstream that are not built upstream (not in %s/%s): %s", parent.Source.Namespace, parent.Source.Name, strings.Join(errDoesNotExist, ", ")))
 	}
-	if len(warnOlderThanUpstream) > 0 {
-		sort.Strings(warnOlderThanUpstream)
-		result.Warnings = append(result.Warnings, fmt.Sprintf("Some tags are significantly older than the upstream: %s", strings.Join(warnOlderThanUpstream, ", ")))
-	}
-	if len(warnNoDownstream) > 0 {
-		sort.Strings(warnNoDownstream)
-		result.Warnings = append(result.Warnings, fmt.Sprintf("No downstream builds have been pushed for these upstream tags: %s", strings.Join(warnNoDownstream, ", ")))
-	}
 	return result
 }
