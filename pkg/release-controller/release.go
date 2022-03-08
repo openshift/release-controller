@@ -67,11 +67,24 @@ func (c imageInfoConfig) GenerateDigestPullSpec() string {
 	return fmt.Sprintf("%s@%s", strings.Split(c.Name, ":")[0], c.Digest)
 }
 
+func (r *Release) HasInconsistencies() bool {
+	for _, tag := range r.Source.Spec.Tags {
+		if _, ok := tag.Annotations[ReleaseAnnotationInconsistency]; ok {
+			return true
+		}
+	}
+	if _, ok := r.Source.ObjectMeta.Annotations[ReleaseAnnotationInconsistency]; ok {
+		return true
+	}
+	return false
+}
+
 func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, eventRecorder record.EventRecorder, releaseLister MultiImageStreamLister) (*Release, bool, error) {
 	src, ok := is.Annotations[ReleaseAnnotationConfig]
 	if !ok {
 		return nil, false, nil
 	}
+
 	cfg, err := ParseReleaseConfig(src, releaseConfigCache)
 	if err != nil {
 		err = fmt.Errorf("the %s annotation for %s is invalid: %v", ReleaseAnnotationConfig, is.Name, err)
