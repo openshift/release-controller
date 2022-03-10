@@ -1119,6 +1119,9 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		if err != nil || !ok {
 			continue
 		}
+		if r.Config.EndOfLife {
+			continue
+		}
 		s := ReleaseStream{
 			Release: r,
 			Tags:    releasecontroller.SortedReleaseTags(r),
@@ -1260,6 +1263,9 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
 		if err != nil || !ok {
+			continue
+		}
+		if r.Config.EndOfLife {
 			continue
 		}
 		s := ReleaseStream{

@@ -43,6 +43,11 @@ func (c *Controller) sync(key queueKey) error {
 		return err
 	}
 
+	if release.Config.EndOfLife {
+		klog.V(6).Infof("release %s has reached the end of life", release.Config.Name)
+		return nil
+	}
+
 	// ensure that the target image stream always carries the annotation indicating it is
 	// a target for backreferencing from GC and other check points
 	if _, ok := release.Target.Annotations[releasecontroller.ReleaseAnnotationHasReleases]; !ok {
