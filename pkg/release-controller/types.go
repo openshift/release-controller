@@ -75,6 +75,10 @@ type ReleaseConfig struct {
 	// Hide indicates this release should be visually less important on the status pages.
 	Hide bool `json:"hide"`
 
+	// EndOfLife indicates this release stream should be no longer be monitored or
+	// displayed by the release-controller
+	EndOfLife bool `json:"endOfLife"`
+
 	// As defines what this image stream provides. The default value is "Integration"
 	// and the images in the image stream will be used to build payloads. An optional
 	// mode is "Stable" and tags are assumed to be release payloads that should be promoted

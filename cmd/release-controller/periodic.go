@@ -53,6 +53,10 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 			if err != nil || !ok {
 				continue
 			}
+			if r.Config.EndOfLife {
+				klog.V(6).Infof("release %s has reached the end of life", r.Config.Name)
+				continue
+			}
 			for name, releasePeriodic := range r.Config.Periodic {
 				periodicConfig, ok := hasProwJob(cfg, releasePeriodic.ProwJob.Name)
 				if !ok {
