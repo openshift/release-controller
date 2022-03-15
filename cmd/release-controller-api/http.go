@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"math"
 	"net/http"
 	"net/url"
@@ -1114,12 +1115,17 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	endOfLifePrefixes := sets.NewString()
+
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
 		if err != nil || !ok {
 			continue
 		}
 		if r.Config.EndOfLife {
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil {
+				endOfLifePrefixes.Insert(fmt.Sprintf("%d.%d", version.Major, version.Minor))
+			}
 			continue
 		}
 		s := ReleaseStream{
@@ -1146,6 +1152,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
+	pruneEndOfLifeTags(page, endOfLifePrefixes)
 
 	fmt.Fprintf(w, htmlPageStart, "Release Status")
 	if err := releasePage.Execute(w, page); err != nil {

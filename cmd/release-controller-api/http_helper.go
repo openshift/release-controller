@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"net/url"
 	"sort"
 	"strings"
@@ -903,4 +904,21 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 		result.Errors = append(result.Errors, fmt.Sprintf("Found recent tags downstream that are not built upstream (not in %s/%s): %s", parent.Source.Namespace, parent.Source.Name, strings.Join(errDoesNotExist, ", ")))
 	}
 	return result
+}
+
+func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.String) {
+	for i := range page.Streams {
+		stream := &page.Streams[i]
+		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+			var tags []*imagev1.TagReference
+			for _, tag := range stream.Tags {
+				if version, err := releasecontroller.SemverParseTolerant(tag.Name); err == nil {
+					if !endOfLifePrefixes.Has(fmt.Sprintf("%d.%d", version.Major, version.Minor)) {
+						tags = append(tags, tag)
+					}
+				}
+			}
+			stream.Tags = tags
+		}
+	}
 }
