@@ -38,7 +38,8 @@ const htmlPageStart = `
 <html>
 <head>
 <meta charset="UTF-8"><title>%s</title>
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/css/bootstrap.min.css" integrity="sha384-zCbKRCUGaJDkqS1kPbPd7TveP5iyJE0EjAuZQTgFLD2ylzuqKfdKlfG/eSrtxUkn" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <style>
 @media (max-width: 992px) {
@@ -56,6 +57,88 @@ const htmlPageStart = `
 const htmlPageEnd = `
 <p class="small">Source code for this page located on <a href="https://github.com/openshift/release-controller">github</a></p>
 </div>
+<script src="static/js/jquery-1.11.3.min.js"></script>
+<script src="static/js/jquery.dataTables.js"></script>
+<script src="static/js/dataTables.rowGroup.min.js"></script>
+<link href="static/css/custom.css" rel="stylesheet" type="text/css" />
+<script>
+$(document).ready(function() {
+ var collapsedGroups = {};
+    var table = $('#4-stable_table').DataTable({
+	  columnDefs: [
+	  	 {
+	  		"targets": [ 4 ],
+	  		"visible": false,
+	  		"searchable": false
+	  	 }
+	  ],
+      ordering: false,
+      info: false,
+	  paging: false,	
+	  searching: false,	
+      rowGroup: {
+        dataSrc: 4,
+        startRender: function (rows, group) {
+            var collapsed = !!collapsedGroups[group];
+            var i = 0;
+			j = 0;
+            rows.nodes().each(function (r) {
+                if (i>4) {
+					if (collapsed == true) {
+						j = j + 1;
+					}
+                	r.style.display = collapsed ? '' : 'none';
+                } else {
+                	j = j + 1;
+					i = i + 1;
+                }
+            });
+			if (j == 5) {
+			t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to show all"><i role="button" class="bi bi-plus-lg"></i></div></div></div></td>'
+			} else {
+			t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to collapse"><i role="button" class="bi bi-dash-lg"></i></div></div></div></td>'	
+			}			
+		return $('<tr/>')
+                .append('<td colspan="3"  class="">' + group + ' (' + "showing " + j +  " out of " + rows.count() + ')</td>')
+				.append(t) 
+                .attr('data-name', group)
+                .toggleClass('collapsed', collapsed);
+        }
+      }
+    });
+   $('#4-stable_table tbody').on('click', 'tr.group-start',  function () {
+        var name = $(this).data('name');
+        collapsedGroups[name] = !collapsedGroups[name];
+        table.draw(false);
+    });
+});
+</script>
+<script>
+function searchTable() {
+  var input, filter, table, tr, td, i, txtValue;
+  input = document.getElementById("myInput");
+  filter = input.value.toUpperCase();
+  table = document.getElementById("4-stable_table");
+  tr = table.getElementsByTagName("tr");
+  for (i = 0; i < tr.length; i++) {
+    td = tr[i].getElementsByTagName("td")[0];
+    if (td) {
+      txtValue = td.textContent || td.innerText;
+      if (txtValue.toUpperCase().indexOf(filter) > -1) {
+        tr[i].style.display = "";
+        if (txtValue.includes("showing")) {
+        	tr[i].style.display = "none";
+	    }	    
+      } else {
+        tr[i].style.display = "none";
+      }
+    }
+  }
+  if (filter == "") {
+	document.location.reload();
+  }
+}
+</script>
 </body>
 </html>
 `
@@ -71,56 +154,6 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
 </pre>
 <div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 {{ displayAuthMessage }}
-<style>
-.upgrade-track-line {
-	position: absolute;
-	top: 0;
-	bottom: -1px;
-	left: 7px;
-	width: 0;
-	display: inline-block;
-	border-left: 2px solid #000;
-	display: none;
-	z-index: 200;
-}
-.upgrade-track-dot {
-	display: inline-block;
-	position: absolute;
-	top: 15px;
-	left: 2px;
-	width: 12px;
-	height: 12px;
-	background: #fff;
-	z-index: 300;
-	cursor: pointer;
-}
-.upgrade-track-dot {
-	border: 2px solid #000;
-	border-radius: 50%;
-}
-.upgrade-track-dot:hover {
-	border-width: 6px;
-}
-.upgrade-track-line.start {
-	top: 18px;
-	height: 31px;
-	display: block;
-}
-.upgrade-track-line.middle {
-	display: block;
-}
-.upgrade-track-line.end {
-	top: -1px;
-	height: 16px;
-	display: block;
-}
-td.upgrade-track {
-	width: 16px;
-	position: relative;
-	padding-left: 2px;
-	padding-right: 2px;
-}
-</style>
 
 <p class="small mb-3">
 	Jump to: {{ releaseJoin .Streams }}
@@ -129,17 +162,19 @@ td.upgrade-track {
 <div class="row">
 <div class="col">
 {{ range .Streams }}
+{{ $is4stable := .Release.Config.Name }}
 		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
 		{{ publishDescription . }}
 		{{ alerts . }}
 		{{ $upgrades := .Upgrades }}
-		<table class="table text-nowrap">
+		<table id="{{.Release.Config.Name}}_table" class="table text-nowrap">
 			<thead>
 				<tr>
 					<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
 					<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
 					<th>Started</th>
-					<th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
+					<th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>	
+					{{ if eq $is4stable  "4-stable"}}<th>Version Grouping</th>{{ end }}
 					{{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
 				</tr>
 			</thead>
@@ -158,6 +193,7 @@ td.upgrade-track {
 				{{ phaseCell . }}
 				<td title="{{ $created }}">{{ since $created }}</td>
 				<td>{{ links . $release }}</td>
+				{{ if eq $is4stable  "4-stable" }}<td>{{ versionGrouping $tag.Name }}</td>{{ end }}
 				{{ upgradeCells $upgrades $index }}
 			</tr>
 		{{ end }}
@@ -1041,6 +1077,9 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"publishDescription": func(r *ReleaseStream) string {
 				if len(r.Release.Config.Message) > 0 {
+					if r.Release.Config.Name == "4-stable" {
+						return fmt.Sprintf("<td class=\"text-center\"colspan=3>\n<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"myInput\" onkeyup=\"searchTable()\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>\n</td>", r.Release.Config.Message)
+					}
 					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
 				}
 				var out []string
@@ -1089,15 +1128,16 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":      tableLink,
-			"phaseCell":      phaseCell,
-			"phaseAlert":     phaseAlert,
-			"alerts":         renderAlerts,
-			"links":          c.links,
-			"releaseJoin":    releaseJoin,
-			"dashboardsJoin": dashboardsJoin,
-			"inc":            func(i int) int { return i + 1 },
-			"upgradeCells":   upgradeCells,
+			"tableLink":       tableLink,
+			"versionGrouping": versionGrouping,
+			"phaseCell":       phaseCell,
+			"phaseAlert":      phaseAlert,
+			"alerts":          renderAlerts,
+			"links":           c.links,
+			"releaseJoin":     releaseJoin,
+			"dashboardsJoin":  dashboardsJoin,
+			"inc":             func(i int) int { return i + 1 },
+			"upgradeCells":    upgradeCells,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1513,4 +1553,9 @@ func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Requ
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func versionGrouping(tag string) string {
+	s := strings.Split(tag, ".")
+	return fmt.Sprintf("%s.%s", s[0], s[1])
 }
