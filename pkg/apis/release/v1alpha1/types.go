@@ -142,7 +142,7 @@ const (
 // the necessary changes to formally accept/reject the respective release.
 type ReleasePayloadOverride struct {
 	// Override specifies the ReleasePayloadOverride to apply to the ReleasePayload
-	Override ReleasePayloadOverrideType `json:"override,omitempty"`
+	Override ReleasePayloadOverrideType `json:"override"`
 
 	// Reason is a human-readable string that specifies the reason for manually overriding the
 	// Acceptance/Rejections of a ReleasePayload
@@ -219,9 +219,8 @@ const (
 	// JobStateSuccess successful job aggregation
 	JobStateSuccess JobState = "Success"
 
-	// JobStateIgnored ignored job aggregation
-	// This is specifically for Analysis jobs that are not being monitored directly.
-	JobStateIgnored JobState = "Ignored"
+	// JobStateUnknown unable to determine the JobState
+	JobStateUnknown JobState = "Unknown"
 )
 
 // JobStatus encapsulates the name of the job, all the results of the jobs, and an aggregated
@@ -267,10 +266,6 @@ const (
 
 	// JobRunStateError job could not be scheduled
 	JobRunStateError JobRunState = "Error"
-
-	// JobRunStateIgnored job that is submitted to the system but is not monitored for success/failure
-	// This is specifically for Analysis jobs that are monitored by the JobRunAggregator.
-	JobRunStateIgnored JobRunState = "Ignored"
 )
 
 // JobRunCoordinates houses the information necessary to locate individual job executions

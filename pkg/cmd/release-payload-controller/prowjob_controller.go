@@ -6,6 +6,7 @@ import (
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
 	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasepayload/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	prowjobinformer "k8s.io/test-infra/prow/client/informers/externalversions/prowjobs/v1"
@@ -172,7 +173,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 
 	klog.V(4).Infof("Syncing ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)
 
-	for _, jobStatus := range releasePayload.Status.GetJobs() {
+	for _, jobStatus := range status.GetJobs(releasePayload.Status) {
 		klog.V(4).Infof("Syncing Job: %s", jobStatus.CIConfigurationName)
 	}
 

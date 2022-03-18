@@ -22,7 +22,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 )
 
-// PayloadVerificationController is the controller responsible for the initial population of the following pieces of
+// PayloadVerificationController is responsible for the initial population of the following pieces of
 // the ReleasePayload:
 //   - .status.blockingJobResults
 //   - .status.informingJobResults
