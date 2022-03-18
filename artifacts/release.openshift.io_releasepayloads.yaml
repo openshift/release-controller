@@ -88,16 +88,8 @@ spec:
             description: Spec the inputs used to create the ReleasePayload
             properties:
               payloadCoordinates:
-                description: "PayloadCoordinates houses the information pointing to
-                  the location of the imagesteamtag that this ReleasePayload is verifying.
-                  \n Example: For a ReleasePayload named: \"4.9.0-0.nightly-2021-09-27-105859\"
-                  in the \"ocp\" namespace, and configured to be written into the
-                  \"release\" imagestream, we expect:   1) Namespace to equal \"ocp
-                  \  2) ImagestreamName to equal \"release\"   3) ImagestreamTagName
-                  to equal \"4.9.0-0.nightly-2021-09-27-105859\", which will also
-                  serves as the prefix of the ReleasePayload \n These coordinates
-                  can then be used to get the release imagestreamtag itself:    #
-                  oc -n ocp get imagestreamtag release:4.9.0-0.nightly-2021-09-27-105859"
+                description: PayloadCoordinates the coordinates of the imagestreamtag
+                  that this ReleasePayload was created from
                 properties:
                   imagestreamName:
                     description: 'ImagestreamName is the location of the configured
@@ -113,15 +105,8 @@ spec:
                     type: string
                 type: object
               payloadOverride:
-                description: 'ReleasePayloadOverride provides the ability to manually
-                  Accept/Reject a ReleasePayload ART, occasionally, needs the ability
-                  to manually accept/reject a Release that, for some reason or another:   -
-                  won''t pass one or more of it''s blocking jobs.   - shouldn''t proceed
-                  with the normal release verification processing This would be the
-                  one scenario where another party, besides the release-controller,
-                  would update a ReleasePayload instance.  Upon doing so, the release-controller
-                  should see that an update occurred and make all the necessary changes
-                  to formally accept/reject the respective release.'
+                description: PayloadOverride specified when manual intervention is
+                  required to manually Accept or Reject a ReleasePayload
                 properties:
                   override:
                     description: Override specifies the ReleasePayloadOverride to
@@ -133,80 +118,73 @@ spec:
                       of a ReleasePayload
                     type: string
                 type: object
+              payloadVerificationConfig:
+                description: PayloadVerificationConfig the configuration that will
+                  be used to verify this ReleasePayload
+                properties:
+                  blockingJobs:
+                    description: BlockingJobs are release verification jobs that will
+                      prevent a ReleasePayload from being Accepted if the job fails
+                    items:
+                      description: CIConfiguration is an Openshift CI system's job
+                        definition of a verification test to run against a ReleasePayload
+                      properties:
+                        analysisJobCount:
+                          description: AnalysisJobCount Number of asynchronous jobs
+                            to execute for release analysis.
+                          type: integer
+                        ciConfigurationJobName:
+                          description: CIConfigurationJobName is the actual name of
+                            the prowjob definition as stored in the CI Job Configuration.  This
+                            value is used to lookup and read in the prowjob for processing
+                            by the release-controller
+                          type: string
+                        ciConfigurationName:
+                          description: CIConfigurationName the unique name given to
+                            a verification test.  This value will be used as the key
+                            to lookup the configuration and the results of the respective
+                            verification test
+                          type: string
+                        maxRetries:
+                          description: MaxRetries Maximum retry attempts for the job.
+                            Defaults to 0 - do not retry on fail
+                          type: integer
+                      type: object
+                    type: array
+                  informingJobs:
+                    description: InformingJobs are release verification jobs used
+                      to execute tests against a ReleasePayload
+                    items:
+                      description: CIConfiguration is an Openshift CI system's job
+                        definition of a verification test to run against a ReleasePayload
+                      properties:
+                        analysisJobCount:
+                          description: AnalysisJobCount Number of asynchronous jobs
+                            to execute for release analysis.
+                          type: integer
+                        ciConfigurationJobName:
+                          description: CIConfigurationJobName is the actual name of
+                            the prowjob definition as stored in the CI Job Configuration.  This
+                            value is used to lookup and read in the prowjob for processing
+                            by the release-controller
+                          type: string
+                        ciConfigurationName:
+                          description: CIConfigurationName the unique name given to
+                            a verification test.  This value will be used as the key
+                            to lookup the configuration and the results of the respective
+                            verification test
+                          type: string
+                        maxRetries:
+                          description: MaxRetries Maximum retry attempts for the job.
+                            Defaults to 0 - do not retry on fail
+                          type: integer
+                      type: object
+                    type: array
+                type: object
             type: object
           status:
             description: Status is the current status of the ReleasePayload
             properties:
-              analysisJobResults:
-                description: AnalysisJobResults stores the results of all analysis
-                  jobs
-                items:
-                  description: JobStatus encapsulates the name of the job, all the
-                    results of the jobs, and an aggregated result of all the jobs
-                  properties:
-                    alias:
-                      description: jobAlias is the short name of the job
-                      type: string
-                    maxRetries:
-                      description: MaxRetries maximum times to retry a job
-                      type: integer
-                    name:
-                      description: jobName is the name of the job
-                      type: string
-                    optional:
-                      description: Optional determines if a verification job is Blocking
-                        for Informing.
-                      type: boolean
-                    results:
-                      description: JobRunResults contains the links for individual
-                        jobs
-                      items:
-                        description: JobRunResult the results of a prowjob run The
-                          release-controller creates ProwJobs (prowv1.ProwJob) during
-                          the sync_ready control loop and relies on an informer to
-                          process jobs, that it created, as they are completed. The
-                          JobRunResults will be created, by the release-controller
-                          during the sync_ready loop and updated whenever any changes,
-                          to the respective job is received by the informer.
-                        properties:
-                          completionTime:
-                            description: CompletionTime timestamp for when the prow
-                              pipeline controller observes the final state of the
-                              ProwJob For instance, if a client Aborts a ProwJob,
-                              the Pipeline controller will receive notification of
-                              the change and update the PtowJob's Status accordingly.
-                            format: date-time
-                            type: string
-                          coordinates:
-                            description: Coordinates the location of the job
-                            properties:
-                              cluster:
-                                type: string
-                              name:
-                                type: string
-                              namespace:
-                                type: string
-                            type: object
-                          humanProwResultsURL:
-                            description: HumanProwResultsURL the html link to the
-                              prow results
-                            type: string
-                          startTime:
-                            description: StartTime timestamp for when the prowjob
-                              was created
-                            format: date-time
-                            type: string
-                          state:
-                            description: State the current state of the job run
-                            type: string
-                        type: object
-                      type: array
-                    state:
-                      description: AggregateState is the overall success/failure of
-                        all the executed jobs
-                      type: string
-                  type: object
-                type: array
               blockingJobResults:
                 description: BlockingJobResults stores the results of all blocking
                   jobs
@@ -214,19 +192,21 @@ spec:
                   description: JobStatus encapsulates the name of the job, all the
                     results of the jobs, and an aggregated result of all the jobs
                   properties:
-                    alias:
-                      description: jobAlias is the short name of the job
+                    analysisJobCount:
+                      description: AnalysisJobCount Number of asynchronous jobs to
+                        execute for release analysis.
+                      type: integer
+                    ciConfigurationJobName:
+                      description: CIConfigurationJobName is the name of the prowjob
+                        definition as stored in the CI Job Configuration
+                      type: string
+                    ciConfigurationName:
+                      description: CIConfigurationName the unique name given to a
+                        verification test
                       type: string
                     maxRetries:
                       description: MaxRetries maximum times to retry a job
                       type: integer
-                    name:
-                      description: jobName is the name of the job
-                      type: string
-                    optional:
-                      description: Optional determines if a verification job is Blocking
-                        for Informing.
-                      type: boolean
                     results:
                       description: JobRunResults contains the links for individual
                         jobs
@@ -282,33 +262,71 @@ spec:
                   Supported conditions include PayloadCreated, PayloadFailed, PayloadAccepted,
                   and PayloadRejected.
                 items:
-                  description: ReleasePayloadCondition contains condition information
-                    for a tag event.
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
                   properties:
-                    generation:
-                      description: Generation is the spec tag generation that this
-                        status corresponds to
-                      format: int64
-                      type: integer
                     lastTransitionTime:
-                      description: LastTransitionTIme is the time the condition transitioned
-                        from one status to another.
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: Message is a human readable description of the
-                        details about last transition, complementing reason.
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
+                      maxLength: 32768
                       type: string
+                    observedGeneration:
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
                     reason:
-                      description: Reason is a brief machine readable explanation
-                        for the condition's last transition.
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
                       type: string
                     status:
-                      description: Status of the condition, one of True, False, Unknown.
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
                       type: string
                     type:
-                      description: Type of release payload status condition
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
                   type: object
                 type: array
               informingJobResults:
@@ -318,19 +336,21 @@ spec:
                   description: JobStatus encapsulates the name of the job, all the
                     results of the jobs, and an aggregated result of all the jobs
                   properties:
-                    alias:
-                      description: jobAlias is the short name of the job
+                    analysisJobCount:
+                      description: AnalysisJobCount Number of asynchronous jobs to
+                        execute for release analysis.
+                      type: integer
+                    ciConfigurationJobName:
+                      description: CIConfigurationJobName is the name of the prowjob
+                        definition as stored in the CI Job Configuration
+                      type: string
+                    ciConfigurationName:
+                      description: CIConfigurationName the unique name given to a
+                        verification test
                       type: string
                     maxRetries:
                       description: MaxRetries maximum times to retry a job
                       type: integer
-                    name:
-                      description: jobName is the name of the job
-                      type: string
-                    optional:
-                      description: Optional determines if a verification job is Blocking
-                        for Informing.
-                      type: boolean
                     results:
                       description: JobRunResults contains the links for individual
                         jobs
@@ -385,6 +405,8 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

@@ -6,6 +6,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:subresource:status
 
 // ReleasePayload encapsulates the information for the creation of a ReleasePayload
 // and aggregates the results of its respective verification tests.
@@ -88,8 +89,12 @@ type ReleasePayload struct {
 
 // ReleasePayloadSpec has the information to represent a ReleasePayload
 type ReleasePayloadSpec struct {
-	PayloadCoordinates PayloadCoordinates     `json:"payloadCoordinates,omitempty"`
-	PayloadOverride    ReleasePayloadOverride `json:"payloadOverride,omitempty"`
+	// PayloadCoordinates the coordinates of the imagestreamtag that this ReleasePayload was created from
+	PayloadCoordinates PayloadCoordinates `json:"payloadCoordinates,omitempty"`
+	// PayloadOverride specified when manual intervention is required to manually Accept or Reject a ReleasePayload
+	PayloadOverride ReleasePayloadOverride `json:"payloadOverride,omitempty"`
+	// PayloadVerificationConfig the configuration that will be used to verify this ReleasePayload
+	PayloadVerificationConfig PayloadVerificationConfig `json:"payloadVerificationConfig,omitempty"`
 }
 
 // PayloadCoordinates houses the information pointing to the location of the imagesteamtag that this ReleasePayload
@@ -144,60 +149,60 @@ type ReleasePayloadOverride struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+type PayloadVerificationConfig struct {
+	// BlockingJobs are release verification jobs that will prevent a ReleasePayload from being Accepted if the job fails
+	BlockingJobs []CIConfiguration `json:"blockingJobs,omitempty"`
+	// InformingJobs are release verification jobs used to execute tests against a ReleasePayload
+	InformingJobs []CIConfiguration `json:"informingJobs,omitempty"`
+}
+
+// CIConfiguration is an Openshift CI system's job definition of a verification test to run against a ReleasePayload
+type CIConfiguration struct {
+	// CIConfigurationName the unique name given to a verification test.  This value will be used as the key to lookup
+	// the configuration and the results of the respective verification test
+	CIConfigurationName string `json:"ciConfigurationName"`
+	// CIConfigurationJobName is the actual name of the prowjob definition as stored in the CI Job Configuration.  This
+	// value is used to lookup and read in the prowjob for processing by the release-controller
+	CIConfigurationJobName string `json:"ciConfigurationJobName"`
+	// MaxRetries Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
+	MaxRetries int `json:"maxRetries,omitempty"`
+	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
+	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
+}
+
 // ReleasePayloadStatus the status of all the promotion test jobs
 type ReleasePayloadStatus struct {
 	// Conditions communicates the state of the ReleasePayload.
 	// Supported conditions include PayloadCreated, PayloadFailed, PayloadAccepted, and PayloadRejected.
-	Conditions []ReleasePayloadCondition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// BlockingJobResults stores the results of all blocking jobs
 	BlockingJobResults []JobStatus `json:"blockingJobResults,omitempty"`
 
 	// InformingJobResults stores the results of all informing jobs
 	InformingJobResults []JobStatus `json:"informingJobResults,omitempty"`
-
-	// AnalysisJobResults stores the results of all analysis jobs
-	AnalysisJobResults []JobStatus `json:"analysisJobResults,omitempty"`
 }
-
-type ReleasePayloadConditionType string
 
 // These are valid condition types for ReleasePayloadStatus.
 const (
-	// PayloadCreated if false, the ReleasePayload is waiting for a release image to be created and pushed to the
+	// ConditionPayloadCreated if false, the ReleasePayload is waiting for a release image to be created and pushed to the
 	// TargetImageStream.  If PayloadCreated is true, a release image has been created and pushed to the TargetImageStream.
 	// Verification jobs should begin and will update the status as they complete.
-	PayloadCreated ReleasePayloadConditionType = "PayloadCreated"
+	ConditionPayloadCreated string = "PayloadCreated"
 
-	// PayloadFailed is true if a ReleasePayload image cannot be created for the given set of image mirrors
+	// ConditionPayloadFailed is true if a ReleasePayload image cannot be created for the given set of image mirrors
 	// This condition is terminal
-	PayloadFailed ReleasePayloadConditionType = "PayloadFailed"
+	ConditionPayloadFailed string = "PayloadFailed"
 
-	// PayloadAccepted is true if the ReleasePayload has passed its verification criteria and can safely
+	// ConditionPayloadAccepted is true if the ReleasePayload has passed its verification criteria and can safely
 	// be promoted to an external location
 	// This condition is terminal
-	PayloadAccepted ReleasePayloadConditionType = "PayloadAccepted"
+	ConditionPayloadAccepted string = "PayloadAccepted"
 
-	// PayloadRejected is true if the ReleasePayload has failed one or more of its verification criteria
+	// ConditionPayloadRejected is true if the ReleasePayload has failed one or more of its verification criteria
 	// The release-controller will take no more action in this phase.
-	PayloadRejected ReleasePayloadConditionType = "PayloadRejected"
+	ConditionPayloadRejected string = "PayloadRejected"
 )
-
-// ReleasePayloadCondition contains condition information for a tag event.
-type ReleasePayloadCondition struct {
-	// Type of release payload status condition
-	Type ReleasePayloadConditionType `json:"type"`
-	// Status of the condition, one of True, False, Unknown.
-	Status metav1.ConditionStatus `json:"status"`
-	// LastTransitionTIme is the time the condition transitioned from one status to another.
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-	// Reason is a brief machine readable explanation for the condition's last transition.
-	Reason string `json:"reason,omitempty"`
-	// Message is a human readable description of the details about last transition, complementing reason.
-	Message string `json:"message,omitempty"`
-	// Generation is the spec tag generation that this status corresponds to
-	Generation int64 `json:"generation"`
-}
 
 // JobState the aggregate state of the job
 // Supported values include Pending, Failed, Success, and Ignored.
@@ -208,8 +213,8 @@ const (
 	// Transitions to Failed or Success
 	JobStatePending JobState = "Pending"
 
-	// JobStateFailed failed job aggregation
-	JobStateFailed JobState = "Failed"
+	// JobStateFailure failed job aggregation
+	JobStateFailure JobState = "Failure"
 
 	// JobStateSuccess successful job aggregation
 	JobStateSuccess JobState = "Success"
@@ -222,23 +227,23 @@ const (
 // JobStatus encapsulates the name of the job, all the results of the jobs, and an aggregated
 // result of all the jobs
 type JobStatus struct {
-	// jobName is the name of the job
-	JobName string `json:"name,omitempty"`
+	// CIConfigurationName the unique name given to a verification test
+	CIConfigurationName string `json:"ciConfigurationName,omitempty"`
 
-	// jobAlias is the short name of the job
-	JobAlias string `json:"alias,omitempty"`
+	// CIConfigurationJobName is the name of the prowjob definition as stored in the CI Job Configuration
+	CIConfigurationJobName string `json:"ciConfigurationJobName,omitempty"`
 
 	// MaxRetries maximum times to retry a job
 	MaxRetries int `json:"maxRetries,omitempty"`
+
+	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
+	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
 
 	// AggregateState is the overall success/failure of all the executed jobs
 	AggregateState JobState `json:"state,omitempty"`
 
 	// JobRunResults contains the links for individual jobs
 	JobRunResults []JobRunResult `json:"results,omitempty"`
-
-	// Optional determines if a verification job is Blocking for Informing.
-	Optional bool `json:"optional,omitempty"`
 }
 
 // JobRunState the status of a job
@@ -292,10 +297,10 @@ type JobRunResult struct {
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 
 	// State the current state of the job run
-	State JobRunState `json:"state"`
+	State JobRunState `json:"state,omitempty"`
 
 	// HumanProwResultsURL the html link to the prow results
-	HumanProwResultsURL string `json:"humanProwResultsURL"`
+	HumanProwResultsURL string `json:"humanProwResultsURL,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

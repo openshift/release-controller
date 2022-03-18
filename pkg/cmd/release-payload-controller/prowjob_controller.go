@@ -160,19 +160,20 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 
 	// Get the ReleasePayload resource with this namespace/name
 	originalReleasePayload, err := c.releasePayloadLister.ReleasePayloads(namespace).Get(name)
+	// The ReleasePayload resource may no longer exist, in which case we stop processing.
+	if errors.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
-		// The ReleasePayload resource may no longer exist, in which case we stop processing.
-		if errors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
+
 	releasePayload := originalReleasePayload.DeepCopy()
 
 	klog.V(4).Infof("Syncing ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)
 
 	for _, jobStatus := range releasePayload.Status.GetJobs() {
-		klog.V(4).Infof("Syncing Job: %s", jobStatus.JobName)
+		klog.V(4).Infof("Syncing Job: %s", jobStatus.CIConfigurationName)
 	}
 
 	return nil
