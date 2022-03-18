@@ -5,15 +5,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"testing"
-	"time"
 )
 
 func TestCanonicalize(t *testing.T) {
-	currentTime := time.Now()
-	fifteenMinutesAgo := currentTime.Add(-15 * time.Minute)
-	twoHoursAgo := currentTime.Add(-2 * time.Hour)
-	threeHoursAgo := currentTime.Add(-3 * time.Hour)
-
 	testCases := []struct {
 		name     string
 		input    *v1alpha1.ReleasePayload
@@ -44,20 +38,16 @@ func TestCanonicalize(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:               v1alpha1.ConditionPayloadFailed,
-							LastTransitionTime: metav1.NewTime(fifteenMinutesAgo),
+							Type: v1alpha1.ConditionPayloadFailed,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadRejected,
-							LastTransitionTime: metav1.NewTime(twoHoursAgo),
+							Type: v1alpha1.ConditionPayloadRejected,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadCreated,
-							LastTransitionTime: metav1.NewTime(threeHoursAgo),
+							Type: v1alpha1.ConditionPayloadCreated,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadAccepted,
-							LastTransitionTime: metav1.NewTime(currentTime),
+							Type: v1alpha1.ConditionPayloadAccepted,
 						},
 					},
 					BlockingJobResults: []v1alpha1.JobStatus{
@@ -121,20 +111,16 @@ func TestCanonicalize(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:               v1alpha1.ConditionPayloadAccepted,
-							LastTransitionTime: metav1.NewTime(currentTime),
+							Type: v1alpha1.ConditionPayloadAccepted,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadFailed,
-							LastTransitionTime: metav1.NewTime(fifteenMinutesAgo),
+							Type: v1alpha1.ConditionPayloadCreated,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadRejected,
-							LastTransitionTime: metav1.NewTime(twoHoursAgo),
+							Type: v1alpha1.ConditionPayloadFailed,
 						},
 						{
-							Type:               v1alpha1.ConditionPayloadCreated,
-							LastTransitionTime: metav1.NewTime(threeHoursAgo),
+							Type: v1alpha1.ConditionPayloadRejected,
 						},
 					},
 					BlockingJobResults: []v1alpha1.JobStatus{
