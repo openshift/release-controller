@@ -36,18 +36,18 @@ func (in byCoordinatesName) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
 
-// byLastTransitionTime sorts a list of ReleasePayloadConditions, descending, by their LastTransitionTime
-type byLastTransitionTime []metav1.Condition
+// byReleasePayloadConditionType sorts a list of ReleasePayloadConditions by their Type
+type byReleasePayloadConditionType []metav1.Condition
 
-func (in byLastTransitionTime) Less(i, j int) bool {
-	return in[j].LastTransitionTime.Before(&in[i].LastTransitionTime)
+func (in byReleasePayloadConditionType) Less(i, j int) bool {
+	return in[i].Type < in[j].Type
 }
 
-func (in byLastTransitionTime) Len() int {
+func (in byReleasePayloadConditionType) Len() int {
 	return len(in)
 }
 
-func (in byLastTransitionTime) Swap(i, j int) {
+func (in byReleasePayloadConditionType) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
 
@@ -56,7 +56,7 @@ func CanonicalizeReleasePayloadStatus(in *v1alpha1.ReleasePayload) {
 	CanonicalizeJobRunResults(in.Status.BlockingJobResults)
 	sort.Sort(byJobStatusCIConfigurationName(in.Status.InformingJobResults))
 	CanonicalizeJobRunResults(in.Status.InformingJobResults)
-	sort.Sort(byLastTransitionTime(in.Status.Conditions))
+	sort.Sort(byReleasePayloadConditionType(in.Status.Conditions))
 }
 
 func CanonicalizeJobRunResults(jobs []v1alpha1.JobStatus) {
