@@ -1,0 +1,55 @@
+<h1>Release Dashboard</h1>
+<p class="small mb-3">
+    Quick links: {{ dashboardsJoin .Dashboards }}
+</p>
+<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
+<p><a href=https://bugzilla.redhat.com/buglist.cgi?bug_status=NEW&bug_status=ASSIGNED&bug_status=POST&f1=cf_internal_whiteboard&f2=status_whiteboard&j_top=OR&known_name=BuildCop&list_id=10913331&o1=substring&o2=substring&query_format=advanced&v1=buildcop&v2=buildcop>Open Build Cop Bugs</a></p>
+<p class="small mb-3">
+    Jump to: {{ releaseJoin .Streams }}
+</p>
+<div class="row">
+    <div class="col">
+        {{ range .Streams }}
+        {{ if ne .Release.Config.Name "4-stable" }}
+        <h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
+        {{ publishDescription . }}
+        {{ $upgrades := .Upgrades }}
+        <table class="table text-nowrap">
+            <thead>
+            <tr>
+                <th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
+                <th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
+                <th>Started</th>
+                <th colspan="1">Successful<br>Upgrades</th>
+                <th colspan="1">Running<br>Upgrades</th>
+                <th colspan="1">Failed<br>Upgrade From</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{ $release := .Release }}
+            {{ if .Delayed }}
+            <tr>
+                <td colspan="4"><em>{{ .Delayed.Message }}</em></td>
+                {{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
+            </tr>
+            {{ end }}
+            {{ if .Failing }}
+            <div class="alert alert-danger">This release has no recently accepted payloads, investigation required.</div>
+            {{ end }}
+            {{ range $index, $tag := .Tags }}
+            {{ if lt $index 10 }}
+            {{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
+            <tr>
+                {{ tableLink $release.Config $tag $release.HasInconsistencies }}
+                {{ phaseCell . }}
+                <td title="{{ $created }}">{{ since $created }}</td>
+                {{ upgradeJobs $upgrades $index $created }}
+            </tr>
+            {{end}}
+            {{ end }}
+            </tbody>
+        </table>
+        {{ end }}
+        {{ end }}
+    </div>
+</div>

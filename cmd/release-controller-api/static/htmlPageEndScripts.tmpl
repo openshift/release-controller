@@ -1,0 +1,93 @@
+<p class="small">Source code for this page located on <a href="https://github.com/openshift/release-controller">github</a></p>
+</div>
+<script src="static/js/jquery-1.11.3.min.js"></script>
+<script src="static/js/jquery.dataTables.js"></script>
+<script src="static/js/dataTables.rowGroup.min.js"></script>
+{{ $stableList := stableStream .Streams }}
+{{ range  $i, $a := $stableList }}
+<script>
+    $(document).ready(function() {
+        var collapsedGroups = {};
+        var table = $('#{{ $a  }}_table').DataTable({
+            columnDefs: [
+                {
+                    "targets": [ 4 ],
+                    "visible": false,
+                    "searchable": false
+                }
+            ],
+            ordering: false,
+            info: false,
+            paging: false,
+            searching: false,
+            rowGroup: {
+                dataSrc: 4,
+                startRender: function (rows, group) {
+                    var collapsed = !!collapsedGroups[group];
+                    var i = 0;
+                    j = 0;
+                    rows.nodes().each(function (r) {
+                        if (i>4) {
+                            if (collapsed == true) {
+                                j = j + 1;
+                            }
+                            r.style.display = collapsed ? '' : 'none';
+                        } else {
+                            j = j + 1;
+                            i = i + 1;
+                        }
+                    });
+                    if (rows.count() == 5) {
+                        t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div></div></div></div></td>'
+                    } else if (j == 5){
+                        t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to show all"><i role="button" class="bi bi-plus-lg"></i></div></div></div></td>'
+                    } else if (j < 5) {
+                        t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div></div></div></div></td>'
+                    } else {
+                        t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to collapse"><i role="button" class="bi bi-dash-lg"></i></div></div></div></td>'
+                    }
+                    return $('<tr/>')
+                        .append('<td colspan="3"  class="">' + group + ' (' + "showing " + j +  " out of " + rows.count() + ')</td>')
+                        .append(t)
+                        .attr('data-name', group)
+                        .toggleClass('collapsed', collapsed);
+                }
+            }
+        });
+        $('#{{ $a  }}_table tbody').on('click', 'tr.group-start',  function () {
+            var name = $(this).data('name');
+            collapsedGroups[name] = !collapsedGroups[name];
+            table.draw(false);
+        });
+    });
+</script>
+<script>
+    function searchTable() {
+        var input, filter, table, tr, td, i, txtValue;
+        input = document.getElementById("myInput");
+        filter = input.value.toUpperCase();
+        table = document.getElementById("{{ $a  }}_table");
+        tr = table.getElementsByTagName("tr");
+        for (i = 0; i < tr.length; i++) {
+            td = tr[i].getElementsByTagName("td")[0];
+            if (td) {
+                txtValue = td.textContent || td.innerText;
+                if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                    if (txtValue.includes("showing")) {
+                        tr[i].style.display = "none";
+                    }
+                } else {
+                    tr[i].style.display = "none";
+                }
+            }
+        }
+        if (filter == "") {
+            document.location.reload();
+        }
+    }
+</script>
+{{ end }}
+<link href="static/css/custom.css" rel="stylesheet" type="text/css" />
+</body>
+</html>
