@@ -393,6 +393,49 @@ func TestPayloadAcceptedSync(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ReleaseCreationJobFailed",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+						Status:  v1alpha1.ReleaseCreationJobFailed,
+						Message: "BackoffLimitExceeded: Job has reached the specified backoff limit",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:    v1alpha1.ConditionPayloadAccepted,
+							Status:  metav1.ConditionFalse,
+							Reason:  ReleasePayloadCreationFailedReason,
+							Message: "BackoffLimitExceeded: Job has reached the specified backoff limit",
+						},
+					},
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+						Status:  v1alpha1.ReleaseCreationJobFailed,
+						Message: "BackoffLimitExceeded: Job has reached the specified backoff limit",
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {

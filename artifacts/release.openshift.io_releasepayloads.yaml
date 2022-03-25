@@ -401,6 +401,32 @@ spec:
                       type: string
                   type: object
                 type: array
+              releaseCreationJobResult:
+                description: ReleaseCreationJobResult stores the coordinates and status
+                  of the release creation job that is created, by the release-controller,
+                  to create the release imagestream defined by the PayloadCoordinates
+                  in the ReleasePayloadSpec.  If the release creation job fails to
+                  get created or completes unsuccessfully, the ReleasePayload will
+                  automatically be "Rejected".  If the release creation job is successful,
+                  the release-controller will then begin the validation process.
+                properties:
+                  coordinates:
+                    description: Coordinates the location of the batch/v1 Job
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  message:
+                    description: Message is a human-readable message indicating details
+                      about the result of the release creation job
+                    type: string
+                  status:
+                    description: Status is the current status of the release creation
+                      job
+                    type: string
+                type: object
             type: object
         type: object
     served: true

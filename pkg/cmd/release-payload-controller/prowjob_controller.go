@@ -6,6 +6,7 @@ import (
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
 	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasepayload/controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
@@ -81,26 +82,16 @@ func NewProwJobStatusController(
 }
 
 func (c *ProwJobStatusController) lookupReleasePayload(obj interface{}) {
-	prowJob, ok := obj.(*v1.ProwJob)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("unable to cast prowJob: %v", obj))
+	releasePayloadKey, err := controller.GetReleasePayloadQueueKeyFromAnnotation(obj, releasecontroller.ReleaseAnnotationToTag, c.releasePayloadNamespace)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("unable to determine releasepayload key: %v", err))
 		return
 	}
-
-	klog.V(4).Infof("Processing prowjob: '%s/%s'", prowJob.Namespace, prowJob.Name)
-
-	tag, ok := prowJob.Annotations[releasecontroller.ReleaseAnnotationToTag]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("unable to process prowjob, missing '%s' annotation", releasecontroller.ReleaseAnnotationToTag))
-		return
-	}
-
-	releasePayloadKey := fmt.Sprintf("%s/%s", c.releasePayloadNamespace, tag)
 	klog.V(4).Infof("Queueing ReleasePayload: %s", releasePayloadKey)
 	c.queue.Add(releasePayloadKey)
 }
 
-func (c *ProwJobStatusController) Run(ctx context.Context) {
+func (c *ProwJobStatusController) Run(ctx context.Context, workers int) {
 	defer utilruntime.HandleCrash()
 
 	klog.Info("Starting ProwJob Status Controller")
@@ -114,9 +105,9 @@ func (c *ProwJobStatusController) Run(ctx context.Context) {
 		return
 	}
 
-	go func() {
-		wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}()
+	for i := 0; i < workers; i++ {
+		go wait.UntilWithContext(ctx, c.runWorker, time.Second)
+	}
 
 	<-ctx.Done()
 }

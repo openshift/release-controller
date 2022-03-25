@@ -176,6 +176,13 @@ type ReleasePayloadStatus struct {
 	// Supported conditions include PayloadCreated, PayloadFailed, PayloadAccepted, and PayloadRejected.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// ReleaseCreationJobResult stores the coordinates and status of the release creation job that is
+	// created, by the release-controller, to create the release imagestream defined by the PayloadCoordinates
+	// in the ReleasePayloadSpec.  If the release creation job fails to get created or completes unsuccessfully,
+	// the ReleasePayload will automatically be "Rejected".  If the release creation job is successful,
+	// the release-controller will then begin the validation process.
+	ReleaseCreationJobResult ReleaseCreationJobResult `json:"releaseCreationJobResult,omitempty"`
+
 	// BlockingJobResults stores the results of all blocking jobs
 	BlockingJobResults []JobStatus `json:"blockingJobResults,omitempty"`
 
@@ -202,6 +209,36 @@ const (
 	// ConditionPayloadRejected is true if the ReleasePayload has failed one or more of its verification criteria
 	// The release-controller will take no more action in this phase.
 	ConditionPayloadRejected string = "PayloadRejected"
+)
+
+// ReleaseCreationJobResult houses the information about the Release creation batch/v1 Job.  The release
+// creation Job creates the actual release, via an `oc adm release` command.  The release-controller is
+// responsible for launching the Job, in the --job-namespace, on the same cluster that the release-controller
+// is running on.
+type ReleaseCreationJobResult struct {
+	// Coordinates the location of the batch/v1 Job
+	Coordinates ReleaseCreationJobCoordinates `json:"coordinates,omitempty"`
+	// Status is the current status of the release creation job
+	Status ReleaseCreationJobStatus `json:"status,omitempty"`
+	// Message is a human-readable message indicating details about the result of the release creation job
+	Message string `json:"message,omitempty"`
+}
+
+// ReleaseCreationJobCoordinates houses the information necessary to locate the job execution
+type ReleaseCreationJobCoordinates struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+type ReleaseCreationJobStatus string
+
+const (
+	// ReleaseCreationJobUnknown means the job's current state is not known
+	ReleaseCreationJobUnknown ReleaseCreationJobStatus = "Unknown"
+	// ReleaseCreationJobSuccess means the job has completed its execution successfully
+	ReleaseCreationJobSuccess ReleaseCreationJobStatus = "Success"
+	// ReleaseCreationJobFailed means the job has failed its execution
+	ReleaseCreationJobFailed ReleaseCreationJobStatus = "Failed"
 )
 
 // JobState the aggregate state of the job

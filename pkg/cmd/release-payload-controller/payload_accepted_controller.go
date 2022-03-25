@@ -33,13 +33,14 @@ const (
 	ReleasePayloadManuallyAcceptedReason string = "ReleasePayloadManuallyAccepted"
 )
 
-// PayloadAcceptedController is responsible for Accepting ReleasePayloads when either of the following scenarios
+// PayloadAcceptedController is responsible for Accepting ReleasePayloads when any of the following scenarios
 // occur:
 //   1) all Blocking Jobs complete successfully
 //   2) the payload is manually accepted
 // The PayloadAcceptedController reads the following pieces of information:
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
+//   - .status.releaseCreationJobResult.status
 // and populates the following condition:
 //   - .status.conditions.PayloadAccepted
 type PayloadAcceptedController struct {
@@ -184,6 +185,14 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 		Type:   v1alpha1.ConditionPayloadAccepted,
 		Status: metav1.ConditionUnknown,
 		Reason: ReleasePayloadAcceptedReason,
+	}
+
+	// If the release creation job failed, then the payload will never be Accepted
+	if payload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobFailed {
+		acceptedCondition.Status = metav1.ConditionFalse
+		acceptedCondition.Reason = ReleasePayloadCreationFailedReason
+		acceptedCondition.Message = payload.Status.ReleaseCreationJobResult.Message
+		return acceptedCondition
 	}
 
 	// Check for "Accepted" PayloadOverride

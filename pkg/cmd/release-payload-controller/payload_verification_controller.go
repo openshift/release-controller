@@ -26,7 +26,10 @@ import (
 // the ReleasePayload:
 //   - .status.blockingJobResults
 //   - .status.informingJobResults
-// This information is obtained by reading `.spec.payloadVerification` and populating the respective JobResults accordingly.
+//   - .status.releaseCreationJobResult
+// This information is obtained by reading `.spec.payloadVerification` and populating the respective
+// JobResults accordingly.  The ReleaseCreationJobResult.Status is set to "Unknown", which will trigger
+// the ReleaseCreationStatusController to update it's values if/when the ReleaseCreationJob completes.
 type PayloadVerificationController struct {
 	releasePayloadNamespace string
 	releasePayloadLister    releasepayloadlister.ReleasePayloadLister

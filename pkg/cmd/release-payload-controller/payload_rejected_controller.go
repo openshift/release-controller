@@ -33,13 +33,15 @@ const (
 	ReleasePayloadManuallyRejectedReason string = "ReleasePayloadManuallyRejected"
 )
 
-// PayloadRejectedController is responsible for Rejecting ReleasePayloads when either of the following scenarios
+// PayloadRejectedController is responsible for Rejecting ReleasePayloads when any of the following scenarios
 // occur:
 //   1) any Blocking Job fails
 //   2) the payload is manually rejected
+//   2) the release creation job fails
 // The PayloadRejectedController reads the following pieces of information:
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
+//   - .status.releaseCreationJobResult.status
 // and populates the following condition:
 //   - .status.conditions.PayloadRejected
 type PayloadRejectedController struct {
@@ -184,6 +186,14 @@ func computeReleasePayloadRejectedCondition(payload *v1alpha1.ReleasePayload) me
 		Type:   v1alpha1.ConditionPayloadRejected,
 		Status: metav1.ConditionUnknown,
 		Reason: ReleasePayloadRejectedReason,
+	}
+
+	// If the release creation job failed, then the payload should be Rejected
+	if payload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobFailed {
+		rejectedCondition.Status = metav1.ConditionTrue
+		rejectedCondition.Reason = ReleasePayloadCreationFailedReason
+		rejectedCondition.Message = payload.Status.ReleaseCreationJobResult.Message
+		return rejectedCondition
 	}
 
 	// Check for "Accepted" PayloadOverride
