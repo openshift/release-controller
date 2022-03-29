@@ -33,240 +33,8 @@ import (
 var static embed.FS
 var resources, _ = fs.Sub(static, "static")
 
-const htmlPageStart = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8"><title>%s</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/css/bootstrap.min.css" integrity="sha384-zCbKRCUGaJDkqS1kPbPd7TveP5iyJE0EjAuZQTgFLD2ylzuqKfdKlfG/eSrtxUkn" crossorigin="anonymous">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css">
-<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<style>
-@media (max-width: 992px) {
-  .container {
-    width: 100%%;
-    max-width: none;
-  }
-}
-</style>
-</head>
-<body>
-<div class="container">
-`
-
-const htmlPageEnd = `
-<p class="small">Source code for this page located on <a href="https://github.com/openshift/release-controller">github</a></p>
-</div>
-<script src="static/js/jquery-1.11.3.min.js"></script>
-<script src="static/js/jquery.dataTables.js"></script>
-<script src="static/js/dataTables.rowGroup.min.js"></script>
-<link href="static/css/custom.css" rel="stylesheet" type="text/css" />
-<script>
-$(document).ready(function() {
- var collapsedGroups = {};
-    var table = $('#4-stable_table').DataTable({
-	  columnDefs: [
-	  	 {
-	  		"targets": [ 4 ],
-	  		"visible": false,
-	  		"searchable": false
-	  	 }
-	  ],
-      ordering: false,
-      info: false,
-	  paging: false,	
-	  searching: false,	
-      rowGroup: {
-        dataSrc: 4,
-        startRender: function (rows, group) {
-            var collapsed = !!collapsedGroups[group];
-            var i = 0;
-			j = 0;
-            rows.nodes().each(function (r) {
-                if (i>4) {
-					if (collapsed == true) {
-						j = j + 1;
-					}
-                	r.style.display = collapsed ? '' : 'none';
-                } else {
-                	j = j + 1;
-					i = i + 1;
-                }
-            });
-			if (j == 5) {
-			t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to show all"><i role="button" class="bi bi-plus-lg"></i></div></div></div></td>'
-			} else {
-			t = '<td class="text-center" colspan="3"><div class="container"><div class="row flex-row-reverse"><div><a style="padding-right:15px" title="Click to collapse"><i role="button" class="bi bi-dash-lg"></i></div></div></div></td>'	
-			}			
-		return $('<tr/>')
-                .append('<td colspan="3"  class="">' + group + ' (' + "showing " + j +  " out of " + rows.count() + ')</td>')
-				.append(t) 
-                .attr('data-name', group)
-                .toggleClass('collapsed', collapsed);
-        }
-      }
-    });
-   $('#4-stable_table tbody').on('click', 'tr.group-start',  function () {
-        var name = $(this).data('name');
-        collapsedGroups[name] = !collapsedGroups[name];
-        table.draw(false);
-    });
-});
-</script>
-<script>
-function searchTable() {
-  var input, filter, table, tr, td, i, txtValue;
-  input = document.getElementById("myInput");
-  filter = input.value.toUpperCase();
-  table = document.getElementById("4-stable_table");
-  tr = table.getElementsByTagName("tr");
-  for (i = 0; i < tr.length; i++) {
-    td = tr[i].getElementsByTagName("td")[0];
-    if (td) {
-      txtValue = td.textContent || td.innerText;
-      if (txtValue.toUpperCase().indexOf(filter) > -1) {
-        tr[i].style.display = "";
-        if (txtValue.includes("showing")) {
-        	tr[i].style.display = "none";
-	    }	    
-      } else {
-        tr[i].style.display = "none";
-      }
-    }
-  }
-  if (filter == "") {
-	document.location.reload();
-  }
-}
-</script>
-</body>
-</html>
-`
-
-const releasePageHtml = `
-<h1>Release Status</h1>
-<p class="small mb-3">
-	Quick links: {{ dashboardsJoin .Dashboards }}
-</p>
-<p>Visualize upgrades in <a href="/graph">Cincinnati</a> | <a href="/graph?format=dot">dot</a> | <a href="/graph?format=svg">SVG</a> | <a href="/graph?format=png">PNG</a> format. Run the following command to make this your update server:</p>
-<pre class="ml-4">
-oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
-</pre>
-<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
-{{ displayAuthMessage }}
-
-<p class="small mb-3">
-	Jump to: {{ releaseJoin .Streams }}
-</p>
-
-<div class="row">
-<div class="col">
-{{ range .Streams }}
-{{ $is4stable := .Release.Config.Name }}
-		<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
-		{{ publishDescription . }}
-		{{ alerts . }}
-		{{ $upgrades := .Upgrades }}
-		<table id="{{.Release.Config.Name}}_table" class="table text-nowrap">
-			<thead>
-				<tr>
-					<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
-					<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
-					<th>Started</th>
-					<th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>	
-					{{ if eq $is4stable  "4-stable"}}<th>Version Grouping</th>{{ end }}
-					{{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
-				</tr>
-			</thead>
-			<tbody>
-		{{ $release := .Release }}
-		{{ if .Delayed }}
-			<tr>
-				<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
-				{{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
-			</tr>
-		{{ end }}
-		{{ range $index, $tag := .Tags }}
-			{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
-			<tr>
-				{{ tableLink $release.Config $tag $release.HasInconsistencies }}
-				{{ phaseCell . }}
-				<td title="{{ $created }}">{{ since $created }}</td>
-				<td>{{ links . $release }}</td>
-				{{ if eq $is4stable  "4-stable" }}<td>{{ versionGrouping $tag.Name }}</td>{{ end }}
-				{{ upgradeCells $upgrades $index }}
-			</tr>
-		{{ end }}
-			</tbody>
-		</table>
-{{ end }}
-</div>
-</div>
-`
-
-const releaseInfoPageHtml = `
-<h1>{{ .Tag.Name }}</h1>
-{{ $created := index .Tag.Annotations "release.openshift.io/creationTimestamp" }}
-<p>Created: <span>{{ since $created }}</span></p>
-`
-
-const releaseDashboardPageHtml = `
-<h1>Release Dashboard</h1>
-<p class="small mb-3">
-	Quick links: {{ dashboardsJoin .Dashboards }}
-</p>
-<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
-<p><a href=https://bugzilla.redhat.com/buglist.cgi?bug_status=NEW&bug_status=ASSIGNED&bug_status=POST&f1=cf_internal_whiteboard&f2=status_whiteboard&j_top=OR&known_name=BuildCop&list_id=10913331&o1=substring&o2=substring&query_format=advanced&v1=buildcop&v2=buildcop>Open Build Cop Bugs</a></p>
-<p class="small mb-3">
-	Jump to: {{ releaseJoin .Streams }}
-</p>
-<div class="row">
-<div class="col">
-{{ range .Streams }}
-		{{ if ne .Release.Config.Name "4-stable" }}
-			<h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
-			{{ publishDescription . }}
-			{{ $upgrades := .Upgrades }}
-			<table class="table text-nowrap">
-				<thead>
-					<tr>
-						<th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
-						<th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
-						<th>Started</th>
-						<th colspan="1">Successful<br>Upgrades</th>
-						<th colspan="1">Running<br>Upgrades</th>
-						<th colspan="1">Failed<br>Upgrade From</th>
-					</tr>
-				</thead>
-				<tbody>
-			{{ $release := .Release }}
-			{{ if .Delayed }}
-				<tr>
-					<td colspan="4"><em>{{ .Delayed.Message }}</em></td>
-					{{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
-				</tr>
-			{{ end }}
-			{{ if .Failing }}
-				<div class="alert alert-danger">This release has no recently accepted payloads, investigation required.</div>
-			{{ end }}
-			{{ range $index, $tag := .Tags }}
-				{{ if lt $index 10 }}
-						{{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
-						<tr>
-							{{ tableLink $release.Config $tag $release.HasInconsistencies }}
-							{{ phaseCell . }}
-							<td title="{{ $created }}">{{ since $created }}</td>
-							{{ upgradeJobs $upgrades $index $created }}
-						</tr>
-				{{end}}
-			{{ end }}
-				</tbody>
-			</table>
-		{{ end }}
-{{ end }}
-</div>
-</div>
-`
+var htmlPageStart = loadStaticHTML("htmlPageStart.html")
+var htmlPageEnd = loadStaticHTML("htmlPageEnd.html")
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
@@ -1063,7 +831,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 
 	now := time.Now()
-	var releasePage = template.Must(template.New("releasePage").Funcs(
+	var releasePage = template.Must(template.New("releasePageHtml.tmpl").Funcs(
 		template.FuncMap{
 			"publishSpec": func(r *ReleaseStream) string {
 				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
@@ -1130,6 +898,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"tableLink":       tableLink,
 			"versionGrouping": versionGrouping,
+			"stableStream":    stableStream,
 			"phaseCell":       phaseCell,
 			"phaseAlert":      phaseAlert,
 			"alerts":          renderAlerts,
@@ -1147,7 +916,13 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"displayAuthMessage": func() string { return authMessage },
 		},
-	).Parse(releasePageHtml))
+	).ParseFS(resources, "releasePageHtml.tmpl"))
+
+	var pageEnd = template.Must(template.New("htmlPageEndScripts.tmpl").Funcs(
+		template.FuncMap{
+			"stableStream": stableStream,
+		},
+	).ParseFS(resources, "htmlPageEndScripts.tmpl"))
 
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
@@ -1198,7 +973,10 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	if err := releasePage.Execute(w, page); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
-	fmt.Fprintln(w, htmlPageEnd)
+	if err := pageEnd.Execute(w, page); err != nil {
+		klog.Errorf("Unable to render page: %v", err)
+	}
+
 }
 
 func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Request) {
@@ -1222,7 +1000,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	}
 
 	now := time.Now()
-	var releasePage = template.Must(template.New("releaseDashboardPage").Funcs(
+	var releasePage = template.Must(template.New("releaseDashboardPage.tmpl").Funcs(
 		template.FuncMap{
 			"publishSpec": func(r *ReleaseStream) string {
 				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
@@ -1299,7 +1077,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				return relTime(t, now, "ago", "from now")
 			},
 		},
-	).Parse(releaseDashboardPageHtml))
+	).ParseFS(resources, "releaseDashboardPage.tmpl"))
 
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
@@ -1558,4 +1336,24 @@ func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Requ
 func versionGrouping(tag string) string {
 	s := strings.Split(tag, ".")
 	return fmt.Sprintf("%s.%s", s[0], s[1])
+}
+
+func stableStream(streams []ReleaseStream) []string {
+	var stableList []string
+	for _, stream := range streams {
+		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+			stableList = append(stableList, stream.Release.Config.Name)
+		}
+
+	}
+	return stableList
+}
+
+func loadStaticHTML(file string) string {
+	readFile, err := fs.ReadFile(resources, file)
+	if err != nil {
+		klog.Errorf("Failed to load static files from the filesystem. Error: %s", err)
+		return ""
+	}
+	return string(readFile)
 }
