@@ -845,7 +845,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			},
 			"publishDescription": func(r *ReleaseStream) string {
 				if len(r.Release.Config.Message) > 0 {
-					if r.Release.Config.Name == "4-stable" {
+					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
 						return fmt.Sprintf("<td class=\"text-center\"colspan=3>\n<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"myInput\" onkeyup=\"searchTable()\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>\n</td>", r.Release.Config.Message)
 					}
 					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
