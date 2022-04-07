@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestSync(t *testing.T) {
+func TestPayloadVerificationSync(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    *v1alpha1.ReleasePayload
@@ -22,17 +22,9 @@ func TestSync(t *testing.T) {
 	}{{
 		name: "ReleasePayloadWithoutVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
 				PayloadCoordinates: v1alpha1.PayloadCoordinates{
@@ -43,17 +35,9 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
 				PayloadCoordinates: v1alpha1.PayloadCoordinates{
@@ -66,24 +50,11 @@ func TestSync(t *testing.T) {
 	}, {
 		name: "ReleasePayloadWithBlockingVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -95,24 +66,11 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -134,24 +92,11 @@ func TestSync(t *testing.T) {
 	}, {
 		name: "ReleasePayloadWithInformingVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					InformingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -163,24 +108,11 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					InformingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -202,24 +134,11 @@ func TestSync(t *testing.T) {
 	}, {
 		name: "ReleasePayloadWithVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -237,24 +156,11 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -288,24 +194,11 @@ func TestSync(t *testing.T) {
 	}, {
 		name: "ReleasePayloadWithAnalysisJobs",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -325,24 +218,11 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -380,24 +260,11 @@ func TestSync(t *testing.T) {
 	}, {
 		name: "ReleasePayloadWithStatus",
 		input: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
@@ -429,24 +296,11 @@ func TestSync(t *testing.T) {
 			},
 		},
 		expected: &v1alpha1.ReleasePayload{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ReleasePayload",
-				APIVersion: "release.openshift.io/v1alpha1",
-			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
 				Namespace: "ocp",
-				Labels: map[string]string{
-					"release.openshift.io/imagestream":         "release",
-					"release.openshift.io/imagestreamtag-name": "4.11.0-0.nightly-2022-02-09-091559",
-				},
 			},
 			Spec: v1alpha1.ReleasePayloadSpec{
-				PayloadCoordinates: v1alpha1.PayloadCoordinates{
-					Namespace:          "ocp",
-					ImagestreamName:    "release",
-					ImagestreamTagName: "4.11.0-0.nightly-2022-02-09-091559",
-				},
 				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 					BlockingJobs: []v1alpha1.CIConfiguration{
 						{
