@@ -19,7 +19,47 @@ func (in ByJobStatusCIConfigurationName) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
 
-func ComputeAggregatedJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
+func SetJobStatus(results *[]v1alpha1.JobStatus, newResult v1alpha1.JobStatus) {
+	if results == nil {
+		results = &[]v1alpha1.JobStatus{}
+	}
+	existingResult := FindJobStatus(*results, newResult.CIConfigurationName, newResult.CIConfigurationJobName)
+	if existingResult == nil {
+		*results = append(*results, newResult)
+		return
+	}
+
+	existingResult.AggregateState = newResult.AggregateState
+	existingResult.AnalysisJobCount = newResult.AnalysisJobCount
+	existingResult.JobRunResults = newResult.JobRunResults
+	existingResult.MaxRetries = newResult.MaxRetries
+}
+
+func RemoveJobStatus(results *[]v1alpha1.JobStatus, ciConfigurationName, ciConfigurationJobName string) {
+	if results == nil {
+		results = &[]v1alpha1.JobStatus{}
+	}
+	newResults := []v1alpha1.JobStatus{}
+	for _, result := range *results {
+		if result.CIConfigurationName != ciConfigurationName && result.CIConfigurationJobName != ciConfigurationJobName {
+			newResults = append(newResults, result)
+		}
+	}
+
+	*results = newResults
+}
+
+func FindJobStatus(results []v1alpha1.JobStatus, ciConfigurationName, ciConfigurationJobName string) *v1alpha1.JobStatus {
+	for i := range results {
+		if results[i].CIConfigurationName == ciConfigurationName && results[i].CIConfigurationJobName == ciConfigurationJobName {
+			return &results[i]
+		}
+	}
+
+	return nil
+}
+
+func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 	totalJobs := len(jobs)
 	var pendingJobs, successfulJobs, failedJobs, unknownJobs []v1alpha1.JobStatus
 

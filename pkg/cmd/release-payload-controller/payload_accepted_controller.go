@@ -143,7 +143,7 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 	}
 
 	// Check that all Blocking jobs have completed successfully...
-	status := jobstatus.ComputeAggregatedJobState(payload.Status.BlockingJobResults)
+	status := jobstatus.ComputeJobState(payload.Status.BlockingJobResults)
 	switch status {
 	case v1alpha1.JobStateSuccess:
 		acceptedCondition.Status = metav1.ConditionTrue

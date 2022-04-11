@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestComputeAggregatedJobState(t *testing.T) {
+func TestComputeJobState(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    []v1alpha1.JobStatus
@@ -90,7 +90,7 @@ func TestComputeAggregatedJobState(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			result := ComputeAggregatedJobState(testCase.input)
+			result := ComputeJobState(testCase.input)
 			if !cmp.Equal(result, testCase.expected) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, result)
 			}

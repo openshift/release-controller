@@ -121,6 +121,12 @@ func (o *Options) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Aggregated State Controller
+	aggregateStateController, err := NewJobStateController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
 	// ProwJob Controller
 	pjController, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
@@ -133,13 +139,14 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformerFactory.Start(ctx.Done())
 
 	// Run the Controllers
-	go payloadVerificationController.RunWorkers(ctx, 1)
-	go releaseCreationStatusController.RunWorkers(ctx, 1)
-	go releaseCreationJobsController.RunWorkers(ctx, 1)
-	go payloadCreationController.RunWorkers(ctx, 1)
-	go payloadAcceptedController.RunWorkers(ctx, 1)
-	go payloadRejectedController.RunWorkers(ctx, 1)
-	go pjController.RunWorkers(ctx, 1)
+	go payloadVerificationController.RunWorkers(ctx, 10)
+	go releaseCreationStatusController.RunWorkers(ctx, 10)
+	go releaseCreationJobsController.RunWorkers(ctx, 10)
+	go payloadCreationController.RunWorkers(ctx, 10)
+	go payloadAcceptedController.RunWorkers(ctx, 10)
+	go payloadRejectedController.RunWorkers(ctx, 10)
+	go pjController.RunWorkers(ctx, 10)
+	go aggregateStateController.RunWorkers(ctx, 10)
 
 	<-ctx.Done()
 

@@ -1,4 +1,4 @@
-package status
+package releasepayloadstatus
 
 import "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 
