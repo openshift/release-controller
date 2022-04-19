@@ -9,6 +9,7 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -17,12 +18,14 @@ import (
 
 func TestPayloadCreationSync(t *testing.T) {
 	testCases := []struct {
-		name     string
-		payload  *v1alpha1.ReleasePayload
-		expected *v1alpha1.ReleasePayload
+		name             string
+		releaseNamespace string
+		payload          *v1alpha1.ReleasePayload
+		expected         *v1alpha1.ReleasePayload
 	}{
 		{
-			name: "ReleasePayloadWithoutReleaseCreationJobStatusOrConditions",
+			name:             "ReleasePayloadWithoutReleaseCreationJobStatusOrConditions",
+			releaseNamespace: "ocp",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -51,7 +54,8 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithSuccessfulConditions",
+			name:             "ReleasePayloadWithSuccessfulConditions",
+			releaseNamespace: "ocp",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -98,7 +102,8 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithFailureConditions",
+			name:             "ReleasePayloadWithFailureConditions",
+			releaseNamespace: "ocp",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -145,7 +150,8 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithMixedConditions",
+			name:             "ReleasePayloadWithMixedConditions",
+			releaseNamespace: "ocp",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -190,7 +196,8 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithSuccessfulReleaseCreationJob",
+			name:             "ReleasePayloadWithSuccessfulReleaseCreationJob",
+			releaseNamespace: "ocp",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -249,13 +256,36 @@ func TestPayloadCreationSync(t *testing.T) {
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 			c := &PayloadCreationController{
-				releasePayloadNamespace: testCase.payload.Namespace,
-				releasePayloadLister:    releasePayloadInformer.Lister(),
-				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
-				eventRecorder:           events.NewInMemoryRecorder("release-creation-job-controller-test"),
-				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController"),
+				ReleasePayloadController: NewReleasePayloadController("Payload Creation Controller",
+					testCase.releaseNamespace,
+					releasePayloadInformer,
+					releasePayloadClient.ReleaseV1alpha1(),
+					events.NewInMemoryRecorder("payload-creation-controller-test"),
+					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController")),
 			}
-			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+
+			releasePayloadFilter := func(obj interface{}) bool {
+				if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
+					// If the conditions are both in their respective terminal states, then there is nothing else to do...
+					if (conditions.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
+						conditions.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated)) &&
+						(conditions.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed) ||
+							conditions.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed)) {
+						return false
+					}
+					return true
+				}
+				return false
+			}
+
+			releasePayloadInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+				FilterFunc: releasePayloadFilter,
+				Handler: cache.ResourceEventHandlerFuncs{
+					AddFunc:    c.Enqueue,
+					UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+					DeleteFunc: c.Enqueue,
+				},
+			})
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 

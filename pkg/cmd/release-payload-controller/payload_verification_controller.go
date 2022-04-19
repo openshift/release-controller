@@ -6,18 +6,14 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"time"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"reflect"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -31,15 +27,7 @@ import (
 // JobResults accordingly.  The ReleaseCreationJobResult.Status is set to "Unknown", which will trigger
 // the ReleaseCreationStatusController to update it's values if/when the ReleaseCreationJob completes.
 type PayloadVerificationController struct {
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
-
-	eventRecorder events.Recorder
-
-	cachesToSync []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
+	*ReleasePayloadController
 }
 
 func NewPayloadVerificationController(
@@ -49,16 +37,17 @@ func NewPayloadVerificationController(
 	eventRecorder events.Recorder,
 ) (*PayloadVerificationController, error) {
 	c := &PayloadVerificationController{
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClient:    releasePayloadClient,
-		eventRecorder:           eventRecorder.WithComponentSuffix("payload-verification-controller"),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController"),
+		ReleasePayloadController: NewReleasePayloadController("Payload Verification Controller",
+			releasePayloadNamespace,
+			releasePayloadInformer,
+			releasePayloadClient,
+			eventRecorder.WithComponentSuffix("payload-verification-controller"),
+			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController")),
 	}
 
-	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+	c.syncFn = c.sync
 
-	releasePayloadInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc: c.Enqueue,
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			c.Enqueue(newObj)
@@ -67,61 +56,6 @@ func NewPayloadVerificationController(
 	})
 
 	return c, nil
-}
-
-func (c *PayloadVerificationController) Enqueue(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid queue key '%v': %v", obj, err))
-		return
-	}
-	c.queue.Add(key)
-}
-
-func (c *PayloadVerificationController) Run(ctx context.Context) {
-	defer utilruntime.HandleCrash()
-
-	klog.Info("Starting Payload Verification Controller")
-	defer func() {
-		klog.Info("Shutting down Payload Verification Controller")
-		c.queue.ShutDown()
-		klog.Info("Payload Verification Controller shut down")
-	}()
-
-	if !cache.WaitForNamedCacheSync("PayloadVerificationController", ctx.Done(), c.cachesToSync...) {
-		return
-	}
-
-	go func() {
-		wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}()
-
-	<-ctx.Done()
-}
-
-func (c *PayloadVerificationController) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
-	}
-}
-
-func (c *PayloadVerificationController) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	err := c.sync(ctx, key.(string))
-
-	if err == nil {
-		c.queue.Forget(key)
-		return true
-	}
-
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %w", key, err))
-	c.queue.AddRateLimited(key)
-
-	return true
 }
 
 func (c *PayloadVerificationController) sync(ctx context.Context, key string) error {

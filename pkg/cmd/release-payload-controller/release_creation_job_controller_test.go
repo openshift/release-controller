@@ -17,14 +17,16 @@ import (
 
 func TestReleaseCreationJobSync(t *testing.T) {
 	testCases := []struct {
-		name          string
-		jobsNamespace string
-		payload       *v1alpha1.ReleasePayload
-		expected      *v1alpha1.ReleasePayload
+		name             string
+		releaseNamespace string
+		jobsNamespace    string
+		payload          *v1alpha1.ReleasePayload
+		expected         *v1alpha1.ReleasePayload
 	}{
 		{
-			name:          "ReleaseCreationJobResultNotPresent",
-			jobsNamespace: "ci-release",
+			name:             "ReleaseCreationJobResultNotPresent",
+			releaseNamespace: "ocp",
+			jobsNamespace:    "ci-release",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -47,8 +49,9 @@ func TestReleaseCreationJobSync(t *testing.T) {
 			},
 		},
 		{
-			name:          "ReleaseCreationJobResultPresent",
-			jobsNamespace: "ci-release",
+			name:             "ReleaseCreationJobResultPresent",
+			releaseNamespace: "ocp",
+			jobsNamespace:    "ci-release",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -87,14 +90,22 @@ func TestReleaseCreationJobSync(t *testing.T) {
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 			c := &ReleaseCreationJobController{
-				releasePayloadNamespace: testCase.payload.Namespace,
-				releasePayloadLister:    releasePayloadInformer.Lister(),
-				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
-				jobsNamespace:           testCase.jobsNamespace,
-				eventRecorder:           events.NewInMemoryRecorder("release-creation-job-controller-test"),
-				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController"),
+				ReleasePayloadController: NewReleasePayloadController("Release Creation Job Controller",
+					testCase.releaseNamespace,
+					releasePayloadInformer,
+					releasePayloadClient.ReleaseV1alpha1(),
+					events.NewInMemoryRecorder("release-creation-job-controller-test"),
+					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController")),
+				jobsNamespace: testCase.jobsNamespace,
 			}
-			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+
+			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+				AddFunc: c.Enqueue,
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					c.Enqueue(newObj)
+				},
+				DeleteFunc: c.Enqueue,
+			})
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 
