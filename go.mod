@@ -50,7 +50,6 @@ require (
 	k8s.io/component-base v0.23.3
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.40.1
-	k8s.io/kubernetes v1.14.7
 	k8s.io/test-infra v0.0.0-20220315203149-843d26549556
 )
 

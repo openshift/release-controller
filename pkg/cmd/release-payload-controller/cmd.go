@@ -79,7 +79,7 @@ func (o *Options) Run(ctx context.Context) error {
 
 	// Batch Job Informers
 	kubeFactory := informers.NewSharedInformerFactory(kubeClient, controllerDefaultResyncDuration)
-	jobInformer := kubeFactory.Batch().V1().Jobs()
+	batchJobInformer := kubeFactory.Batch().V1().Jobs()
 
 	// ReleasePayload Informers
 	releasePayloadClient, err := releasepayloadclient.NewForConfig(inClusterConfig)
@@ -105,14 +105,20 @@ func (o *Options) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Release Creation Jobs Controller
-	releaseCreationJobsController, err := NewReleaseCreationJobController(o.releaseNamespace, releasePayloadInformer, o.jobNamespace, jobInformer, o.controllerContext.EventRecorder)
+	// Release Creation Status Controller
+	releaseCreationStatusController, err := NewReleaseCreationStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.jobNamespace, batchJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
-	// Payload Created Controller
-	payloadCreatedController, err := NewPayloadCreatedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	// Release Creation Jobs Controller
+	releaseCreationJobsController, err := NewReleaseCreationJobController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.jobNamespace, o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
+	// Payload Creation Controller
+	payloadCreationController, err := NewPayloadCreationController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
@@ -125,12 +131,6 @@ func (o *Options) Run(ctx context.Context) error {
 
 	// Payload Rejected Controller
 	payloadRejectedController, err := NewPayloadRejectedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
-	if err != nil {
-		return err
-	}
-
-	// Payload Failed Controller
-	payloadFailedController, err := NewPayloadFailedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
@@ -148,12 +148,12 @@ func (o *Options) Run(ctx context.Context) error {
 
 	// Run the Controllers
 	go payloadVerificationController.Run(ctx)
+	go releaseCreationStatusController.Run(ctx, 1)
 	go releaseCreationJobsController.Run(ctx)
-	go payloadCreatedController.Run(ctx)
+	go payloadCreationController.Run(ctx)
 	go payloadAcceptedController.Run(ctx)
 	go payloadRejectedController.Run(ctx)
-	go payloadFailedController.Run(ctx)
-	go pjController.Run(ctx)
+	go pjController.Run(ctx, 1)
 
 	<-ctx.Done()
 

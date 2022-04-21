@@ -1,6 +1,8 @@
 package jobstatus
 
-import "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+import (
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+)
 
 // ByJobStatusCIConfigurationName sorts a list of JobStatus' by their CIConfigurationName
 type ByJobStatusCIConfigurationName []v1alpha1.JobStatus
@@ -39,7 +41,7 @@ func ComputeAggregatedJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 	case len(failedJobs) > 0:
 		return v1alpha1.JobStateFailure
 	// If everything is successful, then we can Accept the payload
-	case len(successfulJobs) == totalJobs:
+	case len(successfulJobs) == totalJobs && totalJobs > 0:
 		return v1alpha1.JobStateSuccess
 	// If there are any pending jobs, then we're still working on validating the release
 	case len(pendingJobs) > 0:
