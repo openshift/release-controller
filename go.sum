@@ -159,8 +159,8 @@ github.com/GoogleCloudPlatform/cloudsql-proxy v0.0.0-20191009163259-e802c2cb94ae
 github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20190822182118-27a4ced34534/go.mod h1:iroGtC8B3tQiqtds1l+mgk/BBOrxbqjH+eUfFQYRc14=
 github.com/GoogleCloudPlatform/testgrid v0.0.1-alpha.3/go.mod h1:f96W2HYy3tiBNV5zbbRc+NczwYHgG1PHXMQfoEWv680=
 github.com/GoogleCloudPlatform/testgrid v0.0.7/go.mod h1:lmtHGBL0M/MLbu1tR9BWV7FGZ1FEFIdPqmJiHNCL7y8=
-github.com/GoogleCloudPlatform/testgrid v0.0.68 h1:qs3/BQpz3j3qsgnfjV8aVBfPopkGxp/TnWjjiboUVf8=
 github.com/GoogleCloudPlatform/testgrid v0.0.68/go.mod h1:SIRhudHYGiAUqMwKorBp2Kb5yJKhMq/nEMzFpYlKHVk=
+github.com/GoogleCloudPlatform/testgrid v0.0.123 h1:S5LE2LjkPsUlyt7blkIgwajiUfgFzv5s17+TkyKDfnI=
 github.com/GoogleCloudPlatform/testgrid v0.0.123/go.mod h1:4Ojwl21NNySkM1rG8hT9K2bugPX9fIrc2hC+GHegLR8=
 github.com/MakeNowJust/heredoc v0.0.0-20170808103936-bb23615498cd/go.mod h1:64YHyfSL2R96J44Nlwm39UHepQbyR5q10x7iYa1ks2E=
 github.com/Masterminds/goutils v1.1.0/go.mod h1:8cTjp+g8YejhMuvIA5y2vz3BpJxksy863GQaJW2MFNU=
@@ -2537,8 +2537,6 @@ k8s.io/test-infra v0.0.0-20200617221206-ea73eaeab7ff/go.mod h1:L3+cRvwftUq8IW1Tr
 k8s.io/test-infra v0.0.0-20200630233406-1dca6122872e/go.mod h1:L3+cRvwftUq8IW1TrHji5m3msnc4uck/7LsE/GR/aZk=
 k8s.io/test-infra v0.0.0-20210730160938-8ad9b8c53bd8/go.mod h1:RXgSaKbQA0upN4GGyH38yRkotDJr3myiKWkvdfB5yP4=
 k8s.io/test-infra v0.0.0-20211201201517-885e4a13b661/go.mod h1:SBQYjkbzv90kvc0QsFzYrY6B9BL6tKINLKBAaHg7yS0=
-k8s.io/test-infra v0.0.0-20220315203149-843d26549556 h1:0mj5V/8PXBX9Tg3Bxan4w9z5ROUTiQdbC1HT7ZIkZhk=
-k8s.io/test-infra v0.0.0-20220315203149-843d26549556/go.mod h1:LG0LGBigJNhBZiZHQgzi7S8vANFcfpGpA3OVJBHfaz8=
 k8s.io/test-infra v0.0.0-20220426122452-a0b004e60a3e h1:E5e7voMXyyNm4CrOOiRjrpHDjEUUVLVXRf645vzOIIc=
 k8s.io/test-infra v0.0.0-20220426122452-a0b004e60a3e/go.mod h1:vpjKxOiS0b0nItAL87ZIE8CBlEvAYDdGPPpB+5VJC7s=
 k8s.io/utils v0.0.0-20181019225348-5e321f9a457c/go.mod h1:8k8uAuAQ0rXslZKaEWd0c3oVhZz7sSzSiPnVZayjIX0=
