@@ -163,6 +163,8 @@ type ReleasePublish struct {
 	ImageStreamRef *PublishStreamReference `json:"imageStreamRef"`
 	// VerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
 	VerifyBugs *PublishVerifyBugs `json:"verifyBugs"`
+	// VerifyIssue marks jira issues fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
+	VerifyIssues *PublishVerifyIssues `json:"verifyIssues"`
 }
 
 // PublishTagReference ensures that the release image stream has a tag that points to
@@ -198,6 +200,24 @@ type PublishVerifyBugs struct {
 
 // VerifyBugsTagInfo contains the necessary data to get a tag reference as needed in the bugzilla verification support.
 type VerifyBugsTagInfo struct {
+	// Namespace is the namespace where the imagestream resides.
+	Namespace string `json:"namespace"`
+	// Name is the name of the imagestream
+	Name string `json:"name"`
+	// Tag is the tag that is being referenced in the image stream
+	Tag string `json:"tag"`
+}
+
+// PublishVerifyIssues marks jira issue fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
+type PublishVerifyIssues struct {
+	// PreviousRelease points to the last release created before the imagestream
+	// being published was created. It is used to verify jira issues on the oldest tag
+	// in the release being published.
+	PreviousReleaseTag *VerifyIssuesTagInfo `json:"previousReleaseTag"`
+}
+
+// VerifyIssuesTagInfo contains the necessary data to get a tag reference as needed in the jira verification support.
+type VerifyIssuesTagInfo struct {
 	// Namespace is the namespace where the imagestream resides.
 	Namespace string `json:"namespace"`
 	// Name is the name of the imagestream
@@ -514,6 +534,10 @@ const (
 	// ReleaseAnnotationBugsVerified indicates whether or not the release has been
 	// processed by the BugzillaVerifier
 	ReleaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
+
+	// ReleaseAnnotationIssuesVerified indicates whether the release has been
+	// processed by the JiraVerifier
+	ReleaseAnnotationIssuesVerified = "release.openshift.io/issues-verified"
 
 	// ReleaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
 	ReleaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
