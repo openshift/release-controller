@@ -23,15 +23,13 @@ import (
 type ProwJobStatusController struct {
 	*ReleasePayloadController
 
-	prowJobNamespace string
-	prowJobLister    prowjoblister.ProwJobLister
+	prowJobLister prowjoblister.ProwJobLister
 }
 
 func NewProwJobStatusController(
 	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
-	prowJobNamespace string,
 	prowJobInformer prowjobinformer.ProwJobInformer,
 	eventRecorder events.Recorder,
 ) (*ProwJobStatusController, error) {
@@ -42,8 +40,7 @@ func NewProwJobStatusController(
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("prowjob-status-controller"),
 			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ProwJobStatusController")),
-		prowJobNamespace: prowJobNamespace,
-		prowJobLister:    prowJobInformer.Lister(),
+		prowJobLister: prowJobInformer.Lister(),
 	}
 
 	c.syncFn = c.sync

@@ -20,14 +20,12 @@ import (
 type Options struct {
 	controllerContext *controllercmd.ControllerContext
 	jobNamespace      string
-	prowNamespace     string
 	releaseNamespace  string
 }
 
 func NewReleasePayloadControllerCommand(name string) *cobra.Command {
 	o := &Options{
 		jobNamespace:     "ci-release",
-		prowNamespace:    "ci",
 		releaseNamespace: "ocp",
 	}
 
@@ -59,15 +57,11 @@ func NewReleasePayloadControllerCommand(name string) *cobra.Command {
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.releaseNamespace, "release-namespace", o.releaseNamespace, "The namespace where ReleasePayloads are stored.")
 	fs.StringVar(&o.jobNamespace, "job-namespace", o.jobNamespace, "The namespace where release creation jobs are configured to run.")
-	fs.StringVar(&o.prowNamespace, "prow-namespace", o.prowNamespace, "The namespace where prow is configured to run.")
 }
 
 func (o *Options) Validate(ctx context.Context) error {
 	if len(o.jobNamespace) == 0 {
 		return errors.New("required flag --job-namespace not set")
-	}
-	if len(o.prowNamespace) == 0 {
-		return errors.New("required flag --prow-namespace not set")
 	}
 	if len(o.releaseNamespace) == 0 {
 		return errors.New("required flag --release-namespace not set")
@@ -142,7 +136,7 @@ func (o *Options) Run(ctx context.Context) error {
 	}
 
 	// ProwJob Controller
-	pjController, err := NewProwJobStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.prowNamespace, prowJobInformer, o.controllerContext.EventRecorder)
+	pjController, err := NewProwJobStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
