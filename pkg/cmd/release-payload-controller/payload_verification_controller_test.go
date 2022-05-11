@@ -16,11 +16,13 @@ import (
 
 func TestPayloadVerificationSync(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    *v1alpha1.ReleasePayload
-		expected *v1alpha1.ReleasePayload
+		name             string
+		releaseNamespace string
+		input            *v1alpha1.ReleasePayload
+		expected         *v1alpha1.ReleasePayload
 	}{{
-		name: "ReleasePayloadWithoutVerificationJobs",
+		name:             "ReleasePayloadWithoutVerificationJobs",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -48,7 +50,8 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name: "ReleasePayloadWithBlockingVerificationJobs",
+		name:             "ReleasePayloadWithBlockingVerificationJobs",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -90,7 +93,8 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name: "ReleasePayloadWithInformingVerificationJobs",
+		name:             "ReleasePayloadWithInformingVerificationJobs",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -132,7 +136,8 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name: "ReleasePayloadWithVerificationJobs",
+		name:             "ReleasePayloadWithVerificationJobs",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -192,7 +197,8 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name: "ReleasePayloadWithAnalysisJobs",
+		name:             "ReleasePayloadWithAnalysisJobs",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -258,7 +264,8 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name: "ReleasePayloadWithStatus",
+		name:             "ReleasePayloadWithStatus",
+		releaseNamespace: "ocp",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -341,13 +348,21 @@ func TestPayloadVerificationSync(t *testing.T) {
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 			c := &PayloadVerificationController{
-				releasePayloadNamespace: testCase.input.Namespace,
-				releasePayloadLister:    releasePayloadInformer.Lister(),
-				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
-				eventRecorder:           events.NewInMemoryRecorder("payload-verification-controller-test"),
-				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController"),
+				ReleasePayloadController: NewReleasePayloadController("Payload Verification Controller",
+					testCase.releaseNamespace,
+					releasePayloadInformer,
+					releasePayloadClient.ReleaseV1alpha1(),
+					events.NewInMemoryRecorder("payload-verification-controller-test"),
+					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController")),
 			}
-			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+
+			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+				AddFunc: c.Enqueue,
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					c.Enqueue(newObj)
+				},
+				DeleteFunc: c.Enqueue,
+			})
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 

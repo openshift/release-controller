@@ -7,25 +7,20 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/controller"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	batchv1informers "k8s.io/client-go/informers/batch/v1"
 	batchv1listers "k8s.io/client-go/listers/batch/v1"
-	"reflect"
-	"time"
-
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"reflect"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -54,20 +49,10 @@ var ErrCoordinatesNotSet = errors.New("unable to lookup release creation job: co
 //   - .status.releaseCreationJobResult.status
 //   - .status.releaseCreationJobResult.message
 type ReleaseCreationStatusController struct {
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
+	*ReleasePayloadController
 
 	batchJobNamespace string
 	batchJobLister    batchv1listers.JobLister
-
-	eventRecorder events.Recorder
-
-	cachesToSync []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
-
-	accessor meta.MetadataAccessor
 }
 
 func NewReleaseCreationStatusController(
@@ -79,18 +64,17 @@ func NewReleaseCreationStatusController(
 	eventRecorder events.Recorder,
 ) (*ReleaseCreationStatusController, error) {
 	c := &ReleaseCreationStatusController{
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClient:    releasePayloadClient,
-		batchJobNamespace:       batchJobNamespace,
-		batchJobLister:          batchJobInformer.Lister(),
-		eventRecorder:           eventRecorder.WithComponentSuffix("release-creation-status-controller"),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController"),
+		ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
+			releasePayloadNamespace,
+			releasePayloadInformer,
+			releasePayloadClient,
+			eventRecorder.WithComponentSuffix("release-creation-status-controller"),
+			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController")),
+		batchJobNamespace: batchJobNamespace,
+		batchJobLister:    batchJobInformer.Lister(),
 	}
 
-	c.accessor = meta.NewAccessor()
-
-	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+	c.syncFn = c.sync
 	c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
 
 	batchJobFilter := func(obj interface{}) bool {
@@ -138,15 +122,6 @@ func NewReleaseCreationStatusController(
 	return c, nil
 }
 
-func (c *ReleaseCreationStatusController) Enqueue(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid queue key '%v': %v", obj, err))
-		return
-	}
-	c.queue.Add(key)
-}
-
 func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) {
 	releasePayloadKey, err := controller.GetReleasePayloadQueueKeyFromAnnotation(obj, releasecontroller.ReleaseAnnotationReleaseTag, c.releasePayloadNamespace)
 	if err != nil {
@@ -155,52 +130,6 @@ func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) 
 	}
 	klog.V(4).Infof("Queueing ReleasePayload: %s", releasePayloadKey)
 	c.queue.Add(releasePayloadKey)
-}
-
-func (c *ReleaseCreationStatusController) Run(ctx context.Context, workers int) {
-	defer utilruntime.HandleCrash()
-
-	klog.Info("Starting Release Creation Status Controller")
-	defer func() {
-		klog.Info("Shutting down Release Creation Status Controller")
-		c.queue.ShutDown()
-		klog.Info("Release Creation Status Controller shut down")
-	}()
-
-	if !cache.WaitForNamedCacheSync("ReleaseCreationStatusController", ctx.Done(), c.cachesToSync...) {
-		return
-	}
-
-	for i := 0; i < workers; i++ {
-		go wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}
-
-	<-ctx.Done()
-}
-
-func (c *ReleaseCreationStatusController) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
-	}
-}
-
-func (c *ReleaseCreationStatusController) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	err := c.sync(ctx, key.(string))
-
-	if err == nil {
-		c.queue.Forget(key)
-		return true
-	}
-
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %w", key, err))
-	c.queue.AddRateLimited(key)
-
-	return true
 }
 
 func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) error {

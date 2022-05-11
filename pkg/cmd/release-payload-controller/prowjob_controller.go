@@ -3,67 +3,53 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/status"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
-	prowjobinformer "k8s.io/test-infra/prow/client/informers/externalversions/prowjobs/v1"
-	prowjoblister "k8s.io/test-infra/prow/client/listers/prowjobs/v1"
-	"time"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	prowjobinformer "k8s.io/test-infra/prow/client/informers/externalversions/prowjobs/v1"
+	prowjoblister "k8s.io/test-infra/prow/client/listers/prowjobs/v1"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
 
 type ProwJobStatusController struct {
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
+	*ReleasePayloadController
 
 	prowJobLister prowjoblister.ProwJobLister
-
-	eventRecorder events.Recorder
-
-	cachesToSync []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 }
 
 func NewProwJobStatusController(
 	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
+	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	prowJobInformer prowjobinformer.ProwJobInformer,
 	eventRecorder events.Recorder,
 ) (*ProwJobStatusController, error) {
 	c := &ProwJobStatusController{
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		prowJobLister:           prowJobInformer.Lister(),
-		eventRecorder:           eventRecorder.WithComponentSuffix("prowjob-status-controller"),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ProwJobStatusController"),
+		ReleasePayloadController: NewReleasePayloadController("ProwJob Status Controller",
+			releasePayloadNamespace,
+			releasePayloadInformer,
+			releasePayloadClient,
+			eventRecorder.WithComponentSuffix("prowjob-status-controller"),
+			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ProwJobStatusController")),
+		prowJobLister: prowJobInformer.Lister(),
 	}
 
-	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+	c.syncFn = c.sync
 	c.cachesToSync = append(c.cachesToSync, prowJobInformer.Informer().HasSynced)
 
 	prowJobFilter := func(obj interface{}) bool {
 		if prowJob, ok := obj.(*v1.ProwJob); ok {
 			if _, ok := prowJob.Labels[releasecontroller.ReleaseAnnotationVerify]; ok {
 				return true
-			}
-		}
-		if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-			if prowJob, ok := tombstone.Obj.(*v1.ProwJob); ok {
-				if _, ok = prowJob.Labels[releasecontroller.ReleaseAnnotationVerify]; ok {
-					return true
-				}
 			}
 		}
 		return false
@@ -78,6 +64,14 @@ func NewProwJobStatusController(
 		},
 	})
 
+	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+		AddFunc: c.Enqueue,
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			c.Enqueue(newObj)
+		},
+		DeleteFunc: c.Enqueue,
+	})
+
 	return c, nil
 }
 
@@ -89,52 +83,6 @@ func (c *ProwJobStatusController) lookupReleasePayload(obj interface{}) {
 	}
 	klog.V(4).Infof("Queueing ReleasePayload: %s", releasePayloadKey)
 	c.queue.Add(releasePayloadKey)
-}
-
-func (c *ProwJobStatusController) Run(ctx context.Context, workers int) {
-	defer utilruntime.HandleCrash()
-
-	klog.Info("Starting ProwJob Status Controller")
-	defer func() {
-		klog.Info("Shutting down ProwJob Status Controller")
-		c.queue.ShutDown()
-		klog.Info("ProwJob Status Controller shut down")
-	}()
-
-	if !cache.WaitForNamedCacheSync("ProwJobStatusController", ctx.Done(), c.cachesToSync...) {
-		return
-	}
-
-	for i := 0; i < workers; i++ {
-		go wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}
-
-	<-ctx.Done()
-}
-
-func (c *ProwJobStatusController) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
-	}
-}
-
-func (c *ProwJobStatusController) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	err := c.sync(ctx, key.(string))
-
-	if err == nil {
-		c.queue.Forget(key)
-		return true
-	}
-
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %w", key, err))
-	c.queue.AddRateLimited(key)
-
-	return true
 }
 
 func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {

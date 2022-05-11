@@ -17,12 +17,14 @@ import (
 
 func TestPayloadRejectedSync(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    *v1alpha1.ReleasePayload
-		expected *v1alpha1.ReleasePayload
+		name             string
+		releaseNamespace string
+		input            *v1alpha1.ReleasePayload
+		expected         *v1alpha1.ReleasePayload
 	}{
 		{
-			name: "TestPayloadOverrideRejected",
+			name:             "TestPayloadOverrideRejected",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -59,7 +61,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "TestPayloadOverrideRejectedAfterAccepted",
+			name:             "TestPayloadOverrideRejectedAfterAccepted",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -112,7 +115,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "TestPayloadOverrideAccepted",
+			name:             "TestPayloadOverrideAccepted",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -149,7 +153,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "TestPayloadOverrideAcceptedAfterRejected",
+			name:             "TestPayloadOverrideAcceptedAfterRejected",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -202,7 +207,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithSuccessfulBlockingJobs",
+			name:             "ReleasePayloadWithSuccessfulBlockingJobs",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -250,7 +256,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithFailedBlockingJob",
+			name:             "ReleasePayloadWithFailedBlockingJob",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -298,7 +305,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithPendingBlockingJob",
+			name:             "ReleasePayloadWithPendingBlockingJob",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -346,7 +354,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadWithUnknownBlockingJob",
+			name:             "ReleasePayloadWithUnknownBlockingJob",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -394,7 +403,8 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleaseCreationJobFailed",
+			name:             "ReleaseCreationJobFailed",
+			releaseNamespace: "ocp",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -446,13 +456,21 @@ func TestPayloadRejectedSync(t *testing.T) {
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 			c := &PayloadRejectedController{
-				releasePayloadNamespace: testCase.input.Namespace,
-				releasePayloadLister:    releasePayloadInformer.Lister(),
-				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
-				eventRecorder:           events.NewInMemoryRecorder("payload-rejected-controller-test"),
-				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadRejectedController"),
+				ReleasePayloadController: NewReleasePayloadController("Payload Rejected Controller",
+					testCase.releaseNamespace,
+					releasePayloadInformer,
+					releasePayloadClient.ReleaseV1alpha1(),
+					events.NewInMemoryRecorder("payload-rejected-controller-test"),
+					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadRejectedController")),
 			}
-			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+
+			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+				AddFunc: c.Enqueue,
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					c.Enqueue(newObj)
+				},
+				DeleteFunc: c.Enqueue,
+			})
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 

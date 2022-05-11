@@ -6,19 +6,15 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"time"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"reflect"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -40,15 +36,7 @@ const (
 //   - .status.conditions.PayloadCreated
 //   - .status.conditions.PayloadFailed
 type PayloadCreationController struct {
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
-
-	eventRecorder events.Recorder
-
-	cachesToSync []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
+	*ReleasePayloadController
 }
 
 func NewPayloadCreationController(
@@ -58,14 +46,15 @@ func NewPayloadCreationController(
 	eventRecorder events.Recorder,
 ) (*PayloadCreationController, error) {
 	c := &PayloadCreationController{
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClient:    releasePayloadClient,
-		eventRecorder:           eventRecorder.WithComponentSuffix("payload-creation-controller"),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadCreationController"),
+		ReleasePayloadController: NewReleasePayloadController("Payload Creation Controller",
+			releasePayloadNamespace,
+			releasePayloadInformer,
+			releasePayloadClient,
+			eventRecorder.WithComponentSuffix("payload-creation-controller"),
+			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadCreationController")),
 	}
 
-	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+	c.syncFn = c.sync
 
 	releasePayloadFilter := func(obj interface{}) bool {
 		if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
@@ -91,61 +80,6 @@ func NewPayloadCreationController(
 	})
 
 	return c, nil
-}
-
-func (c *PayloadCreationController) Enqueue(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid queue key '%v': %v", obj, err))
-		return
-	}
-	c.queue.Add(key)
-}
-
-func (c *PayloadCreationController) Run(ctx context.Context) {
-	defer utilruntime.HandleCrash()
-
-	klog.Info("Starting Payload Creation Controller")
-	defer func() {
-		klog.Info("Shutting down Payload Creation Controller")
-		c.queue.ShutDown()
-		klog.Info("Payload Creation Controller shut down")
-	}()
-
-	if !cache.WaitForNamedCacheSync("PayloadCreationController", ctx.Done(), c.cachesToSync...) {
-		return
-	}
-
-	go func() {
-		wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}()
-
-	<-ctx.Done()
-}
-
-func (c *PayloadCreationController) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
-	}
-}
-
-func (c *PayloadCreationController) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	err := c.sync(ctx, key.(string))
-
-	if err == nil {
-		c.queue.Forget(key)
-		return true
-	}
-
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %w", key, err))
-	c.queue.AddRateLimited(key)
-
-	return true
 }
 
 func (c *PayloadCreationController) sync(ctx context.Context, key string) error {

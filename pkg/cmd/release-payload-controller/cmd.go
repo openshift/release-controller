@@ -136,7 +136,7 @@ func (o *Options) Run(ctx context.Context) error {
 	}
 
 	// ProwJob Controller
-	pjController, err := NewProwJobStatusController(o.releaseNamespace, releasePayloadInformer, prowJobInformer, o.controllerContext.EventRecorder)
+	pjController, err := NewProwJobStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
@@ -147,13 +147,13 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformerFactory.Start(ctx.Done())
 
 	// Run the Controllers
-	go payloadVerificationController.Run(ctx)
-	go releaseCreationStatusController.Run(ctx, 1)
-	go releaseCreationJobsController.Run(ctx)
-	go payloadCreationController.Run(ctx)
-	go payloadAcceptedController.Run(ctx)
-	go payloadRejectedController.Run(ctx)
-	go pjController.Run(ctx, 1)
+	go payloadVerificationController.RunWorkers(ctx, 1)
+	go releaseCreationStatusController.RunWorkers(ctx, 1)
+	go releaseCreationJobsController.RunWorkers(ctx, 1)
+	go payloadCreationController.RunWorkers(ctx, 1)
+	go payloadAcceptedController.RunWorkers(ctx, 1)
+	go payloadRejectedController.RunWorkers(ctx, 1)
+	go pjController.RunWorkers(ctx, 1)
 
 	<-ctx.Done()
 

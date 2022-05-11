@@ -6,20 +6,16 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobstatus"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"time"
-
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"reflect"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -45,15 +41,7 @@ const (
 // and populates the following condition:
 //   - .status.conditions.PayloadRejected
 type PayloadRejectedController struct {
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
-
-	eventRecorder events.Recorder
-
-	cachesToSync []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
+	*ReleasePayloadController
 }
 
 func NewPayloadRejectedController(
@@ -63,16 +51,17 @@ func NewPayloadRejectedController(
 	eventRecorder events.Recorder,
 ) (*PayloadRejectedController, error) {
 	c := &PayloadRejectedController{
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClient:    releasePayloadClient,
-		eventRecorder:           eventRecorder.WithComponentSuffix("payload-rejected-controller"),
-		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadRejectedController"),
+		ReleasePayloadController: NewReleasePayloadController("Payload Rejected Controller",
+			releasePayloadNamespace,
+			releasePayloadInformer,
+			releasePayloadClient,
+			eventRecorder.WithComponentSuffix("payload-rejected-controller"),
+			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadRejectedController")),
 	}
 
-	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
+	c.syncFn = c.sync
 
-	releasePayloadInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc: c.Enqueue,
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			c.Enqueue(newObj)
@@ -81,61 +70,6 @@ func NewPayloadRejectedController(
 	})
 
 	return c, nil
-}
-
-func (c *PayloadRejectedController) Enqueue(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid queue key '%v': %v", obj, err))
-		return
-	}
-	c.queue.Add(key)
-}
-
-func (c *PayloadRejectedController) Run(ctx context.Context) {
-	defer utilruntime.HandleCrash()
-
-	klog.Info("Starting Payload Rejected Controller")
-	defer func() {
-		klog.Info("Shutting down Payload Rejected Controller")
-		c.queue.ShutDown()
-		klog.Info("Payload Rejected Controller shut down")
-	}()
-
-	if !cache.WaitForNamedCacheSync("PayloadRejectedController", ctx.Done(), c.cachesToSync...) {
-		return
-	}
-
-	go func() {
-		wait.UntilWithContext(ctx, c.runWorker, time.Second)
-	}()
-
-	<-ctx.Done()
-}
-
-func (c *PayloadRejectedController) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
-	}
-}
-
-func (c *PayloadRejectedController) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	err := c.sync(ctx, key.(string))
-
-	if err == nil {
-		c.queue.Forget(key)
-		return true
-	}
-
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %w", key, err))
-	c.queue.AddRateLimited(key)
-
-	return true
 }
 
 func (c *PayloadRejectedController) sync(ctx context.Context, key string) error {

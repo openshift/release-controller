@@ -9,6 +9,7 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -105,17 +106,19 @@ func TestComputeReleaseCreationJobStatus(t *testing.T) {
 
 func TestReleaseCreationStatusSync(t *testing.T) {
 	testCases := []struct {
-		name          string
-		jobsNamespace string
-		job           runtime.Object
-		input         *v1alpha1.ReleasePayload
-		expected      *v1alpha1.ReleasePayload
-		expectedErr   error
+		name             string
+		releaseNamespace string
+		jobsNamespace    string
+		job              runtime.Object
+		input            *v1alpha1.ReleasePayload
+		expected         *v1alpha1.ReleasePayload
+		expectedErr      error
 	}{
 		{
-			name:          "ReleasePayloadStatusNotSet",
-			job:           &batchv1.Job{},
-			jobsNamespace: "ci-release",
+			name:             "ReleasePayloadStatusNotSet",
+			releaseNamespace: "ocp",
+			job:              &batchv1.Job{},
+			jobsNamespace:    "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -131,9 +134,10 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			expectedErr: ErrCoordinatesNotSet,
 		},
 		{
-			name:          "ReleasePayloadStatusSetWithNoJob",
-			job:           &batchv1.Job{},
-			jobsNamespace: "ci-release",
+			name:             "ReleasePayloadStatusSetWithNoJob",
+			releaseNamespace: "ocp",
+			job:              &batchv1.Job{},
+			jobsNamespace:    "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -167,7 +171,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadStatusSetWithCompleteJob",
+			name:             "ReleasePayloadStatusSetWithCompleteJob",
+			releaseNamespace: "ocp",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -213,7 +218,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadStatusSetWithFailedJob",
+			name:             "ReleasePayloadStatusSetWithFailedJob",
+			releaseNamespace: "ocp",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -262,7 +268,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadStatusSetWithFailedJobReasonAndMessage",
+			name:             "ReleasePayloadStatusSetWithFailedJobReasonAndMessage",
+			releaseNamespace: "ocp",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -313,7 +320,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadStatusSetWithSuspendedJob",
+			name:             "ReleasePayloadStatusSetWithSuspendedJob",
+			releaseNamespace: "ocp",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -361,7 +369,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name: "ReleasePayloadStatusWithDeletedStatus",
+			name:             "ReleasePayloadStatusWithDeletedStatus",
+			releaseNamespace: "ocp",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -406,9 +415,10 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:          "ReleasePayloadStatusWithDeletedStatusAndNoBatchJob",
-			job:           &batchv1.CronJob{},
-			jobsNamespace: "ci-release",
+			name:             "ReleasePayloadStatusWithDeletedStatusAndNoBatchJob",
+			releaseNamespace: "ocp",
+			job:              &batchv1.CronJob{},
+			jobsNamespace:    "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -453,16 +463,58 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 			c := &ReleaseCreationStatusController{
-				releasePayloadNamespace: testCase.input.Namespace,
-				releasePayloadLister:    releasePayloadInformer.Lister(),
-				releasePayloadClient:    releasePayloadClient.ReleaseV1alpha1(),
-				batchJobNamespace:       testCase.jobsNamespace,
-				batchJobLister:          batchJobInformer.Lister(),
-				eventRecorder:           events.NewInMemoryRecorder("batchjob-controller-test"),
-				queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController"),
+				ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
+					testCase.releaseNamespace,
+					releasePayloadInformer,
+					releasePayloadClient.ReleaseV1alpha1(),
+					events.NewInMemoryRecorder("release-creation-status-controller-test"),
+					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController")),
+				batchJobNamespace: testCase.jobsNamespace,
+				batchJobLister:    batchJobInformer.Lister(),
 			}
-			c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)
 			c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
+
+			batchJobFilter := func(obj interface{}) bool {
+				if batchJob, ok := obj.(*batchv1.Job); ok {
+					if _, ok := batchJob.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]; ok {
+						return true
+					}
+				}
+				return false
+			}
+
+			batchJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+				FilterFunc: batchJobFilter,
+				Handler: cache.ResourceEventHandlerFuncs{
+					AddFunc:    c.lookupReleasePayload,
+					UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
+					DeleteFunc: c.lookupReleasePayload,
+				},
+			})
+
+			// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
+			releasePayloadFilter := func(obj interface{}) bool {
+				if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
+					switch {
+					// Check that we have the necessary information to proceed
+					case len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) == 0:
+						return false
+					// Check if we need to process this ReleasePayload at all
+					case len(releasePayload.Status.ReleaseCreationJobResult.Status) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Message) == 0:
+						return true
+					}
+				}
+				return false
+			}
+
+			releasePayloadInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+				FilterFunc: releasePayloadFilter,
+				Handler: cache.ResourceEventHandlerFuncs{
+					AddFunc:    c.Enqueue,
+					UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+					DeleteFunc: c.Enqueue,
+				},
+			})
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			kubeFactory.Start(context.Background().Done())
