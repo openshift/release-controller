@@ -9,6 +9,7 @@ import (
 	"github.com/openshift/release-controller/pkg/releasepayload/controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/status"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -16,6 +17,7 @@ import (
 	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	prowjobinformer "k8s.io/test-infra/prow/client/informers/externalversions/prowjobs/v1"
 	prowjoblister "k8s.io/test-infra/prow/client/listers/prowjobs/v1"
+	"strings"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -27,7 +29,6 @@ type ProwJobStatusController struct {
 }
 
 func NewProwJobStatusController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	prowJobInformer prowjobinformer.ProwJobInformer,
@@ -35,7 +36,6 @@ func NewProwJobStatusController(
 ) (*ProwJobStatusController, error) {
 	c := &ProwJobStatusController{
 		ReleasePayloadController: NewReleasePayloadController("ProwJob Status Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("prowjob-status-controller"),
@@ -76,11 +76,27 @@ func NewProwJobStatusController(
 }
 
 func (c *ProwJobStatusController) lookupReleasePayload(obj interface{}) {
-	releasePayloadKey, err := controller.GetReleasePayloadQueueKeyFromAnnotation(obj, releasecontroller.ReleaseAnnotationToTag, c.releasePayloadNamespace)
+	object, ok := obj.(runtime.Object)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("unable to cast obj: %v", obj))
+		return
+	}
+	source, err := controller.GetAnnotation(object, releasecontroller.ReleaseAnnotationSource)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to determine releasepayload key: %v", err))
 		return
 	}
+	parts := strings.Split(source, "/")
+	if len(parts) != 2 {
+		utilruntime.HandleError(fmt.Errorf("invalid source with %d parts: %q", len(parts), source))
+		return
+	}
+	release, err := controller.GetAnnotation(object, releasecontroller.ReleaseAnnotationToTag)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("unable to determine releasepayload key: %v", err))
+		return
+	}
+	releasePayloadKey := fmt.Sprintf("%s/%s", parts[0], release)
 	klog.V(4).Infof("Queueing ReleasePayload: %s", releasePayloadKey)
 	c.queue.Add(releasePayloadKey)
 }

@@ -464,13 +464,11 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 
 			c := &ReleaseCreationStatusController{
 				ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
-					testCase.releaseNamespace,
 					releasePayloadInformer,
 					releasePayloadClient.ReleaseV1alpha1(),
 					events.NewInMemoryRecorder("release-creation-status-controller-test"),
 					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController")),
-				batchJobNamespace: testCase.jobsNamespace,
-				batchJobLister:    batchJobInformer.Lister(),
+				batchJobLister: batchJobInformer.Lister(),
 			}
 			c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
 

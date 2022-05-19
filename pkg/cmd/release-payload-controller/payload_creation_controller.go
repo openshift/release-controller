@@ -40,14 +40,12 @@ type PayloadCreationController struct {
 }
 
 func NewPayloadCreationController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 ) (*PayloadCreationController, error) {
 	c := &PayloadCreationController{
 		ReleasePayloadController: NewReleasePayloadController("Payload Creation Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-creation-controller"),

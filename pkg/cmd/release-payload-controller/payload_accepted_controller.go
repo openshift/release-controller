@@ -44,14 +44,12 @@ type PayloadAcceptedController struct {
 }
 
 func NewPayloadAcceptedController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 ) (*PayloadAcceptedController, error) {
 	c := &PayloadAcceptedController{
 		ReleasePayloadController: NewReleasePayloadController("Payload Accepted Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-accepted-controller"),

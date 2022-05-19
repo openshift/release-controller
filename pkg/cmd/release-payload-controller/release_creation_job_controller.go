@@ -31,24 +31,19 @@ const (
 //   - .status.ReleaseCreationJobResult.ReleaseCreationJobCoordinates.Name
 type ReleaseCreationJobController struct {
 	*ReleasePayloadController
-	jobsNamespace string
 }
 
 func NewReleaseCreationJobController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
-	jobsNamespace string,
 	eventRecorder events.Recorder,
 ) (*ReleaseCreationJobController, error) {
 	c := &ReleaseCreationJobController{
 		ReleasePayloadController: NewReleasePayloadController("Release Creation Job Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("release-creation-job-controller"),
 			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController")),
-		jobsNamespace: jobsNamespace,
 	}
 
 	c.syncFn = c.sync
@@ -100,8 +95,8 @@ func (c *ReleaseCreationJobController) sync(ctx context.Context, key string) err
 	// release_creation_status_controller to rediscover and set them accordingly.
 	releasePayload.Status.ReleaseCreationJobResult = v1alpha1.ReleaseCreationJobResult{
 		Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
-			Name:      originalReleasePayload.Name,
-			Namespace: c.jobsNamespace,
+			Name:      originalReleasePayload.Spec.PayloadCreationConfig.ReleaseCreationCoordinates.ReleaseCreationJobName,
+			Namespace: originalReleasePayload.Spec.PayloadCreationConfig.ReleaseCreationCoordinates.Namespace,
 		},
 	}
 

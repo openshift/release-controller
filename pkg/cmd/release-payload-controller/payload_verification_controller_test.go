@@ -349,7 +349,6 @@ func TestPayloadVerificationSync(t *testing.T) {
 
 			c := &PayloadVerificationController{
 				ReleasePayloadController: NewReleasePayloadController("Payload Verification Controller",
-					testCase.releaseNamespace,
 					releasePayloadInformer,
 					releasePayloadClient.ReleaseV1alpha1(),
 					events.NewInMemoryRecorder("payload-verification-controller-test"),

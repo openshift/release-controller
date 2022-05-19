@@ -22,9 +22,8 @@ type Controller interface {
 type ReleasePayloadController struct {
 	name string
 
-	releasePayloadNamespace string
-	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
-	releasePayloadClient    releasepayloadclient.ReleaseV1alpha1Interface
+	releasePayloadLister releasepayloadlister.ReleasePayloadLister
+	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface
 
 	eventRecorder events.Recorder
 
@@ -37,18 +36,16 @@ type ReleasePayloadController struct {
 
 func NewReleasePayloadController(
 	name string,
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 	queue workqueue.RateLimitingInterface) *ReleasePayloadController {
 	c := &ReleasePayloadController{
-		name:                    name,
-		releasePayloadNamespace: releasePayloadNamespace,
-		releasePayloadLister:    releasePayloadInformer.Lister(),
-		releasePayloadClient:    releasePayloadClient,
-		eventRecorder:           eventRecorder,
-		queue:                   queue,
+		name:                 name,
+		releasePayloadLister: releasePayloadInformer.Lister(),
+		releasePayloadClient: releasePayloadClient,
+		eventRecorder:        eventRecorder,
+		queue:                queue,
 	}
 
 	c.cachesToSync = append(c.cachesToSync, releasePayloadInformer.Informer().HasSynced)

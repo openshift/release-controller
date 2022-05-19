@@ -45,14 +45,12 @@ type PayloadRejectedController struct {
 }
 
 func NewPayloadRejectedController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 ) (*PayloadRejectedController, error) {
 	c := &PayloadRejectedController{
 		ReleasePayloadController: NewReleasePayloadController("Payload Rejected Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-rejected-controller"),
