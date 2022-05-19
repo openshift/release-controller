@@ -91,6 +91,8 @@ type ReleasePayload struct {
 type ReleasePayloadSpec struct {
 	// PayloadCoordinates the coordinates of the imagestreamtag that this ReleasePayload was created from
 	PayloadCoordinates PayloadCoordinates `json:"payloadCoordinates,omitempty"`
+	// PayloadCreationConfig the configuration used when creating the ReleasePayload
+	PayloadCreationConfig PayloadCreationConfig `json:"payloadCreationConfig,omitempty"`
 	// PayloadOverride specified when manual intervention is required to manually Accept or Reject a ReleasePayload
 	PayloadOverride ReleasePayloadOverride `json:"payloadOverride,omitempty"`
 	// PayloadVerificationConfig the configuration that will be used to verify this ReleasePayload
@@ -120,6 +122,20 @@ type PayloadCoordinates struct {
 
 	// ImagestreamTagName is the name of the actual release
 	ImagestreamTagName string `json:"imagestreamTagName,omitempty"`
+}
+
+// PayloadCreationConfig the configuration used to create the ReleasePayload
+type PayloadCreationConfig struct {
+	// ReleaseCreationConfig houses the configuration of the release creation job
+	ReleaseCreationConfig ReleaseCreationConfig `json:"releaseCreationConfig,omitempty"`
+}
+
+type ReleaseCreationConfig struct {
+	// Namespace the namespace where the release creation batchv1.Jobs are created
+	Namespace string `json:"namespace,omitempty"`
+
+	// ReleaseCreationJobName the name the release creation batchv1.Job
+	ReleaseCreationJobName string `json:"releaseCreationJobName,omitempty"`
 }
 
 type ReleasePayloadOverrideType string
