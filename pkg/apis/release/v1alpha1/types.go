@@ -126,16 +126,18 @@ type PayloadCoordinates struct {
 
 // PayloadCreationConfig the configuration used to create the ReleasePayload
 type PayloadCreationConfig struct {
-	// ReleaseCreationConfig houses the configuration of the release creation job
-	ReleaseCreationConfig ReleaseCreationConfig `json:"releaseCreationConfig,omitempty"`
+	// ReleaseCreationCoordinates houses the configuration of the release creation job
+	ReleaseCreationCoordinates ReleaseCreationCoordinates `json:"releaseCreationCoordinates,omitempty"`
 }
 
-type ReleaseCreationConfig struct {
+// ReleaseCreationCoordinates houses the information pointing to the location of the release creation job
+// responsible for creating this ReleasePayload.
+type ReleaseCreationCoordinates struct {
 	// Namespace the namespace where the release creation batchv1.Jobs are created
-	Namespace string `json:"namespace,omitempty"`
+	Namespace string `json:"namespace"`
 
 	// ReleaseCreationJobName the name the release creation batchv1.Job
-	ReleaseCreationJobName string `json:"releaseCreationJobName,omitempty"`
+	ReleaseCreationJobName string `json:"releaseCreationJobName"`
 }
 
 type ReleasePayloadOverrideType string
