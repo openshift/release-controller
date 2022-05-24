@@ -32,11 +32,27 @@ func TestReleaseCreationJobSync(t *testing.T) {
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
 					Namespace: "ocp",
 				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-02-09-091559",
+						},
+					},
+				},
 			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
 					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-02-09-091559",
+						},
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
@@ -57,6 +73,14 @@ func TestReleaseCreationJobSync(t *testing.T) {
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
 					Namespace: "ocp",
 				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-02-09-091559",
+						},
+					},
+				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
 						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
@@ -70,6 +94,14 @@ func TestReleaseCreationJobSync(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
 					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-02-09-091559",
+						},
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
@@ -91,12 +123,10 @@ func TestReleaseCreationJobSync(t *testing.T) {
 
 			c := &ReleaseCreationJobController{
 				ReleasePayloadController: NewReleasePayloadController("Release Creation Job Controller",
-					testCase.releaseNamespace,
 					releasePayloadInformer,
 					releasePayloadClient.ReleaseV1alpha1(),
 					events.NewInMemoryRecorder("release-creation-job-controller-test"),
 					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController")),
-				jobsNamespace: testCase.jobsNamespace,
 			}
 
 			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{

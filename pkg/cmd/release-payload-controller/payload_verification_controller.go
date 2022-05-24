@@ -31,14 +31,12 @@ type PayloadVerificationController struct {
 }
 
 func NewPayloadVerificationController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
 ) (*PayloadVerificationController, error) {
 	c := &PayloadVerificationController{
 		ReleasePayloadController: NewReleasePayloadController("Payload Verification Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-verification-controller"),

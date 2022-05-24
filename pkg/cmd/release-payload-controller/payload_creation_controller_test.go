@@ -257,7 +257,6 @@ func TestPayloadCreationSync(t *testing.T) {
 
 			c := &PayloadCreationController{
 				ReleasePayloadController: NewReleasePayloadController("Payload Creation Controller",
-					testCase.releaseNamespace,
 					releasePayloadInformer,
 					releasePayloadClient.ReleaseV1alpha1(),
 					events.NewInMemoryRecorder("payload-creation-controller-test"),

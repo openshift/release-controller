@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	batchv1informers "k8s.io/client-go/informers/batch/v1"
 	batchv1listers "k8s.io/client-go/listers/batch/v1"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"reflect"
+	"strings"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -51,27 +53,22 @@ var ErrCoordinatesNotSet = errors.New("unable to lookup release creation job: co
 type ReleaseCreationStatusController struct {
 	*ReleasePayloadController
 
-	batchJobNamespace string
-	batchJobLister    batchv1listers.JobLister
+	batchJobLister batchv1listers.JobLister
 }
 
 func NewReleaseCreationStatusController(
-	releasePayloadNamespace string,
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
-	batchJobNamespace string,
 	batchJobInformer batchv1informers.JobInformer,
 	eventRecorder events.Recorder,
 ) (*ReleaseCreationStatusController, error) {
 	c := &ReleaseCreationStatusController{
 		ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
-			releasePayloadNamespace,
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("release-creation-status-controller"),
 			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationStatusController")),
-		batchJobNamespace: batchJobNamespace,
-		batchJobLister:    batchJobInformer.Lister(),
+		batchJobLister: batchJobInformer.Lister(),
 	}
 
 	c.syncFn = c.sync
@@ -123,11 +120,27 @@ func NewReleaseCreationStatusController(
 }
 
 func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) {
-	releasePayloadKey, err := controller.GetReleasePayloadQueueKeyFromAnnotation(obj, releasecontroller.ReleaseAnnotationReleaseTag, c.releasePayloadNamespace)
+	object, ok := obj.(runtime.Object)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("unable to cast obj: %v", obj))
+		return
+	}
+	target, err := controller.GetAnnotation(object, releasecontroller.ReleaseAnnotationTarget)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to determine releasepayload key: %v", err))
 		return
 	}
+	parts := strings.Split(target, "/")
+	if len(parts) != 2 {
+		utilruntime.HandleError(fmt.Errorf("invalid target with %d parts: %q", len(parts), target))
+		return
+	}
+	release, err := controller.GetAnnotation(object, releasecontroller.ReleaseAnnotationReleaseTag)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("unable to determine releasepayload key: %v", err))
+		return
+	}
+	releasePayloadKey := fmt.Sprintf("%s/%s", parts[0], release)
 	klog.V(4).Infof("Queueing ReleasePayload: %s", releasePayloadKey)
 	c.queue.Add(releasePayloadKey)
 }
@@ -169,7 +182,7 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 	jobNotFound := false
 	job, err := c.batchJobLister.Jobs(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace).Get(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name)
 	if k8serrors.IsNotFound(err) {
-		klog.V(4).Infof("Unable to locate release creation job: %s/%s", c.batchJobNamespace, originalReleasePayload.Name)
+		klog.V(4).Infof("Unable to locate release creation job: %s/%s", originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace, originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name)
 		// Reset the error to allow for further processing
 		err = nil
 		// Set flag to force the logic to set status to "Unknown"

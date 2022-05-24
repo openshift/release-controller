@@ -457,7 +457,6 @@ func TestPayloadAcceptedSync(t *testing.T) {
 
 			c := &PayloadAcceptedController{
 				ReleasePayloadController: NewReleasePayloadController("Payload Accepted Controller",
-					testCase.releaseNamespace,
 					releasePayloadInformer,
 					releasePayloadClient.ReleaseV1alpha1(),
 					events.NewInMemoryRecorder("payload-accepted-controller-test"),

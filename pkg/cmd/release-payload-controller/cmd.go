@@ -2,7 +2,6 @@ package release_payload_controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
@@ -19,15 +18,10 @@ import (
 
 type Options struct {
 	controllerContext *controllercmd.ControllerContext
-	jobNamespace      string
-	releaseNamespace  string
 }
 
 func NewReleasePayloadControllerCommand(name string) *cobra.Command {
-	o := &Options{
-		jobNamespace:     "ci-release",
-		releaseNamespace: "ocp",
-	}
+	o := &Options{}
 
 	ccc := controllercmd.NewControllerCommandConfig("release-payload-controller", version.Get(), func(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 		o.controllerContext = controllerContext
@@ -55,17 +49,9 @@ func NewReleasePayloadControllerCommand(name string) *cobra.Command {
 }
 
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&o.releaseNamespace, "release-namespace", o.releaseNamespace, "The namespace where ReleasePayloads are stored.")
-	fs.StringVar(&o.jobNamespace, "job-namespace", o.jobNamespace, "The namespace where release creation jobs are configured to run.")
 }
 
 func (o *Options) Validate(ctx context.Context) error {
-	if len(o.jobNamespace) == 0 {
-		return errors.New("required flag --job-namespace not set")
-	}
-	if len(o.releaseNamespace) == 0 {
-		return errors.New("required flag --release-namespace not set")
-	}
 	return nil
 }
 
@@ -100,43 +86,43 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformer := prowJobInformerFactory.Prow().V1().ProwJobs()
 
 	// Payload Verification Controller
-	payloadVerificationController, err := NewPayloadVerificationController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	payloadVerificationController, err := NewPayloadVerificationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Release Creation Status Controller
-	releaseCreationStatusController, err := NewReleaseCreationStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.jobNamespace, batchJobInformer, o.controllerContext.EventRecorder)
+	releaseCreationStatusController, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Release Creation Jobs Controller
-	releaseCreationJobsController, err := NewReleaseCreationJobController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.jobNamespace, o.controllerContext.EventRecorder)
+	releaseCreationJobsController, err := NewReleaseCreationJobController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Creation Controller
-	payloadCreationController, err := NewPayloadCreationController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	payloadCreationController, err := NewPayloadCreationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Accepted Controller
-	payloadAcceptedController, err := NewPayloadAcceptedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	payloadAcceptedController, err := NewPayloadAcceptedController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// Payload Rejected Controller
-	payloadRejectedController, err := NewPayloadRejectedController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	payloadRejectedController, err := NewPayloadRejectedController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
 
 	// ProwJob Controller
-	pjController, err := NewProwJobStatusController(o.releaseNamespace, releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, o.controllerContext.EventRecorder)
+	pjController, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
