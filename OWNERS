@@ -1,5 +1,8 @@
-approvers:
-- smarterclayton
-- stevekuznetsov
+reviewers:
 - bradmwilliams
 - AlexNPavel
+- hoxhaeris
+approvers:
+- bradmwilliams
+- AlexNPavel
+- jupierce
