@@ -3,10 +3,10 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,10 +57,10 @@ func NewPayloadCreationController(
 	releasePayloadFilter := func(obj interface{}) bool {
 		if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
 			// If the conditions are both in their respective terminal states, then there is nothing else to do...
-			if (conditions.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
-				conditions.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated)) &&
-				(conditions.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed) ||
-					conditions.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed)) {
+			if (v1helpers.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
+				v1helpers.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated)) &&
+				(v1helpers.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed) ||
+					v1helpers.IsConditionFalse(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed)) {
 				return false
 			}
 			return true
@@ -104,10 +104,10 @@ func (c *PayloadCreationController) sync(ctx context.Context, key string) error 
 	}
 
 	// If the conditions are both in their respective terminal states, then there is nothing else to do...
-	if (conditions.IsConditionTrue(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
-		conditions.IsConditionFalse(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated)) &&
-		(conditions.IsConditionTrue(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed) ||
-			conditions.IsConditionFalse(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed)) {
+	if (v1helpers.IsConditionTrue(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
+		v1helpers.IsConditionFalse(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated)) &&
+		(v1helpers.IsConditionTrue(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed) ||
+			v1helpers.IsConditionFalse(originalReleasePayload.Status.Conditions, v1alpha1.ConditionPayloadFailed)) {
 		return nil
 	}
 
@@ -138,8 +138,8 @@ func (c *PayloadCreationController) sync(ctx context.Context, key string) error 
 	}
 
 	releasePayload := originalReleasePayload.DeepCopy()
-	conditions.SetCondition(&releasePayload.Status.Conditions, *createdCondition)
-	conditions.SetCondition(&releasePayload.Status.Conditions, *failedCondition)
+	v1helpers.SetCondition(&releasePayload.Status.Conditions, *createdCondition)
+	v1helpers.SetCondition(&releasePayload.Status.Conditions, *failedCondition)
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
 
 	if reflect.DeepEqual(originalReleasePayload, releasePayload) {
