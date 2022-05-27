@@ -1,6 +1,8 @@
 package jobrunresult
 
-import "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+import (
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+)
 
 // ByCoordinatesName sorts a list of JobRunResults by their Coordinates Name
 type ByCoordinatesName []v1alpha1.JobRunResult
