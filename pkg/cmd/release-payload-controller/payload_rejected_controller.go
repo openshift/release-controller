@@ -3,10 +3,10 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobstatus"
 	releasepayloadhelpers "github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -94,7 +94,7 @@ func (c *PayloadRejectedController) sync(ctx context.Context, key string) error 
 	rejectedCondition := computeReleasePayloadRejectedCondition(originalReleasePayload)
 
 	releasePayload := originalReleasePayload.DeepCopy()
-	conditions.SetCondition(&releasePayload.Status.Conditions, rejectedCondition)
+	v1helpers.SetCondition(&releasePayload.Status.Conditions, rejectedCondition)
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
 
 	if reflect.DeepEqual(originalReleasePayload, releasePayload) {
