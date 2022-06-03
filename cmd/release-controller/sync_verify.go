@@ -85,7 +85,8 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				jobNameSuffix = fmt.Sprintf("%d", jobRetries)
 			}
 			jobLabels := map[string]string{
-				"release.openshift.io/verify": "true",
+				releasecontroller.ReleaseLabelVerify:  "true",
+				releasecontroller.ReleaseLabelPayload: releaseTag.Name,
 			}
 			if verifyType.AggregatedProwJob != nil {
 				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)

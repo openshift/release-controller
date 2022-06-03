@@ -15,7 +15,8 @@ const (
 
 func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
 	jobLabels := map[string]string{
-		"release.openshift.io/analysis": releaseTag.Name,
+		"release.openshift.io/analysis":       releaseTag.Name,
+		releasecontroller.ReleaseLabelPayload: releaseTag.Name,
 	}
 
 	// Update the AnalysisJobCount to no trigger the analysis logic again
