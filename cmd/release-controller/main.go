@@ -485,7 +485,7 @@ func (o *options) Run() error {
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
 	if o.prowconfig.ConfigPath != "" {
-		prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
+		prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{releasecontroller.ReleaseLabelVerify: "true"}))
 		hasSynced = append(hasSynced, prowInformers.HasSynced)
 		c.AddProwInformer(o.ProwNamespace, prowInformers)
 		go prowInformers.Run(stopCh)

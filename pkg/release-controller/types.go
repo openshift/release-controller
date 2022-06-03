@@ -516,6 +516,12 @@ const (
 
 	// ReleaseAnnotationArchitecture indicates the architecture of the release
 	ReleaseAnnotationArchitecture = "release.openshift.io/architecture"
+
+	// ReleaseLabelVerify indicates the ProwJob is for release verification
+	ReleaseLabelVerify = "release.openshift.io/verify"
+
+	// ReleaseLabelPayload indicates the ReleasePayload of the release
+	ReleaseLabelPayload = "release.openshift.io/payload"
 )
 
 type Duration time.Duration

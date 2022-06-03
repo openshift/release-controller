@@ -221,7 +221,7 @@ func (o *options) Run() error {
 	}
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
 
-	prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{"release.openshift.io/verify": "true"}))
+	prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{releasecontroller.ReleaseLabelVerify: "true"}))
 	hasSynced = append(hasSynced, prowInformers.HasSynced)
 	go prowInformers.Run(stopCh)
 
