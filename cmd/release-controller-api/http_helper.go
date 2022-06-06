@@ -784,6 +784,14 @@ func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *im
 	fmt.Fprintf(w, `<p><a href="%s">Download the installer</a> for your operating system or run <pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(fmt.Sprintf("https://%s/%s", artifactsHost, tag.Name)), template.HTMLEscapeString(tagPull))
 }
 
+func renderMultiArchPullSpec(w io.Writer, tagPull string) {
+	if len(tagPull) == 0 {
+		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
+		return
+	}
+	fmt.Fprintf(w, `<p>PullSpec: <pre class="ml-4">%s</pre>`, template.HTMLEscapeString(tagPull))
+}
+
 func checkReleasePage(page *ReleasePage) {
 	for i := range page.Streams {
 		stream := &page.Streams[i]

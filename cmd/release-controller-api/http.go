@@ -604,7 +604,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Disable the installation instructions for manifest list based releases
-	if c.architecture != "multi" {
+	switch c.architecture {
+	case "multi":
+		renderMultiArchPullSpec(w, tagInfo.TagPullSpec)
+	default:
 		renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 	}
 
