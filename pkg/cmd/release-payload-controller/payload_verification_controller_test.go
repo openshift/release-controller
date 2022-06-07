@@ -16,13 +16,11 @@ import (
 
 func TestPayloadVerificationSync(t *testing.T) {
 	testCases := []struct {
-		name             string
-		releaseNamespace string
-		input            *v1alpha1.ReleasePayload
-		expected         *v1alpha1.ReleasePayload
+		name     string
+		input    *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
 	}{{
-		name:             "ReleasePayloadWithoutVerificationJobs",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithoutVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -50,8 +48,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name:             "ReleasePayloadWithBlockingVerificationJobs",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithBlockingVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -93,8 +90,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name:             "ReleasePayloadWithInformingVerificationJobs",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithInformingVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -136,8 +132,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name:             "ReleasePayloadWithVerificationJobs",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithVerificationJobs",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -197,8 +192,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name:             "ReleasePayloadWithAnalysisJobs",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithAnalysisJobs",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -264,8 +258,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 			},
 		},
 	}, {
-		name:             "ReleasePayloadWithStatus",
-		releaseNamespace: "ocp",
+		name: "ReleasePayloadWithStatus",
 		input: &v1alpha1.ReleasePayload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "4.11.0-0.nightly-2022-02-09-091559",

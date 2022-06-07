@@ -106,19 +106,15 @@ func TestComputeReleaseCreationJobStatus(t *testing.T) {
 
 func TestReleaseCreationStatusSync(t *testing.T) {
 	testCases := []struct {
-		name             string
-		releaseNamespace string
-		jobsNamespace    string
-		job              runtime.Object
-		input            *v1alpha1.ReleasePayload
-		expected         *v1alpha1.ReleasePayload
-		expectedErr      error
+		name        string
+		job         runtime.Object
+		input       *v1alpha1.ReleasePayload
+		expected    *v1alpha1.ReleasePayload
+		expectedErr error
 	}{
 		{
-			name:             "ReleasePayloadStatusNotSet",
-			releaseNamespace: "ocp",
-			job:              &batchv1.Job{},
-			jobsNamespace:    "ci-release",
+			name: "ReleasePayloadStatusNotSet",
+			job:  &batchv1.Job{},
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -134,10 +130,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			expectedErr: ErrCoordinatesNotSet,
 		},
 		{
-			name:             "ReleasePayloadStatusSetWithNoJob",
-			releaseNamespace: "ocp",
-			job:              &batchv1.Job{},
-			jobsNamespace:    "ci-release",
+			name: "ReleasePayloadStatusSetWithNoJob",
+			job:  &batchv1.Job{},
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -171,8 +165,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusSetWithCompleteJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadStatusSetWithCompleteJob",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -184,7 +177,6 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 					},
 				},
 			},
-			jobsNamespace: "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -218,8 +210,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusSetWithFailedJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadStatusSetWithFailedJob",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -234,7 +225,6 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 					},
 				},
 			},
-			jobsNamespace: "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -268,8 +258,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusSetWithFailedJobReasonAndMessage",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadStatusSetWithFailedJobReasonAndMessage",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -286,7 +275,6 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 					},
 				},
 			},
-			jobsNamespace: "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -320,8 +308,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusSetWithSuspendedJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadStatusSetWithSuspendedJob",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -335,7 +322,6 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 					},
 				},
 			},
-			jobsNamespace: "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -369,8 +355,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusWithDeletedStatus",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadStatusWithDeletedStatus",
 			job: &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -382,7 +367,6 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 					},
 				},
 			},
-			jobsNamespace: "ci-release",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -415,10 +399,8 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadStatusWithDeletedStatusAndNoBatchJob",
-			releaseNamespace: "ocp",
-			job:              &batchv1.CronJob{},
-			jobsNamespace:    "ci-release",
+			name: "ReleasePayloadStatusWithDeletedStatusAndNoBatchJob",
+			job:  &batchv1.CronJob{},
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
