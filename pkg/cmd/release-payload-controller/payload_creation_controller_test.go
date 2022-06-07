@@ -18,14 +18,12 @@ import (
 
 func TestPayloadCreationSync(t *testing.T) {
 	testCases := []struct {
-		name             string
-		releaseNamespace string
-		payload          *v1alpha1.ReleasePayload
-		expected         *v1alpha1.ReleasePayload
+		name     string
+		payload  *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
 	}{
 		{
-			name:             "ReleasePayloadWithoutReleaseCreationJobStatusOrConditions",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithoutReleaseCreationJobStatusOrConditions",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -54,8 +52,7 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithSuccessfulConditions",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithSuccessfulConditions",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -102,8 +99,7 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithFailureConditions",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithFailureConditions",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -150,8 +146,7 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithMixedConditions",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithMixedConditions",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -196,8 +191,7 @@ func TestPayloadCreationSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithSuccessfulReleaseCreationJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithSuccessfulReleaseCreationJob",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",

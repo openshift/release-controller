@@ -17,14 +17,12 @@ import (
 
 func TestPayloadRejectedSync(t *testing.T) {
 	testCases := []struct {
-		name             string
-		releaseNamespace string
-		input            *v1alpha1.ReleasePayload
-		expected         *v1alpha1.ReleasePayload
+		name     string
+		input    *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
 	}{
 		{
-			name:             "TestPayloadOverrideRejected",
-			releaseNamespace: "ocp",
+			name: "TestPayloadOverrideRejected",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -61,8 +59,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "TestPayloadOverrideRejectedAfterAccepted",
-			releaseNamespace: "ocp",
+			name: "TestPayloadOverrideRejectedAfterAccepted",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -115,8 +112,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "TestPayloadOverrideAccepted",
-			releaseNamespace: "ocp",
+			name: "TestPayloadOverrideAccepted",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -153,8 +149,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "TestPayloadOverrideAcceptedAfterRejected",
-			releaseNamespace: "ocp",
+			name: "TestPayloadOverrideAcceptedAfterRejected",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -207,8 +202,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithSuccessfulBlockingJobs",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithSuccessfulBlockingJobs",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -256,8 +250,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithFailedBlockingJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithFailedBlockingJob",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -305,8 +298,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithPendingBlockingJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithPendingBlockingJob",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -354,8 +346,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleasePayloadWithUnknownBlockingJob",
-			releaseNamespace: "ocp",
+			name: "ReleasePayloadWithUnknownBlockingJob",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -403,8 +394,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleaseCreationJobFailed",
-			releaseNamespace: "ocp",
+			name: "ReleaseCreationJobFailed",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",

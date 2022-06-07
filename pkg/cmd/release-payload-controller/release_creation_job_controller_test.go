@@ -17,16 +17,12 @@ import (
 
 func TestReleaseCreationJobSync(t *testing.T) {
 	testCases := []struct {
-		name             string
-		releaseNamespace string
-		jobsNamespace    string
-		payload          *v1alpha1.ReleasePayload
-		expected         *v1alpha1.ReleasePayload
+		name     string
+		payload  *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
 	}{
 		{
-			name:             "ReleaseCreationJobResultNotPresent",
-			releaseNamespace: "ocp",
-			jobsNamespace:    "ci-release",
+			name: "ReleaseCreationJobResultNotPresent",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
@@ -65,9 +61,7 @@ func TestReleaseCreationJobSync(t *testing.T) {
 			},
 		},
 		{
-			name:             "ReleaseCreationJobResultPresent",
-			releaseNamespace: "ocp",
-			jobsNamespace:    "ci-release",
+			name: "ReleaseCreationJobResultPresent",
 			payload: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-02-09-091559",
