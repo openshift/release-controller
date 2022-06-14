@@ -153,7 +153,6 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 				nodeLabels[tag.Name] = index
 				attrs := map[string]string{
 					string(viz.Label): fmt.Sprintf(`%q`, tag.Name),
-					string(viz.Shape): "record",
 					string(viz.HREF):  fmt.Sprintf(`"/releasetag/%s"`, template.HTMLEscapeString(tag.Name)),
 				}
 				if phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; phase == releasecontroller.ReleasePhaseRejected {
