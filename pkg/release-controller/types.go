@@ -242,6 +242,10 @@ type ReleaseVerification struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 	// AggregatedProwJob defines the prow job used to run release analysis verification
 	AggregatedProwJob *AggregatedProwJobVerification `json:"aggregatedProwJob,omitempty"`
+	// MultiJobAnalysis indicates the job is used to analyze results from multiple other
+	// job runs from the payload. Thus, it needs some environment variables set, such as
+	// PAYLOAD_TAG.
+	MultiJobAnalysis bool `json:"multiJobAnalysis"`
 }
 
 // AggregatedProwJobVerification identifies the name of a prow job that will be used to

@@ -123,7 +123,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if err != nil {
 		return nil, err
 	}
-	if isAggregatedJob {
+	if isAggregatedJob || verifyType.MultiJobAnalysis {
 		status, err := addAnalysisEnvToProwJobSpec(&spec, releaseTag.Name, verifyType.ProwJob.Name)
 		if err != nil {
 			return nil, err
