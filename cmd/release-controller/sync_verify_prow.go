@@ -3,9 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/base32"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/prow"
 	"strings"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -24,49 +23,10 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
-const (
-	maxProwJobNameLength = 63
-)
-
-// oneWayEncoding can be used to encode hex to a 62-character set (0 and 1 are duplicates) for use in
-// short display names that are safe for use in kubernetes as resource names.
-var oneWayNameEncoding = base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding)
-
-func prowJobSafeHash(values ...string) string {
-	hash := sha256.New()
-
-	// the inputs form a part of the hash
-	for _, s := range values {
-		hash.Write([]byte(s))
-	}
-
-	// Object names can't be too long so we truncate
-	// the hash. This increases chances of collision
-	// but we can tolerate it as our input space is
-	// tiny.
-	return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:4])
-}
-
-func generateSafeProwJobName(name, suffix string) string {
-	if suffix != "" && !strings.HasPrefix(suffix, "-") {
-		suffix = "-" + suffix
-	}
-	jobName := fmt.Sprintf("%s%s", name, suffix)
-	if len(jobName) > maxProwJobNameLength {
-		s := fmt.Sprintf("-%s%s", prowJobSafeHash(name), suffix)
-		truncated := name[0 : maxProwJobNameLength-len(s)]
-		if strings.HasSuffix(truncated, "-") {
-			truncated = truncated[:len(truncated)-1]
-		}
-		jobName = fmt.Sprintf("%s%s", truncated, s)
-	}
-	return jobName
-}
-
 func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Release, verifyName, verifySuffix string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	fullProwJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
-	prowJobName := generateSafeProwJobName(fullProwJobName, verifySuffix)
+	prowJobName := prow.GenerateSafeProwJobName(fullProwJobName, verifySuffix)
 
 	isAggregatedJob := verifyType.AggregatedProwJob != nil && verifyType.AggregatedProwJob.AnalysisJobCount > 0
 	if isAggregatedJob {
@@ -77,7 +37,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			jobName = defaultAggregateProwJobName
 		}
 		// Postfix the name to differentiate it from the analysis jobs
-		prowJobName = generateSafeProwJobName(fullProwJobName, "aggregator")
+		prowJobName = prow.GenerateSafeProwJobName(fullProwJobName, "aggregator")
 	}
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {

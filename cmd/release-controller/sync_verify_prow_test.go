@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/openshift/release-controller/pkg/prow"
 	"testing"
 
 	prowconfig "k8s.io/test-infra/prow/config"
@@ -101,12 +102,12 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := generateSafeProwJobName(tc.jobName, tc.suffix)
+			result := prow.GenerateSafeProwJobName(tc.jobName, tc.suffix)
 			if result != tc.expected {
 				t.Errorf("Expected truncated string %q, got %q", tc.expected, result)
 			}
-			if len(result) > maxProwJobNameLength {
-				t.Errorf("Expected string of length less than %d, got string of length %d", maxProwJobNameLength, len(result))
+			if len(result) > prow.MaxProwJobNameLength {
+				t.Errorf("Expected string of length less than %d, got string of length %d", prow.MaxProwJobNameLength, len(result))
 			}
 		})
 	}
