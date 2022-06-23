@@ -55,13 +55,16 @@ func (e bugzillaRequestError) Error() string {
 }
 
 func validateBZRequestError(err error) bool {
-	acceptedReturnCodes := []int{200, 201}
+	acceptedStatusCodes := []int{200, 201}
 	if err == nil {
 		return false
 	}
-	resError := err.(*bugzillaRequestError)
-	for _, returnCode := range acceptedReturnCodes {
-		if returnCode == resError.statusCode {
+	reqError, ok := err.(*bugzillaRequestError)
+	if !ok {
+		return true
+	}
+	for _, statusCode := range acceptedStatusCodes {
+		if statusCode == reqError.statusCode {
 			return false
 		}
 	}

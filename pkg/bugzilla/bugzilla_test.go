@@ -1,20 +1,37 @@
 package bugzilla
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestValidateBZRequestError(t *testing.T) {
-	goodResponse := &bugzillaRequestError{statusCode: 201, bugzillaCode: 201, message: "I am an error"}
-	badResponse := &bugzillaRequestError{statusCode: 301, bugzillaCode: 301, message: "I am an error"}
-	isItAnError := validateBZRequestError(goodResponse)
-	if isItAnError {
-		t.Fatalf("failed to validate whitelisted return codes")
+	testCases := []struct {
+		name     string
+		response error
+		expected bool
+	}{
+		{
+			name:     "Status Code 201",
+			response: &bugzillaRequestError{statusCode: 201, bugzillaCode: 201, message: "message"},
+			expected: false,
+		},
+		{
+			name:     "Empty response",
+			response: nil,
+			expected: false,
+		},
+		{
+			name:     "Non whitelisted status code",
+			response: &bugzillaRequestError{statusCode: 301, bugzillaCode: 301, message: "message"},
+			expected: true,
+		},
 	}
-	isItAnError = validateBZRequestError(nil)
-	if isItAnError {
-		t.Errorf("failed to validate nil error")
-	}
-	isItAnError = validateBZRequestError(badResponse)
-	if !isItAnError {
-		t.Fatalf("wrong validataion of statusCode %d", badResponse.statusCode)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			isItAnError := validateBZRequestError(tc.response)
+			if isItAnError != tc.expected {
+				t.Errorf("expected a %t validation but got %t for this response: %v", tc.expected, isItAnError, tc.response)
+			}
+		})
 	}
 }
