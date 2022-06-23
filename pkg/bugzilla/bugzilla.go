@@ -41,6 +41,33 @@ type pr struct {
 	prNum int
 }
 
+type bugzillaRequestError struct {
+	statusCode   int
+	bugzillaCode int
+	message      string
+}
+
+func (e bugzillaRequestError) Error() string {
+	if e.bugzillaCode != 0 {
+		return fmt.Sprintf("code %d: %s", e.bugzillaCode, e.message)
+	}
+	return e.message
+}
+
+func validateBZRequestError(err error) bool {
+	acceptedReturnCodes := []int{200, 201}
+	if err == nil {
+		return false
+	}
+	resError := err.(*bugzillaRequestError)
+	for _, returnCode := range acceptedReturnCodes {
+		if returnCode == resError.statusCode {
+			return false
+		}
+	}
+	return true
+}
+
 // VerifyBugs takes a list of bugzilla bug IDs and for each bug changes the bug status to VERIFIED if bug was reviewed and
 // lgtm'd by the bug's QA Contect
 func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
@@ -138,8 +165,8 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 				}
 			}
 			if !alreadyCommented {
-				if _, err := c.bzClient.CreateComment(&bugzilla.CommentCreate{ID: bugID, Comment: message, IsPrivate: true}); err != nil {
-					errs = append(errs, fmt.Errorf("Failed to comment on bug %d: %v", bug.ID, err))
+				if _, err := c.bzClient.CreateComment(&bugzilla.CommentCreate{ID: bugID, Comment: message, IsPrivate: true}); validateBZRequestError(err) {
+					errs = append(errs, fmt.Errorf("failed to comment on bug %d: %w", bug.ID, err))
 				}
 			}
 		}
