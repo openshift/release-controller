@@ -1,8 +1,22 @@
 package bugzilla
 
 import (
+	"fmt"
 	"testing"
 )
+
+type bugzillaRequestError struct {
+	statusCode   int
+	bugzillaCode int
+	message      string
+}
+
+func (e bugzillaRequestError) Error() string {
+	if e.bugzillaCode != 0 {
+		return fmt.Sprintf("code %d: %s", e.bugzillaCode, e.message)
+	}
+	return e.message
+}
 
 func TestValidateBZRequestError(t *testing.T) {
 	testCases := []struct {
