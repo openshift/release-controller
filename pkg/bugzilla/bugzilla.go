@@ -2,6 +2,7 @@ package bugzilla
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -41,30 +42,15 @@ type pr struct {
 	prNum int
 }
 
-type bugzillaRequestError struct {
-	statusCode   int
-	bugzillaCode int
-	message      string
-}
-
-func (e bugzillaRequestError) Error() string {
-	if e.bugzillaCode != 0 {
-		return fmt.Sprintf("code %d: %s", e.bugzillaCode, e.message)
-	}
-	return e.message
-}
-
 func validateBZRequestError(err error) bool {
-	acceptedStatusCodes := []int{200, 201}
 	if err == nil {
 		return false
 	}
-	reqError, ok := err.(*bugzillaRequestError)
-	if !ok {
-		return true
-	}
+	acceptedStatusCodes := []int64{200, 201}
+	val := reflect.ValueOf(err).Elem()
+	errorStatusCode := val.FieldByName("statusCode").Int()
 	for _, statusCode := range acceptedStatusCodes {
-		if statusCode == reqError.statusCode {
+		if statusCode == errorStatusCode {
 			return false
 		}
 	}
