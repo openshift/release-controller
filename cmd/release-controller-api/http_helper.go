@@ -271,10 +271,7 @@ func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.
 		return "error"
 	}
 	pending, failing := make([]string, 0, len(verificationJobs)), make([]string, 0, len(verificationJobs))
-	for k, v := range verificationJobs {
-		if v.Upgrade {
-			continue
-		}
+	for k, _ := range verificationJobs {
 		s, ok := status[k]
 		if !ok {
 			continue
