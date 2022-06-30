@@ -128,6 +128,9 @@ type PayloadCoordinates struct {
 type PayloadCreationConfig struct {
 	// ReleaseCreationCoordinates houses the configuration of the release creation job
 	ReleaseCreationCoordinates ReleaseCreationCoordinates `json:"releaseCreationCoordinates,omitempty"`
+
+	// ProwCoordinates houses the configuration for Prow
+	ProwCoordinates ProwCoordinates `json:"prowCoordinates,omitempty"`
 }
 
 // ReleaseCreationCoordinates houses the information pointing to the location of the release creation job
@@ -138,6 +141,13 @@ type ReleaseCreationCoordinates struct {
 
 	// ReleaseCreationJobName the name the release creation batchv1.Job
 	ReleaseCreationJobName string `json:"releaseCreationJobName"`
+}
+
+// ProwCoordinates houses the information pointing to the location where Prow creates the release
+// verification prowv1.ProwJobs.
+type ProwCoordinates struct {
+	// Namespace the namespace where Prow is configured to run prowv1.ProwJobs
+	Namespace string `json:"namespace"`
 }
 
 type ReleasePayloadOverrideType string
@@ -321,6 +331,9 @@ const (
 
 	// JobRunStateError job could not be scheduled
 	JobRunStateError JobRunState = "Error"
+
+	// JobRunStateUnknown unable to determine job state
+	JobRunStateUnknown JobRunState = "Unknown"
 )
 
 // JobRunCoordinates houses the information necessary to locate individual job executions
