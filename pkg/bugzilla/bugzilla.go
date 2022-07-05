@@ -42,15 +42,18 @@ type pr struct {
 	prNum int
 }
 
-func validateBZRequestError(err error) bool {
+func validateBZRequestError(id int, err error) bool {
 	if err == nil {
 		return false
 	}
-	acceptedStatusCodes := []int64{200, 201}
+	acceptedStatusCodes := []int64{200, 201, 401}
 	val := reflect.ValueOf(err).Elem()
 	errorStatusCode := val.FieldByName("statusCode").Int()
 	for _, statusCode := range acceptedStatusCodes {
 		if statusCode == errorStatusCode {
+			if errorStatusCode == 401 {
+				klog.V(4).Infof("Unable to process Bugzilla bug: %d. The access is restricted!", id)
+			}
 			return false
 		}
 	}
@@ -154,7 +157,7 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 				}
 			}
 			if !alreadyCommented {
-				if _, err := c.bzClient.CreateComment(&bugzilla.CommentCreate{ID: bugID, Comment: message, IsPrivate: true}); validateBZRequestError(err) {
+				if _, err := c.bzClient.CreateComment(&bugzilla.CommentCreate{ID: bugID, Comment: message, IsPrivate: true}); validateBZRequestError(bug.ID, err) {
 					errs = append(errs, fmt.Errorf("failed to comment on bug %d: %w", bug.ID, err))
 				}
 			}
