@@ -183,6 +183,7 @@ func getPRs(input []int, bzClient bugzilla.Client) (map[int][]pr, []error) {
 		extBugs, err := bzClient.GetExternalBugPRsOnBug(bzID)
 		if err != nil {
 			// there are a couple of bugs with weird permissions issues that can cause this to fail; simply log instead of generating error
+			// TODO - IsAccessDenied is modified locally as a workaround to handle response code 401. Remove when fixed upstream
 			if bugzilla.IsAccessDenied(err) {
 				klog.V(4).Infof("Access denied getting external bugs for bugzilla bug %d: %v", bzID, err)
 			} else {
