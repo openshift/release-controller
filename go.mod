@@ -15,7 +15,6 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.24.1
 	k8s.io/component-base => k8s.io/component-base v0.24.1
 	k8s.io/kubectl => k8s.io/kubectl v0.24.1
-	k8s.io/test-infra => github.com/hoxhaeris/kubernetes-test-infra v0.0.0-20220706204338-6de9f3e0671c
 )
 
 require (

@@ -1502,7 +1502,7 @@ k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/test-infra v0.0.0-20220630180208-5b0309003f44 => github.com/hoxhaeris/kubernetes-test-infra v0.0.0-20220706204338-6de9f3e0671c
+# k8s.io/test-infra v0.0.0-20220630180208-5b0309003f44
 ## explicit; go 1.18
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
@@ -1645,4 +1645,3 @@ sigs.k8s.io/yaml
 # k8s.io/client-go => k8s.io/client-go v0.24.1
 # k8s.io/component-base => k8s.io/component-base v0.24.1
 # k8s.io/kubectl => k8s.io/kubectl v0.24.1
-# k8s.io/test-infra => github.com/hoxhaeris/kubernetes-test-infra v0.0.0-20220706204338-6de9f3e0671c
