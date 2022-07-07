@@ -366,7 +366,7 @@ github.com/openshift/build-machinery-go/make/targets/golang
 github.com/openshift/build-machinery-go/make/targets/openshift
 github.com/openshift/build-machinery-go/make/targets/openshift/operator
 github.com/openshift/build-machinery-go/scripts
-# github.com/openshift/ci-tools v0.0.0-20220614144918-008d8ff3dbb6
+# github.com/openshift/ci-tools v0.0.0-20220706143425-fe1c4d2476b3
 ## explicit; go 1.18
 github.com/openshift/ci-tools/pkg/api
 github.com/openshift/ci-tools/pkg/release
@@ -1502,7 +1502,7 @@ k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/test-infra v0.0.0-20220630180208-5b0309003f44
+# k8s.io/test-infra v0.0.0-20220707185038-6c9b2eb5c9e2
 ## explicit; go 1.18
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
