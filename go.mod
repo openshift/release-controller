@@ -31,7 +31,7 @@ require (
 	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20220705205222-288913285fbb
 	github.com/openshift/api v0.0.0-20220525145417-ee5b62754c68
 	github.com/openshift/build-machinery-go v0.0.0-20220429084610-baff9f8d23b3
-	github.com/openshift/ci-tools v0.0.0-20220614144918-008d8ff3dbb6
+	github.com/openshift/ci-tools v0.0.0-20220706143425-fe1c4d2476b3
 	github.com/openshift/client-go v3.9.0+incompatible
 	github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc
 	github.com/prometheus/client_golang v1.12.1
@@ -50,7 +50,7 @@ require (
 	k8s.io/component-base v0.24.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.70.0
-	k8s.io/test-infra v0.0.0-20220630180208-5b0309003f44
+	k8s.io/test-infra v0.0.0-20220707185038-6c9b2eb5c9e2
 )
 
 require (
