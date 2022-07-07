@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/jira"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,7 +44,6 @@ import (
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	"github.com/openshift/library-go/pkg/serviceability"
 	prowconfig "k8s.io/test-infra/prow/config"
-	"k8s.io/test-infra/prow/config/secret"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
 
@@ -76,11 +76,16 @@ type options struct {
 	DryRun       bool
 	LimitSources []string
 
-	VerifyBugzilla bool
-	PluginConfig   pluginflagutil.PluginOptions
-	github         flagutil.GitHubOptions
-	bugzilla       flagutil.BugzillaOptions
+	PluginConfig pluginflagutil.PluginOptions
+
 	githubThrottle int
+	github         flagutil.GitHubOptions
+
+	VerifyBugzilla bool
+	bugzilla       flagutil.BugzillaOptions
+
+	VerifyJira bool
+	jira       flagutil.JiraOptions
 
 	validateConfigs string
 
@@ -107,6 +112,17 @@ var (
 		prometheus.CounterOpts{
 			Name: "release_controller_bugzilla_errors_total",
 			Help: "The total number of errors encountered by the release-controller's bugzilla verifier",
+		},
+		[]string{"type"},
+	)
+)
+
+// Add metrics for jira verifier errors
+var (
+	jiraErrorMetrics = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "release_controller_jira_errors_total",
+			Help: "The total number of errors encountered by the release-controller's jira verifier",
 		},
 		[]string{"type"},
 	)
@@ -174,7 +190,8 @@ func main() {
 	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve metrics on")
 
 	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
-	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla verifier.")
+	flagset.BoolVar(&opt.VerifyJira, "verify-jira", opt.VerifyJira, "Update status of issues fixed in accepted release to VERIFIED if PR was approved by QE.")
+	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla and jira verifier.")
 
 	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
 	flagset.BoolVar(&opt.softDeleteReleaseTags, "soft-delete-release-tags", false, "If set to true, annotate imagestreamtags instead of deleting them")
@@ -204,6 +221,7 @@ func main() {
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.bugzilla.AddFlags(goFlagSet)
+	opt.jira.AddFlags(goFlagSet)
 	opt.PluginConfig.AddFlags(goFlagSet)
 	flagset.AddGoFlagSet(goFlagSet)
 
@@ -302,30 +320,23 @@ func (o *options) Run() error {
 	}
 	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
-	start := time.Now()
 	imageClient, err := imageclientset.NewForConfig(releasesConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create image client: %v", err)
 	}
-	klog.V(4).Infof("1: %v", time.Now().Sub(start))
 
-	start = time.Now()
 	prowClient, err := o.prowJobClient(inClusterCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create prowjob client: %v", err)
 	}
-	klog.V(4).Infof("2: %v", time.Now().Sub(start))
 
 	stopCh := wait.NeverStop
 	var hasSynced []cache.InformerSynced
 
-	start = time.Now()
 	batchFactory := informers.NewSharedInformerFactoryWithOptions(releasesClient, 10*time.Minute, informers.WithNamespace(o.JobNamespace))
 	jobs := batchFactory.Batch().V1().Jobs()
 	hasSynced = append(hasSynced, jobs.Informer().HasSynced)
-	klog.V(4).Infof("3: %v", time.Now().Sub(start))
 
-	start = time.Now()
 	configAgent := &prowconfig.Agent{}
 	if o.prowconfig.ConfigPath != "" {
 		var err error
@@ -334,21 +345,15 @@ func (o *options) Run() error {
 			return err
 		}
 	}
-	klog.V(4).Infof("4: %v", time.Now().Sub(start))
 
-	start = time.Now()
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
 	releaseInfo := releasecontroller.NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
 	execReleaseFiles := releasecontroller.NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
-	klog.V(4).Infof("5: %v", time.Now().Sub(start))
 
-	start = time.Now()
 	graph := releasecontroller.NewUpgradeGraph(architecture)
-	klog.V(4).Infof("6: %v", time.Now().Sub(start))
 
-	start = time.Now()
 	c := NewController(
 		client.CoreV1(),
 		imageClient.ImageV1(),
@@ -366,30 +371,14 @@ func (o *options) Run() error {
 		architecture,
 		o.ARTSuffix,
 	)
-	klog.V(4).Infof("7: %v", time.Now().Sub(start))
 
-	start = time.Now()
+	ghClient, err := o.github.GitHubClient(false)
+	if err != nil {
+		return fmt.Errorf("Failed to create github client: %v", err)
+	}
+	ghClient.Throttle(o.githubThrottle, 0)
+
 	if o.VerifyBugzilla {
-		var tokens []string
-
-		// Append the path of bugzilla and github secrets.
-		if o.github.TokenPath != "" {
-			tokens = append(tokens, o.github.TokenPath)
-		}
-
-		if o.bugzilla.ApiKeyPath != "" {
-			tokens = append(tokens, o.bugzilla.ApiKeyPath)
-		}
-
-		if err := secret.Add(tokens...); err != nil {
-			return fmt.Errorf("failed to add tokens to secret agent: %w", err)
-		}
-
-		ghClient, err := o.github.GitHubClient(false)
-		if err != nil {
-			return fmt.Errorf("Failed to create github client: %v", err)
-		}
-		ghClient.Throttle(o.githubThrottle, 0)
 		bzClient, err := o.bugzilla.BugzillaClient()
 		if err != nil {
 			return fmt.Errorf("Failed to create bugzilla client: %v", err)
@@ -402,9 +391,20 @@ func (o *options) Run() error {
 		initializeMetrics(bugzillaErrorMetrics)
 		c.bugzillaErrorMetrics = bugzillaErrorMetrics
 	}
-	klog.V(4).Infof("8: %v", time.Now().Sub(start))
+	if o.VerifyJira {
+		jiraClient, err := o.jira.Client()
+		if err != nil {
+			return fmt.Errorf("Failed to create bugzilla client: %v", err)
+		}
+		pluginAgent, err := o.PluginConfig.PluginAgent()
+		if err != nil {
+			return fmt.Errorf("Failed to create plugin agent: %v", err)
+		}
+		c.jiraVerifier = jira.NewVerifier(jiraClient, ghClient, pluginAgent.Config())
+		initializeJiraMetrics(jiraErrorMetrics)
+		c.jiraErrorMetrics = jiraErrorMetrics
+	}
 
-	start = time.Now()
 	if len(o.AuditStorage) > 0 {
 		u, err := url.Parse(o.AuditStorage)
 		if err != nil {
@@ -441,13 +441,11 @@ func (o *options) Run() error {
 			return fmt.Errorf("--audit must be a valid file:// or gs:// URL")
 		}
 	}
-	klog.V(4).Infof("9: %v", time.Now().Sub(start))
 
 	if len(o.CLIImageForAudit) > 0 {
 		c.cliImageForAudit = o.CLIImageForAudit
 	}
 
-	start = time.Now()
 	if len(o.SigningKeyring) > 0 {
 		signer, err := signer.NewFromKeyring(o.SigningKeyring)
 		if err != nil {
@@ -455,7 +453,6 @@ func (o *options) Run() error {
 		}
 		c.signer = signer
 	}
-	klog.V(4).Infof("10: %v", time.Now().Sub(start))
 
 	if len(o.ListenAddr) > 0 {
 		http.DefaultServeMux.Handle("/metrics", promhttp.Handler())

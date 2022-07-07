@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/openshift/release-controller/pkg/jira"
 	"strings"
 	"time"
 
@@ -92,6 +93,9 @@ type Controller struct {
 	// bugzillaQueue is the list of releases whose fixed bugs must be synced to bugzilla
 	bugzillaQueue workqueue.RateLimitingInterface
 
+	// jiraQueue is the list of releases whose fixed issues must be synced to jira
+	jiraQueue workqueue.RateLimitingInterface
+
 	// auditTracker keeps track of when tags were audited
 	auditTracker *AuditTracker
 	// auditStore holds metadata on releases
@@ -130,6 +134,9 @@ type Controller struct {
 
 	bugzillaVerifier     *bugzilla.Verifier
 	bugzillaErrorMetrics *prometheus.CounterVec
+
+	jiraVerifier     *jira.Verifier
+	jiraErrorMetrics *prometheus.CounterVec
 
 	softDeleteReleaseTags bool
 	authenticationMessage string
@@ -183,6 +190,8 @@ func NewController(
 		), "audit"),
 
 		bugzillaQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "bugzilla"),
+
+		jiraQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "jira"),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -292,6 +301,10 @@ func (c *Controller) addBugzillaQueueKey(key queueKey) {
 	c.bugzillaQueue.Add(key)
 }
 
+func (c *Controller) addJiraQueueKey(key queueKey) {
+	c.jiraQueue.Add(key)
+}
+
 func (c *Controller) processJob(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
@@ -360,6 +373,7 @@ func (c *Controller) processImageStream(obj interface{}) {
 			klog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
 			c.addBugzillaQueueKey(key)
+			c.addJiraQueueKey(key)
 			return
 		}
 		if _, ok := t.Annotations[releasecontroller.ReleaseAnnotationHasReleases]; ok {
@@ -409,6 +423,10 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.bugzillaWorker, time.Second, stopCh)
+	}
+
+	for i := 0; i < workers; i++ {
+		go wait.Until(c.jiraWorker, time.Second, stopCh)
 	}
 
 	<-stopCh
@@ -529,6 +547,33 @@ func (c *Controller) processNextBugzilla() bool {
 	err := c.syncBugzilla(key)
 	c.handleNamespaceErr(c.bugzillaQueue, err, key)
 	klog.V(5).Infof("bz worker processing %v end", key)
+
+	return true
+}
+
+func (c *Controller) jiraWorker() {
+	for c.processNextJira() {
+	}
+	klog.V(4).Infof("Worker stopped")
+}
+
+func (c *Controller) processNextJira() bool {
+	obj, quit := c.jiraQueue.Get()
+	if quit {
+		return false
+	}
+	defer c.jiraQueue.Done(obj)
+
+	// don't run if we don't have a verifier
+	if c.jiraVerifier == nil {
+		return true
+	}
+	key := obj.(queueKey)
+
+	klog.V(5).Infof("jira worker processing %v begin", key)
+	err := c.syncJira(key)
+	c.handleNamespaceErr(c.jiraQueue, err, key)
+	klog.V(5).Infof("jira worker processing %v end", key)
 
 	return true
 }
