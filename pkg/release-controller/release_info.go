@@ -255,6 +255,9 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 }
 
 func bugList(s string) ([]BugDetails, error) {
+	if s == "" {
+		return []BugDetails{}, nil
+	}
 	var bugList []BugDetails
 	err := json.Unmarshal([]byte(s), &bugList)
 	if err != nil {
