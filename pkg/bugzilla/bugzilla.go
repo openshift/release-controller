@@ -164,7 +164,7 @@ func (c *Verifier) VerifyBugs(bugs []int, tagName string) []error {
 		}
 		if success {
 			klog.V(4).Infof("Updating bug %d (current status %s) to VERIFIED status", bug.ID, bug.Status)
-			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); err != nil {
+			if err := c.bzClient.UpdateBug(bug.ID, bugzilla.BugUpdate{Status: "VERIFIED"}); validateBZRequestError(bug.ID, err) {
 				errs = append(errs, fmt.Errorf("Failed to update status for bug %d: %v", bug.ID, err))
 			}
 		} else {
