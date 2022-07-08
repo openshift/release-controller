@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -39,15 +40,14 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
 			} else {
-				var bugDetailsArr []BugDetails
-				bugDetailsArr, err = info.Bugs(parts[1], parts[2])
+				var iArr []int
+				iArr, err = info.Bugs(parts[1], parts[2])
 				if err == nil {
-					bugDetailsByte, err := json.Marshal(bugDetailsArr)
-					if err != nil {
-						klog.V(4).Infof("Failed to Marshal Bug Details Array; from: %s to: %s; %s", parts[1], parts[2], err)
-					} else {
-						s = string(bugDetailsByte)
+					var sArr []string
+					for _, bugID := range iArr {
+						sArr = append(sArr, strconv.Itoa(bugID))
 					}
+					s = strings.Join(sArr, "\n")
 				}
 			}
 		case "changelog":
@@ -72,13 +72,13 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 	}
 }
 
-func (c *CachingReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
+func (c *CachingReleaseInfo) Bugs(from, to string) ([]int, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"bugs", from, to}, "\x00"), groupcache.StringSink(&s))
 	if err != nil {
-		return []BugDetails{}, err
+		return []int{}, err
 	}
-	return bugList(s)
+	return bugListToArr(s)
 }
 
 func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
@@ -110,7 +110,7 @@ func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error
 
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
-	Bugs(from, to string) ([]BugDetails, error)
+	Bugs(from, to string) ([]int, error)
 	ChangeLog(from, to string) (string, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
@@ -212,7 +212,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	return out.String(), nil
 }
 
-func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
+func (r *ExecReleaseInfo) Bugs(from, to string) ([]int, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return nil, fmt.Errorf("%s is not an image reference: %v", from, err)
 	}
@@ -223,7 +223,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return nil, fmt.Errorf("not a valid reference")
 	}
 
-	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", from, to}
+	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=name", "--skip-bug-check", from, to}
 	klog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
@@ -247,10 +247,24 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		if len(msg) == 0 {
 			msg = err.Error()
 		}
-		return []BugDetails{}, fmt.Errorf("could not generate a bug list: %v", msg)
+		return nil, fmt.Errorf("could not generate a bug list: %v", msg)
 	}
+	return bugListToArr(out.String())
+}
 
-	return bugList(out.String())
+func bugListToArr(s string) ([]int, error) {
+	bugs := []int{}
+	for _, bug := range strings.Split(s, "\n") {
+		if bug == "" {
+			continue
+		}
+		bugID, err := strconv.Atoi(bug)
+		if err != nil {
+			return nil, fmt.Errorf("could not convert bug id %s to an int: %v", bug, err)
+		}
+		bugs = append(bugs, bugID)
+	}
+	return bugs, nil
 }
 
 func bugList(s string) ([]BugDetails, error) {

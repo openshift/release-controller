@@ -132,20 +132,13 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	}
 
 	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
-	var bugList []int
-
-	for _, bug := range bugs {
-		if bug.Source == 0 {
-			bugList = append(bugList, bug.ID)
-		}
-	}
 	if err != nil {
 		klog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 		c.bugzillaErrorMetrics.WithLabelValues(bzUnableToGenerateBuglist).Inc()
 		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
 	var errs []error
-	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugList, tag.Name)...); len(errs) != 0 {
+	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugs, tag.Name)...); len(errs) != 0 {
 		klog.V(4).Infof("Error(s) in bugzilla verifier: %v", utilerrors.NewAggregate(errs))
 		c.bugzillaErrorMetrics.WithLabelValues(bzVerifier).Inc()
 		return utilerrors.NewAggregate(errs)
