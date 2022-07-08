@@ -133,8 +133,8 @@ func (c *Controller) syncJira(key queueKey) error {
 	issues, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
 	var issueList []string
 	for _, issue := range issues {
-		if issue.Source == 1 {
-			issueList = append(issueList, strconv.Itoa(issue.ID))
+		if false {
+			issueList = append(issueList, strconv.Itoa(issue))
 		}
 	}
 	if err != nil {
