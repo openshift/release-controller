@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -40,15 +39,15 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
 			} else {
-				var iArr []BugDetails
-				iArr, err = info.Bugs(parts[1], parts[2])
+				var bugDetailsArr []BugDetails
+				bugDetailsArr, err = info.Bugs(parts[1], parts[2])
 				if err == nil {
-					// there is no int or string array sink, so we must store as a single joined string
-					var sArr []string
-					for _, bug := range iArr {
-						sArr = append(sArr, strconv.Itoa(bug.ID))
+					bugDetailsByte, err := json.Marshal(bugDetailsArr)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal Bug Details Array; from: %s to: %s; %s", parts[1], parts[2], err)
+					} else {
+						s = string(bugDetailsByte)
 					}
-					s = strings.Join(sArr, "\n")
 				}
 			}
 		case "changelog":
