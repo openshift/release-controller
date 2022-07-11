@@ -223,7 +223,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return nil, fmt.Errorf("not a valid reference")
 	}
 
-	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", from, to}
+	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", "--skip-bug-check", from, to}
 	klog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
