@@ -59,8 +59,9 @@ func getNonVerifiedTagsJira(acceptedTags []*v1.TagReference) (current, previous 
 // PR reviewed and approved by the QA contact for the bug
 func (c *Controller) syncJira(key queueKey) error {
 	defer func() {
-		err := recover()
-		panic(err)
+		if err := recover(); err != nil {
+			panic(err)
+		}
 	}()
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)
