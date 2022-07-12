@@ -367,13 +367,23 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				}
 				if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
-						fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tags[0].Name)
+						fromPullSpec := releasecontroller.FindPublicImagePullSpec(release.Target, tags[0].Name)
+						if len(fromPullSpec) == 0 {
+							klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
+							return
+						}
+						fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
 						if err != nil {
 							klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
 							return
 						}
 
-						toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tag.Name)
+						toPullSpec := releasecontroller.FindPublicImagePullSpec(release.Target, tag.Name)
+						if len(toPullSpec) == 0 {
+							klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
+							return
+						}
+						toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
 						if err != nil {
 							klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
 							return
@@ -461,6 +471,11 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
+		err := c.ensureReleaseUpgradeJobs(release, releaseTag)
+		if err != nil {
+			klog.Errorf("unable to launch release upgrade jobs for %q: %v", releaseTag.Name, err)
+		}
+
 		status, err := c.ensureVerificationJobs(release, releaseTag)
 		if err != nil {
 			return err
