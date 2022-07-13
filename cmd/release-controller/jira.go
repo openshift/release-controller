@@ -103,7 +103,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		if verifyIssues.PreviousReleaseTag == nil {
 			klog.V(2).Infof("jira error: previous release unset for %s", release.Config.Name)
 			c.jiraErrorMetrics.WithLabelValues(jiraPrevReleaseUnset).Inc()
-			return fmt.Errorf("bugzilla error: previous release unset for %s", release.Config.Name)
+			return fmt.Errorf("jira error: previous release unset for %s", release.Config.Name)
 		}
 		stream, err := c.imageClient.ImageStreams(verifyIssues.PreviousReleaseTag.Namespace).Get(context.TODO(), verifyIssues.PreviousReleaseTag.Name, meta.GetOptions{})
 		if err != nil {
@@ -145,7 +145,7 @@ func (c *Controller) syncJira(key queueKey) error {
 	var errs []error
 	if errs := append(errs, c.jiraVerifier.VerifyIssues(issueList, tag.Name)...); len(errs) != 0 {
 		klog.V(4).Infof("Error(s) in jira verifier: %v", utilerrors.NewAggregate(errs))
-		c.bugzillaErrorMetrics.WithLabelValues(bzVerifier).Inc()
+		c.jiraErrorMetrics.WithLabelValues(jiraVerifier).Inc()
 		return utilerrors.NewAggregate(errs)
 	}
 
@@ -153,7 +153,7 @@ func (c *Controller) syncJira(key queueKey) error {
 	target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
 	if err != nil {
 		klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
-		c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
+		c.jiraErrorMetrics.WithLabelValues(jiraImagestreamGetErr).Inc()
 		return err
 	}
 	tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)

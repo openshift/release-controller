@@ -22,7 +22,7 @@ type Verifier struct {
 	pluginConfig *plugins.Configuration
 }
 
-// NewVerifier returns a Verifier configured with the provided github and bugzilla clients and the provided pluginConfig
+// NewVerifier returns a Verifier configured with the provided github and jira clients and the provided pluginConfig
 func NewVerifier(jiraClient jira.Client, ghClient github.Client, pluginConfig *plugins.Configuration) *Verifier {
 	return &Verifier{
 		jiraClient:   jiraClient,
