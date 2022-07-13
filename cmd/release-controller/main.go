@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	"github.com/openshift/release-controller/pkg/jira"
 	"net/http"
 	"net/url"
@@ -354,6 +355,11 @@ func (o *options) Run() error {
 
 	graph := releasecontroller.NewUpgradeGraph(architecture)
 
+	releasePayloadClient, err := releasepayloadclient.NewForConfig(inClusterCfg)
+	if err != nil {
+		klog.Fatal(err)
+	}
+
 	c := NewController(
 		client.CoreV1(),
 		imageClient.ImageV1(),
@@ -370,6 +376,7 @@ func (o *options) Run() error {
 		o.ClusterGroups,
 		architecture,
 		o.ARTSuffix,
+		releasePayloadClient.ReleaseV1alpha1(),
 	)
 
 	ghClient, err := o.github.GitHubClient(false)

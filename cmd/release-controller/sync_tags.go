@@ -43,6 +43,12 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 	}
 	updateReleaseTarget(release, is)
 
+	// Create the corresponding ReleasePayload object...
+	_, err = c.ensureReleasePayload(release, tag.Name)
+	if err != nil {
+		return nil, err
+	}
+
 	return &is.Spec.Tags[len(is.Spec.Tags)-1], nil
 }
 
