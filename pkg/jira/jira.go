@@ -176,7 +176,11 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 				}
 			}
 			if !alreadyCommented {
-				if _, err := c.jiraClient.AddComment(issueID, &jiraBaseClient.Comment{Body: message}); err != nil {
+				restrictedComment := &jiraBaseClient.CommentVisibility{
+					Type:  "group",
+					Value: "Red Hat Employee",
+				}
+				if _, err := c.jiraClient.AddComment(issueID, &jiraBaseClient.Comment{Body: message, Visibility: *restrictedComment}); err != nil {
 					errs = append(errs, fmt.Errorf("failed to comment on issue %s: %w", issue.ID, err))
 				}
 			}
