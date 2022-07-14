@@ -9,7 +9,6 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog"
-	"strconv"
 	"time"
 )
 
@@ -135,7 +134,7 @@ func (c *Controller) syncJira(key queueKey) error {
 	var issueList []string
 	for _, issue := range issues {
 		if issue.Source == 1 {
-			issueList = append(issueList, strconv.Itoa(issue.ID))
+			issueList = append(issueList, fmt.Sprintf("OCPBUGS-%d", issue.ID))
 		}
 	}
 	if err != nil {
