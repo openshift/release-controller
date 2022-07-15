@@ -98,6 +98,27 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	return needed, remaining == 0
 }
 
+func (c *Controller) endOfLifePrefixes() sets.String {
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		return nil
+	}
+	endOfLifePrefixes := sets.NewString()
+	for _, stream := range imageStreams {
+		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.EndOfLife {
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil {
+				endOfLifePrefixes.Insert(fmt.Sprintf("%d.%d", version.Major, version.Minor))
+			}
+			continue
+		}
+	}
+	return endOfLifePrefixes
+}
+
 func (c *Controller) userInterfaceHandler() http.Handler {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/", c.httpReleases)
@@ -563,7 +584,9 @@ func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, erro
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	endOfLifePrefixes := c.endOfLifePrefixes()
 
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
@@ -750,21 +773,25 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		if tag.Name == tagInfo.Info.Previous.Name {
 			selected = `selected="true"`
 		}
-		options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
+		if !endOfLifePrefixes.Has(pruneTagInfo(tag.Name)) {
+			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
+		}
 	}
 	for _, release := range tagInfo.Info.Stable.Releases {
 		if release.Release == tagInfo.Info.Release {
 			continue
 		}
 		for j, version := range release.Versions {
-			if j == 0 && len(options) > 0 {
-				options = append(options, `<option disabled>───</option>`)
+			if !endOfLifePrefixes.Has(pruneTagInfo(version.Tag.Name)) {
+				if j == 0 && len(options) > 0 {
+					options = append(options, `<option disabled>───</option>`)
+				}
+				var selected string
+				if tagInfo.Info.Previous != nil && version.Tag.Name == tagInfo.Info.Previous.Name {
+					selected = `selected="true"`
+				}
+				options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
 			}
-			var selected string
-			if tagInfo.Info.Previous != nil && version.Tag.Name == tagInfo.Info.Previous.Name {
-				selected = `selected="true"`
-			}
-			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
 		}
 	}
 	if len(options) > 0 {
@@ -967,7 +994,6 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		}
 		page.Streams = append(page.Streams, s)
 	}
-
 	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
 	pruneEndOfLifeTags(page, endOfLifePrefixes)
@@ -979,7 +1005,6 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	if err := pageEnd.Execute(w, page); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
-
 }
 
 func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Request) {
