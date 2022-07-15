@@ -929,3 +929,8 @@ func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.String) {
 		}
 	}
 }
+
+func pruneTagInfo(tagInfo string) string {
+	tagInfoParts := strings.Split(tagInfo, ".")
+	return fmt.Sprintf("%s.%s", tagInfoParts[0], tagInfoParts[1])
+}
