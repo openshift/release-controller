@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/jira"
 	"strings"
 	"time"
@@ -92,7 +93,6 @@ type Controller struct {
 	auditQueue workqueue.RateLimitingInterface
 	// bugzillaQueue is the list of releases whose fixed bugs must be synced to bugzilla
 	bugzillaQueue workqueue.RateLimitingInterface
-
 	// jiraQueue is the list of releases whose fixed issues must be synced to jira
 	jiraQueue workqueue.RateLimitingInterface
 
@@ -145,6 +145,8 @@ type Controller struct {
 
 	architecture string
 	artSuffix    string
+
+	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -164,6 +166,7 @@ func NewController(
 	clusterGroups []string,
 	architecture string,
 	artSuffix string,
+	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -223,6 +226,8 @@ func NewController(
 
 		architecture: architecture,
 		artSuffix:    artSuffix,
+
+		releasePayloadClient: releasePayloadClient,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)
