@@ -27,7 +27,10 @@ def generate_resource_values(product, stream_name, architecture, private):
     if private:
         private_suffix = '-priv'
 
-    return f'{product}{arch_suffix}{private_suffix}', f'{stream_name}{arch_suffix}{private_suffix}'
+    namespace = f'{product}{arch_suffix}{private_suffix}'
+    imagestream = f'{stream_name}{arch_suffix}{private_suffix}'
+
+    return namespace, imagestream
 
 
 def validate_server_connection(ctx):
@@ -41,7 +44,7 @@ def validate_server_connection(ctx):
             raise e
 
 
-def create_patch(action, custom_message, custom_reason):
+def create_imagestreamtag_patch(action, custom_message, custom_reason):
     data = {
         'image': {
             'metadata': {
@@ -96,8 +99,8 @@ def write_backup_file(name, release, data):
     return backup_filename
 
 
-def update(ctx, action, ns, name, release, custom_message, custom_reason, execute):
-    patch = create_patch(action, custom_message, custom_reason)
+def patch_imagestreamtag(ctx, ns, name, action, release, custom_message, custom_reason, execute):
+    patch = create_imagestreamtag_patch(action, custom_message, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
     with oc.options(ctx), oc.tracking(), oc.timeout(15):
@@ -105,9 +108,10 @@ def update(ctx, action, ns, name, release, custom_message, custom_reason, execut
             with oc.project(ns):
                 tag = oc.selector(f'imagestreamtag/{name}:{release}').object(ignore_not_found=True)
                 if not tag:
-                    raise Exception(f'Unable to locate imagestreamtag: {ns}/{name}:{release}')
+                    logger.error(f'Unable to locate imagestreamtag: {ns}/{name}:{release}')
+                    return
 
-                logger.info(f'{action.capitalize()}ing: {ns}/{name}:{release}')
+                logger.info(f'{action.capitalize()}ing imagestreamtag: {ns}/{name}:{release}')
                 if execute:
                     backup_file = write_backup_file(name, release, tag.model._primitive())
 
@@ -121,6 +125,59 @@ def update(ctx, action, ns, name, release, custom_message, custom_reason, execut
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to update release: "{release}"')
+            raise e
+
+
+def create_releasepayload_patch(action, custom_reason):
+    if action == 'accept':
+        override = 'Accepted'
+    elif action == 'reject':
+        override = 'Rejected'
+    else:
+        raise ValueError(f'Unsupported action specified: {action}')
+
+    reason = f'Manually {action}ed per TRT'
+    if custom_reason is not None:
+        reason = custom_reason
+
+    data = {
+        'spec': {
+            'payloadOverride': {
+                'override': override,
+                'reason': reason,
+            }
+        }
+    }
+
+    return data
+
+
+def patch_releaespayload(ctx, ns, action, release, custom_reason, execute):
+    patch = create_releasepayload_patch(action, custom_reason)
+    logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
+        try:
+            with oc.project(ns):
+                payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+                if not payload:
+                    logger.error(f'Unable to locate releasepayload: {ns}/{release}')
+                    return
+
+                logger.info(f'{action.capitalize()}ing releasepayload: {ns}/{release}')
+                if execute:
+                    backup_file = write_backup_file("releasepayload", release, payload.model._primitive())
+
+                    payload.patch(patch, strategy='merge')
+
+                    logger.info(f'ReleasePayload {release} updated successfully')
+                    logger.info(f'Backup written to: {backup_file}')
+                else:
+                    logger.info(f'[dry-run] Patching releasepayload {release} with patch:\n{json.dumps(patch, indent=4)}')
+                    logger.warning('You must specify "--execute" to permanently apply these changes')
+
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to update releasepayload: "{release}"')
             raise e
 
 
@@ -161,4 +218,8 @@ if __name__ == '__main__':
 
     validate_server_connection(context)
     namespace, imagestream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
-    update(context, args['action'], namespace, imagestream, args['release'], args['message'], args['reason'], args['execute'])
+
+    # TODO: Remove once ReleasePayloads are fully implemented...
+    patch_imagestreamtag(context, namespace, imagestream, args['action'], args['release'], args['message'], args['reason'], args['execute'])
+
+    patch_releaespayload(context, namespace, args['action'], args['release'], args['reason'], args['execute'])
