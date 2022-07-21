@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/openshift/release-controller/pkg/prow"
 	"strings"
@@ -96,6 +97,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
 	if !ok {
+		klog.Warningf("Returning synthetic prowjob: %q [%q, %t, %q]", fullProwJobName, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 		now := metav1.Now()
 		// return a synthetic job to indicate that this test is impossible to run (no spec, or
 		// this is an upgrade job and no upgrade is possible)
@@ -105,6 +107,12 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			Description:    "Job was not defined or does not have any inputs",
 			State:          prowjobv1.SuccessState,
 		}
+		b, err := json.Marshal(pj)
+		if err != nil {
+			klog.Errorf("unable to marshal prowjob: %v", err)
+			return objectToUnstructured(&pj), nil
+		}
+		klog.V(6).Infof("prowjob definition: [%s]", string(b))
 		return objectToUnstructured(&pj), nil
 	}
 
