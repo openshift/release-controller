@@ -84,11 +84,13 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if err != nil {
 		return nil, err
 	}
+	klog.V(6).Infof("addReleaseEnvToProwJobSpec() returned: OK -> %t", ok)
 	if isAggregatedJob || verifyType.MultiJobAnalysis {
 		status, err := addAnalysisEnvToProwJobSpec(&spec, releaseTag.Name, verifyType.ProwJob.Name)
 		if err != nil {
 			return nil, err
 		}
+		klog.V(6).Infof("addAnalysisEnvToProwJobSpec(): status -> %t", status)
 		ok = ok && status
 	}
 	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
@@ -96,6 +98,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	})
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
+	klog.V(6).Infof("OK -> %t", ok)
 	if !ok {
 		klog.Warningf("Returning synthetic prowjob: %q [%q, %t, %q]", fullProwJobName, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 		now := metav1.Now()
@@ -172,6 +175,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
 			case name == "RELEASE_IMAGE_INITIAL":
 				if len(previousReleasePullSpec) == 0 {
+					klog.V(6).Infof("[RELEASE_IMAGE_INITIAL] len(previousReleasePullSpec) == 0")
 					return false, nil
 				}
 				hasUpgradeImage = true
@@ -221,6 +225,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			}
 		} else if !hasUpgradeImage {
 			if len(previousReleasePullSpec) == 0 {
+				klog.V(6).Infof("[if !hasUpgradeImage] len(previousReleasePullSpec) == 0")
 				return false, nil
 			}
 			switch architecture {
