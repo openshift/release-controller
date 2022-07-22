@@ -246,7 +246,9 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, bool) {
 	for i := range config.Periodics {
 		if config.Periodics[i].Name == name {
-			return &config.Periodics[i], true
+			return &prowconfig.Periodic{
+				JobBase: *config.Periodics[i].DeepCopy(),
+			}, true
 		}
 	}
 	return nil, false
