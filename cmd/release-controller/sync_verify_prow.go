@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/openshift/release-controller/pkg/prow"
 	"strings"
@@ -49,6 +48,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 		return obj.(*unstructured.Unstructured), nil
 	}
 
+	// It is very important that you do not modify anything returned from c.prowConfigLoader.Config():
+	// https://github.com/kubernetes/test-infra/blob/a68e557705be5e4b7d3cf45bb4fe1e93b82c5682/prow/config/agent.go#L389
+	// These are in-memory copies of the mounted prow configurations and changing them results in subsequent lookups that
+	// will contain the updates, and inevitably they will be replaced if/when the config changes.
 	config := c.prowConfigLoader.Config()
 	if config == nil {
 		err := fmt.Errorf("the prow job %s is not valid: no prow jobs have been defined", jobName)
@@ -84,13 +87,11 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if err != nil {
 		return nil, err
 	}
-	klog.V(6).Infof("addReleaseEnvToProwJobSpec() returned: OK -> %t", ok)
 	if isAggregatedJob || verifyType.MultiJobAnalysis {
 		status, err := addAnalysisEnvToProwJobSpec(&spec, releaseTag.Name, verifyType.ProwJob.Name)
 		if err != nil {
 			return nil, err
 		}
-		klog.V(6).Infof("addAnalysisEnvToProwJobSpec(): status -> %t", status)
 		ok = ok && status
 	}
 	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
@@ -98,9 +99,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	})
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
-	klog.V(6).Infof("OK -> %t", ok)
 	if !ok {
-		klog.Warningf("Returning synthetic prowjob: %q [%q, %t, %q]", fullProwJobName, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 		now := metav1.Now()
 		// return a synthetic job to indicate that this test is impossible to run (no spec, or
 		// this is an upgrade job and no upgrade is possible)
@@ -110,12 +109,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			Description:    "Job was not defined or does not have any inputs",
 			State:          prowjobv1.SuccessState,
 		}
-		b, err := json.Marshal(pj)
-		if err != nil {
-			klog.Errorf("unable to marshal prowjob: %v", err)
-			return objectToUnstructured(&pj), nil
-		}
-		klog.V(6).Infof("prowjob definition: [%s]", string(b))
 		return objectToUnstructured(&pj), nil
 	}
 
@@ -175,7 +168,6 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
 			case name == "RELEASE_IMAGE_INITIAL":
 				if len(previousReleasePullSpec) == 0 {
-					klog.V(6).Infof("[RELEASE_IMAGE_INITIAL] len(previousReleasePullSpec) == 0")
 					return false, nil
 				}
 				hasUpgradeImage = true
@@ -225,7 +217,6 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			}
 		} else if !hasUpgradeImage {
 			if len(previousReleasePullSpec) == 0 {
-				klog.V(6).Infof("[if !hasUpgradeImage] len(previousReleasePullSpec) == 0")
 				return false, nil
 			}
 			switch architecture {
@@ -243,6 +234,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 	return true, nil
 }
 
+// To ensure that we do not modify anything returned from the ProwConfigLoader, I've added a DeepCopy here...
 func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, bool) {
 	for i := range config.Periodics {
 		if config.Periodics[i].Name == name {
