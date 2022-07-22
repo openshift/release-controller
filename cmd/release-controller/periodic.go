@@ -40,6 +40,10 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 			klog.Errorf("failed to get list of imagestreams: %v", err)
 			return
 		}
+		// It is very important that you do not modify anything returned from c.prowConfigLoader.Config():
+		// https://github.com/kubernetes/test-infra/blob/a68e557705be5e4b7d3cf45bb4fe1e93b82c5682/prow/config/agent.go#L389
+		// These are in-memory copies of the mounted prow configurations and changing them results in subsequent lookups that
+		// will contain the updates, and inevitably they will be replaced if/when the config changes.
 		cfg := c.prowConfigLoader.Config()
 		if cfg == nil {
 			klog.Errorf("the prow config is not valid: no prow jobs have been defined")
