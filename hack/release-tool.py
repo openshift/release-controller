@@ -99,21 +99,21 @@ def write_backup_file(name, release, data):
     return backup_filename
 
 
-def patch_imagestreamtag(ctx, ns, name, action, release, custom_message, custom_reason, execute):
+def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_message, custom_reason, execute):
     patch = create_imagestreamtag_patch(action, custom_message, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
     with oc.options(ctx), oc.tracking(), oc.timeout(15):
         try:
-            with oc.project(ns):
-                tag = oc.selector(f'imagestreamtag/{name}:{release}').object(ignore_not_found=True)
+            with oc.project(namespace):
+                tag = oc.selector(f'imagestreamtag/{imagestream}:{release}').object(ignore_not_found=True)
                 if not tag:
-                    logger.error(f'Unable to locate imagestreamtag: {ns}/{name}:{release}')
+                    logger.error(f'Unable to locate imagestreamtag: {namespace}/{imagestream}:{release}')
                     return
 
-                logger.info(f'{action.capitalize()}ing imagestreamtag: {ns}/{name}:{release}')
+                logger.info(f'{action.capitalize()}ing imagestreamtag: {namespace}/{imagestream}:{release}')
                 if execute:
-                    backup_file = write_backup_file(name, release, tag.model._primitive())
+                    backup_file = write_backup_file(imagestream, release, tag.model._primitive())
 
                     tag.patch(patch)
 
@@ -152,19 +152,19 @@ def create_releasepayload_patch(action, custom_reason):
     return data
 
 
-def patch_releaespayload(ctx, ns, action, release, custom_reason, execute):
+def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute):
     patch = create_releasepayload_patch(action, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
     with oc.options(ctx), oc.tracking(), oc.timeout(15):
         try:
-            with oc.project(ns):
+            with oc.project(namespace):
                 payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
                 if not payload:
-                    logger.error(f'Unable to locate releasepayload: {ns}/{release}')
+                    logger.error(f'Unable to locate releasepayload: {namespace}/{release}')
                     return
 
-                logger.info(f'{action.capitalize()}ing releasepayload: {ns}/{release}')
+                logger.info(f'{action.capitalize()}ing releasepayload: {namespace}/{release}')
                 if execute:
                     backup_file = write_backup_file("releasepayload", release, payload.model._primitive())
 
@@ -179,6 +179,56 @@ def patch_releaespayload(ctx, ns, action, release, custom_reason, execute):
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to update releasepayload: "{release}"')
             raise e
+
+
+def prune_releases(ctx, namespace, imagestream, releases, execute, confirm):
+    for tag in releases:
+        if execute:
+            delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm)
+        else:
+            logger.info(f'[dry-run] Deleting imagestreamtag: {namespace}/{imagestream}:{tag}')
+            logger.warning('You must specify "--execute" to permanently apply these changes')
+
+
+def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm):
+    imagestreamtag = f'{imagestream}:{tag}'
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
+        try:
+            with oc.project(namespace):
+                result = oc.selector(f'imagestreamtag/{imagestreamtag}').object(ignore_not_found=True)
+
+                if result is not None:
+                    if confirm or confirm_delete(namespace, imagestreamtag):
+                        logger.info(f'Deleting imagestreamtag: {namespace}/{imagestreamtag}')
+
+                        backup_file = write_backup_file("imagestreamtag", tag, result.model._primitive())
+                        logger.info(f'Backup written to: {backup_file}')
+
+                        r = result.delete(ignore_not_found=True)
+                        if r.status() != 0:
+                            logger.error(f'Delete returned: {r.out()}')
+                    else:
+                        logger.info(f'Deletion of imagestreamtag: "{namespace}/{imagestreamtag}" skipped.')
+                else:
+                    logger.info(f'Imagestreamtag: "{namespace}/{imagestreamtag}" does not exist.')
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to delete imagestreamtag: {e}')
+            raise e
+
+
+def confirm_delete(namespace, imagestreamtag):
+    i = 1
+    while i <= 5:
+        answer = input(f"Delete: {namespace}/{imagestreamtag}? (yes or no) ")
+        if any(answer.lower() == f for f in ["yes", 'y', 'ye']):
+            return True
+        elif any(answer.lower() == f for f in ['no', 'n', '0']):
+            return False
+        else:
+            print('Please enter yes or no')
+            i = i + 1
+    return False
 
 
 if __name__ == '__main__':
@@ -201,10 +251,16 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands', help='Supported operations', required=True)
     accept_parser = subparsers.add_parser('accept', help='Accepts the specified release')
     accept_parser.set_defaults(action='accept')
+    accept_parser.add_argument('release', help='The name of the release to accept (i.e. 4.10.0-0.ci-2021-12-17-144800)')
+
     reject_parser = subparsers.add_parser('reject', help='Rejects the specified release')
     reject_parser.set_defaults(action='reject')
+    reject_parser.add_argument('release', help='The name of the release to reject (i.e. 4.10.0-0.ci-2021-12-17-144800)')
 
-    parser.add_argument('release', help='The name of the release to process (i.e. 4.10.0-0.ci-2021-12-17-144800)')
+    prune_parser = subparsers.add_parser('prune', help='Prunes the specified release(s)')
+    prune_parser.set_defaults(action='prune')
+    prune_parser.add_argument('releases', help='The name of the release(s) to prune (i.e. 4.10.0-0.ci-2021-12-17-144800)', action="extend", nargs="+", type=str)
+    prune_parser.add_argument('-y', '--yes', help='Automatically answer yes to confirm deletion(s)', action='store_true')
 
     args = vars(parser.parse_args())
 
@@ -217,9 +273,15 @@ if __name__ == '__main__':
         context['kubeconfig'] = args['kubeconfig']
 
     validate_server_connection(context)
-    namespace, imagestream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
+    release_namespace, release_image_stream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
 
-    # TODO: Remove once ReleasePayloads are fully implemented...
-    patch_imagestreamtag(context, namespace, imagestream, args['action'], args['release'], args['message'], args['reason'], args['execute'])
+    if args['action'] in ['accept', 'reject']:
+        # TODO: Remove once ReleasePayloads are fully implemented...
+        patch_imagestreamtag(context, release_namespace, release_image_stream, args['action'], args['release'], args['message'], args['reason'], args['execute'])
 
-    patch_releaespayload(context, namespace, args['action'], args['release'], args['reason'], args['execute'])
+        patch_releaespayload(context, release_namespace, args['action'], args['release'], args['reason'], args['execute'])
+    elif args['action'] == 'prune':
+        prune_releases(context, release_namespace, release_image_stream, args['releases'], args['execute'], args['yes'])
+    else:
+        logger.error(f'Unsupported action: {args["action"]}')
+        exit(-1)
