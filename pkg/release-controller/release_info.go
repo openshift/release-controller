@@ -603,7 +603,10 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 	var mu sync.Mutex
 	limit := make(chan struct{}, 10) // set the limit to 10 concurrent goroutines
 	results := make(map[string][]jiraBaseClient.Issue)
-
+	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
+	if r.jiraClient == nil {
+		return "", fmt.Errorf("unable to communicate with Jira")
+	}
 	// loop to start goroutines
 	for _, feature := range featuresList {
 		wg.Add(1)
@@ -639,6 +642,10 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 }
 
 func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBaseClient.Issue, err error) {
+	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
+	if r.jiraClient == nil {
+		return result, fmt.Errorf("unable to communicate with Jira")
+	}
 	// Keep the chunk on the small side, it is much faster
 	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
 	chunk := len(issues) / 10
