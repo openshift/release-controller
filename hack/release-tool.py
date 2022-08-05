@@ -199,7 +199,10 @@ def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm):
                 result = oc.selector(f'imagestreamtag/{imagestreamtag}').object(ignore_not_found=True)
 
                 if result is not None:
-                    if confirm or confirm_delete(namespace, imagestreamtag):
+                    # Check for the release-controllers "keep" annotation...
+                    keep = result.get_annotation("release.openshift.io/keep", if_missing=None)
+
+                    if keep is None and (confirm or confirm_delete(namespace, imagestreamtag)):
                         logger.info(f'Deleting imagestreamtag: {namespace}/{imagestreamtag}')
 
                         backup_file = write_backup_file("imagestreamtag", tag, result.model._primitive())
@@ -209,7 +212,10 @@ def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm):
                         if r.status() != 0:
                             logger.error(f'Delete returned: {r.out()}')
                     else:
-                        logger.info(f'Deletion of imagestreamtag: "{namespace}/{imagestreamtag}" skipped.')
+                        if keep is not None:
+                            logger.warning(f'Imagestreamtag: "{namespace}/{imagestreamtag}" has been flagged as "Keep", skipped.')
+                        else:
+                            logger.info(f'Deletion of imagestreamtag: "{namespace}/{imagestreamtag}" skipped.')
                 else:
                     logger.info(f'Imagestreamtag: "{namespace}/{imagestreamtag}" does not exist.')
         except (ValueError, OpenShiftPythonException, Exception) as e:
