@@ -165,12 +165,14 @@ func (c *Controller) ensureImportJob(release *releasecontroller.Release, name st
 }
 
 func (c *Controller) ensureJob(name string, preconditions map[string]string, createFn func() (*batchv1.Job, error)) (*batchv1.Job, error) {
+	// Request the deletion of any underlying pods as well...
+	policy := metav1.DeletePropagationBackground
 	job, err := c.jobLister.Jobs(c.jobNamespace).Get(name)
 	if err == nil {
 		for k, v := range preconditions {
 			if job.Annotations[k] != v {
 				klog.V(2).Infof("Job %s doesn't match precondition %s: %s != %s, deleting and recreating", job.Name, k, v, job.Annotations[k])
-				err = c.jobClient.Jobs(c.jobNamespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &job.UID}})
+				err = c.jobClient.Jobs(c.jobNamespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &job.UID}, PropagationPolicy: &policy})
 				return nil, err
 			}
 		}
