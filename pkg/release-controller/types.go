@@ -139,6 +139,10 @@ type ReleaseConfig struct {
 	// Check is a map of short names to check routines that report additional information
 	// about the health or quality of this stream to the user interface.
 	Check map[string]ReleaseCheck `json:"check"`
+
+	// Upgrade is a map of short names of upgrade tests to launch for releases after they
+	// have been promoted into a "Stable" stream.
+	Upgrade map[string]UpgradeVerification `json:"upgrade"`
 }
 
 type ReleaseCheck struct {
@@ -278,6 +282,17 @@ type AggregatedProwJobVerification struct {
 	ProwJob *ProwJobVerification `json:"prowJob,omitempty"`
 	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
 	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
+}
+
+// UpgradeVerification is an upgrade task that will be executed against releases, as
+// they are promoted into a stable channel.
+type UpgradeVerification struct {
+	// Disabled will prevent this verification from being used to launch any upgrade
+	// verification tests.
+	Disabled bool `json:"disabled"`
+	// ProwJob the name of the ProwJob, from prow's job configuration, that
+	// specifies the upgrade job definition to launch.
+	ProwJob *ProwJobVerification `json:"prowJob"`
 }
 
 // ReleasePeriodic is a job that runs on the speicifed cron or interval period as a
