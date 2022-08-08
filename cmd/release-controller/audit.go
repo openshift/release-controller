@@ -159,10 +159,12 @@ func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.D
 	count := 0
 	now := time.Now()
 	var lastErr error
+	// Request the deletion of any underlying pods as well...
+	policy := metav1.DeletePropagationBackground
 	for _, job := range result {
 		if job.Status.CompletionTime != nil {
 			if job.Status.Succeeded > 0 && now.Sub(job.Status.CompletionTime.Time) > expireJobs {
-				if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+				if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{PropagationPolicy: &policy}); err != nil {
 					klog.V(4).Infof("Failed to delete expired job %s/%s: %v", job.Namespace, job.Name, err)
 					lastErr = err
 				}

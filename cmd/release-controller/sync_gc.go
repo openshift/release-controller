@@ -66,6 +66,9 @@ func (c *Controller) garbageCollectSync() error {
 	}
 
 	// all jobs created for a release that no longer exists should be deleted
+	// Request the deletion of their underlying pods as well...
+	policy := metav1.DeletePropagationBackground
+
 	for _, job := range jobs {
 		if active.Has(job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]) {
 			continue
@@ -80,14 +83,14 @@ func (c *Controller) garbageCollectSync() error {
 		}
 		if generation < targetGeneration {
 			klog.V(2).Infof("Removing orphaned release job %s", job.Name)
-			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{PropagationPolicy: &policy}); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
 			}
 			continue
 		}
 		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Time.Before(time.Now().Add(-2*time.Hour)) {
 			klog.V(2).Infof("Removing old completed release job %s", job.Name)
-			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{PropagationPolicy: &policy}); err != nil && !errors.IsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s: %v", job.Name, err))
 			}
 			continue
