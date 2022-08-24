@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
+	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	"strings"
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {
@@ -39,7 +45,15 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 	if tagUpgradeInfo.Metadata != nil {
 		supportedUpgrades = tagUpgradeInfo.Metadata.Previous
 	}
+	// Get all the currently running prowjobs for this release
+	prowJobs := c.getProwJobsForTag(releaseTag.Name)
 	for _, previousTag := range supportedUpgrades {
+		name := fmt.Sprintf("upgrade-from-%s", previousTag)
+		// Ensure that only a single upgrade job gets executed per release tag
+		if releaseUpgradeJobExists(prowJobs, name) {
+			klog.V(6).Infof("Release upgrade job %q already exists.", name)
+			continue
+		}
 		platform := platformDistribution.Get()
 		previousReleasePullSpec := generatePullSpec(previousTag, c.architecture)
 		klog.V(4).Infof("Testing upgrade from %q to %q on %q", previousReleasePullSpec, pullSpec, platform)
@@ -47,18 +61,47 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 			releasecontroller.ReleaseLabelVerify:  "true",
 			releasecontroller.ReleaseLabelPayload: releaseTag.Name,
 		}
-		name := fmt.Sprintf("upgrade-from-%s", previousTag)
-		jobNameSuffix := platform
 		verifyType := releasecontroller.ReleaseVerification{
 			Upgrade: true,
 			ProwJob: jobs[platform],
 		}
-		_, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		_, err := c.ensureProwJobForReleaseTag(release, name, platform, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (c *Controller) getProwJobsForTag(tagName string) []prowapi.ProwJob {
+	prowJobs := []prowapi.ProwJob{}
+	labelSet := labels.Set{
+		releasecontroller.ReleaseLabelVerify:  "true",
+		releasecontroller.ReleaseLabelPayload: tagName,
+	}
+	list, err := c.prowClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(labelSet).String()})
+	if err != nil {
+		klog.Errorf("failed to list prowjobs: %v", err)
+		return prowJobs
+	}
+	for _, job := range list.Items {
+		prowjob := prowapi.ProwJob{}
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(job.UnstructuredContent(), &prowjob); err != nil {
+			klog.Errorf("failed to convert unstructured prowjob to prowjob type object: %v", err)
+			continue
+		}
+		prowJobs = append(prowJobs, prowjob)
+	}
+	return prowJobs
+}
+
+func releaseUpgradeJobExists(prowJobs []prowapi.ProwJob, prefix string) bool {
+	for _, prowJob := range prowJobs {
+		if strings.HasPrefix(prowJob.Name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func generatePullSpec(version, architecture string) string {
