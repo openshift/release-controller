@@ -40,25 +40,23 @@ type pr struct {
 func issueTargetReleaseCheck(issue *jiraBaseClient.Issue, tagRelease string, tagName string) (bool, error) {
 	targetVersion, err := helpers.GetIssueTargetVersion(issue)
 	if err != nil {
-		klog.Warningf("Failed to get the target version for issue: %s", issue.ID)
+		klog.Warningf("Failed to get the target version for issue: %s", issue.Key)
 		return true, nil
 	}
 	if targetVersion == nil {
-		klog.Warningf("Issue %s does not have a target release", issue.ID)
+		klog.Warningf("Issue %s does not have a target release", issue.Key)
 		return true, nil
 	}
 	for _, element := range targetVersion {
-		// TODO - check if element.Name is the correct place where the targetVersion string is saved (hoxhaeris: I can't find a jira ticket with this field set)
 		issueSplitVer := strings.Split(element.Name, ".")
 		if len(issueSplitVer) < 2 {
 			return true, fmt.Errorf("issue %s: length of target release `%s` after split by `.` is less than 2", issue.ID, element.Name)
 		}
 		issueRelease := fmt.Sprintf("%s.%s", issueSplitVer[0], issueSplitVer[1])
 		if issueRelease != tagRelease {
-			klog.Infof("Issue %s is in different release (%s) than tag %s", issue.ID, issueRelease, tagName)
+			klog.Infof("Issue %s is in different release (%s) than tag %s", issue.Key, issueRelease, tagName)
 			return true, nil
 		}
-		// TODO - check if correct: in Bugzilla we check only the first element of the targetVersion array, here the same is done
 		break
 	}
 	return false, nil
@@ -67,6 +65,9 @@ func issueTargetReleaseCheck(issue *jiraBaseClient.Issue, tagRelease string, tag
 func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 	var unlabeledPRs []pr
 	labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
+	if err != nil {
+		return unlabeledPRs, fmt.Errorf("unable to get labels for github pull %s/%s#%d: %w", extPR.org, extPR.repo, extPR.prNum, err)
+	}
 	var hasLabel bool
 	for _, label := range labels {
 		if label.Name == "qe-approved" {
@@ -77,9 +78,6 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 	if !hasLabel {
 		unlabeledPRs = append(unlabeledPRs, extPR)
 	}
-	if err != nil {
-		return unlabeledPRs, fmt.Errorf("unable to get labels for github pull %s/%s#%d: %w", extPR.org, extPR.repo, extPR.prNum, err)
-	}
 	return unlabeledPRs, nil
 }
 
@@ -88,15 +86,13 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	message := fmt.Sprintf("Jira: fix included in accepted release %s", tagName)
 	var unlabeledPRs []pr
 	var issueErrs []error
-	// TODO - check the status values. Bugzilla equivalent: ON_QA
-	if issue.Fields.Status.Name != jira.StatusOnQA {
+	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
 		// In case bug has already been moved to VERIFIED, completely ignore
-		// TODO - check the Verified equivalent on Jira. Bugzilla equivalent: "VERIFIED"
-		if issue.Fields.Status.Name == jira.StatusVerified {
-			klog.V(4).Infof("Issue %s already in VERIFIED status", issue.ID)
+		if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
+			klog.V(4).Infof("Issue %s already in VERIFIED status", issue.Key)
 			return true, "", nil, false
 		}
-		issueErrs = append(issueErrs, fmt.Errorf("issue is not in %s status", jira.StatusVerified))
+		issueErrs = append(issueErrs, fmt.Errorf("issue is not in %s status", jira.StatusOnQA))
 	} else {
 		for _, extPR := range extPRs {
 			var newErr error
@@ -129,8 +125,9 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	return false, message, errs, success
 }
 
-// VerifyIssues takes a list of jira issues IDs and for each bug changes the bug status to VERIFIED if issue was reviewed and
-// lgtm'd by the bug's QA Contect
+// VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
+//reviewed and lgtm'd by the bug's QA Contact
+
 func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 	tagSemVer, err := releasecontroller.SemverParseTolerant(tagName)
 	if err != nil {
@@ -186,13 +183,12 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			}
 		}
 		if success {
-			// TODO - check the status. Bugzilla equivalent is "VERIFIED"
 			klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
-			if _, err := c.jiraClient.UpdateIssue(&jiraBaseClient.Issue{Fields: &jiraBaseClient.IssueFields{Status: &jiraBaseClient.Status{Name: jira.StatusVerified}}}); err != nil {
-				errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.ID, err))
+			if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
+				errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
 			}
 		} else {
-			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.ID, issue.Fields.Status.Name)
+			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.Key, issue.Fields.Status.Name)
 		}
 	}
 	return errs
@@ -254,7 +250,7 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 			}
 		}
 		if !foundPR {
-			// sometimes people ignore the bot and manually change the jira tags, resulting in a issue not being linked; ignore these
+			// sometimes people ignore the bot and manually change the jira tags, resulting in an issue not being linked; ignore these
 			klog.V(5).Infof("Failed to identify associated GitHub PR for jira issue %s", jiraID)
 		}
 	}
