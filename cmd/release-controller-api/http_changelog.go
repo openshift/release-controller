@@ -82,7 +82,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		fromStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], archExtension)
 		fromURL := url.URL{
 			Scheme: "https",
-			Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+			Host:   "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com",
 			Path:   "/",
 			RawQuery: (url.Values{
 				"stream":  []string{fromStream},
@@ -93,7 +93,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		toStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[5], m[6], archExtension)
 		toURL := url.URL{
 			Scheme: "https",
-			Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+			Host:   "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com",
 			Path:   "/",
 			RawQuery: (url.Values{
 				"stream":  []string{toStream},
@@ -102,7 +102,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		}
 		diffURL := url.URL{
 			Scheme: "https",
-			Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+			Host:   "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com",
 			Path:   "/diff.html",
 			RawQuery: (url.Values{
 				"first_stream":   []string{fromStream},
@@ -127,7 +127,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		fromStream := fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], archExtension)
 		fromURL := url.URL{
 			Scheme: "https",
-			Host:   "releases-rhcos-art.cloud.privileged.psi.redhat.com",
+			Host:   "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com",
 			Path:   "/",
 			RawQuery: (url.Values{
 				"stream":  []string{fromStream},
