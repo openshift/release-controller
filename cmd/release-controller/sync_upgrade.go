@@ -48,10 +48,11 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 	// Get all the currently running prowjobs for this release
 	prowJobs := c.getProwJobsForTag(releaseTag.Name)
 	for _, previousTag := range supportedUpgrades {
-		name := fmt.Sprintf("upgrade-from-%s", previousTag)
+		verifyName := fmt.Sprintf("upgrade-from-%s", previousTag)
+		prowJobNamePrefix := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 		// Ensure that only a single upgrade job gets executed per release tag
-		if releaseUpgradeJobExists(prowJobs, name) {
-			klog.V(6).Infof("Release upgrade job %q already exists.", name)
+		if releaseUpgradeJobExists(prowJobs, prowJobNamePrefix) {
+			klog.V(6).Infof("Release upgrade job %q already exists.", prowJobNamePrefix)
 			continue
 		}
 		platform := platformDistribution.Get()
@@ -65,7 +66,7 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 			Upgrade: true,
 			ProwJob: jobs[platform],
 		}
-		_, err := c.ensureProwJobForReleaseTag(release, name, platform, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		_, err := c.ensureProwJobForReleaseTag(release, verifyName, platform, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 		if err != nil {
 			return err
 		}
