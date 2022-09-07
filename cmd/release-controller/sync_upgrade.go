@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,7 +11,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	"math/rand"
+	"sort"
 	"strings"
+	"time"
+)
+
+var (
+	random = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {
@@ -45,9 +53,11 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 	if tagUpgradeInfo.Metadata != nil {
 		supportedUpgrades = tagUpgradeInfo.Metadata.Previous
 	}
+	sortedUpgrades := SortedUpgradesByReleaseMap(supportedUpgrades)
+	upgradesSample := sortedUpgrades.Sample(3)
 	// Get all the currently running prowjobs for this release
 	prowJobs := c.getProwJobsForTag(releaseTag.Name)
-	for _, previousTag := range supportedUpgrades {
+	for _, previousTag := range upgradesSample {
 		verifyName := fmt.Sprintf("upgrade-from-%s", previousTag)
 		prowJobNamePrefix := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 		// Ensure that only a single upgrade job gets executed per release tag
@@ -129,4 +139,88 @@ func getUpgradeProwJobs(release *releasecontroller.Release) ([]string, map[strin
 		}
 	}
 	return keys, prowJobs
+}
+
+type SemanticVersions []semver.Version
+
+func (v SemanticVersions) Less(i, j int) bool {
+	if v[i].GT(v[j]) {
+		return true
+	}
+	if v[i].LT(v[j]) {
+		return false
+	}
+	return v[i].String() > v[j].String()
+}
+
+func (v SemanticVersions) Len() int {
+	return len(v)
+}
+
+func (v SemanticVersions) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
+}
+
+type SortedVersionsMap struct {
+	SortedKeys []string
+	VersionMap map[string]SemanticVersions
+}
+
+func (s SortedVersionsMap) Sample(size int) []string {
+	var versions []string
+	minSize := 3 * size
+	for _, release := range s.SortedKeys {
+		upgrades := s.VersionMap[release]
+		// If there isn't enough edges, just return what we can...
+		if len(upgrades) < minSize {
+			for _, v := range upgrades {
+				versions = append(versions, v.String())
+			}
+			continue
+		}
+		// First N versions
+		for _, v := range upgrades[:size] {
+			versions = append(versions, v.String())
+		}
+		// Last N versions
+		for _, v := range upgrades[len(upgrades)-size:] {
+			versions = append(versions, v.String())
+		}
+		// Random N versions from everything else
+		remaining := upgrades[size : len(upgrades)-size]
+		for i := 0; i < size; i++ {
+			index := random.Intn(len(remaining))
+			versions = append(versions, remaining[index].String())
+		}
+	}
+
+	return versions
+}
+
+func SortedUpgradesByReleaseMap(supportedUpgrades []string) SortedVersionsMap {
+	releaseBuckets := make(map[string]SemanticVersions)
+
+	for _, v := range supportedUpgrades {
+		if version, err := semver.Parse(v); err == nil {
+			releaseName := fmt.Sprintf("%d.%02d", version.Major, version.Minor)
+			if releaseBuckets[releaseName] == nil {
+				releaseBuckets[releaseName] = SemanticVersions{version}
+			} else {
+				releaseBuckets[releaseName] = append(releaseBuckets[releaseName], version)
+			}
+		} else {
+			klog.Errorf("Unable to parse upgrade version: %q", version)
+		}
+	}
+	var sortedKeys []string
+	for key, _ := range releaseBuckets {
+		sortedKeys = append(sortedKeys, key)
+		sort.Sort(releaseBuckets[key])
+	}
+	sort.Strings(sortedKeys)
+
+	return SortedVersionsMap{
+		SortedKeys: sortedKeys,
+		VersionMap: releaseBuckets,
+	}
 }
