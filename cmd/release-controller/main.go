@@ -4,14 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
-	"github.com/openshift/release-controller/pkg/jira"
 	"net/http"
 	"net/url"
 	"os"
 	goruntime "runtime"
 	"strings"
 	"time"
+
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
+	"github.com/openshift/release-controller/pkg/jira"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -37,6 +38,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/test-infra/prow/config/secret"
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
 	"k8s.io/test-infra/prow/pjutil"
@@ -378,6 +380,21 @@ func (o *options) Run() error {
 		o.ARTSuffix,
 		releasePayloadClient.ReleaseV1alpha1(),
 	)
+
+	var tokens []string
+	// Append the path of github and bugzilla secrets.
+	if o.github.TokenPath != "" {
+		tokens = append(tokens, o.github.TokenPath)
+	}
+	if o.github.AppPrivateKeyPath != "" {
+		tokens = append(tokens, o.github.AppPrivateKeyPath)
+	}
+	if o.bugzilla.ApiKeyPath != "" {
+		tokens = append(tokens, o.bugzilla.ApiKeyPath)
+	}
+	if err := secret.Add(tokens...); err != nil {
+		return fmt.Errorf("Error starting secrets agent: %w", err)
+	}
 
 	ghClient, err := o.github.GitHubClient(false)
 	if err != nil {
