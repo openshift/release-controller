@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -14,11 +16,6 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
-	"time"
-)
-
-var (
-	random = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {
@@ -54,7 +51,8 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 		supportedUpgrades = tagUpgradeInfo.Metadata.Previous
 	}
 	sortedUpgrades := SortedUpgradesByReleaseMap(supportedUpgrades)
-	upgradesSample := sortedUpgrades.Sample(3)
+	seed := int64(supportedUpgradesSeed(supportedUpgrades))
+	upgradesSample := sortedUpgrades.Sample(seed, 3)
 	// Get all the currently running prowjobs for this release
 	prowJobs := c.getProwJobsForTag(releaseTag.Name)
 	for _, previousTag := range upgradesSample {
@@ -166,9 +164,10 @@ type SortedVersionsMap struct {
 	VersionMap map[string]SemanticVersions
 }
 
-func (s SortedVersionsMap) Sample(size int) []string {
+func (s SortedVersionsMap) Sample(seed int64, size int) []string {
 	var versions []string
 	minSize := 3 * size
+	random := rand.New(rand.NewSource(seed))
 	for _, release := range s.SortedKeys {
 		upgrades := s.VersionMap[release]
 		// If there isn't enough edges, just return what we can...
@@ -188,18 +187,21 @@ func (s SortedVersionsMap) Sample(size int) []string {
 		}
 		// Random N versions from everything else
 		remaining := upgrades[size : len(upgrades)-size]
-		for i := 0; i < size; i++ {
+		var randomVersions []string
+		for len(randomVersions) < size {
 			index := random.Intn(len(remaining))
-			versions = append(versions, remaining[index].String())
+			v := remaining[index].String()
+			if !contains(randomVersions, v) {
+				randomVersions = append(randomVersions, v)
+			}
 		}
+		versions = append(versions, randomVersions...)
 	}
-
 	return versions
 }
 
 func SortedUpgradesByReleaseMap(supportedUpgrades []string) SortedVersionsMap {
 	releaseBuckets := make(map[string]SemanticVersions)
-
 	for _, v := range supportedUpgrades {
 		if version, err := semver.Parse(v); err == nil {
 			releaseName := fmt.Sprintf("%d.%02d", version.Major, version.Minor)
@@ -218,9 +220,25 @@ func SortedUpgradesByReleaseMap(supportedUpgrades []string) SortedVersionsMap {
 		sort.Sort(releaseBuckets[key])
 	}
 	sort.Strings(sortedKeys)
-
 	return SortedVersionsMap{
 		SortedKeys: sortedKeys,
 		VersionMap: releaseBuckets,
 	}
+}
+
+func supportedUpgradesSeed(upgrades []string) uint64 {
+	h := sha256.New()
+	for _, version := range upgrades {
+		h.Write([]byte(version))
+	}
+	return binary.BigEndian.Uint64(h.Sum(nil))
+}
+
+func contains(slice []string, value string) bool {
+	for _, a := range slice {
+		if a == value {
+			return true
+		}
+	}
+	return false
 }
