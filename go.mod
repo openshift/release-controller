@@ -50,7 +50,7 @@ require (
 	k8s.io/component-base v0.24.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.70.0
-	k8s.io/test-infra v0.0.0-20220830152502-0e2e39caed68
+	k8s.io/test-infra v0.0.0-20220913010905-3bc71e6c7a20
 )
 
 require (
