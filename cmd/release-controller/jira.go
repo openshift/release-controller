@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	v1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/prometheus/client_golang/prometheus"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	"time"
 )
@@ -149,25 +151,36 @@ func (c *Controller) syncJira(key queueKey) error {
 		return utilerrors.NewAggregate(errs)
 	}
 
-	// Get the latest version of imagestream before trying to update annotations
-	target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
+	var lastErr error
+	err = wait.PollImmediate(15*time.Second, 1*time.Minute, func() (bool, error) {
+		// Get the latest version of ImageStream before trying to update annotations
+		target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
+		if err != nil {
+			klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
+			c.jiraErrorMetrics.WithLabelValues(jiraImagestreamGetErr).Inc()
+			return false, err
+		}
+		tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)
+		if tagToBeUpdated == nil {
+			klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationIssuesVerified)
+			return false, fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationIssuesVerified)
+		}
+		if tagToBeUpdated.Annotations == nil {
+			tagToBeUpdated.Annotations = make(map[string]string)
+		}
+		tagToBeUpdated.Annotations[releasecontroller.ReleaseAnnotationIssuesVerified] = "true"
+		klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releasecontroller.ReleaseAnnotationIssuesVerified, tag.Name, target.GetNamespace(), target.GetName())
+		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
+			klog.V(4).Infof("Failed to update Jira annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
+			lastErr = err
+			return false, nil
+		}
+		return true, nil
+	})
 	if err != nil {
-		klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
-		c.jiraErrorMetrics.WithLabelValues(jiraImagestreamGetErr).Inc()
-		return err
-	}
-	tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)
-	if tagToBeUpdated == nil {
-		klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationIssuesVerified)
-		return fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationIssuesVerified)
-	}
-	if tagToBeUpdated.Annotations == nil {
-		tagToBeUpdated.Annotations = make(map[string]string)
-	}
-	tagToBeUpdated.Annotations[releasecontroller.ReleaseAnnotationIssuesVerified] = "true"
-	klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releasecontroller.ReleaseAnnotationIssuesVerified, tag.Name, target.GetNamespace(), target.GetName())
-	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
-		klog.V(4).Infof("Failed to update jira annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
+		if lastErr != nil && errors.Is(err, wait.ErrWaitTimeout) {
+			err = lastErr
+		}
 		c.jiraErrorMetrics.WithLabelValues(jiraFailedAnnotation).Inc()
 		return err
 	}

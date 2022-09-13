@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 )
 
@@ -152,25 +154,37 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		return utilerrors.NewAggregate(errs)
 	}
 
-	// Get latest version of imagestream before trying to update annotations
-	target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
+	var lastErr error
+	err = wait.PollImmediate(15*time.Second, 1*time.Minute, func() (bool, error) {
+		// Get the latest version of ImageStream before trying to update annotations
+		target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
+		if err != nil {
+			klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
+			c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
+			return false, err
+		}
+		tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)
+		if tagToBeUpdated == nil {
+			klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)
+			return false, fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)
+		}
+		if tagToBeUpdated.Annotations == nil {
+			tagToBeUpdated.Annotations = make(map[string]string)
+		}
+		tagToBeUpdated.Annotations[releasecontroller.ReleaseAnnotationBugsVerified] = "true"
+		klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releasecontroller.ReleaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
+		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
+			klog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
+			//c.bugzillaErrorMetrics.WithLabelValues(bzFailedAnnotation).Inc()
+			lastErr = err
+			return false, nil
+		}
+		return true, nil
+	})
 	if err != nil {
-		klog.V(4).Infof("Failed to get latest version of target release stream %s: %v", release.Target.Name, err)
-		c.bugzillaErrorMetrics.WithLabelValues(bzImagestreamGetErr).Inc()
-		return err
-	}
-	tagToBeUpdated := releasecontroller.FindTagReference(target, tag.Name)
-	if tagToBeUpdated == nil {
-		klog.V(6).Infof("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)
-		return fmt.Errorf("release %s no longer exists, cannot set annotation %s=true", tag.Name, releasecontroller.ReleaseAnnotationBugsVerified)
-	}
-	if tagToBeUpdated.Annotations == nil {
-		tagToBeUpdated.Annotations = make(map[string]string)
-	}
-	tagToBeUpdated.Annotations[releasecontroller.ReleaseAnnotationBugsVerified] = "true"
-	klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releasecontroller.ReleaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
-	if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
-		klog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
+		if lastErr != nil && errors.Is(err, wait.ErrWaitTimeout) {
+			err = lastErr
+		}
 		c.bugzillaErrorMetrics.WithLabelValues(bzFailedAnnotation).Inc()
 		return err
 	}
