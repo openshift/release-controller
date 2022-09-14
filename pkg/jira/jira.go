@@ -13,17 +13,20 @@ import (
 	"strings"
 )
 
+type githubClient interface {
+	GetIssueLabels(org, repo string, number int) ([]github.Label, error)
+}
 type Verifier struct {
 	// jiraClient is used to retrieve external issue links and mark QA reviewed issues as VERIFIED
 	jiraClient jira.Client
 	// ghClient is used to retrieve comments on a bug's PR
-	ghClient github.Client
+	ghClient githubClient
 	// pluginConfig is used to check whether a repository allows approving reviews as LGTM
 	pluginConfig *plugins.Configuration
 }
 
 // NewVerifier returns a Verifier configured with the provided github and jira clients and the provided pluginConfig
-func NewVerifier(jiraClient jira.Client, ghClient github.Client, pluginConfig *plugins.Configuration) *Verifier {
+func NewVerifier(jiraClient jira.Client, ghClient githubClient, pluginConfig *plugins.Configuration) *Verifier {
 	return &Verifier{
 		jiraClient:   jiraClient,
 		ghClient:     ghClient,
@@ -83,7 +86,7 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs []error, tagName string) (bool, string, []error, bool) {
 	var success bool
-	message := fmt.Sprintf("Jira: fix included in accepted release %s", tagName)
+	message := fmt.Sprintf("Bugfix included in accepted release %s", tagName)
 	var unlabeledPRs []pr
 	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
@@ -106,7 +109,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	if len(unlabeledPRs) > 0 || len(issueErrs) > 0 {
 		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", jira.StatusVerified, message)
 		for _, extPR := range unlabeledPRs {
-			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by QA contact", message, extPR.org, extPR.repo, extPR.prNum)
+			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by the QA Contact", message, extPR.org, extPR.repo, extPR.prNum)
 		}
 		for _, err := range issueErrs {
 			message = fmt.Sprintf("%s\n- %s", message, err)
@@ -126,7 +129,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 }
 
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
-//reviewed and lgtm'd by the bug's QA Contact
+// reviewed and lgtm'd by the bug's QA Contact
 
 func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 	tagSemVer, err := releasecontroller.SemverParseTolerant(tagName)
