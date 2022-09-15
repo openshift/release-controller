@@ -192,7 +192,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "",
-				message: "VERIFIED\nJira issue will not be automatically moved to Bugfix included in accepted release 4.10 for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				message: "VERIFIED\nJira issue will not be automatically moved to Jira Issue-fix included in accepted release 4.10 for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
 			},
 		},
 		{
@@ -209,7 +209,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "Verified",
-				message: "Bugfix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				message: "Jira Issue-fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
 			},
 		},
 		{
@@ -239,7 +239,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "In Progress",
-				message: "VERIFIED\nJira issue will not be automatically moved to Bugfix included in accepted release 4.10 for the following reasons:\n- issue is not in ON_QA status\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				message: "VERIFIED\nJira issue will not be automatically moved to Jira Issue-fix included in accepted release 4.10 for the following reasons:\n- issue is not in ON_QA status\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
 			},
 		},
 		{
