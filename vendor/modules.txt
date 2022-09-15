@@ -1574,6 +1574,7 @@ k8s.io/test-infra/prow/git
 k8s.io/test-infra/prow/git/types
 k8s.io/test-infra/prow/git/v2
 k8s.io/test-infra/prow/github
+k8s.io/test-infra/prow/github/fakegithub
 k8s.io/test-infra/prow/github/report
 k8s.io/test-infra/prow/initupload
 k8s.io/test-infra/prow/interrupts
