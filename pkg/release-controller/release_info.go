@@ -650,6 +650,10 @@ class FileServer(handler):
         if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
             name = segments[0]
 
+            release_imagestream_name = 'release'
+            if '-ec.' in name:
+                release_imagestream_name = '4-dev-preview'
+
             if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
                 handler.do_GET(self)
                 return
@@ -670,7 +674,7 @@ class FileServer(handler):
                 self._present_default_content(name)
                 self.wfile.flush()
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "%s/%s/release%s:%s" % (REGISTRY, RELEASE_NAMESPACE, extension, name)],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "%s/%s/%s%s:%s" % (REGISTRY, RELEASE_NAMESPACE, release_imagestream_name, extension, name)],
                                         stderr=subprocess.STDOUT)
                 os.remove(os.path.join(name, "DOWNLOADING.md"))
 
