@@ -339,6 +339,11 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				// delete the mirror and exit
 				return fmt.Errorf("unimplemented, should regenerate contents of tag")
 			}
+			// Create the corresponding ReleasePayload object...
+			_, err = c.ensureReleasePayload(release, tag.Name)
+			if err != nil {
+				return err
+			}
 			// get metadata about the release
 			//   get upgrade graph edges
 			//   check to see any required edges are missing?  wait for latest edge?  wait for pending edges?
