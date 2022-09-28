@@ -44,7 +44,7 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 	updateReleaseTarget(release, is)
 
 	// Create the corresponding ReleasePayload object...
-	_, err = c.ensureReleasePayload(release, tag.Name)
+	_, err = c.ensureReleasePayload(release, &tag)
 	if err != nil {
 		return nil, err
 	}

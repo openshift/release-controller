@@ -9,35 +9,38 @@ import (
 	"testing"
 )
 
+var (
+	release = &releasecontroller.Release{
+		Target: &imagev1.ImageStream{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "ocp",
+			},
+		},
+	}
+)
+
 func TestNewReleasePayload(t *testing.T) {
 	testCases := []struct {
-		name          string
-		release       *releasecontroller.Release
-		releaseName   string
-		jobNamespace  string
-		prowNamespace string
-		expected      *v1alpha1.ReleasePayload
+		name             string
+		release          *releasecontroller.Release
+		payloadName      string
+		jobNamespace     string
+		prowNamespace    string
+		verificationJobs map[string]releasecontroller.ReleaseVerification
+		expected         *v1alpha1.ReleasePayload
 	}{
 		{
-			name: "DisabledJob",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"disabled-job": {
-							Disabled: true,
-						},
-					},
-				},
-			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
+			name:          "DisabledJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
 			jobNamespace:  "ci-release",
 			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"disabled-job": {
+					Disabled: true,
+				},
+			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -66,27 +69,18 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "BlockingJob",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"blocking-job": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
-							},
-						},
+			name:          "BlockingJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"blocking-job": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -120,28 +114,19 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "BlockingJobWithRetries",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"blocking-job": {
-							MaxRetries: 3,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
-							},
-						},
+			name:          "BlockingJobWithRetries",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"blocking-job": {
+					MaxRetries: 3,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -176,28 +161,19 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "InformingJob",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"informing-job": {
-							Optional: true,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
-							},
-						},
+			name:          "InformingJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"informing-job": {
+					Optional: true,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -231,29 +207,20 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "InformingJobWithRetries",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"informing-job": {
-							Optional:   true,
-							MaxRetries: 3,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
-							},
-						},
+			name:          "InformingJobWithRetries",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"informing-job": {
+					Optional:   true,
+					MaxRetries: 3,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -288,31 +255,22 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "AggregatedJob",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
+			name:          "AggregatedJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"aggregated-job": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
 					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"aggregated-job": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
-							},
-							Upgrade: true,
-							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
-								AnalysisJobCount: 10,
-							},
-						},
+					Upgrade: true,
+					AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+						AnalysisJobCount: 10,
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -352,34 +310,25 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "AggregatedJobWithOverwrittenAggregatorJob",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
+			name:          "AggregatedJobWithOverwrittenAggregatorJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"aggregated-job": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
 					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"aggregated-job": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
-							},
-							Upgrade: true,
-							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
-								ProwJob: &releasecontroller.ProwJobVerification{
-									Name: "overwritten-prowjob-definition",
-								},
-								AnalysisJobCount: 10,
-							},
+					Upgrade: true,
+					AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "overwritten-prowjob-definition",
 						},
+						AnalysisJobCount: 10,
 					},
 				},
 			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
-			jobNamespace:  "ci-release",
-			prowNamespace: "ci",
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -419,80 +368,71 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name: "RealWorldExample",
-			release: &releasecontroller.Release{
-				Target: &imagev1.ImageStream{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "release",
-						Namespace: "ocp",
-					},
-				},
-				Config: &releasecontroller.ReleaseConfig{
-					Verify: map[string]releasecontroller.ReleaseVerification{
-						"aggregated-azure-ovn-upgrade-4.12-micro": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-ci-4.12-e2e-azure-ovn-upgrade",
-							},
-							Upgrade: true,
-							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
-								AnalysisJobCount: 10,
-							},
-						},
-						"aggregated-gcp-ovn-upgrade-4.12-minor": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-ci-4.12-upgrade-from-stable-4.11-e2e-gcp-ovn-upgrade",
-							},
-							Upgrade:     true,
-							UpgradeFrom: releasecontroller.ReleaseUpgradeFromPreviousMinor,
-							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
-								AnalysisJobCount: 10,
-							},
-						},
-						"alibaba": {
-							Optional: true,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-alibaba",
-							},
-						},
-						"aws-sdn": {
-							Optional:   true,
-							MaxRetries: 3,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn",
-							},
-						},
-						"aws-single-node": {
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-single-node",
-							},
-						},
-						"aws-sdn-serial": {
-							MaxRetries: 3,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
-							},
-						},
-						"metal-ipi-upgrade": {
-							Optional: true,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-metal-ipi-upgrade",
-							},
-							Upgrade: true,
-						},
-						"metal-ipi-upgrade-minor": {
-							Optional: true,
-							ProwJob: &releasecontroller.ProwJobVerification{
-								Name: "periodic-ci-openshift-release-master-nightly-4.12-upgrade-from-stable-4.11-e2e-metal-ipi-upgrade",
-							},
-							Upgrade:     true,
-							UpgradeFrom: releasecontroller.ReleaseUpgradeFromPreviousMinor,
-						},
-					},
-				},
-			},
-			releaseName:   "4.11.0-0.nightly-2022-03-11-113341",
+			name:          "RealWorldExample",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
 			jobNamespace:  "ci-release",
 			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"aggregated-azure-ovn-upgrade-4.12-micro": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-ci-4.12-e2e-azure-ovn-upgrade",
+					},
+					Upgrade: true,
+					AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+						AnalysisJobCount: 10,
+					},
+				},
+				"aggregated-gcp-ovn-upgrade-4.12-minor": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-ci-4.12-upgrade-from-stable-4.11-e2e-gcp-ovn-upgrade",
+					},
+					Upgrade:     true,
+					UpgradeFrom: releasecontroller.ReleaseUpgradeFromPreviousMinor,
+					AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+						AnalysisJobCount: 10,
+					},
+				},
+				"alibaba": {
+					Optional: true,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-alibaba",
+					},
+				},
+				"aws-sdn": {
+					Optional:   true,
+					MaxRetries: 3,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn",
+					},
+				},
+				"aws-single-node": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-single-node",
+					},
+				},
+				"aws-sdn-serial": {
+					MaxRetries: 3,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+					},
+				},
+				"metal-ipi-upgrade": {
+					Optional: true,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-metal-ipi-upgrade",
+					},
+					Upgrade: true,
+				},
+				"metal-ipi-upgrade-minor": {
+					Optional: true,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-upgrade-from-stable-4.11-e2e-metal-ipi-upgrade",
+					},
+					Upgrade:     true,
+					UpgradeFrom: releasecontroller.ReleaseUpgradeFromPreviousMinor,
+				},
+			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -570,7 +510,7 @@ func TestNewReleasePayload(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := newReleasePayload(tc.release, tc.releaseName, tc.jobNamespace, tc.prowNamespace)
+			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
 			}
