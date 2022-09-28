@@ -340,7 +340,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				return fmt.Errorf("unimplemented, should regenerate contents of tag")
 			}
 			// Create the corresponding ReleasePayload object...
-			_, err = c.ensureReleasePayload(release, tag.Name)
+			_, err = c.ensureReleasePayload(release, tag)
 			if err != nil {
 				return err
 			}

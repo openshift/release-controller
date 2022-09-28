@@ -3,27 +3,32 @@ package main
 import (
 	"context"
 	"fmt"
+	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 	"sort"
 )
 
-func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, tagName string) (*v1alpha1.ReleasePayload, error) {
-	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, tagName, c.jobNamespace, c.prowNamespace), metav1.CreateOptions{})
+func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, releaseTag *imagev1.TagReference) (*v1alpha1.ReleasePayload, error) {
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs), metav1.CreateOptions{})
 	if err == nil {
 		klog.V(4).Infof("ReleasePayload: %s/%s created", payload.Namespace, payload.Name)
 		return payload, nil
 	}
 	if errors.IsAlreadyExists(err) {
-		return c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Get(context.TODO(), tagName, metav1.GetOptions{})
+		return c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Get(context.TODO(), releaseTag.Name, metav1.GetOptions{})
 	}
 	return nil, err
 }
 
-func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string) *v1alpha1.ReleasePayload {
+func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification) *v1alpha1.ReleasePayload {
 	payload := v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -50,14 +55,14 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 	}
 
 	// Sort the ReleaseVerification items into a consistent order
-	keys := make([]string, 0, len(release.Config.Verify))
-	for k := range release.Config.Verify {
-		keys = append(keys, k)
+	var sortedKeys []string
+	for key, _ := range verificationJobs {
+		sortedKeys = append(sortedKeys, key)
 	}
-	sort.Strings(keys)
+	sort.Strings(sortedKeys)
 
-	for _, verifyName := range keys {
-		definition := release.Config.Verify[verifyName]
+	for _, verifyName := range sortedKeys {
+		definition := verificationJobs[verifyName]
 		if definition.Disabled {
 			continue
 		}
