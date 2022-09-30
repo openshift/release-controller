@@ -334,7 +334,7 @@ func setupKubeconfigWatches(o *options) error {
 	if err != nil {
 		return fmt.Errorf("failed to set up watcher: %w", err)
 	}
-	for _, candidate := range []string{o.ProwJobKubeconfig, o.NonProwJobKubeconfig} {
+	for _, candidate := range []string{o.ProwJobKubeconfig, o.NonProwJobKubeconfig, o.ReleasesKubeconfig, o.ToolsKubeconfig} {
 		if _, err := os.Stat(candidate); err != nil {
 			continue
 		}
