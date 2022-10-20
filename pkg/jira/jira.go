@@ -87,7 +87,7 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs []error, tagName string) (bool, string, []error, bool) {
 	var success bool
-	message := fmt.Sprintf("Bugfix included in accepted release %s", tagName)
+	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
 	var unlabeledPRs []pr
 	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
