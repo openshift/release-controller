@@ -3,13 +3,14 @@ package jira
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/test-infra/prow/github/fakegithub"
 	"k8s.io/test-infra/prow/jira/fakejira"
 	"k8s.io/test-infra/prow/plugins"
-	"reflect"
-	"testing"
 )
 
 func TestGetPRS(t *testing.T) {
@@ -192,7 +193,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "",
-				message: "VERIFIED\nJira issue will not be automatically moved to Jira Issue-fix included in accepted release 4.10 for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				message: "Bugfix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
 			},
 		},
 		{
@@ -209,7 +210,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "Verified",
-				message: "Jira Issue-fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				message: "Bugfix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
 			},
 		},
 		{
@@ -239,7 +240,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "In Progress",
-				message: "VERIFIED\nJira issue will not be automatically moved to Jira Issue-fix included in accepted release 4.10 for the following reasons:\n- issue is not in ON_QA status\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				message: "Bugfix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- issue is not in ON_QA status\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
 			},
 		},
 		{

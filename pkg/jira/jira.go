@@ -2,6 +2,9 @@ package jira
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/openshift-eng/jira-lifecycle-plugin/pkg/helpers"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -9,8 +12,6 @@ import (
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/jira"
 	"k8s.io/test-infra/prow/plugins"
-	"strconv"
-	"strings"
 )
 
 type githubClient interface {
@@ -86,7 +87,7 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs []error, tagName string) (bool, string, []error, bool) {
 	var success bool
-	message := fmt.Sprintf("Jira Issue-fix included in accepted release %s", tagName)
+	message := fmt.Sprintf("Bugfix included in accepted release %s", tagName)
 	var unlabeledPRs []pr
 	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
@@ -107,7 +108,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 		}
 	}
 	if len(unlabeledPRs) > 0 || len(issueErrs) > 0 {
-		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", jira.StatusVerified, message)
+		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", message, jira.StatusVerified)
 		for _, extPR := range unlabeledPRs {
 			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by the QA Contact", message, extPR.org, extPR.repo, extPR.prNum)
 		}
