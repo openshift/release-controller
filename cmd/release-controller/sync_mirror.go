@@ -40,6 +40,23 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 		},
 	}
 
+	// Carry forward any Release annotations from the source imagestream, if they exist...
+	validInboundAnnotations := []string{
+		releasecontroller.ReleaseAnnotationInconsistency,
+		releasecontroller.ReleaseAnnotationBuildURL,
+		releasecontroller.ReleaseAnnotationRuntimeBrewEvent,
+	}
+	for key, value := range release.Source.Annotations {
+		if strings.HasPrefix(key, "release.openshift.io/") && contains(validInboundAnnotations, key) {
+			src, ok := is.Annotations[key]
+			if !ok {
+				is.Annotations[key] = value
+			} else {
+				klog.Warningf("Release annotation %q already defined: %s", key, src)
+			}
+		}
+	}
+
 	switch release.Config.As {
 	case releasecontroller.ReleaseConfigModeStable:
 		// stream will be populated later
