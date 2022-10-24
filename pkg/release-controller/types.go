@@ -514,9 +514,6 @@ const (
 	// is considered an input image stream for creating releases.
 	ReleaseAnnotationConfig = "release.openshift.io/config"
 
-	// ReleaseAnnotationInconsistency an imagestream with this annotation indicates an inconsistency
-	ReleaseAnnotationInconsistency = "release.openshift.io/inconsistency"
-
 	ReleaseAnnotationKeep              = "release.openshift.io/keep"
 	ReleaseAnnotationGeneration        = "release.openshift.io/generation"
 	ReleaseAnnotationSource            = "release.openshift.io/source"
@@ -559,6 +556,18 @@ const (
 
 	// ReleaseAnnotationArchitecture indicates the architecture of the release
 	ReleaseAnnotationArchitecture = "release.openshift.io/architecture"
+
+	// The following annotations are provided by ART and are intended to be carried forward from the input imagestream
+	// into the release-controller generated Release mirror.
+
+	// ReleaseAnnotationBuildURL the URL of the corresponding ART build that produced this Release
+	ReleaseAnnotationBuildURL = "release.openshift.io/build-url"
+
+	// ReleaseAnnotationRuntimeBrewEvent the Brew event number of the corresponding ART build that produced this Release
+	ReleaseAnnotationRuntimeBrewEvent = "release.openshift.io/runtime-brew-event"
+
+	// ReleaseAnnotationInconsistency an imagestream with this annotation indicates an inconsistency
+	ReleaseAnnotationInconsistency = "release.openshift.io/inconsistency"
 
 	// ReleaseLabelVerify indicates the ProwJob is for release verification
 	ReleaseLabelVerify = "release.openshift.io/verify"
