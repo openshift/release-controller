@@ -103,7 +103,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 			unlabeledPRs, newErr = c.ghUnlabeledPRs(extPR)
 			if newErr != nil {
 				errs = append(errs, newErr)
-				issueErrs = append(issueErrs, newErr)
+				return false, "", errs, false
 			}
 		}
 	}

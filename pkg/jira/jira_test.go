@@ -2,16 +2,29 @@ package jira
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/andygrunwald/go-jira"
-	"github.com/google/go-cmp/cmp"
+	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/github/fakegithub"
 	"k8s.io/test-infra/prow/jira/fakejira"
 	"k8s.io/test-infra/prow/plugins"
 )
+
+type fakeGHClient struct {
+	GetIssueLabelsError error
+	*fakegithub.FakeClient
+}
+
+func (f fakeGHClient) GetIssueLabels(owner, repo string, number int) ([]github.Label, error) {
+	if f.GetIssueLabelsError != nil {
+		return nil, f.GetIssueLabelsError
+	}
+	return f.FakeClient.GetIssueLabels(owner, repo, number)
+}
 
 func TestGetPRS(t *testing.T) {
 	issue := jira.Issue{ID: "OCPBUGS-0000"}
@@ -125,9 +138,13 @@ func TestVerifyIssues(t *testing.T) {
 		message string
 	}
 
+	// since the VerifyIssues command may modify issues, make a separate copy for each test
 	var onQAIssue jira.Issue
+	var onQAIssue2 jira.Issue
+	var onQAIssue3 jira.Issue
 	var verifiedIssue jira.Issue
 	var inProgressIssue jira.Issue
+	var inProgressIssue2 jira.Issue
 
 	issuesToUnmarshall := []struct {
 		issueJSON string
@@ -138,12 +155,24 @@ func TestVerifyIssues(t *testing.T) {
 			object:    &onQAIssue,
 		},
 		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue2,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue3,
+		},
+		{
 			issueJSON: verifiedIssueJSON,
 			object:    &verifiedIssue,
 		},
 		{
 			issueJSON: inProgressIssueJSON,
 			object:    &inProgressIssue,
+		},
+		{
+			issueJSON: inProgressIssueJSON,
+			object:    &inProgressIssue2,
 		},
 	}
 
@@ -178,6 +207,7 @@ func TestVerifyIssues(t *testing.T) {
 		issueToVerify        string
 		tagName              string
 		expected             expectedResult
+		labelsError          error
 	}{
 		{
 			name: "Missing QE-Approved label",
@@ -199,7 +229,7 @@ func TestVerifyIssues(t *testing.T) {
 		{
 			name: "Move ON_QA to Verified",
 			jiraFakeClientData: jiraFakeClientData{
-				issues:        []*jira.Issue{&onQAIssue},
+				issues:        []*jira.Issue{&onQAIssue2},
 				remoteLinks:   remoteLink,
 				existingLinks: existingLinks,
 				transitions:   jiraTransition,
@@ -246,7 +276,7 @@ func TestVerifyIssues(t *testing.T) {
 		{
 			name: "Wrong TagName",
 			jiraFakeClientData: jiraFakeClientData{
-				issues:        []*jira.Issue{&inProgressIssue},
+				issues:        []*jira.Issue{&inProgressIssue2},
 				remoteLinks:   remoteLink,
 				existingLinks: existingLinks,
 				transitions:   jiraTransition,
@@ -260,6 +290,23 @@ func TestVerifyIssues(t *testing.T) {
 				message: "",
 			},
 		},
+		{
+			name: "Fail to get PR",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue3},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  []error{errors.New("unable to get labels for github pull openshift/vmware-vsphere-csi-driver-operator#105: injected error")},
+				status:  "ON_QA",
+				message: "",
+			},
+			labelsError: errors.New("injected error"),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -270,15 +317,24 @@ func TestVerifyIssues(t *testing.T) {
 				ExistingLinks: tc.jiraFakeClientData.existingLinks,
 				Transitions:   tc.jiraFakeClientData.transitions,
 			}
-			gh := &fakegithub.FakeClient{IssueLabelsExisting: tc.gitHubFakeClientData.issueLabelsExisting}
+			upstreamFakeGH := &fakegithub.FakeClient{IssueLabelsExisting: tc.gitHubFakeClientData.issueLabelsExisting}
+			gh := &fakeGHClient{GetIssueLabelsError: tc.labelsError, FakeClient: upstreamFakeGH}
 			v := NewVerifier(jc, gh, &plugins.Configuration{})
 			err := v.VerifyIssues([]string{tc.issueToVerify}, tc.tagName)
-			if diff := cmp.Diff(err, tc.expected.errors); diff != "" {
-				t.Fatalf("Unexpected error on VerifyIssues: #%v", diff)
+			if len(err) != len(tc.expected.errors) {
+				t.Errorf("number of errors (%d) does not match expected number of errors (%d)", len(err), len(tc.expected.errors))
+			}
+			for index, actualError := range err {
+				if index > len(tc.expected.errors)+1 {
+					break
+				}
+				if actualError.Error() != tc.expected.errors[index].Error() {
+					t.Errorf("Actual error (%s) does not match expected error (%s)", actualError.Error(), tc.expected.errors[index].Error())
+				}
 			}
 			if tc.expected.status != "" {
 				if jc.Issues[0].Fields.Status.Name != tc.expected.status {
-					t.Fatalf("Unexpected issues status. Expecting: %s, but got: %s", tc.expected.status, jc.Issues[0].Fields.Status.Name)
+					t.Errorf("Unexpected issues status. Expecting: %s, but got: %s", tc.expected.status, jc.Issues[0].Fields.Status.Name)
 				}
 			}
 			if tc.expected.message != "" {
@@ -290,7 +346,11 @@ func TestVerifyIssues(t *testing.T) {
 					}
 				}
 				if !foundExpectedComment {
-					t.Fatalf("The issue is not commented as expected!")
+					t.Errorf("The issue is not commented as expected!")
+				}
+			} else {
+				if len(jc.Issues[0].Fields.Comments.Comments) > 0 {
+					t.Errorf("A comment was made when none were expected")
 				}
 			}
 		})
