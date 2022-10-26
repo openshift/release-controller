@@ -86,6 +86,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if strings.Contains(jobName, "metal") {
 		spec.Cluster = "build05"
 	}
+	// Currently, all "telco5g" jobs must be run on the `build05` cluster
+	if strings.Contains(jobName, "telco5g") {
+		spec.Cluster = "build05"
+	}
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
 	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 	if err != nil {
