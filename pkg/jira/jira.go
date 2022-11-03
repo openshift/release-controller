@@ -92,8 +92,8 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
 		// In case bug has already been moved to VERIFIED, completely ignore
-		if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
-			klog.V(4).Infof("Issue %s already in VERIFIED status", issue.Key)
+		if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) || strings.EqualFold(issue.Fields.Status.Name, jira.StatusReleasePending) || strings.EqualFold(issue.Fields.Status.Name, jira.StatusClosed) {
+			klog.V(4).Infof("Issue %s already in %s status", issue.Key, issue.Fields.Status.Name)
 			return true, "", nil, false
 		}
 		issueErrs = append(issueErrs, fmt.Errorf("issue is not in %s status", jira.StatusOnQA))
