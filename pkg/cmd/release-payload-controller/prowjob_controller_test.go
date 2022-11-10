@@ -213,6 +213,15 @@ func TestFindJobStatus(t *testing.T) {
 			expected:               nil,
 			expectedError:          "unable to locate job results for X (Y)",
 		},
+		{
+			name:                   "AutomaticReleaseUpgradeTest",
+			payloadName:            "4.11.14-upgrade-from-4.10.41-aws",
+			input:                  &v1alpha1.ReleasePayloadStatus{},
+			ciConfigurationName:    "upgrade-from-4.10.41-aws",
+			ciConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+			expected:               nil,
+			expectedError:          "unable to locate job results for upgrade-from-4.10.41-aws (release-openshift-origin-installer-e2e-aws-upgrade)",
+		},
 	}
 
 	for _, testCase := range testCases {
