@@ -5,6 +5,7 @@ import (
 	"github.com/blang/semver"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"regexp"
+	"strings"
 )
 
 const (
@@ -77,7 +78,7 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 				details.Stream = StreamCandidate
 				details.Build = prerelease[0].VersionStr
 			default:
-				return nil, fmt.Errorf("unsupported candidate name: %s", prerelease[0].VersionStr)
+				return processStablePreReleaseVersions(prerelease, details), nil
 			}
 		}
 		splitVersion(prerelease[1].VersionStr, details)
@@ -86,7 +87,13 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 		case true:
 			details.Build = fmt.Sprintf("%d", prerelease[0].VersionNum)
 		case false:
-			details.Build = prerelease[0].VersionStr
+			switch {
+			case strings.HasPrefix(prerelease[0].VersionStr, "upgrade-from-"):
+				return processStablePreReleaseVersions(prerelease, details), nil
+			default:
+				details = processStablePreReleaseVersions(prerelease, details)
+				return nil, fmt.Errorf("unsupported prerelease specified: %s", details.CIConfigurationName)
+			}
 		}
 		splitVersion(fmt.Sprintf("%s.%s", prerelease[1].VersionStr, prerelease[2].VersionStr), details)
 	default:
@@ -140,4 +147,19 @@ func parse(line string) map[string]string {
 		}
 	}
 	return result
+}
+
+func processStablePreReleaseVersions(prerelease []semver.PRVersion, details *PreReleaseDetails) *PreReleaseDetails {
+	var pieces []string
+	for idx, _ := range prerelease {
+		switch {
+		case prerelease[idx].IsNum:
+			pieces = append(pieces, fmt.Sprintf("%d", prerelease[idx].VersionNum))
+		default:
+			pieces = append(pieces, prerelease[idx].VersionStr)
+		}
+	}
+	details.Stream = StreamStable
+	details.CIConfigurationName = strings.Join(pieces, ".")
+	return details
 }

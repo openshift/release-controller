@@ -116,7 +116,24 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "CandidateJob",
+			name:        "ReleaseCandidateJob",
+			prowjobName: "4.11.0-rc.0-aws-serial",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 11,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-serial",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "FeatureCandidateJob",
 			prowjobName: "4.11.0-fc.0-aws-serial",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
@@ -133,7 +150,7 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "CandidateJobWithRetries",
+			name:        "FeatureCandidateJobWithRetries",
 			prowjobName: "4.11.0-fc.0-aws-serial-2",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
@@ -184,13 +201,47 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "InvalidSemanticVersion",
-			prowjobName: "x.10.17-aws-serial",
+			name:        "ProductionJobWithEmbeddedVersionString",
+			prowjobName: "4.10.41-aws-sdn-upgrade-4.10-micro",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 10,
+				Z: 41,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-upgrade-4.10-micro",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "AutomaticReleaseUpgradeTest",
+			prowjobName: "4.11.14-upgrade-from-4.11.13-aws",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 11,
+				Z: 14,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "upgrade-from-4.11.13-aws",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "UnsupportedPrereleaseVersion",
+			prowjobName: "4.10.41-alpha.aws-sdn-upgrade-4.10-micro",
 			wantErr:     true,
 		},
 		{
-			name:        "InvalidCandidateVersion",
-			prowjobName: "4.11.0-beta.0-aws-serial",
+			name:        "InvalidSemanticVersion",
+			prowjobName: "x.10.17-aws-serial",
 			wantErr:     true,
 		},
 	}
