@@ -506,6 +506,9 @@ func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lis
 		// find all accepted tags, then sort by semantic version
 		tags := UnsortedSemanticReleaseTags(r, ReleasePhaseAccepted)
 		sort.Sort(tags)
+		if len(tags) == 1 {
+			return r, tags[0].Tag, nil
+		}
 		for _, ver := range tags {
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
 				continue
