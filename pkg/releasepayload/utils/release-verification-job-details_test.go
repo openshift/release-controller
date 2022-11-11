@@ -249,6 +249,40 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			prowjobName: "13773708-610b-11ed-ade3-0a580a805f16",
 			wantErr:     true,
 		},
+		{
+			name:        "CandidateAutomaticReleaseUpgradeTest",
+			prowjobName: "4.12.0-rc.0-upgrade-from-4.11.10-aws",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "upgrade-from-4.11.10-aws",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "CandidateAutomaticReleaseUpgradeWithCountTest",
+			prowjobName: "4.12.0-rc.0-upgrade-from-4.11.10-aws-3",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "upgrade-from-4.11.10-aws",
+					Count:               "3",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

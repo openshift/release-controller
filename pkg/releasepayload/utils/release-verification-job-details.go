@@ -16,6 +16,7 @@ const (
 var stableRelease = regexp.MustCompile(`(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 var candidateRelease = regexp.MustCompile(`^(?P<build>[\d-]+)-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 var prerelease = regexp.MustCompile(`^(?P<stream>[\w\d-]+)-(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+var upgradeFrom = regexp.MustCompile(`^(?P<build>[\w\d\\.]+)-(?P<job>upgrade-from[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 
 type PreReleaseDetails struct {
 	Build               string
@@ -78,7 +79,9 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 				details.Stream = StreamCandidate
 				details.Build = prerelease[0].VersionStr
 			default:
-				return processStablePreReleaseVersions(prerelease, details), nil
+				details.Stream = StreamStable
+				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				return details, nil
 			}
 		}
 		splitVersion(prerelease[1].VersionStr, details)
@@ -89,13 +92,31 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 		case false:
 			switch {
 			case strings.HasPrefix(prerelease[0].VersionStr, "upgrade-from-"):
-				return processStablePreReleaseVersions(prerelease, details), nil
+				details.Stream = StreamStable
+				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				return details, nil
 			default:
-				details = processStablePreReleaseVersions(prerelease, details)
-				return nil, fmt.Errorf("unsupported prerelease specified: %s", details.CIConfigurationName)
+				return nil, fmt.Errorf("unsupported prerelease specified: %s", generateCIConfigurationName(prerelease))
 			}
 		}
 		splitVersion(fmt.Sprintf("%s.%s", prerelease[1].VersionStr, prerelease[2].VersionStr), details)
+	case 4:
+		switch prerelease[0].IsNum {
+		case true:
+			details.Build = fmt.Sprintf("%d", prerelease[0].VersionNum)
+		case false:
+			switch prerelease[0].VersionStr {
+			case "fc", "rc":
+				details.Stream = StreamCandidate
+				splitVersion(generateCIConfigurationName(prerelease), details)
+				return details, nil
+			default:
+				details.Stream = StreamStable
+				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				return details, nil
+			}
+		}
+		splitVersion(prerelease[1].VersionStr, details)
 	default:
 		// It should be impossible to reach here, but just in case...
 		return nil, fmt.Errorf("unable to parse prerelese: %v", prerelease)
@@ -130,6 +151,8 @@ func parse(line string) map[string]string {
 	result := make(map[string]string)
 
 	switch {
+	case upgradeFrom.MatchString(line):
+		re = upgradeFrom
 	case prerelease.MatchString(line):
 		re = prerelease
 	case candidateRelease.MatchString(line):
@@ -149,7 +172,7 @@ func parse(line string) map[string]string {
 	return result
 }
 
-func processStablePreReleaseVersions(prerelease []semver.PRVersion, details *PreReleaseDetails) *PreReleaseDetails {
+func generateCIConfigurationName(prerelease []semver.PRVersion) string {
 	var pieces []string
 	for idx, _ := range prerelease {
 		switch {
@@ -159,7 +182,5 @@ func processStablePreReleaseVersions(prerelease []semver.PRVersion, details *Pre
 			pieces = append(pieces, prerelease[idx].VersionStr)
 		}
 	}
-	details.Stream = StreamStable
-	details.CIConfigurationName = strings.Join(pieces, ".")
-	return details
+	return strings.Join(pieces, ".")
 }
