@@ -34,6 +34,7 @@ import (
 // updating the respective ReleasePayload with the status, of the job, when it completes.
 // The ProwJobStatusController watches for changes to the following resources:
 //   - ProwJob
+//
 // and writes to the following locations:
 //   - .status.blockingJobResults[].results
 //   - .status.informingJobResults[].results
@@ -166,7 +167,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 	for _, prowJob := range prowjobs {
 		details, err := utils.ParseReleaseVerificationJobName(prowJob.Name)
 		if err != nil {
-			klog.Warning(fmt.Sprintf("unable to parse prowjob name for releasepayload %q: %v", originalReleasePayload.Name, err))
+			klog.Warning(fmt.Sprintf("unable to parse prowjob name %q for releasepayload %q: %v", prowJob.Name, originalReleasePayload.Name, err))
 			continue
 		}
 		ciConfigurationName := details.PreReleaseDetails.CIConfigurationName

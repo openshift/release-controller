@@ -244,6 +244,11 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			prowjobName: "x.10.17-aws-serial",
 			wantErr:     true,
 		},
+		{
+			name:        "UUIDBasedProwJobName",
+			prowjobName: "13773708-610b-11ed-ade3-0a580a805f16",
+			wantErr:     true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
