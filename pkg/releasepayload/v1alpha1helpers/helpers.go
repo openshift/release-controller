@@ -23,3 +23,18 @@ func CanonicalizeJobRunResults(jobs []v1alpha1.JobStatus) {
 		sort.Sort(jobrunresult.ByCoordinatesName(results.JobRunResults))
 	}
 }
+
+// ByCIConfigurationCIConfigurationName sorts a list of CIConfiguration's by their CIConfigurationName
+type ByCIConfigurationCIConfigurationName []v1alpha1.CIConfiguration
+
+func (in ByCIConfigurationCIConfigurationName) Less(i, j int) bool {
+	return in[i].CIConfigurationName < in[j].CIConfigurationName
+}
+
+func (in ByCIConfigurationCIConfigurationName) Len() int {
+	return len(in)
+}
+
+func (in ByCIConfigurationCIConfigurationName) Swap(i, j int) {
+	in[i], in[j] = in[j], in[i]
+}

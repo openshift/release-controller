@@ -6,6 +6,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasepayload/v1alpha1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -29,7 +30,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 }
 
 func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource) *v1alpha1.ReleasePayload {
-	payload := v1alpha1.ReleasePayload{
+	payload := &v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: release.Target.Namespace,
@@ -56,6 +57,13 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 		},
 	}
 
+	AddVerificationJobs(payload, verificationJobs)
+	AddUpgradeJobs(payload, upgradeJobs)
+
+	return payload
+}
+
+func AddVerificationJobs(payload *v1alpha1.ReleasePayload, verificationJobs map[string]releasecontroller.ReleaseVerification) {
 	// Sort the ReleaseVerification items into a consistent order
 	var sortedKeys []string
 	for key := range verificationJobs {
@@ -65,59 +73,75 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 
 	for _, verifyName := range sortedKeys {
 		definition := verificationJobs[verifyName]
-		if definition.Disabled {
-			continue
-		}
-		ciConfig := v1alpha1.CIConfiguration{
-			CIConfigurationName:    verifyName,
-			CIConfigurationJobName: definition.ProwJob.Name,
-			MaxRetries:             definition.MaxRetries,
-		}
-
-		switch {
-		case definition.AggregatedProwJob != nil:
-			// Every Aggregated Job will contain a Blocking "Aggregator" job and an Informing "Analysis" job
-			// Adding the Blocking Job
-			blockingJobName := defaultAggregateProwJobName
-			if definition.AggregatedProwJob.ProwJob != nil && len(definition.AggregatedProwJob.ProwJob.Name) > 0 {
-				blockingJobName = definition.AggregatedProwJob.ProwJob.Name
-			}
-			ciConfig.CIConfigurationJobName = fmt.Sprintf("%s-%s", verifyName, blockingJobName)
-			payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
-
-			// Adding the Informing Job
-			informingJob := v1alpha1.CIConfiguration{
-				CIConfigurationName:    verifyName,
-				CIConfigurationJobName: definition.ProwJob.Name,
-				AnalysisJobCount:       definition.AggregatedProwJob.AnalysisJobCount,
-			}
-			payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, informingJob)
-		default:
-			if definition.Optional {
-				payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, ciConfig)
-			} else {
-				payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
-			}
-		}
+		addPayloadVerificationConfig(payload, verifyName, definition)
 	}
 
-	// Sort the UpgradeVerification items into a consistent order
-	sortedKeys = nil
-	for key := range upgradeJobs {
+	// Ensure consistent ordering
+	sort.Sort(v1alpha1helpers.ByCIConfigurationCIConfigurationName(payload.Spec.PayloadVerificationConfig.BlockingJobs))
+	sort.Sort(v1alpha1helpers.ByCIConfigurationCIConfigurationName(payload.Spec.PayloadVerificationConfig.InformingJobs))
+}
+
+func addPayloadVerificationConfig(payload *v1alpha1.ReleasePayload, name string, definition releasecontroller.ReleaseVerification) {
+	if definition.Disabled {
+		return
+	}
+	ciConfig := v1alpha1.CIConfiguration{
+		CIConfigurationName:    name,
+		CIConfigurationJobName: definition.ProwJob.Name,
+		MaxRetries:             definition.MaxRetries,
+	}
+
+	switch {
+	case definition.AggregatedProwJob != nil:
+		// Every Aggregated Job will contain a Blocking "Aggregator" job and an Informing "Analysis" job
+		// Adding the Blocking Job
+		blockingJobName := defaultAggregateProwJobName
+		if definition.AggregatedProwJob.ProwJob != nil && len(definition.AggregatedProwJob.ProwJob.Name) > 0 {
+			blockingJobName = definition.AggregatedProwJob.ProwJob.Name
+		}
+		ciConfig.CIConfigurationJobName = fmt.Sprintf("%s-%s", name, blockingJobName)
+		payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
+
+		// Adding the Informing Job
+		informingJob := v1alpha1.CIConfiguration{
+			CIConfigurationName:    name,
+			CIConfigurationJobName: definition.ProwJob.Name,
+			AnalysisJobCount:       definition.AggregatedProwJob.AnalysisJobCount,
+		}
+		payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, informingJob)
+	default:
+		if definition.Optional {
+			payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, ciConfig)
+		} else {
+			payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
+		}
+	}
+}
+
+func AddUpgradeJobs(payload *v1alpha1.ReleasePayload, upgradeJobs map[string]releasecontroller.UpgradeVerification) {
+	// Sort the ReleaseVerification items into a consistent order
+	var sortedKeys []string
+	for key, _ := range upgradeJobs {
 		sortedKeys = append(sortedKeys, key)
 	}
 	sort.Strings(sortedKeys)
 
 	for _, cloudPlatform := range sortedKeys {
 		definition := upgradeJobs[cloudPlatform]
-		if definition.Disabled {
-			continue
-		}
-		ciConfig := v1alpha1.CIConfiguration{
-			CIConfigurationName:    cloudPlatform,
-			CIConfigurationJobName: definition.ProwJob.Name,
-		}
-		payload.Spec.PayloadVerificationConfig.UpgradeJobs = append(payload.Spec.PayloadVerificationConfig.UpgradeJobs, ciConfig)
+		addPayloadUpgradeConfig(payload, cloudPlatform, definition)
 	}
-	return &payload
+
+	// Ensure consistent ordering
+	sort.Sort(v1alpha1helpers.ByCIConfigurationCIConfigurationName(payload.Spec.PayloadVerificationConfig.UpgradeJobs))
+}
+
+func addPayloadUpgradeConfig(payload *v1alpha1.ReleasePayload, cloudPlatform string, definition releasecontroller.UpgradeVerification) {
+	if definition.Disabled {
+		return
+	}
+	ciConfig := v1alpha1.CIConfiguration{
+		CIConfigurationName:    cloudPlatform,
+		CIConfigurationJobName: definition.ProwJob.Name,
+	}
+	payload.Spec.PayloadVerificationConfig.UpgradeJobs = append(payload.Spec.PayloadVerificationConfig.UpgradeJobs, ciConfig)
 }

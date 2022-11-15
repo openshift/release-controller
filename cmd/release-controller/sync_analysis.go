@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	imagev1 "github.com/openshift/api/image/v1"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/release-controller"
 	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"time"
@@ -13,7 +14,7 @@ const (
 	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
 )
 
-func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
+func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, payload *v1alpha1.ReleasePayload) error {
 	jobLabels := map[string]string{
 		"release.openshift.io/analysis":       releaseTag.Name,
 		releasecontroller.ReleaseLabelPayload: releaseTag.Name,
@@ -26,7 +27,7 @@ func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, veri
 	for i := 0; i < verifyType.AggregatedProwJob.AnalysisJobCount; i++ {
 		// Postfix the name to differentiate it from the aggregator job
 		jobNameSuffix := fmt.Sprintf("analysis-%d", i)
-		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels, payload)
 		if err != nil {
 			return err
 		}

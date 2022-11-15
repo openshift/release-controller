@@ -165,6 +165,7 @@ func NewController(
 	architecture string,
 	artSuffix string,
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter,
+	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 ) *Controller {
 
 	// log events at v2 and send them to the server

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sort"
 	"strings"
 	"time"
@@ -23,6 +24,13 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
 	if err != nil {
 		return nil, err
+	}
+	payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(releaseTag.Name)
+	if errors.IsNotFound(err) {
+		klog.Warningf("Unable to locate ReleasePayload: %q", releaseTag.Name)
+	}
+	if err != nil {
+		klog.Errorf("Error retrieving ReleasePayload %q: %v", releaseTag.Name, err)
 	}
 	for name, verifyType := range verificationJobs {
 		if verifyType.Disabled {
@@ -89,13 +97,13 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				releasecontroller.ReleaseLabelPayload: releaseTag.Name,
 			}
 			if verifyType.AggregatedProwJob != nil {
-				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec, payload)
 				if err != nil {
 					return nil, err
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
-			job, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+			job, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, payload)
 			if err != nil {
 				return nil, err
 			}

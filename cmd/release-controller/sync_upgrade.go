@@ -8,6 +8,7 @@ import (
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,6 +29,13 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 	if len(platforms) == 0 {
 		klog.V(4).Infof("No platforms, for supported upgrade testing, defined: %q", release.Config.Name)
 		return nil
+	}
+	payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(releaseTag.Name)
+	if errors.IsNotFound(err) {
+		klog.Warningf("Unable to locate ReleasePayload: %q", releaseTag.Name)
+	}
+	if err != nil {
+		klog.Errorf("Error retrieving ReleasePayload %q: %v", releaseTag.Name, err)
 	}
 	platformDistribution, err := NewRoundRobinClusterDistribution(platforms...)
 	if err != nil {
@@ -74,7 +82,7 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 			Upgrade: true,
 			ProwJob: jobs[platform],
 		}
-		_, err := c.ensureProwJobForReleaseTag(release, verifyName, platform, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		_, err := c.ensureProwJobForReleaseTag(release, verifyName, platform, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels, payload)
 		if err != nil {
 			return err
 		}

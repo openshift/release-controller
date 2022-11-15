@@ -378,6 +378,10 @@ func (o *options) Run() error {
 		klog.Fatal(err)
 	}
 
+	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, time.Hour*24)
+	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+	hasSynced = append(hasSynced, releasePayloadInformer.Informer().HasSynced)
+
 	c := NewController(
 		client.CoreV1(),
 		imageClient.ImageV1(),
@@ -395,6 +399,7 @@ func (o *options) Run() error {
 		architecture,
 		o.ARTSuffix,
 		releasePayloadClient.ReleaseV1alpha1(),
+		releasePayloadInformer,
 	)
 
 	if o.VerifyJira {
@@ -467,6 +472,7 @@ func (o *options) Run() error {
 	}
 
 	batchFactory.Start(stopCh)
+	releasePayloadInformerFactory.Start(stopCh)
 
 	// register the releasepayload namespaces
 	for _, ns := range o.ReleaseNamespaces {

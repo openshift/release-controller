@@ -760,3 +760,316 @@ func TestNewReleasePayload(t *testing.T) {
 		})
 	}
 }
+
+func TestAddVerificationJobs(t *testing.T) {
+	testCases := []struct {
+		name             string
+		payload          *v1alpha1.ReleasePayload
+		verificationName string
+		definition       releasecontroller.ReleaseVerification
+		expected         *v1alpha1.ReleasePayload
+	}{
+		{
+			name: "DisabledVerificationJob",
+			payload: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+			verificationName: "disabled-job",
+			definition: releasecontroller.ReleaseVerification{
+				Disabled: true,
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+		},
+		{
+			name: "InformingVerificationJob",
+			payload: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+			verificationName: "informing-job",
+			definition: releasecontroller.ReleaseVerification{
+				Optional: true,
+				ProwJob: &releasecontroller.ProwJobVerification{
+					Name: "periodic-ci-openshift-release-master-nightly-e2e-aws-sdn-serial",
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "informing-job",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-e2e-aws-sdn-serial",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "BlockingVerificationJob",
+			payload: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+			verificationName: "blocking-job",
+			definition: releasecontroller.ReleaseVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
+					Name: "periodic-ci-openshift-release-master-nightly-e2e-aws-sdn-serial",
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "blocking-job",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-e2e-aws-sdn-serial",
+							},
+						},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+		},
+		{
+			name: "SortedInsert",
+			payload: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aggregated-azure-ovn-upgrade-4.12-micro",
+								CIConfigurationJobName: "aggregated-azure-ovn-upgrade-4.12-micro-release-openshift-release-analysis-aggregator",
+							},
+							{
+								CIConfigurationName:    "aggregated-gcp-ovn-upgrade-4.12-minor",
+								CIConfigurationJobName: "aggregated-gcp-ovn-upgrade-4.12-minor-release-openshift-release-analysis-aggregator",
+							},
+							{
+								CIConfigurationName:    "gcp-sdn-serial",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-gcp-sdn-serial",
+								MaxRetries:             3,
+							},
+							{
+								CIConfigurationName:    "gcp-single-node",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-gcp-single-node",
+							},
+						},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+			verificationName: "blocking-job",
+			definition: releasecontroller.ReleaseVerification{
+				ProwJob: &releasecontroller.ProwJobVerification{
+					Name: "periodic-ci-openshift-release-master-nightly-e2e-gcp-sdn-serial",
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aggregated-azure-ovn-upgrade-4.12-micro",
+								CIConfigurationJobName: "aggregated-azure-ovn-upgrade-4.12-micro-release-openshift-release-analysis-aggregator",
+							},
+							{
+								CIConfigurationName:    "aggregated-gcp-ovn-upgrade-4.12-minor",
+								CIConfigurationJobName: "aggregated-gcp-ovn-upgrade-4.12-minor-release-openshift-release-analysis-aggregator",
+							},
+							{
+								CIConfigurationName:    "blocking-job",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-e2e-gcp-sdn-serial",
+							},
+							{
+								CIConfigurationName:    "gcp-sdn-serial",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-gcp-sdn-serial",
+								MaxRetries:             3,
+							},
+							{
+								CIConfigurationName:    "gcp-single-node",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-gcp-single-node",
+							},
+						},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			AddVerificationJobs(tc.payload, map[string]releasecontroller.ReleaseVerification{tc.verificationName: tc.definition})
+			if !reflect.DeepEqual(tc.payload, tc.expected) {
+				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, tc.payload)
+			}
+		})
+	}
+}

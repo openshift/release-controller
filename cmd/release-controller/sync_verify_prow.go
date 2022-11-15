@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/prow"
 	"strings"
 
@@ -23,10 +24,21 @@ import (
 	prowutil "k8s.io/test-infra/prow/pjutil"
 )
 
-func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Release, verifyName, verifySuffix string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {
+func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Release, verifyName, verifySuffix string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string, payload *v1alpha1.ReleasePayload) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
 	fullProwJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
 	prowJobName := prow.GenerateSafeProwJobName(fullProwJobName, verifySuffix)
+
+	// If/When a ReleaseConfig is modified, and the corresponding stream has releases that are currently in-flight
+	// (i.e. Ready), the release-controller will automatically create new prowjobs for any verification tests that may
+	// have been added.
+	// This code is to ensure that the respective ReleasePayload gets updated with any missing jobs...
+	if !hasVerificationJob(payload, verifyName) {
+		err := c.updateReleasePayloadSpec(payload, verifyName, verifyType)
+		if err != nil {
+			klog.Errorf("Unable to update ReleasePayloadSpec %q: %v", payload.Name, err)
+		}
+	}
 
 	isAggregatedJob := verifyType.AggregatedProwJob != nil && verifyType.AggregatedProwJob.AnalysisJobCount > 0
 	if isAggregatedJob {
@@ -257,6 +269,34 @@ func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, b
 func validateProwJob(pj *prowconfig.Periodic) error {
 	if pj.Cluster == "" || pj.Cluster == prowjobv1.DefaultClusterAlias {
 		return fmt.Errorf("the jobs cluster must be set to a value that is not %s, was %q", prowjobv1.DefaultClusterAlias, pj.Cluster)
+	}
+	return nil
+}
+
+func hasVerificationJob(payload *v1alpha1.ReleasePayload, name string) bool {
+	for _, config := range payload.Spec.PayloadVerificationConfig.BlockingJobs {
+		if name == config.CIConfigurationName {
+			return true
+		}
+	}
+	for _, config := range payload.Spec.PayloadVerificationConfig.InformingJobs {
+		if name == config.CIConfigurationName {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) updateReleasePayloadSpec(payload *v1alpha1.ReleasePayload, name string, definition releasecontroller.ReleaseVerification) error {
+	releasePayload := payload.DeepCopy()
+	AddVerificationJobs(releasePayload, map[string]releasecontroller.ReleaseVerification{name: definition})
+	klog.V(4).Infof("Updating ReleasePayloadSpec for: %s/%s", releasePayload.Namespace, releasePayload.Name)
+	_, err := c.releasePayloadClient.ReleasePayloads(releasePayload.Namespace).Update(context.TODO(), releasePayload, metav1.UpdateOptions{})
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }
