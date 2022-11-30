@@ -62,9 +62,9 @@
     });
 </script>
 <script>
-    function searchTable() {
+    function searchTable_{{removeSpecialCharacters $a}}(element) {
         var input, filter, table, tr, td, i, txtValue;
-        input = document.getElementById("myInput");
+        input = document.getElementById(element);
         filter = input.value.toUpperCase();
         table = document.getElementById("{{ $a  }}_table");
         tr = table.getElementsByTagName("tr");
