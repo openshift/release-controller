@@ -4,11 +4,11 @@
 <script src="static/js/jquery.dataTables.js"></script>
 <script src="static/js/dataTables.rowGroup.min.js"></script>
 {{ $stableList := stableStream .Streams }}
-{{ range  $i, $a := $stableList }}
+{{ range  $i, $stream := $stableList }}
 <script>
     $(document).ready(function() {
         var collapsedGroups = {};
-        var table = $('#{{ $a  }}_table').DataTable({
+        var table = $('#{{ $stream  }}_table').DataTable({
             columnDefs: [
                 {
                     "targets": [ 4 ],
@@ -54,7 +54,7 @@
                 }
             }
         });
-        $('#{{ $a  }}_table tbody').on('click', 'tr.group-start',  function () {
+        $('#{{ $stream  }}_table tbody').on('click', 'tr.group-start',  function () {
             var name = $(this).data('name');
             collapsedGroups[name] = !collapsedGroups[name];
             table.draw(false);
@@ -62,11 +62,11 @@
     });
 </script>
 <script>
-    function searchTable() {
+    function searchTable_{{removeSpecialCharacters $stream}}(element) {
         var input, filter, table, tr, td, i, txtValue;
-        input = document.getElementById("myInput");
+        input = document.getElementById(element);
         filter = input.value.toUpperCase();
-        table = document.getElementById("{{ $a  }}_table");
+        table = document.getElementById("{{ $stream  }}_table");
         tr = table.getElementsByTagName("tr");
         for (i = 0; i < tr.length; i++) {
             td = tr[i].getElementsByTagName("td")[0];
