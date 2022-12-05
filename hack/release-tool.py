@@ -3,16 +3,21 @@
 import argparse
 import json
 import logging
+import os.path
+import re
+import tempfile
 import time
 
 import openshift as oc
-from openshift import OpenShiftPythonException
+from openshift import OpenShiftPythonException, Missing
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 logger = logging.getLogger('releaseTool')
 
 SUPPORTED_PRODUCTS = ['ocp', 'okd']
 SUPPORTED_ARCHITECTURES = ['amd64', 'arm64', 'ppc64le', 's390x', 'multi']
+
+ARCHIVE_VERSION_PREFIX = re.compile(r'^(\d+)\.(\d+)$')
 
 
 def generate_resource_values(product, stream_name, architecture, private):
@@ -88,9 +93,9 @@ def create_imagestreamtag_patch(action, custom_message, custom_reason):
     return data
 
 
-def write_backup_file(name, release, data):
+def write_backup_file(path, name, release, data):
     ts = int(round(time.time() * 1000))
-    backup_filename = f'{name}_{release}-{ts}.json'
+    backup_filename = f'{path}/{name}_{release}-{ts}.json'
 
     with open(backup_filename, mode='w+', encoding='utf-8') as backup:
         logger.debug(f'Creating backup file: {backup_filename}')
@@ -99,7 +104,7 @@ def write_backup_file(name, release, data):
     return backup_filename
 
 
-def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_message, custom_reason, execute):
+def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_message, custom_reason, execute, output_path):
     patch = create_imagestreamtag_patch(action, custom_message, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
@@ -113,7 +118,7 @@ def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_me
 
                 logger.info(f'{action.capitalize()}ing imagestreamtag: {namespace}/{imagestream}:{release}')
                 if execute:
-                    backup_file = write_backup_file(imagestream, release, tag.model._primitive())
+                    backup_file = write_backup_file(output_path, imagestream, release, tag.model._primitive())
 
                     tag.patch(patch)
 
@@ -152,7 +157,7 @@ def create_releasepayload_patch(action, custom_reason):
     return data
 
 
-def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute):
+def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute, output_path):
     patch = create_releasepayload_patch(action, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
@@ -166,7 +171,7 @@ def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute
 
                 logger.info(f'{action.capitalize()}ing releasepayload: {namespace}/{release}')
                 if execute:
-                    backup_file = write_backup_file("releasepayload", release, payload.model._primitive())
+                    backup_file = write_backup_file(output_path, "releasepayload", release, payload.model._primitive())
 
                     payload.patch(patch, strategy='merge')
 
@@ -181,16 +186,16 @@ def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute
             raise e
 
 
-def prune_releases(ctx, namespace, imagestream, releases, execute, confirm):
+def prune_release_tags(ctx, namespace, imagestream, releases, execute, confirm, output_path):
     for tag in releases:
         if execute:
-            delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm)
+            delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm, output_path)
         else:
             logger.info(f'[dry-run] Deleting imagestreamtag: {namespace}/{imagestream}:{tag}')
             logger.warning('You must specify "--execute" to permanently apply these changes')
 
 
-def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm):
+def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm, output_path):
     imagestreamtag = f'{imagestream}:{tag}'
 
     with oc.options(ctx), oc.tracking(), oc.timeout(15):
@@ -205,7 +210,7 @@ def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm):
                     if keep is None and (confirm or confirm_delete(namespace, imagestreamtag)):
                         logger.info(f'Deleting imagestreamtag: {namespace}/{imagestreamtag}')
 
-                        backup_file = write_backup_file("imagestreamtag", tag, result.model._primitive())
+                        backup_file = write_backup_file(output_path, "imagestreamtag", tag, result.model._primitive())
                         logger.info(f'Backup written to: {backup_file}')
 
                         r = result.delete(ignore_not_found=True)
@@ -237,10 +242,208 @@ def confirm_delete(namespace, imagestreamtag):
     return False
 
 
+def validate_prefixes(prefixes):
+    invalid_prefixes = []
+    for prefix in prefixes:
+        match = ARCHIVE_VERSION_PREFIX.search(prefix)
+
+        if match is None:
+            invalid_prefixes.append(prefix)
+
+    if len(invalid_prefixes) > 0:
+        logger.error(f'Invalid prefix(es) specified: {",".join(invalid_prefixes)}')
+        exit(len(invalid_prefixes))
+
+
+def archive(ctx, namespace, imagestream, prefixes, execute, confirm, output_path):
+    logger.info(f'Archiving {",".join(prefixes)} tags from imagestream: {namespace}/{imagestream}')
+
+    items_to_archive = process_imagestream(ctx, namespace, imagestream, prefixes)
+    logger.debug(f'Items to archive:\n{json.dumps(items_to_archive, indent=4, default=str)}')
+
+    for item in items_to_archive:
+        for key in item.keys():
+            archive_name = f'{imagestream}-archive-{key}'
+            archive_imagestream, spec_tags, status_tags = build_archive_imagestream(namespace, archive_name, item[key])
+
+            proceed = create_archive_imagestream(ctx, namespace, archive_name, archive_imagestream, execute)
+            if proceed:
+                proceed = patch_archive_imagestream(ctx, namespace, archive_name, status_tags, execute, output_path)
+
+            if proceed:
+                delete_archived_imagestreamtags(ctx, namespace, imagestream, spec_tags, status_tags, execute, confirm, output_path)
+
+
+def process_imagestream(ctx, namespace, imagestream, prefixes):
+    items = []
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
+        try:
+            with oc.project(namespace):
+                result = oc.selector(f'imagestream/{imagestream}').object(ignore_not_found=True)
+
+                if result is not None:
+                    for tag in result.model.spec.tags:
+                        for prefix in prefixes:
+                            tags_to_archive = get_tags_to_archive(items, prefix)
+
+                            if tag.name.startswith(f'{prefix}.'):
+                                data = {
+                                    'name': tag.name,
+                                    'annotations': tag.annotations
+                                }
+                                if tag['from'] is not Missing and tag['from'].kind == "DockerImage":
+                                    data['from'] = tag['from']
+                                    tags_to_archive.append(data)
+                                else:
+                                    for status_tag in result.model.status.tags:
+                                        if tag.name == status_tag.tag:
+                                            data['status_tag'] = status_tag
+                                            tags_to_archive.append(data)
+                else:
+                    logger.info(f'Imagestream: "{namespace}/{imagestream}" does not exist.')
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to process imagestream: {e}')
+            raise e
+
+    return items
+
+
+def get_tags_to_archive(items, prefix):
+    for item in items:
+        if prefix in item:
+            return item[prefix]
+
+    item = {prefix: []}
+    items.append(item)
+
+    return item[prefix]
+
+
+def build_archive_imagestream(namespace, name, tags_to_archive):
+    spec_tags = []
+    status_tags = []
+
+    for tag in tags_to_archive:
+        data = {
+            'annotations': tag['annotations'],
+            'name': tag['name'],
+            'importPolicy': {},
+            'referencePolicy': {
+                'type': 'Source'
+            }
+        }
+        if 'from' in tag:
+            data['from'] = tag['from']
+        elif 'status_tag' in tag:
+            status_tags.append(tag['status_tag'])
+
+        spec_tags.append(data)
+
+    imagestream = {
+        'apiVersion': 'image.openshift.io/v1',
+        'kind': 'ImageStream',
+        'metadata': {
+            'name': name,
+            'namespace': namespace,
+        },
+        'spec': {
+            'lookupPolicy': {
+                'local': False
+            },
+            'tags': spec_tags
+        }
+    }
+    return imagestream, spec_tags, status_tags
+
+
+def create_archive_imagestream(ctx, namespace, name, payload, execute):
+    logger.debug(f'Creating archive imagestream {namespace}/{name}:\n{json.dumps(payload, indent=4, default=str)}')
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(30 * 60):
+        try:
+            with oc.project(namespace):
+                imagestream = oc.selector(f'imagestream/{name}').object(ignore_not_found=True)
+                if imagestream:
+                    logger.error(f'Archive imagestream: {namespace}/{name} already exists')
+                    return False
+
+                if execute:
+                    sel = oc.create(payload)
+                    sel.until_all(1, success_func=oc.status.is_imagestream_imported)
+                    logger.info(f'Archive imagestream {namespace}/{name} created successfully')
+                    return True
+                else:
+                    logger.info(f'[dry-run] Creating archive imagestream: {namespace}/{name}')
+                    logger.warning('You must specify "--execute" to permanently apply these changes')
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to create archive imagestream: "{namespace}/{name}"')
+            raise e
+
+    return False
+
+
+def patch_archive_imagestream(ctx, namespace, name, status_tags, execute, output_path):
+    patch = create_imagestream_status_patch(status_tags)
+    logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
+        try:
+            with oc.project(namespace):
+                imagestream = oc.selector(f'imagestream/{name}').object(ignore_not_found=True)
+                if not imagestream:
+                    logger.error(f'Unable to locate imagestream: {namespace}/{name}')
+                    return False
+
+                logger.info(f'Patching archive imagestream: {namespace}/{name}')
+                if execute:
+                    backup_file = write_backup_file(output_path, 'imagestream', name, imagestream.model._primitive())
+
+                    imagestream.patch(patch, cmd_args='--subresource=status')
+
+                    logger.info(f'Archive imagestream {name} updated successfully')
+                    logger.info(f'Backup written to: {backup_file}')
+                    return True
+                else:
+                    logger.info(f'[dry-run] Patching archive imagestream {name} with patch:\n{json.dumps(patch, indent=4)}')
+                    logger.warning('You must specify "--execute" to permanently apply these changes')
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to update archive imagestream: "{name}"')
+            raise e
+
+    return False
+
+
+def create_imagestream_status_patch(status_tags):
+    data = {
+        'status': {
+            'tags': []
+        }
+    }
+
+    for tag in status_tags:
+        data['status']['tags'].append(tag)
+
+    return data
+
+
+def delete_archived_imagestreamtags(ctx, namespace, name, spec_tags, status_tags, execute, confirm, output_path):
+    tags = []
+    for spec in spec_tags:
+        if spec['name'] not in tags:
+            tags.append(spec['name'])
+    for status in status_tags:
+        if status.tag not in tags:
+            tags.append(status.tag)
+
+    prune_release_tags(ctx, namespace, name, tags, execute, confirm, output_path)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Manually accept or reject release payloads')
     parser.add_argument('-m', '--message', help='Specifies a custom message to include with the update', default=None)
     parser.add_argument('-r', '--reason', help='Specifies a custom reason to include with the update', default=None)
+    parser.add_argument('-o', '--output', help='The location where backup files will be stored.  If not specified, a temporary location will be used.', default=None)
     parser.add_argument('--execute', help='Specify to persist changes on the cluster', action='store_true')
 
     config_group = parser.add_argument_group('Configuration Options')
@@ -268,26 +471,46 @@ if __name__ == '__main__':
     prune_parser.add_argument('releases', help='The name of the release(s) to prune (i.e. 4.10.0-0.ci-2021-12-17-144800)', action="extend", nargs="+", type=str)
     prune_parser.add_argument('-y', '--yes', help='Automatically answer yes to confirm deletion(s)', action='store_true')
 
+    archive_parser = subparsers.add_parser('archive', help='Archives tags from the specified imagestream')
+    archive_parser.set_defaults(action='archive')
+    archive_parser.add_argument('prefixes', help='The prefixes of the tags to archive (i.e. 4.1)', action="extend", nargs="+", type=str)
+    archive_parser.add_argument('-y', '--yes', help='Automatically answer yes to confirm deletion(s)', action='store_true')
+
     args = vars(parser.parse_args())
 
     if args['verbose']:
         logger.setLevel(logging.DEBUG)
 
+    # Validate the connection to the respective cluster
     context = {"context": args['context']}
 
     if len(args['kubeconfig']) > 0:
         context['kubeconfig'] = args['kubeconfig']
 
     validate_server_connection(context)
+
+    # Configure the output location
+    if args['output'] is None:
+        output_dir = tempfile.mkdtemp(prefix=f'release-tool_{args["action"]}-')
+        pass
+    else:
+        output_dir = args['output']
+        if not os.path.isdir(args['output']):
+            os.makedirs(output_dir, exist_ok=True)
+
+    logger.info(f'Using output directory: {output_dir}')
+
+    # Get the appropriate release imagestream information
     release_namespace, release_image_stream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
 
+    # Execute action
     if args['action'] in ['accept', 'reject']:
         # TODO: Remove once ReleasePayloads are fully implemented...
-        patch_imagestreamtag(context, release_namespace, release_image_stream, args['action'], args['release'], args['message'], args['reason'], args['execute'])
+        patch_imagestreamtag(context, release_namespace, release_image_stream, args['action'], args['release'], args['message'], args['reason'], args['execute'], output_dir)
 
-        patch_releaespayload(context, release_namespace, args['action'], args['release'], args['reason'], args['execute'])
+        patch_releaespayload(context, release_namespace, args['action'], args['release'], args['reason'], args['execute'], output_dir)
     elif args['action'] == 'prune':
-        prune_releases(context, release_namespace, release_image_stream, args['releases'], args['execute'], args['yes'])
-    else:
-        logger.error(f'Unsupported action: {args["action"]}')
-        exit(-1)
+        prune_release_tags(context, release_namespace, release_image_stream, args['releases'], args['execute'], args['yes'], output_dir)
+    elif args['action'] == 'archive':
+        validate_prefixes(args['prefixes'])
+        archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
