@@ -38,7 +38,7 @@ const comparisonDashboardPageHtml = `
 <p class="small mb-3">
 	Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
-<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. For information about the available builds, please reference the <a href="https://mirror.openshift.com/pub/openshift-v4/OpenShift_Release_Types.pdf" target="_blank">OpenShift Release Types documentation</a></br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
+<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. For information about the available builds, please reference the <a href="https://mirror.openshift.com/pub/openshift-v4/OpenShift_Release_Types.pdf" target="_blank">OpenShift Release Types documentation</a>.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 `
 
 func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Request) {
