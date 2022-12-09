@@ -439,6 +439,37 @@ def delete_archived_imagestreamtags(ctx, namespace, name, spec_tags, status_tags
     prune_release_tags(ctx, namespace, name, tags, execute, confirm, output_path)
 
 
+def reimport(ctx, namespace, imagestream, execute):
+    logger.info(f'Importing tags from imagestream: {namespace}/{imagestream}')
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(5*60):
+        try:
+            with oc.project(namespace):
+                stream = oc.selector(f'imagestream/{imagestream}').object(ignore_not_found=True)
+                if not stream:
+                    logger.error(f'Unable to locate imagestream: {namespace}/{imagestream}')
+                    return
+
+                logger.debug(f'Imagestream:\n{json.dumps(stream.model, indent=4, default=str)}')
+
+                if not execute:
+                    logger.warning('Running in dry-run mode.  You must specify "--execute" to permanently apply these changes')
+
+                for tag in stream.model.spec.tags:
+                    if 'from' not in tag:
+                        logger.warning(f'Skipping tag: {tag.name}')
+
+                    if execute:
+                        logger.info(f'Importing: {imagestream}:{tag.name}')
+                        oc.invoke('import-image', cmd_args=[f'is/{imagestream}:{tag.name}'])
+                    else:
+                        logger.info(f'[dry-run] Importing: {imagestream}:{tag.name}')
+
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to to process imagestream: "{namespace}/{imagestream}"')
+            raise e
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Manually accept or reject release payloads')
     parser.add_argument('-m', '--message', help='Specifies a custom message to include with the update', default=None)
@@ -475,6 +506,10 @@ if __name__ == '__main__':
     archive_parser.set_defaults(action='archive')
     archive_parser.add_argument('prefixes', help='The prefixes of the tags to archive (i.e. 4.1)', action="extend", nargs="+", type=str)
     archive_parser.add_argument('-y', '--yes', help='Automatically answer yes to confirm deletion(s)', action='store_true')
+
+    import_parser = subparsers.add_parser('import', help='Manually import all tags defined in the respective imagestream')
+    import_parser.set_defaults(action='import')
+    import_parser.add_argument('imagestream', help='The name of the imagestream to process (i.e. 4.13-art-latest)')
 
     args = vars(parser.parse_args())
 
@@ -514,3 +549,5 @@ if __name__ == '__main__':
     elif args['action'] == 'archive':
         validate_prefixes(args['prefixes'])
         archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
+    elif args['action'] == 'import':
+        reimport(context, release_namespace, release_image_stream, args['execute'])
