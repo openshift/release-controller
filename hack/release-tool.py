@@ -452,18 +452,15 @@ def reimport(ctx, namespace, imagestream, execute):
 
                 logger.debug(f'Imagestream:\n{json.dumps(stream.model, indent=4, default=str)}')
 
-                if not execute:
-                    logger.warning('Running in dry-run mode.  You must specify "--execute" to permanently apply these changes')
-
-                for tag in stream.model.spec.tags:
-                    if 'from' not in tag:
-                        logger.warning(f'Skipping tag: {tag.name}')
-
-                    if execute:
-                        logger.info(f'Importing: {imagestream}:{tag.name}')
-                        oc.invoke('import-image', cmd_args=[f'is/{imagestream}:{tag.name}'])
-                    else:
-                        logger.info(f'[dry-run] Importing: {imagestream}:{tag.name}')
+                for tag in stream.model.status.tags:
+                    if tag.conditions != Missing:
+                        for condition in tag.conditions:
+                            if condition.type == 'ImportSuccess' and condition.status == 'False':
+                                if execute:
+                                    logger.info(f'Importing: {imagestream}:{tag.tag}')
+                                    oc.invoke('import-image', cmd_args=[f'is/{imagestream}:{tag.tag}'])
+                                else:
+                                    logger.info(f'[dry-run] Importing: {imagestream}:{tag.tag}')
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to to process imagestream: "{namespace}/{imagestream}"')
