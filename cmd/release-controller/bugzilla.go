@@ -137,8 +137,16 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	}
 
 	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
+
+	if err != nil {
+		klog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
+		c.bugzillaErrorMetrics.WithLabelValues(bzUnableToGenerateBuglist).Inc()
+		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
+	}
+
 	var bugList []int
 	var errorsConverting []error
+
 	for _, bug := range bugs {
 		if bug.Source == 0 {
 			bugIDInt, err := strconv.Atoi(bug.ID)
@@ -152,11 +160,6 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 	}
 	if len(errorsConverting) != 0 {
 		c.bugzillaErrorMetrics.WithLabelValues(bzFailedToConvertIDToInt).Inc()
-	}
-	if err != nil {
-		klog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
-		c.bugzillaErrorMetrics.WithLabelValues(bzUnableToGenerateBuglist).Inc()
-		return fmt.Errorf("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
 	}
 	var errs []error
 	if errs := append(errs, c.bugzillaVerifier.VerifyBugs(bugList, tag.Name)...); len(errs) != 0 {
