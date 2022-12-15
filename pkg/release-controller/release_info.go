@@ -266,8 +266,8 @@ func bugList(s string) ([]BugDetails, error) {
 }
 
 type BugDetails struct {
-	ID     int `json:"id"`
-	Source int `json:"source"`
+	ID     string `json:"id"`
+	Source int    `json:"source"`
 }
 
 type ReleaseUpgradeInfo struct {

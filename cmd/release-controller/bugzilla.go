@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -25,6 +26,7 @@ const (
 	bzVerifier                = "verifier"
 	bzFailedAnnotation        = "failed_annotation"
 	bzImagestreamGetErr       = "imagestream_get_error"
+	bzFailedToConvertIDToInt  = "id_not_int"
 )
 
 // initializeMetrics initializes all labels used by the bugzilla error metrics to 0. This allows
@@ -136,11 +138,20 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 
 	bugs, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
 	var bugList []int
-
+	var errorsConverting []error
 	for _, bug := range bugs {
 		if bug.Source == 0 {
-			bugList = append(bugList, bug.ID)
+			bugIDInt, err := strconv.Atoi(bug.ID)
+			if err != nil {
+				klog.Errorf("failed to convert the bugzilla bug ID to an Integer: %s", err)
+				errorsConverting = append(errorsConverting, err)
+			} else {
+				bugList = append(bugList, bugIDInt)
+			}
 		}
+	}
+	if len(errorsConverting) != 0 {
+		c.bugzillaErrorMetrics.WithLabelValues(bzFailedToConvertIDToInt).Inc()
 	}
 	if err != nil {
 		klog.V(4).Infof("Unable to generate bug list from %s to %s: %v", prevTag.Name, tag.Name, err)
@@ -175,7 +186,6 @@ func (c *Controller) syncBugzilla(key queueKey) error {
 		klog.V(6).Infof("Setting %s annotation to \"true\" for %s in imagestream %s/%s", releasecontroller.ReleaseAnnotationBugsVerified, tag.Name, target.GetNamespace(), target.GetName())
 		if _, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, meta.UpdateOptions{}); err != nil {
 			klog.V(4).Infof("Failed to update bugzilla annotation for tag %s in imagestream %s/%s: %v", tag.Name, target.GetNamespace(), target.GetName(), err)
-			//c.bugzillaErrorMetrics.WithLabelValues(bzFailedAnnotation).Inc()
 			lastErr = err
 			return false, nil
 		}

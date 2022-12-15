@@ -6,19 +6,19 @@ import (
 )
 
 func TestBugList(t *testing.T) {
-	testData := "[\n  {\n    \"id\": 2087213,\n    \"status\": \"VERIFIED\",\n    \"priority\": \"high\",\n    \"summary\": \"Spoke BMH stuck \\\"inspecting\\\" when deployed via ZTP in 4.11 OCP hub\",\n    \"source\": 0\n  },\n  {\n    \"id\": 2093126,\n    \"status\": \"ON_QA\",\n    \"priority\": \"urgent\",\n    \"summary\": \"Summary\",\n    \"source\": 0\n  },\n  {\n    \"id\": 2102639,\n    \"status\": \"ON_QA\",\n    \"priority\": \"unspecified\",\n    \"summary\": \"Summary\",\n    \"source\": 1\n  }\n]\n"
+	testData := "[\n  {\n    \"id\": \"OCPBUGS-4128\",\n    \"status\": \"\",\n    \"priority\": \"\",\n    \"summary\": \"\",\n    \"source\": 1\n  },\n  {\n    \"id\": \"OCPBUGS-4129\",\n    \"status\": \"\",\n    \"priority\": \"\",\n    \"summary\": \"\",\n    \"source\": 1\n  },\n  {\n    \"id\": \"4129\",\n    \"status\": \"\",\n    \"priority\": \"\",\n    \"summary\": \"\",\n    \"source\": 0\n  }  \n]"
 	expectedResult := []BugDetails{
 		{
-			ID:     2087213,
-			Source: 0,
-		},
-		{
-			ID:     2093126,
-			Source: 0,
-		},
-		{
-			ID:     2102639,
+			ID:     "OCPBUGS-4128",
 			Source: 1,
+		},
+		{
+			ID:     "OCPBUGS-4129",
+			Source: 1,
+		},
+		{
+			ID:     "4129",
+			Source: 0,
 		},
 	}
 	result, err := bugList(testData)
