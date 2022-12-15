@@ -136,7 +136,7 @@ func (c *Controller) syncJira(key queueKey) error {
 	var issueList []string
 	for _, issue := range issues {
 		if issue.Source == 1 {
-			issueList = append(issueList, fmt.Sprintf("OCPBUGS-%d", issue.ID))
+			issueList = append(issueList, issue.ID)
 		}
 	}
 	if err != nil {
