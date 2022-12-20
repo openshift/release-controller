@@ -283,6 +283,40 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:        "EngineeringCandidateJob",
+			prowjobName: "4.13.0-ec.1-aws-sdn-serial",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "ec.1",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-serial",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "EngineeringCandidateJobWithRetries",
+			prowjobName: "4.13.0-ec.1-aws-sdn-serial-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "ec.1",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-serial",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
