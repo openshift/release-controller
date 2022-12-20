@@ -75,7 +75,7 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			details.Build = fmt.Sprintf("%d", prerelease[0].VersionNum)
 		case false:
 			switch prerelease[0].VersionStr {
-			case "fc", "rc":
+			case "ec", "fc", "rc":
 				details.Stream = StreamCandidate
 				details.Build = prerelease[0].VersionStr
 			default:
@@ -106,7 +106,7 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			details.Build = fmt.Sprintf("%d", prerelease[0].VersionNum)
 		case false:
 			switch prerelease[0].VersionStr {
-			case "fc", "rc":
+			case "ec", "fc", "rc":
 				details.Stream = StreamCandidate
 				splitVersion(generateCIConfigurationName(prerelease), details)
 				return details, nil
