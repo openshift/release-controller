@@ -134,6 +134,11 @@ func (in *PayloadVerificationConfig) DeepCopyInto(out *PayloadVerificationConfig
 		*out = make([]CIConfiguration, len(*in))
 		copy(*out, *in)
 	}
+	if in.UpgradeJobs != nil {
+		in, out := &in.UpgradeJobs, &out.UpgradeJobs
+		*out = make([]CIConfiguration, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -329,6 +334,13 @@ func (in *ReleasePayloadStatus) DeepCopyInto(out *ReleasePayloadStatus) {
 	}
 	if in.InformingJobResults != nil {
 		in, out := &in.InformingJobResults, &out.InformingJobResults
+		*out = make([]JobStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.UpgradeJobResults != nil {
+		in, out := &in.UpgradeJobResults, &out.UpgradeJobResults
 		*out = make([]JobStatus, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])

@@ -15,64 +15,93 @@ import (
 // ReleaseConfig.  The ReleaseConfig is a definition of how releases are calculated.  When a ReleasePayload is
 // generated, it will be generated in the same namespace as the imagstream that produced it. If/when an update
 // occurs, to one of these imagestreams, the release-controller will:
-//   1) Create a point-in-time mirror of the updated imagestream
-//   2) Create a new Release from the mirror
-//        - Any errors before this point will cause the release to marked `Failed`
-//   3) Launches a set of release analysis jobs
-//   4) Launches an aggregation job
-//   5) Launches a set of release verification jobs
-//        - These can either be `Blocking Jobs` which will prevent release acceptance or `Informing Jobs` which will
-//          not prevent release acceptance.
-//   6) Monitors for job completions
-//        - If all `Blocking Jobs` complete successfully, then the release is `Accepted`.  If any `Blocking Jobs` fail,
-//          the release will be marked `Rejected`
-//   7) Publishes all results to the respective webpage
+//  1. Create a point-in-time mirror of the updated imagestream
+//  2. Create a new Release from the mirror
+//     - Any errors before this point will cause the release to marked `Failed`
+//  3. Launches a set of release analysis jobs
+//  4. Launches an aggregation job
+//  5. Launches a set of release verification jobs
+//     - These can either be `Blocking Jobs` which will prevent release acceptance or `Informing Jobs` which will
+//     not prevent release acceptance.
+//  6. For Stable releases, launches a set of jobs to test a subset of the supported upgrades defined inside the release
+//     image itself.  While these jobs do not have any real bearing on the acceptance or rejection of a ReleasePayload,
+//     they will be monitored and their respective results captured.  The hope would be to use these results to
+//     provide a convenient way to override a "Rejected" release caused by a blocking upgrade job.
+//  7. Monitors for job completions
+//     - If all `Blocking Jobs` complete successfully, then the release is `Accepted`.  If any `Blocking Jobs` fail,
+//     the release will be marked `Rejected`
+//  8. Publishes all results to the respective webpage
 //
 // Example:
 // ART:
-//   1) Publishes an update to the `ocp/4.9-art-latest` imagestream
+//  1. Publishes an update to the `ocp/4.9-art-latest` imagestream
 //
 // Release-controller:
-//   1) Creates a mirror named: `ocp/4.9-art-latest-2021-09-27-105859`
-//   2) Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859`
-//       -Labels:
-//         release.openshift.io/imagestream=release
-//         release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
-//   3) Creates an OpenShift Release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
-//   4) Update ReleasePayload conditions with results of release creation job
-//   If the release was created successfully, the release-controller:
-//   5) Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-analysis-<count>
-//   6) Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-aggregator
-//   7) Launches: 4.9.0-0.nightly-2021-09-27-105859-<name>
+//  1. Creates a mirror named: `ocp/4.9-art-latest-2021-09-27-105859`
+//  2. Creates a ReleasePayload: `ocp/4.9.0-0.nightly-2021-09-27-105859`
+//     -Labels:
+//     release.openshift.io/imagestream=release
+//     release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
+//  3. Creates an OpenShift Release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
+//  4. Update ReleasePayload conditions with results of release creation job
+//     If the release was created successfully, the release-controller:
+//  5. Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-analysis-<count>
+//  6. Launches: 4.9.0-0.nightly-2021-09-27-105859-aggregated-<name>-aggregator
+//  7. Launches: 4.9.0-0.nightly-2021-09-27-105859-<name>
 //
 // When ART promotes a GA release, they will assemble releases themselves, publish it to quay.io, and then update
 // the "stable" release stream (i.e. ocp/release) with the corresponding payload.  In this scenario, the
 // release-controller will perform all the same steps, mentioned above, but the mirror will be named after
 // the "official" release (i.e. 4.9.7) and not not contain a timestamp.  Likewise, any verification tests will
-// only contain the release name and the name of the verification test as defined in the ReleaseConfig.
+// only contain the release name and the name of the verification test as defined in the ReleaseConfig.  The
+// release-controller will also launch a small sample of jobs to test upgrades from the list of upgrade versions
+// defined inside the release image itself:
+//
+// For example:
+// $ oc adm release info quay.io/openshift-release-dev/ocp-release:4.11.22-x86_64
+//
+// The list of supported upgrades is:
+// 4.10.16, 4.10.17, 4.10.18, 4.10.20, 4.10.21, 4.10.22, 4.10.23, 4.10.24, 4.10.25, 4.10.26, 4.10.27, 4.10.28, 4.10.29,
+// 4.10.30, 4.10.31, 4.10.32, 4.10.33, 4.10.34, 4.10.35, 4.10.36, 4.10.37, 4.10.38, 4.10.39, 4.10.40, 4.10.41, 4.10.42,
+// 4.10.43, 4.10.44, 4.10.45, 4.10.46, 4.10.47, 4.11.0, 4.11.1, 4.11.2, 4.11.3, 4.11.4, 4.11.5, 4.11.6, 4.11.7, 4.11.8,
+// 4.11.9, 4.11.10, 4.11.11, 4.11.12, 4.11.13, 4.11.14, 4.11.16, 4.11.17, 4.11.18, 4.11.19, 4.11.20, 4.11.21
+//
+// From the list above, the release-controller will launch a subset of jobs named like:
+// 4.11.22-upgrade-from-4.10.16-<platform>
+// 4.11.22-upgrade-from-4.11.0-<platform>
+//
+// Where <platform> is defined in the Release Configuration definitions in the openshift/release repo:
+// https://github.com/openshift/release/blob/e5c9122144c09c4095f0f87888b9685712dc7b1e/core-services/release-controller/_releases/release-ocp-4.y-stable.json#L20-L30
 //
 // Mapping from a Release to ReleasePayload:
 // A ReleasePayload will always be named after the Release that it corresponds to, with the addition of a
 // random string suffix.  Both objects will reside in the same namespace.
-//   For a release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
-//   A corresponding ReleasePayload will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859`
+//
+//	For a release: `ocp/release:4.9.0-0.nightly-2021-09-27-105859`
+//	A corresponding ReleasePayload will exist: `ocp/4.9.0-0.nightly-2021-09-27-105859`
 //
 // Mapping from ReleasePayload to Release:
 // A ReleasePayload is decorated with a couple labels that will point back to the Release that it corresponds to:
 //   - release.openshift.io/imagestream=release
 //   - release.openshift.io/imagestreamtag-name=4.9.0-0.nightly-2021-09-27-105859
+//
 // Because the ReleasePayload and the Release will both reside in the same namespace, the release that created the
 // ReleasePayload will be located here:
-//   <namespace>/<release.openshift.io/imagestream>:<release.openshift.io/imagestreamtag-name>
+//
+//	<namespace>/<release.openshift.io/imagestream>:<release.openshift.io/imagestreamtag-name>
+//
 // Similarly, the ReleasePayload object itself also has the PayloadCoordinates (.spec.payloadCoordinates) that point
 // back to the Release as well:
-//   spec:
-//     payloadCoordinates:
-//       imagestreamName: release
-//       imagestreamTagName: 4.9.0-0.nightly-2021-09-27-105859
-//       namespace: ocp
+//
+//	spec:
+//	  payloadCoordinates:
+//	    imagestreamName: release
+//	    imagestreamTagName: 4.9.0-0.nightly-2021-09-27-105859
+//	    namespace: ocp
+//
 // The release that created the ReleasePayload will be located here:
-//   <namespace>/<imagestreamName>:<imagestreamTagName>
+//
+//	<namespace>/<imagestreamName>:<imagestreamTagName>
 //
 // Compatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.
 // +openshift:compatibility-gen:level=4
@@ -105,12 +134,13 @@ type ReleasePayloadSpec struct {
 // Example:
 // For a ReleasePayload named: "4.9.0-0.nightly-2021-09-27-105859" in the "ocp" namespace, and configured
 // to be written into the "release" imagestream, we expect:
-//   1) Namespace to equal "ocp
-//   2) ImagestreamName to equal "release"
-//   3) ImagestreamTagName to equal "4.9.0-0.nightly-2021-09-27-105859", which will also serves as the prefix of the ReleasePayload
+//  1. Namespace to equal "ocp
+//  2. ImagestreamName to equal "release"
+//  3. ImagestreamTagName to equal "4.9.0-0.nightly-2021-09-27-105859", which will also serves as the prefix of the ReleasePayload
 //
 // These coordinates can then be used to get the release imagestreamtag itself:
-//    # oc -n ocp get imagestreamtag release:4.9.0-0.nightly-2021-09-27-105859
+//
+//	# oc -n ocp get imagestreamtag release:4.9.0-0.nightly-2021-09-27-105859
 type PayloadCoordinates struct {
 	// Namespace must match that of the ReleasePayload
 	Namespace string `json:"namespace,omitempty"`
@@ -165,6 +195,7 @@ const (
 // ART, occasionally, needs the ability to manually accept/reject a Release that, for some reason or another:
 //   - won't pass one or more of it's blocking jobs.
 //   - shouldn't proceed with the normal release verification processing
+//
 // This would be the one scenario where another party, besides the release-controller, would update a
 // ReleasePayload instance.  Upon doing so, the release-controller should see that an update occurred and make all
 // the necessary changes to formally accept/reject the respective release.
@@ -182,11 +213,13 @@ type PayloadVerificationConfig struct {
 	BlockingJobs []CIConfiguration `json:"blockingJobs,omitempty"`
 	// InformingJobs are release verification jobs used to execute tests against a ReleasePayload
 	InformingJobs []CIConfiguration `json:"informingJobs,omitempty"`
+	// UpgradeJobs are automatically generated jobs used to execute upgrade tests against a ReleasePayload
+	UpgradeJobs []CIConfiguration `json:"upgradeJobs,omitempty"`
 }
 
 // CIConfiguration is an Openshift CI system's job definition of a verification test to run against a ReleasePayload
 type CIConfiguration struct {
-	// CIConfigurationName the unique name given to a verification test.  This value will be used as the key to lookup
+	// CIConfigurationName the unique name given to a verification test.  This value will be used as the key to look up
 	// the configuration and the results of the respective verification test
 	CIConfigurationName string `json:"ciConfigurationName"`
 	// CIConfigurationJobName is the actual name of the prowjob definition as stored in the CI Job Configuration.  This
@@ -216,6 +249,9 @@ type ReleasePayloadStatus struct {
 
 	// InformingJobResults stores the results of all informing jobs
 	InformingJobResults []JobStatus `json:"informingJobResults,omitempty"`
+
+	// UpgradeJobResults stores the results of generated upgrade jobs
+	UpgradeJobResults []JobStatus `json:"upgradeJobResults,omitempty"`
 }
 
 // These are valid condition types for ReleasePayloadStatus.
@@ -343,6 +379,17 @@ type JobRunCoordinates struct {
 	Cluster   string `json:"cluster,omitempty"`
 }
 
+// JobRunUpgradeType the type of upgrade performed via this job
+type JobRunUpgradeType string
+
+const (
+	// JobRunUpgradeTypeUpgrade an upgrade from a release in the same Z stream (i.e. 4.11.0 to 4.11.22)
+	JobRunUpgradeTypeUpgrade JobRunUpgradeType = "upgrade"
+
+	// JobRunUpgradeTypeUpgradeMinor an upgrade from a previous minor release  (i.e. 4.11.22 to 4.12.0)
+	JobRunUpgradeTypeUpgradeMinor JobRunUpgradeType = "upgrade-minor"
+)
+
 // JobRunResult the results of a prowjob run
 // The release-controller creates ProwJobs (prowv1.ProwJob) during the sync_ready control loop and relies on an informer
 // to process jobs, that it created, as they are completed. The JobRunResults will be created, by the release-controller
@@ -364,6 +411,9 @@ type JobRunResult struct {
 
 	// HumanProwResultsURL the html link to the prow results
 	HumanProwResultsURL string `json:"humanProwResultsURL,omitempty"`
+
+	// UpgradeType the type of upgrade performed via this job
+	UpgradeType JobRunUpgradeType `json:"upgradeType,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
