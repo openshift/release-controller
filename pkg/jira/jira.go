@@ -91,12 +91,8 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	var unlabeledPRs []pr
 	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
-		// In case bug has already been moved to VERIFIED, completely ignore
-		if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) || strings.EqualFold(issue.Fields.Status.Name, jira.StatusReleasePending) || strings.EqualFold(issue.Fields.Status.Name, jira.StatusClosed) {
-			klog.V(4).Infof("Issue %s already in %s status", issue.Key, issue.Fields.Status.Name)
-			return true, "", nil, false
-		}
-		issueErrs = append(issueErrs, fmt.Errorf("issue is not in %s status", jira.StatusOnQA))
+		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
+		return true, "", nil, false
 	} else {
 		for _, extPR := range extPRs {
 			var newErr error
@@ -155,9 +151,9 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			errs = append(errs, tagError)
 			continue
 		}
-		checkVerified, message, newErr, success := c.verifyExtPRs(issue, extPRs, errs, tagName)
-		if checkVerified {
-			// the issue is already verified
+		notOnQA, message, newErr, success := c.verifyExtPRs(issue, extPRs, errs, tagName)
+		if notOnQA {
+			// the issue is not marked as on_qa; ignore
 			continue
 		}
 		errs = append(errs, newErr...)

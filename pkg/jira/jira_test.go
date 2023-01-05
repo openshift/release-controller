@@ -270,7 +270,7 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "In Progress",
-				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- issue is not in ON_QA status\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				message: "",
 			},
 		},
 		{
