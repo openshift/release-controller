@@ -188,6 +188,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 			CompletionTime:      prowJob.Status.CompletionTime,
 			State:               getJobRunState(prowJob.Status.State),
 			HumanProwResultsURL: prowJob.Status.URL,
+			UpgradeType:         getUpgradeType(originalReleasePayload.Name, details),
 		}
 
 		jobStatus, err := findJobStatus(originalReleasePayload.Name, &originalReleasePayload.Status, ciConfigurationName, ciConfigurationJobName)
@@ -282,6 +283,12 @@ func setJobStatus(status *v1alpha1.ReleasePayloadStatus, jobStatus v1alpha1.JobS
 			return
 		}
 	}
+	for i, job := range status.UpgradeJobResults {
+		if job.CIConfigurationName == jobStatus.CIConfigurationName && job.CIConfigurationJobName == jobStatus.CIConfigurationJobName {
+			status.UpgradeJobResults[i] = jobStatus
+			return
+		}
+	}
 }
 
 func getJobStatus(payload, ciConfigurationName, ciConfigurationJobName string, results []v1alpha1.JobStatus) *v1alpha1.JobStatus {
@@ -300,6 +307,10 @@ func findJobStatus(payload string, status *v1alpha1.ReleasePayloadStatus, ciConf
 		return jobStatus, nil
 	}
 	jobStatus = getJobStatus(payload, ciConfigurationName, ciConfigurationJobName, status.InformingJobResults)
+	if jobStatus != nil {
+		return jobStatus, nil
+	}
+	jobStatus = getJobStatus(payload, ciConfigurationName, ciConfigurationJobName, status.UpgradeJobResults)
 	if jobStatus != nil {
 		return jobStatus, nil
 	}
@@ -332,4 +343,27 @@ func findJobRunResult(results []v1alpha1.JobRunResult, coordinates v1alpha1.JobR
 		}
 	}
 	return nil
+}
+
+func getUpgradeType(payload string, details *utils.ReleaseVerificationJobDetails) v1alpha1.JobRunUpgradeType {
+	if len(details.UpgradeFrom) > 0 {
+		to, err := releasecontroller.SemverParseTolerant(payload)
+		if err != nil {
+			return ""
+		}
+		from, err := releasecontroller.SemverParseTolerant(details.UpgradeFrom)
+		if err != nil {
+			return ""
+		}
+		switch {
+		case from.Major != to.Major:
+			klog.Warning(fmt.Sprintf("major version mismatch between payload: %q and upgrade version: %q", payload, details.UpgradeFrom))
+			return ""
+		case to.Minor > from.Minor:
+			return v1alpha1.JobRunUpgradeTypeUpgradeMinor
+		default:
+			return v1alpha1.JobRunUpgradeTypeUpgrade
+		}
+	}
+	return ""
 }

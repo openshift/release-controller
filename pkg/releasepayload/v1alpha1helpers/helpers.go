@@ -13,6 +13,8 @@ func CanonicalizeReleasePayloadStatus(in *v1alpha1.ReleasePayload) {
 	CanonicalizeJobRunResults(in.Status.BlockingJobResults)
 	sort.Sort(jobstatus.ByJobStatusCIConfigurationName(in.Status.InformingJobResults))
 	CanonicalizeJobRunResults(in.Status.InformingJobResults)
+	sort.Sort(jobstatus.ByJobStatusCIConfigurationName(in.Status.UpgradeJobResults))
+	CanonicalizeJobRunResults(in.Status.UpgradeJobResults)
 	sort.Sort(conditions.ByReleasePayloadConditionType(in.Status.Conditions))
 }
 

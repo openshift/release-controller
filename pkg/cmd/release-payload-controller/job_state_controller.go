@@ -24,9 +24,12 @@ import (
 // The JobStateController reads the following pieces of information:
 //   - .status.blockingJobResults[] | .results[]
 //   - .status.informingJobResults[] | .results[]
+//   - .status.upgradeJobResults[] | .results[]
+//
 // and populates the following condition:
 //   - .status.blockingJobResults[] | .state
 //   - .status.informingJobResults[] | .state
+//   - .status.upgradeJobResults[] | .state
 type JobStateController struct {
 	*ReleasePayloadController
 }
@@ -91,6 +94,12 @@ func (c *JobStateController) sync(ctx context.Context, key string) error {
 	for _, job := range releasePayload.Status.InformingJobResults {
 		job.AggregateState = computeJobState(job)
 		jobstatus.SetJobStatus(&releasePayload.Status.InformingJobResults, job)
+	}
+
+	// Update the UpgradeJobResults
+	for _, job := range releasePayload.Status.UpgradeJobResults {
+		job.AggregateState = computeJobState(job)
+		jobstatus.SetJobStatus(&releasePayload.Status.UpgradeJobResults, job)
 	}
 
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
