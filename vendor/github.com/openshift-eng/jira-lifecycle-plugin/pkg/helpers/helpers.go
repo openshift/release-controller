@@ -8,9 +8,11 @@ import (
 )
 
 const (
-	QAContactField     = "customfield_12315948"
-	SeverityField      = "customfield_12316142"
-	TargetVersionField = "customfield_12319940"
+	QAContactField       = "customfield_12315948"
+	SeverityField        = "customfield_12316142"
+	TargetVersionField   = "customfield_12319940"
+	BlockedByBugzillaBug = "customfield_12322152"
+	ReleaseBlockerField  = "customfield_12319743"
 )
 
 // GetUnknownField will attempt to get the specified field from the Unknowns struct and unmarshal
@@ -30,7 +32,7 @@ func GetUnknownField(field string, issue *jira.Issue, fn func() interface{}) (bo
 		return true, fmt.Errorf("failed to process the custom field %s. Error : %v", field, err)
 	}
 	if err := json.Unmarshal(bytes, obj); err != nil {
-		return true, fmt.Errorf("failed to unmarshall the json to struct for %s. Error: %v", field, err)
+		return true, fmt.Errorf("failed to unmarshal the json to struct for %s. Error: %v", field, err)
 	}
 	return true, nil
 
@@ -85,10 +87,10 @@ func GetIssueTargetVersion(issue *jira.Issue) ([]*jira.Version, error) {
 	return *obj, err
 }
 
-func GetIssueSeverity(issue *jira.Issue) (*Severity, error) {
-	var obj *Severity
+func GetIssueSeverity(issue *jira.Issue) (*CustomField, error) {
+	var obj *CustomField
 	isSet, err := GetUnknownField(SeverityField, issue, func() interface{} {
-		obj = &Severity{}
+		obj = &CustomField{}
 		return obj
 	})
 	if !isSet {
@@ -97,7 +99,19 @@ func GetIssueSeverity(issue *jira.Issue) (*Severity, error) {
 	return obj, err
 }
 
-type Severity struct {
+func GetIssueBlockedByBugzillaBug(issue *jira.Issue) (*string, error) {
+	var obj *string
+	isSet, err := GetUnknownField(BlockedByBugzillaBug, issue, func() interface{} {
+		obj = func(s string) *string { return &s }("")
+		return obj
+	})
+	if !isSet {
+		return nil, err
+	}
+	return obj, err
+}
+
+type CustomField struct {
 	Self     string `json:"self"`
 	ID       string `json:"id"`
 	Value    string `json:"value"`
