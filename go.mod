@@ -31,10 +31,10 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20220817183000-effde3312715
-	github.com/openshift/api v0.0.0-20220525145417-ee5b62754c68
+	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20221215163652-cf8eaf357fc0
+	github.com/openshift/api v0.0.0-20220531073726-6c4f186339a7
 	github.com/openshift/build-machinery-go v0.0.0-20220429084610-baff9f8d23b3
-	github.com/openshift/ci-tools v0.0.0-20220818215944-59cfa4edb271
+	github.com/openshift/ci-tools v0.0.0-20230105161510-cc54a53bc9a7
 	github.com/openshift/client-go v3.9.0+incompatible
 	github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc
 	github.com/prometheus/client_golang v1.12.1
@@ -53,7 +53,7 @@ require (
 	k8s.io/component-base v0.24.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.70.1
-	k8s.io/test-infra v0.0.0-20221121175430-dfec9ce18ddd
+	k8s.io/test-infra v0.0.0-20230105153159-e57429125b2e
 )
 
 require (
@@ -117,7 +117,7 @@ require (
 	github.com/googleapis/gax-go v2.0.2+incompatible // indirect
 	github.com/googleapis/gax-go/v2 v2.4.0 // indirect
 	github.com/googleapis/go-type-adapters v1.0.0 // indirect
-	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc // indirect
+	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -128,6 +128,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kr/pretty v0.2.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-zglob v0.0.2 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
@@ -170,12 +171,12 @@ require (
 	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	gocloud.dev v0.19.0 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
+	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220608161450-d0670ef3b1eb // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
-	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/sys v0.4.0 // indirect
+	golang.org/x/term v0.4.0 // indirect
+	golang.org/x/text v0.6.0 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
@@ -184,7 +185,7 @@ require (
 	google.golang.org/grpc v1.47.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/ini.v1 v1.62.0 // indirect
+	gopkg.in/ini.v1 v1.63.2 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
