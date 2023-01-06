@@ -31,6 +31,7 @@ func TestJobStateSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults:  []v1alpha1.JobStatus{},
 					InformingJobResults: []v1alpha1.JobStatus{},
+					UpgradeJobResults:   []v1alpha1.JobStatus{},
 				},
 			},
 			expected: &v1alpha1.ReleasePayload{
@@ -41,6 +42,7 @@ func TestJobStateSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults:  []v1alpha1.JobStatus{},
 					InformingJobResults: []v1alpha1.JobStatus{},
+					UpgradeJobResults:   []v1alpha1.JobStatus{},
 				},
 			},
 		},

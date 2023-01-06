@@ -331,6 +331,72 @@ func TestPayloadVerificationSync(t *testing.T) {
 				},
 			},
 		},
+	}, {
+		name: "ReleasePayloadWithUpgradeJobs",
+		input: &v1alpha1.ReleasePayload{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					UpgradeJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "aws",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+						},
+						{
+							CIConfigurationName:    "azure",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
+						},
+						{
+							CIConfigurationName:    "gcp",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
+						},
+					},
+				},
+			},
+		},
+		expected: &v1alpha1.ReleasePayload{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "4.11.0-0.nightly-2022-02-09-091559",
+				Namespace: "ocp",
+			},
+			Spec: v1alpha1.ReleasePayloadSpec{
+				PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+					UpgradeJobs: []v1alpha1.CIConfiguration{
+						{
+							CIConfigurationName:    "aws",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+						},
+						{
+							CIConfigurationName:    "azure",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
+						},
+						{
+							CIConfigurationName:    "gcp",
+							CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ReleasePayloadStatus{
+				UpgradeJobResults: []v1alpha1.JobStatus{
+					{
+						CIConfigurationName:    "aws",
+						CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+					},
+					{
+						CIConfigurationName:    "azure",
+						CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
+					},
+					{
+						CIConfigurationName:    "gcp",
+						CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
+					},
+				},
+			},
+		},
 	}}
 
 	for _, testCase := range testCases {

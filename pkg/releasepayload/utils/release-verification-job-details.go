@@ -13,10 +13,13 @@ const (
 	StreamCandidate = "Candidate"
 )
 
-var stableRelease = regexp.MustCompile(`(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
-var candidateRelease = regexp.MustCompile(`^(?P<build>[\d-]+)-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
-var prerelease = regexp.MustCompile(`^(?P<stream>[\w\d-]+)-(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
-var upgradeFrom = regexp.MustCompile(`^(?P<build>[\w\d\\.]+)-(?P<job>upgrade-from[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+var (
+	stableRelease       = regexp.MustCompile(`(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+	candidateRelease    = regexp.MustCompile(`^(?P<build>[\d-]+)-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+	prerelease          = regexp.MustCompile(`^(?P<stream>[\w\d-]+)-(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+	upgradeFrom         = regexp.MustCompile(`^(?P<build>[\w\d\\.]+)-(?P<job>upgrade-from[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+	automaticUpgradeJob = regexp.MustCompile(`^upgrade-from-(?P<version>[\d\\.]+?)-(?P<platform>\w+?)$`)
+)
 
 type PreReleaseDetails struct {
 	Build               string
@@ -24,6 +27,7 @@ type PreReleaseDetails struct {
 	Timestamp           string
 	CIConfigurationName string
 	Count               string
+	UpgradeFrom         string
 }
 
 type ReleaseVerificationJobDetails struct {
@@ -93,7 +97,15 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			switch {
 			case strings.HasPrefix(prerelease[0].VersionStr, "upgrade-from-"):
 				details.Stream = StreamStable
-				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				ciConfigurationName := generateCIConfigurationName(prerelease)
+				details.CIConfigurationName = ciConfigurationName
+				if automaticUpgradeJob.MatchString(ciConfigurationName) {
+					matches := automaticUpgradeJob.FindStringSubmatch(ciConfigurationName)
+					if len(matches) == 3 {
+						details.UpgradeFrom = matches[1]
+						details.CIConfigurationName = matches[2]
+					}
+				}
 				return details, nil
 			default:
 				return nil, fmt.Errorf("unsupported prerelease specified: %s", generateCIConfigurationName(prerelease))
@@ -109,6 +121,15 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			case "ec", "fc", "rc":
 				details.Stream = StreamCandidate
 				splitVersion(generateCIConfigurationName(prerelease), details)
+				if strings.HasPrefix(details.CIConfigurationName, "upgrade-from-") {
+					if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
+						matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
+						if len(matches) == 3 {
+							details.UpgradeFrom = matches[1]
+							details.CIConfigurationName = matches[2]
+						}
+					}
+				}
 				return details, nil
 			default:
 				details.Stream = StreamStable

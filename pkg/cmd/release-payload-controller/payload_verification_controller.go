@@ -22,10 +22,10 @@ import (
 // the ReleasePayload:
 //   - .status.blockingJobResults
 //   - .status.informingJobResults
-//   - .status.releaseCreationJobResult
+//   - .status.upgradeJobResults
+//
 // This information is obtained by reading `.spec.payloadVerification` and populating the respective
-// JobResults accordingly.  The ReleaseCreationJobResult.Status is set to "Unknown", which will trigger
-// the ReleaseCreationStatusController to update its values if/when the ReleaseCreationJob completes.
+// JobResults accordingly.
 type PayloadVerificationController struct {
 	*ReleasePayloadController
 }
@@ -78,7 +78,7 @@ func (c *PayloadVerificationController) sync(ctx context.Context, key string) er
 	}
 
 	// If there are any JobResults defined, then we don't need to do anything else here...
-	if len(originalReleasePayload.Status.BlockingJobResults) != 0 || len(originalReleasePayload.Status.InformingJobResults) != 0 {
+	if len(originalReleasePayload.Status.BlockingJobResults) != 0 || len(originalReleasePayload.Status.InformingJobResults) != 0 || len(originalReleasePayload.Status.UpgradeJobResults) != 0 {
 		klog.V(5).Infof("ReleasePayload: '%s/%s' already synced", originalReleasePayload.Namespace, originalReleasePayload.Name)
 		return nil
 	}
@@ -92,6 +92,10 @@ func (c *PayloadVerificationController) sync(ctx context.Context, key string) er
 
 	for _, verify := range releasePayload.Spec.PayloadVerificationConfig.InformingJobs {
 		releasePayload.Status.InformingJobResults = append(releasePayload.Status.InformingJobResults, generateJobStatus(verify))
+	}
+
+	for _, upgrade := range releasePayload.Spec.PayloadVerificationConfig.UpgradeJobs {
+		releasePayload.Status.UpgradeJobResults = append(releasePayload.Status.UpgradeJobResults, generateUpgradeJobStatus(upgrade))
 	}
 
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
@@ -117,6 +121,14 @@ func generateJobStatus(config v1alpha1.CIConfiguration) v1alpha1.JobStatus {
 		CIConfigurationJobName: config.CIConfigurationJobName,
 		MaxRetries:             config.MaxRetries,
 		AnalysisJobCount:       config.AnalysisJobCount,
+	}
+	return JobStatus
+}
+
+func generateUpgradeJobStatus(config v1alpha1.CIConfiguration) v1alpha1.JobStatus {
+	JobStatus := v1alpha1.JobStatus{
+		CIConfigurationName:    config.CIConfigurationName,
+		CIConfigurationJobName: config.CIConfigurationJobName,
 	}
 	return JobStatus
 }

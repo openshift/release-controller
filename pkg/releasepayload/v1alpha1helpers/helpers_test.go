@@ -86,6 +86,20 @@ func TestCanonicalize(t *testing.T) {
 							CIConfigurationJobName: "job-4",
 						},
 					},
+					UpgradeJobResults: []v1alpha1.JobStatus{
+						{
+							CIConfigurationName:    "Whiskey",
+							CIConfigurationJobName: "job-1",
+						},
+						{
+							CIConfigurationName:    "Tango",
+							CIConfigurationJobName: "job-2",
+						},
+						{
+							CIConfigurationName:    "Foxtrot",
+							CIConfigurationJobName: "job-3",
+						},
+					},
 				},
 			},
 			expected: &v1alpha1.ReleasePayload{
@@ -157,6 +171,20 @@ func TestCanonicalize(t *testing.T) {
 						{
 							CIConfigurationName:    "5",
 							CIConfigurationJobName: "job-2",
+						},
+					},
+					UpgradeJobResults: []v1alpha1.JobStatus{
+						{
+							CIConfigurationName:    "Foxtrot",
+							CIConfigurationJobName: "job-3",
+						},
+						{
+							CIConfigurationName:    "Tango",
+							CIConfigurationJobName: "job-2",
+						},
+						{
+							CIConfigurationName:    "Whiskey",
+							CIConfigurationJobName: "job-1",
 						},
 					},
 				},

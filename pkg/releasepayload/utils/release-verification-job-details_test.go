@@ -228,8 +228,9 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 					Build:               "",
 					Stream:              "Stable",
 					Timestamp:           "",
-					CIConfigurationName: "upgrade-from-4.11.13-aws",
+					CIConfigurationName: "aws",
 					Count:               "",
+					UpgradeFrom:         "4.11.13",
 				},
 			},
 			wantErr: false,
@@ -260,8 +261,9 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 					Build:               "rc.0",
 					Stream:              "Candidate",
 					Timestamp:           "",
-					CIConfigurationName: "upgrade-from-4.11.10-aws",
+					CIConfigurationName: "aws",
 					Count:               "",
+					UpgradeFrom:         "4.11.10",
 				},
 			},
 			wantErr: false,
@@ -277,8 +279,9 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 					Build:               "rc.0",
 					Stream:              "Candidate",
 					Timestamp:           "",
-					CIConfigurationName: "upgrade-from-4.11.10-aws",
+					CIConfigurationName: "aws",
 					Count:               "3",
+					UpgradeFrom:         "4.11.10",
 				},
 			},
 			wantErr: false,
@@ -517,6 +520,38 @@ func Test_parsePreRelease(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "CandidateAutomaticUpgrade",
+			prerelease: []semver.PRVersion{
+				{
+					VersionStr: "fc",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "5-upgrade-from-4",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "",
+					VersionNum: 11,
+					IsNum:      true,
+				},
+				{
+					VersionStr: "10-gcp",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+			},
+			want: &PreReleaseDetails{
+				Build:               "fc.5",
+				Stream:              "Candidate",
+				CIConfigurationName: "gcp",
+				UpgradeFrom:         "4.11.10",
+			},
+			wantErr: false,
+		},
+		{
 			name: "Stable",
 			prerelease: []semver.PRVersion{
 				{
@@ -528,6 +563,47 @@ func Test_parsePreRelease(t *testing.T) {
 			want: &PreReleaseDetails{
 				Stream:              "Stable",
 				CIConfigurationName: "aws-serial",
+			},
+			wantErr: false,
+		},
+		{
+			name: "StableAutomaticUpgrade",
+			prerelease: []semver.PRVersion{
+				{
+					VersionStr: "upgrade-from-4",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "",
+					VersionNum: 11,
+					IsNum:      true,
+				},
+				{
+					VersionStr: "10-gcp",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+			},
+			want: &PreReleaseDetails{
+				Stream:              "Stable",
+				CIConfigurationName: "gcp",
+				UpgradeFrom:         "4.11.10",
+			},
+			wantErr: false,
+		},
+		{
+			name: "InvalidStableAutomaticUpgrade",
+			prerelease: []semver.PRVersion{
+				{
+					VersionStr: "upgrade-from-previous-minor",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+			},
+			want: &PreReleaseDetails{
+				Stream:              "Stable",
+				CIConfigurationName: "upgrade-from-previous-minor",
 			},
 			wantErr: false,
 		},

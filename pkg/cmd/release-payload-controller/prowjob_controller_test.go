@@ -38,7 +38,7 @@ func newJobStatusPointer(name, jobName string, maxRetries, analysisJobCount int,
 	return &status
 }
 
-func newJobRunResult(name, namespace, cluster string, state v1alpha1.JobRunState, url string) v1alpha1.JobRunResult {
+func newJobRunResult(name, namespace, cluster string, state v1alpha1.JobRunState, url string, upgrade v1alpha1.JobRunUpgradeType) v1alpha1.JobRunResult {
 	return v1alpha1.JobRunResult{
 		Coordinates: v1alpha1.JobRunCoordinates{
 			Name:      name,
@@ -47,6 +47,7 @@ func newJobRunResult(name, namespace, cluster string, state v1alpha1.JobRunState
 		},
 		State:               state,
 		HumanProwResultsURL: url,
+		UpgradeType:         upgrade,
 	}
 }
 
@@ -100,12 +101,12 @@ func TestSetJobStatus(t *testing.T) {
 				},
 			},
 			jobStatus: newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 			}),
 			expected: &v1alpha1.ReleasePayloadStatus{
 				BlockingJobResults: []v1alpha1.JobStatus{
 					newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 					}),
 				},
 			},
@@ -118,12 +119,12 @@ func TestSetJobStatus(t *testing.T) {
 				},
 			},
 			jobStatus: newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 			}),
 			expected: &v1alpha1.ReleasePayloadStatus{
 				InformingJobResults: []v1alpha1.JobStatus{
 					newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 					}),
 				},
 			},
@@ -165,14 +166,14 @@ func TestFindJobStatus(t *testing.T) {
 			input: &v1alpha1.ReleasePayloadStatus{
 				BlockingJobResults: []v1alpha1.JobStatus{
 					newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 					}),
 				},
 			},
 			ciConfigurationName:    "A",
 			ciConfigurationJobName: "B",
 			expected: newJobStatusPointer("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 			}),
 		},
 		{
@@ -181,14 +182,14 @@ func TestFindJobStatus(t *testing.T) {
 			input: &v1alpha1.ReleasePayloadStatus{
 				InformingJobResults: []v1alpha1.JobStatus{
 					newJobStatus("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+						newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 					}),
 				},
 			},
 			ciConfigurationName:    "A",
 			ciConfigurationJobName: "B",
 			expected: newJobStatusPointer("A", "B", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+				newJobRunResult("X", "Y", "Z", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 			}),
 		},
 		{
@@ -214,13 +215,20 @@ func TestFindJobStatus(t *testing.T) {
 			expectedError:          "unable to locate job results for X (Y)",
 		},
 		{
-			name:                   "AutomaticReleaseUpgradeTest",
-			payloadName:            "4.11.14-upgrade-from-4.10.41-aws",
-			input:                  &v1alpha1.ReleasePayloadStatus{},
-			ciConfigurationName:    "upgrade-from-4.10.41-aws",
+			name:        "AutomaticReleaseUpgradeTest",
+			payloadName: "4.11.22",
+			input: &v1alpha1.ReleasePayloadStatus{
+				UpgradeJobResults: []v1alpha1.JobStatus{
+					newJobStatus("aws", "release-openshift-origin-installer-e2e-aws-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+						newJobRunResult("4.11.22-upgrade-from-4.10.18-aws", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+					}),
+				},
+			},
+			ciConfigurationName:    "aws",
 			ciConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
-			expected:               nil,
-			expectedError:          "unable to locate job results for upgrade-from-4.10.41-aws (release-openshift-origin-installer-e2e-aws-upgrade)",
+			expected: newJobStatusPointer("aws", "release-openshift-origin-installer-e2e-aws-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+				newJobRunResult("4.11.22-upgrade-from-4.10.18-aws", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+			}),
 		},
 	}
 
@@ -321,7 +329,7 @@ func TestProwJobStatusSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
 						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
 						}),
 					},
 				},
@@ -369,13 +377,13 @@ func TestProwJobStatusSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
 						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
 						}),
 						newJobStatus("aws-single-node", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-single-node", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-single-node", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-single-node", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
 						}),
 						newJobStatus("aws-techpreview", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-techpreview", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-techpreview", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-techpreview", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
 						}),
 					},
 				},
@@ -421,9 +429,9 @@ func TestProwJobStatusSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
 						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 3, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateFailure, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial-1", "ci", "build02", v1alpha1.JobRunStateFailure, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial-2", "ci", "build01", v1alpha1.JobRunStatePending, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "build01", v1alpha1.JobRunStateFailure, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial-1", "ci", "build02", v1alpha1.JobRunStateFailure, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aws-serial-2", "ci", "build01", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 						}),
 					},
 				},
@@ -480,21 +488,75 @@ func TestProwJobStatusSync(t *testing.T) {
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
 						newJobStatus("aggregated-azure-ovn-upgrade-4.11-micro", "aggregated-azure-ovn-upgrade-4.11-micro-release-openshift-release-analysis-aggregator", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-aggregator", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-aggregator", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
 						}),
 					},
 					InformingJobResults: []v1alpha1.JobStatus{
 						newJobStatus("aggregated-azure-ovn-upgrade-4.11-micro", "periodic-ci-openshift-release-master-ci-4.11-e2e-azure-ovn-upgrade", 0, 10, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-0", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-1", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-2", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-3", "ci", "build03", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-4", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-5", "ci", "build05", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-6", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-7", "ci", "build04", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-8", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
-							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-9", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com"),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-0", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-1", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-2", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-3", "ci", "build03", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-4", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-5", "ci", "build05", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-6", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-7", "ci", "build04", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-8", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+							newJobRunResult("4.11.0-0.nightly-2022-02-09-091559-aggregate-b99pz22-analysis-9", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", ""),
+						}),
+					},
+				},
+			},
+		},
+		{
+			name: "AutomatedUpgradeJobs",
+			prowjob: []runtime.Object{
+				newProwJob("4.11.22-upgrade-from-4.10.18-aws", "ci", "4.11.22", "release-openshift-origin-installer-e2e-aws-upgrade", "ocp/release", "build01", v1.SuccessState, "https://abc.123.com"),
+				newProwJob("4.11.22-upgrade-from-4.10.44-azure", "ci", "4.11.22", "release-openshift-origin-installer-e2e-azure-upgrade", "ocp/release", "build02", v1.SuccessState, "https://abc.123.com"),
+				newProwJob("4.11.22-upgrade-from-4.11.10-gcp", "ci", "4.11.22", "release-openshift-origin-installer-e2e-gcp-upgrade", "ocp/release", "build03", v1.SuccessState, "https://abc.123.com"),
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.22",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					UpgradeJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws", "release-openshift-origin-installer-e2e-aws-upgrade", 0, 0, v1alpha1.JobStateUnknown, nil),
+						newJobStatus("azure", "release-openshift-origin-installer-e2e-azure-upgrade", 0, 0, v1alpha1.JobStateUnknown, nil),
+						newJobStatus("gcp", "release-openshift-origin-installer-e2e-gcp-upgrade", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.22",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					UpgradeJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws", "release-openshift-origin-installer-e2e-aws-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+							newJobRunResult("4.11.22-upgrade-from-4.10.18-aws", "ci", "build01", v1alpha1.JobRunStateSuccess, "https://abc.123.com", v1alpha1.JobRunUpgradeTypeUpgradeMinor),
+						}),
+						newJobStatus("azure", "release-openshift-origin-installer-e2e-azure-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+							newJobRunResult("4.11.22-upgrade-from-4.10.44-azure", "ci", "build02", v1alpha1.JobRunStateSuccess, "https://abc.123.com", v1alpha1.JobRunUpgradeTypeUpgradeMinor),
+						}),
+						newJobStatus("gcp", "release-openshift-origin-installer-e2e-gcp-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+							newJobRunResult("4.11.22-upgrade-from-4.11.10-gcp", "ci", "build03", v1alpha1.JobRunStateSuccess, "https://abc.123.com", v1alpha1.JobRunUpgradeTypeUpgrade),
 						}),
 					},
 				},
