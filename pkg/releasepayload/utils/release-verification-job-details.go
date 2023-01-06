@@ -18,7 +18,7 @@ var (
 	candidateRelease    = regexp.MustCompile(`^(?P<build>[\d-]+)-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 	prerelease          = regexp.MustCompile(`^(?P<stream>[\w\d-]+)-(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 	upgradeFrom         = regexp.MustCompile(`^(?P<build>[\w\d\\.]+)-(?P<job>upgrade-from[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
-	automaticUpgradeJob = regexp.MustCompile(`^upgrade-from-(?P<version>[\d\\.]+?)-(?P<platform>\w+?)$`)
+	automaticUpgradeJob = regexp.MustCompile(`^upgrade-from-(?P<version>[\d\\.]+)-?(?P<candidate>[e|f|r]c.\d+)?-?(?P<platform>\w+)-?(?P<count>\d+)?$`)
 )
 
 type PreReleaseDetails struct {
@@ -42,8 +42,14 @@ func (d ReleaseVerificationJobDetails) ToString() string {
 	}
 	switch d.Stream {
 	case StreamStable:
+		if len(d.UpgradeFrom) > 0 {
+			return fmt.Sprintf("%d.%d.%d-upgrade-from-%s-%s%s", d.X, d.Y, d.Z, d.UpgradeFrom, d.CIConfigurationName, count)
+		}
 		return fmt.Sprintf("%d.%d.%d-%s%s", d.X, d.Y, d.Z, d.CIConfigurationName, count)
 	case StreamCandidate:
+		if len(d.UpgradeFrom) > 0 {
+			return fmt.Sprintf("%d.%d.%d-%s-upgrade-from-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.UpgradeFrom, d.CIConfigurationName, count)
+		}
 		return fmt.Sprintf("%d.%d.%d-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.CIConfigurationName, count)
 	default:
 		return fmt.Sprintf("%d.%d.%d-%s.%s-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.Stream, d.Timestamp, d.CIConfigurationName, count)
@@ -101,9 +107,9 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 				details.CIConfigurationName = ciConfigurationName
 				if automaticUpgradeJob.MatchString(ciConfigurationName) {
 					matches := automaticUpgradeJob.FindStringSubmatch(ciConfigurationName)
-					if len(matches) == 3 {
+					if len(matches) == 5 {
 						details.UpgradeFrom = matches[1]
-						details.CIConfigurationName = matches[2]
+						details.CIConfigurationName = matches[3]
 					}
 				}
 				return details, nil
@@ -124,9 +130,39 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 				if strings.HasPrefix(details.CIConfigurationName, "upgrade-from-") {
 					if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
 						matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
-						if len(matches) == 3 {
+						if len(matches) == 5 {
 							details.UpgradeFrom = matches[1]
-							details.CIConfigurationName = matches[2]
+							details.CIConfigurationName = matches[3]
+						}
+					}
+				}
+				return details, nil
+			default:
+				details.Stream = StreamStable
+				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				return details, nil
+			}
+		}
+		splitVersion(prerelease[1].VersionStr, details)
+	case 5:
+		switch prerelease[0].IsNum {
+		case true:
+			details.Build = fmt.Sprintf("%d", prerelease[0].VersionNum)
+		case false:
+			switch prerelease[0].VersionStr {
+			case "ec", "fc", "rc":
+				details.Stream = StreamCandidate
+				splitVersion(generateCIConfigurationName(prerelease), details)
+				if strings.HasPrefix(details.CIConfigurationName, "upgrade-from-") {
+					if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
+						matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
+						if len(matches) == 5 {
+							candidate := ""
+							if len(matches[2]) > 0 {
+								candidate = fmt.Sprintf("-%s", matches[2])
+							}
+							details.UpgradeFrom = fmt.Sprintf("%s%s", matches[1], candidate)
+							details.CIConfigurationName = matches[3]
 						}
 					}
 				}

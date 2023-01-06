@@ -133,6 +133,23 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:        "ReleaseCandidateJobWithRetries",
+			prowjobName: "4.11.0-rc.0-aws-serial-1",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 11,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-serial",
+					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:        "FeatureCandidateJob",
 			prowjobName: "4.11.0-fc.0-aws-serial",
 			want: &ReleaseVerificationJobDetails{
@@ -161,6 +178,40 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 					Stream:              "Candidate",
 					Timestamp:           "",
 					CIConfigurationName: "aws-serial",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "EngineeringCandidateJob",
+			prowjobName: "4.13.0-ec.1-aws-sdn-serial",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "ec.1",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-serial",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "EngineeringCandidateJobWithRetries",
+			prowjobName: "4.13.0-ec.1-aws-sdn-serial-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "ec.1",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-serial",
 					Count:               "2",
 				},
 			},
@@ -287,35 +338,73 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "EngineeringCandidateJob",
-			prowjobName: "4.13.0-ec.1-aws-sdn-serial",
+			name:        "CandidateAutomaticReleaseUpgradeToCandidateTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
-				Y: 13,
+				Y: 12,
 				Z: 0,
 				PreReleaseDetails: &PreReleaseDetails{
-					Build:               "ec.1",
+					Build:               "rc.7",
 					Stream:              "Candidate",
 					Timestamp:           "",
-					CIConfigurationName: "aws-sdn-serial",
+					CIConfigurationName: "aws",
 					Count:               "",
+					UpgradeFrom:         "4.12.0-rc.6",
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name:        "EngineeringCandidateJobWithRetries",
-			prowjobName: "4.13.0-ec.1-aws-sdn-serial-2",
+			name:        "CandidateAutomaticReleaseUpgradeToCandidateWithCountTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-2",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
-				Y: 13,
+				Y: 12,
 				Z: 0,
 				PreReleaseDetails: &PreReleaseDetails{
-					Build:               "ec.1",
+					Build:               "rc.7",
 					Stream:              "Candidate",
 					Timestamp:           "",
-					CIConfigurationName: "aws-sdn-serial",
+					CIConfigurationName: "aws",
 					Count:               "2",
+					UpgradeFrom:         "4.12.0-rc.6",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "CandidateAutomaticReleaseUpgradeToCandidateTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.7",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.12.0-rc.6",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "CandidateAutomaticReleaseUpgradeToCandidateWithCountTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.7",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "2",
+					UpgradeFrom:         "4.12.0-rc.6",
 				},
 			},
 			wantErr: false,
@@ -389,6 +478,57 @@ func TestReleaseVerificationJobDetails_ToString(t *testing.T) {
 			},
 			want: "4.10.17-aws-serial-3",
 		},
+		{
+			name: "AutomaticReleaseUpgrade",
+			details: ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 11,
+				Z: 14,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.11.13",
+				},
+			},
+			want: "4.11.14-upgrade-from-4.11.13-aws",
+		},
+		{
+			name: "AutomaticReleaseUpgradeFromCandidate",
+			details: ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 11,
+				Z: 14,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.11.0-rc.0",
+				},
+			},
+			want: "4.11.14-upgrade-from-4.11.0-rc.0-aws",
+		},
+		{
+			name: "CandidateAutomaticReleaseUpgradeFromCandidate",
+			details: ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.11.0-rc.9",
+				},
+			},
+			want: "4.12.0-rc.0-upgrade-from-4.11.0-rc.9-aws",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -416,7 +556,26 @@ func Test_parse(t *testing.T) {
 			},
 		},
 		{
+			name: "PreReleaseWithRetries",
+			line: "ci-2022-06-02-152750-aws-serial-1",
+			want: map[string]string{
+				"stream":    "ci",
+				"timestamp": "2022-06-02-152750",
+				"job":       "aws-serial",
+				"count":     "1",
+			},
+		},
+		{
 			name: "Candidate",
+			line: "0-metal-ipi-ovn-ipv6",
+			want: map[string]string{
+				"build": "0",
+				"job":   "metal-ipi-ovn-ipv6",
+				"count": "",
+			},
+		},
+		{
+			name: "CandidateWithRetries",
 			line: "0-metal-ipi-ovn-ipv6-2",
 			want: map[string]string{
 				"build": "0",
@@ -426,9 +585,35 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "Stable",
-			line: "aws-serial-1",
+			line: "aws-serial",
 			want: map[string]string{
 				"job":   "aws-serial",
+				"count": "",
+			},
+		},
+		{
+			name: "StableWithRetries",
+			line: "aws-serial-3",
+			want: map[string]string{
+				"job":   "aws-serial",
+				"count": "3",
+			},
+		},
+		{
+			name: "UpgradeFrom",
+			line: "0-upgrade-from-4.11.13",
+			want: map[string]string{
+				"build": "0",
+				"job":   "upgrade-from-4.11.13",
+				"count": "",
+			},
+		},
+		{
+			name: "UpgradeFromWithRetries",
+			line: "0-upgrade-from-4.11.13-1",
+			want: map[string]string{
+				"build": "0",
+				"job":   "upgrade-from-4.11.13",
 				"count": "1",
 			},
 		},
@@ -604,6 +789,43 @@ func Test_parsePreRelease(t *testing.T) {
 			want: &PreReleaseDetails{
 				Stream:              "Stable",
 				CIConfigurationName: "upgrade-from-previous-minor",
+			},
+			wantErr: false,
+		},
+		{
+			name: "CandidateAutomaticUpgradeFromCandidate",
+			prerelease: []semver.PRVersion{
+				{
+					VersionStr: "fc",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "7-upgrade-from-4",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "",
+					VersionNum: 12,
+					IsNum:      true,
+				},
+				{
+					VersionStr: "0-rc",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+				{
+					VersionStr: "6-aws",
+					VersionNum: 0,
+					IsNum:      false,
+				},
+			},
+			want: &PreReleaseDetails{
+				Build:               "fc.7",
+				Stream:              "Candidate",
+				CIConfigurationName: "aws",
+				UpgradeFrom:         "4.12.0-rc.6",
 			},
 			wantErr: false,
 		},
