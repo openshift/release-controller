@@ -28,6 +28,7 @@ func TestNewReleasePayload(t *testing.T) {
 		jobNamespace     string
 		prowNamespace    string
 		verificationJobs map[string]releasecontroller.ReleaseVerification
+		upgradeJobs      map[string]releasecontroller.UpgradeVerification
 		expected         *v1alpha1.ReleasePayload
 	}{
 		{
@@ -41,6 +42,7 @@ func TestNewReleasePayload(t *testing.T) {
 					Disabled: true,
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -64,6 +66,7 @@ func TestNewReleasePayload(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -81,6 +84,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -109,6 +113,7 @@ func TestNewReleasePayload(t *testing.T) {
 							},
 						},
 						InformingJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -127,6 +132,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -156,6 +162,7 @@ func TestNewReleasePayload(t *testing.T) {
 							},
 						},
 						InformingJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -174,6 +181,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -202,6 +210,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 							},
 						},
+						UpgradeJobs: []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -221,6 +230,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -248,6 +258,134 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationName:    "informing-job",
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 								MaxRetries:             3,
+							},
+						},
+						UpgradeJobs: []v1alpha1.CIConfiguration{},
+					},
+				},
+			},
+		},
+		{
+			name:             "UpgradeJob",
+			release:          release,
+			payloadName:      "4.12.11",
+			jobNamespace:     "ci-release",
+			prowNamespace:    "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{
+				"azure": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-azure-upgrade",
+					},
+				},
+				"gcp": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-gcp-upgrade",
+					},
+				},
+				"aws": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.12.11",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.12.11",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.12.11",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aws",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+							},
+							{
+								CIConfigurationName:    "azure",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
+							},
+							{
+								CIConfigurationName:    "gcp",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "DisabledUpgradeJob",
+			release:          release,
+			payloadName:      "4.12.11",
+			jobNamespace:     "ci-release",
+			prowNamespace:    "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{
+				"azure": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-azure-upgrade",
+					},
+				},
+				"gcp": {
+					Disabled: true,
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-gcp-upgrade",
+					},
+				},
+				"aws": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.12.11",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.12.11",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.12.11",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:  []v1alpha1.CIConfiguration{},
+						InformingJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aws",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+							},
+							{
+								CIConfigurationName:    "azure",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
 							},
 						},
 					},
@@ -271,6 +409,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -305,6 +444,7 @@ func TestNewReleasePayload(t *testing.T) {
 								AnalysisJobCount:       10,
 							},
 						},
+						UpgradeJobs: []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -329,6 +469,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -363,6 +504,7 @@ func TestNewReleasePayload(t *testing.T) {
 								AnalysisJobCount:       10,
 							},
 						},
+						UpgradeJobs: []v1alpha1.CIConfiguration{},
 					},
 				},
 			},
@@ -431,6 +573,23 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 					Upgrade:     true,
 					UpgradeFrom: releasecontroller.ReleaseUpgradeFromPreviousMinor,
+				},
+			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{
+				"azure": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-azure-upgrade",
+					},
+				},
+				"gcp": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-gcp-upgrade",
+					},
+				},
+				"aws": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "release-openshift-origin-installer-e2e-aws-upgrade",
+					},
 				},
 			},
 			expected: &v1alpha1.ReleasePayload{
@@ -502,6 +661,20 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-upgrade-from-stable-4.11-e2e-metal-ipi-upgrade",
 							},
 						},
+						UpgradeJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aws",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-aws-upgrade",
+							},
+							{
+								CIConfigurationName:    "azure",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
+							},
+							{
+								CIConfigurationName:    "gcp",
+								CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
+							},
+						},
 					},
 				},
 			},
@@ -510,7 +683,7 @@ func TestNewReleasePayload(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs)
+			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
 			}
