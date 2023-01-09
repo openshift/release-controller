@@ -17,7 +17,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	if err != nil {
 		return nil, err
 	}
-	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs), metav1.CreateOptions{})
+	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade), metav1.CreateOptions{})
 	if err == nil {
 		klog.V(4).Infof("ReleasePayload: %s/%s created", payload.Namespace, payload.Name)
 		return payload, nil
@@ -28,7 +28,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	return nil, err
 }
 
-func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification) *v1alpha1.ReleasePayload {
+func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification) *v1alpha1.ReleasePayload {
 	payload := v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -50,6 +50,7 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				BlockingJobs:  []v1alpha1.CIConfiguration{},
 				InformingJobs: []v1alpha1.CIConfiguration{},
+				UpgradeJobs:   []v1alpha1.CIConfiguration{},
 			},
 		},
 	}
@@ -97,6 +98,25 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 				payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
 			}
 		}
+	}
+
+	// Sort the UpgradeVerification items into a consistent order
+	sortedKeys = nil
+	for key, _ := range upgradeJobs {
+		sortedKeys = append(sortedKeys, key)
+	}
+	sort.Strings(sortedKeys)
+
+	for _, cloudPlatform := range sortedKeys {
+		definition := upgradeJobs[cloudPlatform]
+		if definition.Disabled {
+			continue
+		}
+		ciConfig := v1alpha1.CIConfiguration{
+			CIConfigurationName:    cloudPlatform,
+			CIConfigurationJobName: definition.ProwJob.Name,
+		}
+		payload.Spec.PayloadVerificationConfig.UpgradeJobs = append(payload.Spec.PayloadVerificationConfig.UpgradeJobs, ciConfig)
 	}
 	return &payload
 }
