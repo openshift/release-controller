@@ -608,13 +608,30 @@ oc registry login
 if which python3 2> /dev/null; then
   # If python3 is available, use it
   cat <<END >/tmp/serve.py
-import re, os, subprocess, time, threading, socket, socketserver, http, http.server
+import re, os, subprocess, time, threading, socket, socketserver, http, http.server, glob
 from subprocess import CalledProcessError
 
 handler = http.server.SimpleHTTPRequestHandler
 
 RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 REGISTRY = os.getenv('REGISTRY', 'registry.ci.openshift.org')
+
+files = glob.glob('/srv/cache/**/DOWNLOADING.md', recursive=True)
+for file in files:
+    print(f"Removing: {file}")
+    os.remove(file)
+
+
+def check_stale_download(path):
+    service_list = subprocess.Popen(['ps', '-ef'], stdout=subprocess.PIPE)
+    filtered_list = subprocess.Popen(['grep', f'[o]c adm release extract --tools --to {path}'], stdin=service_list.stdout,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    service_list.stdout.close()
+    out, err = filtered_list.communicate()
+    if out.decode("utf-8") != '' and err.decode("utf-8") == '':
+        return False
+    return True
+
 
 class FileServer(handler):
     def _present_default_content(self, name):
@@ -659,6 +676,8 @@ class FileServer(handler):
                 return
 
             if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+                if check_stale_download(path):
+                    os.remove(os.path.join(name, "DOWNLOADING.md"))
                 self._present_default_content(name)
                 return
 
@@ -730,13 +749,33 @@ END
   python3 /tmp/serve.py
 else
   cat <<END >/tmp/serve.py
-import re, os, subprocess, time, threading, socket, BaseHTTPServer, SimpleHTTPServer
+import re, os, subprocess, time, threading, socket, BaseHTTPServer, SimpleHTTPServer, glob
 from subprocess import CalledProcessError
 
 RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 REGISTRY = os.getenv('REGISTRY', 'registry.ci.openshift.org')
 
 handler = SimpleHTTPServer.SimpleHTTPRequestHandler
+
+
+files = glob.glob('/srv/cache/**/DOWNLOADING.md')
+for file in files:
+    print("Removing: %s" % file)
+    os.remove(file)
+
+
+def check_stale_download(path):
+    service_list = subprocess.Popen(['ps', '-ef'], stdout=subprocess.PIPE)
+    grep_command = '[o]c adm release extract --tools --to %s' % path
+    filtered_list = subprocess.Popen(['grep', grep_command],
+                                     stdin=service_list.stdout,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    service_list.stdout.close()
+    out, err = filtered_list.communicate()
+    if out.decode("utf-8") != '' and err.decode("utf-8") == '':
+        return False
+    return True
+
 
 class FileServer(handler):
     def _present_default_content(self, name):
@@ -778,6 +817,8 @@ class FileServer(handler):
                 return
 
             if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
+                if check_stale_download(path):
+                    os.remove(os.path.join(name, "DOWNLOADING.md"))
                 self._present_default_content(name)
                 return
 
