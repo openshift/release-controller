@@ -63,6 +63,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 
 	fromRelease := req.URL.Query().Get("from")
 	toRelease := req.URL.Query().Get("to")
+	format := req.URL.Query().Get("format")
 
 	fromComparison := &Comparison{
 		Type:     From,
@@ -139,6 +140,8 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		fmt.Fprintf(w, `<select id="from" class="form-control" name="from"><option value="" disabled selected>Select</option>%s</select>`, generateSelectOptions(page.Tags, fromComparison))
 		fmt.Fprint(w, `&nbsp;&nbsp;<label for="to">To release:&nbsp;</label>`)
 		fmt.Fprintf(w, `<select id="to" class="form-control" name="to"><option value="" disabled selected>Select</option>%s</select>&nbsp;&nbsp;`, generateSelectOptions(page.Tags, toComparison))
+		fmt.Fprint(w, `&nbsp;&nbsp;<label for="format">Format:&nbsp;</label>`)
+		fmt.Fprintf(w, `<select id="format" class="form-control" name="format">Select</option>%s</select>&nbsp;&nbsp;`, generateFormatOptions(format))
 		fmt.Fprintf(w, `<input class="btn btn-link" type="submit" value="Compare">`)
 		fmt.Fprint(w, `</form></p>`)
 	}
@@ -146,7 +149,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	fmt.Fprintln(w, "<hr>")
 
 	if fromComparison.Tag != nil && toComparison.Tag != nil {
-		c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name)
+		c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name, format)
 	} else {
 		var unsupported []string
 		if fromComparison.Tag == nil && len(fromRelease) > 0 {
@@ -169,6 +172,18 @@ func generateSelectOptions(tags []*v1.TagReference, comp *Comparison) string {
 			selected = "selected"
 		}
 		options = append(options, fmt.Sprintf(`<option value="%s" %s>%s</option>`, tag.Name, selected, tag.Name))
+	}
+	return strings.Join(options, "")
+}
+
+func generateFormatOptions(format string) string {
+	var options []string
+	for _, f := range []string{"html", "json"} {
+		selected := ""
+		if format == f {
+			selected = "selected"
+		}
+		options = append(options, fmt.Sprintf(`<option value="%s" %s>%s</option>`, f, selected, f))
 	}
 	return strings.Join(options, "")
 }

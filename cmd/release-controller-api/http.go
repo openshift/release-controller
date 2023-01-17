@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -335,13 +334,13 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		klog.V(4).Infof("Unable to retrieve verification job results for: %s", tagInfo.Tag)
 	}
 
-	var changeLog []byte
+	var changeLog releasecontroller.ChangeLog
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		ch := make(chan renderResult)
 
 		// run the changelog in a goroutine because it may take significant time
-		go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
+		go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "json")
 
 		var render renderResult
 		select {
@@ -354,12 +353,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if render.err == nil {
-			result := blackfriday.Run([]byte(render.out))
-			// make our links targets
-			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
-				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
-			})
-			changeLog = result
+			err = json.Unmarshal([]byte(render.out), &changeLog)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	summary := releasecontroller.APIReleaseInfo{
@@ -397,13 +395,15 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	var isHtml bool
+	var isHtml, isJson bool
 	switch req.URL.Query().Get("format") {
 	case "html":
 		isHtml = true
+	case "json":
+		isJson = true
 	case "markdown", "":
 	default:
-		http.Error(w, fmt.Sprintf("unrecognized format= string: html, markdown, empty accepted"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("unrecognized format= string: html, json, markdown, empty accepted"), http.StatusBadRequest)
 		return
 	}
 
@@ -439,7 +439,7 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	out, err := c.releaseInfo.ChangeLog(fromBase+":"+from, toBase+":"+to)
+	out, err := c.releaseInfo.ChangeLog(fromBase+":"+from, toBase+":"+to, isJson)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal error\n%v", err), http.StatusInternalServerError)
 		return
@@ -451,6 +451,12 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Change log for %s", to)))
 		w.Write(result)
 		fmt.Fprintln(w, htmlPageEnd)
+		return
+	}
+
+	if isJson {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, out)
 		return
 	}
 
@@ -765,7 +771,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		fmt.Fprintln(w, "<hr>")
-		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
+		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
 	}
 
 	var options []string
