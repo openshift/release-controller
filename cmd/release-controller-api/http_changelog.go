@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/russross/blackfriday"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -10,7 +12,6 @@ import (
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-	"github.com/russross/blackfriday"
 )
 
 var (
@@ -25,7 +26,7 @@ type renderResult struct {
 	err error
 }
 
-func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag string, toPull string, toTag string) {
+func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
 	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
@@ -38,11 +39,22 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		return
 	}
 
+	isJson := false
+	switch format {
+	case "json":
+		isJson = true
+	}
+
 	// Generate the change log from image digests
-	out, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec())
+	out, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), isJson)
 	if err != nil {
 		ch <- renderResult{err: err}
 		return
+	}
+
+	// We don't want any post-processing for JSON output...
+	if isJson {
+		ch <- renderResult{out: out}
 	}
 
 	// There is an inconsistency with what is returned from ReleaseInfo (amd64) and what
@@ -144,7 +156,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 	ch <- renderResult{out: out}
 }
 
-func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string) {
+func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		flusher = nopFlusher{}
@@ -155,7 +167,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	ch := make(chan renderResult)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(ch, fromPull, fromTag, toPull, toTag)
+	go c.getChangeLog(ch, fromPull, fromTag, toPull, toTag, format)
 
 	var render renderResult
 	select {
@@ -172,12 +184,30 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		flusher.Flush()
 	}
 	if render.err == nil {
-		result := blackfriday.Run([]byte(render.out))
-		// make our links targets
-		result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
-			return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
-		})
-		w.Write(result)
+		switch format {
+		case "json":
+			var changeLog releasecontroller.ChangeLog
+			err := json.Unmarshal([]byte(render.out), &changeLog)
+			if err != nil {
+				fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", err))
+				return
+			}
+			data, err := json.MarshalIndent(&changeLog, "", "  ")
+			if err != nil {
+				fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", err))
+				return
+			}
+			fmt.Fprintf(w, "<pre><code>")
+			w.Write(data)
+			fmt.Fprintf(w, "</pre></code>")
+		default:
+			result := blackfriday.Run([]byte(render.out))
+			// make our links targets
+			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
+			})
+			w.Write(result)
+		}
 		fmt.Fprintln(w, "<hr>")
 	} else {
 		// if we don't get a valid result within limits, just show the simpler informational view
