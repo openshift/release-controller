@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -335,39 +336,64 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		klog.V(4).Infof("Unable to retrieve verification job results for: %s", tagInfo.Tag)
 	}
 
-	var changeLog releasecontroller.ChangeLog
+	var changeLog []byte
+	var changeLogJson releasecontroller.ChangeLog
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
-		ch := make(chan renderResult)
+		chHTML := make(chan renderResult)
+		chJSON := make(chan renderResult)
+
+		// run the HTML changelog in a goroutine because it may take significant time
+		go c.getChangeLog(chHTML, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
 
 		// run the changelog in a goroutine because it may take significant time
-		go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "json")
+		go c.getChangeLog(chJSON, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "json")
 
-		var render renderResult
+		var renderJSON renderResult
 		select {
-		case render = <-ch:
+		case renderJSON = <-chJSON:
 		case <-time.After(500 * time.Millisecond):
 			select {
-			case render = <-ch:
+			case renderJSON = <-chJSON:
 			case <-time.After(15 * time.Second):
-				render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+				renderJSON.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
 			}
 		}
-		if render.err == nil {
-			err = json.Unmarshal([]byte(render.out), &changeLog)
+		if renderJSON.err == nil {
+			err = json.Unmarshal([]byte(renderJSON.out), &changeLogJson)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
+
+		var renderHTML renderResult
+		select {
+		case renderHTML = <-chHTML:
+		case <-time.After(500 * time.Millisecond):
+			select {
+			case renderHTML = <-chHTML:
+			case <-time.After(15 * time.Second):
+				renderHTML.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+			}
+		}
+		if renderHTML.err == nil {
+			result := blackfriday.Run([]byte(renderHTML.out))
+			// make our links targets
+			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
+			})
+			changeLog = result
+		}
 	}
 	summary := releasecontroller.APIReleaseInfo{
-		Name:         tagInfo.Tag,
-		Phase:        tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:      verificationJobs,
-		UpgradesTo:   c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom: c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:    changeLog,
+		Name:          tagInfo.Tag,
+		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:       verificationJobs,
+		UpgradesTo:    c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:  c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:     changeLog,
+		ChangeLogJson: changeLogJson,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
