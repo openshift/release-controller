@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -340,43 +341,24 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	var changeLogJson releasecontroller.ChangeLog
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
-		chHTML := make(chan renderResult)
-		chJSON := make(chan renderResult)
+		var wg sync.WaitGroup
+		renderHTML := renderResult{}
+		renderJSON := renderResult{}
 
-		// run the HTML changelog in a goroutine because it may take significant time
-		go c.getChangeLog(chHTML, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
-
-		// run the changelog in a goroutine because it may take significant time
-		go c.getChangeLog(chJSON, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "json")
-
-		var renderJSON renderResult
-		select {
-		case renderJSON = <-chJSON:
-		case <-time.After(500 * time.Millisecond):
-			select {
-			case renderJSON = <-chJSON:
-			case <-time.After(15 * time.Second):
-				renderJSON.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
-			}
+		for k, v := range map[string]*renderResult{
+			"html": &renderHTML,
+			"json": &renderJSON,
+		} {
+			wg.Add(1)
+			format := k
+			result := v
+			go func() {
+				defer wg.Done()
+				c.changeLogWorker(result, tagInfo, format)
+			}()
 		}
-		if renderJSON.err == nil {
-			err = json.Unmarshal([]byte(renderJSON.out), &changeLogJson)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
+		wg.Wait()
 
-		var renderHTML renderResult
-		select {
-		case renderHTML = <-chHTML:
-		case <-time.After(500 * time.Millisecond):
-			select {
-			case renderHTML = <-chHTML:
-			case <-time.After(15 * time.Second):
-				renderHTML.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
-			}
-		}
 		if renderHTML.err == nil {
 			result := blackfriday.Run([]byte(renderHTML.out))
 			// make our links targets
@@ -385,7 +367,15 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			})
 			changeLog = result
 		}
+		if renderJSON.err == nil {
+			err = json.Unmarshal([]byte(renderJSON.out), &changeLogJson)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 	}
+
 	summary := releasecontroller.APIReleaseInfo{
 		Name:          tagInfo.Tag,
 		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
@@ -405,6 +395,23 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 	fmt.Fprintln(w)
+}
+
+func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagInfo, format string) {
+	ch := make(chan renderResult)
+
+	// run the changelog in a goroutine because it may take significant time
+	go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format)
+
+	select {
+	case *result = <-ch:
+	case <-time.After(500 * time.Millisecond):
+		select {
+		case *result = <-ch:
+		case <-time.After(15 * time.Second):
+			result.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+		}
+	}
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
