@@ -1307,8 +1307,7 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	endOfLifePrefixes := sets.NewString()
-	page := &ReleasePage{}
+	acceptedReleases := make(map[string][]string)
 
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
@@ -1316,47 +1315,21 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 			continue
 		}
 		if r.Config.EndOfLife {
-			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil {
-				endOfLifePrefixes.Insert(fmt.Sprintf("%d.%d", version.Major, version.Minor))
-			}
 			continue
 		}
 		s := ReleaseStream{
 			Release: r,
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
-		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
-			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
-				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
-			}
-			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
-				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
-			}
-		}
-		if len(delays) > 0 {
-			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
-		}
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
-			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
-		}
-		page.Streams = append(page.Streams, s)
-	}
-	sort.Sort(preferredReleases(page.Streams))
-	checkReleasePage(page)
-	pruneEndOfLifeTags(page, endOfLifePrefixes)
-	acceptedReleases := make(map[string][]string)
-
-	for _, stream := range page.Streams {
 		var tags []string
-		for _, tag := range stream.Tags {
+		for _, tag := range s.Tags {
 			if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
 				if annotation == releasecontroller.ReleasePhaseAccepted {
 					tags = append(tags, tag.Name)
 				}
 			}
 		}
-		acceptedReleases[stream.Release.Config.Name] = tags
+		acceptedReleases[s.Release.Config.Name] = tags
 	}
 
 	data, err := json.MarshalIndent(&acceptedReleases, "", " ")
