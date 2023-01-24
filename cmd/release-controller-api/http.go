@@ -1317,19 +1317,16 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 		if r.Config.EndOfLife {
 			continue
 		}
-		s := ReleaseStream{
-			Release: r,
-			Tags:    releasecontroller.SortedReleaseTags(r),
-		}
+
 		var tags []string
-		for _, tag := range s.Tags {
+		for _, tag := range releasecontroller.SortedReleaseTags(r) {
 			if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
 				if annotation == releasecontroller.ReleasePhaseAccepted {
 					tags = append(tags, tag.Name)
 				}
 			}
 		}
-		acceptedReleases[s.Release.Config.Name] = tags
+		acceptedReleases[r.Config.Name] = tags
 	}
 
 	data, err := json.MarshalIndent(&acceptedReleases, "", " ")
