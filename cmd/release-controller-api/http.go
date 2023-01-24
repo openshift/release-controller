@@ -146,6 +146,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
+	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -1289,6 +1290,76 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 			data, err = json.MarshalIndent(&verificationJobs, "", "  ")
 		}
 	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request) {
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	endOfLifePrefixes := sets.NewString()
+	page := &ReleasePage{}
+
+	for _, stream := range imageStreams {
+		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.EndOfLife {
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil {
+				endOfLifePrefixes.Insert(fmt.Sprintf("%d.%d", version.Major, version.Minor))
+			}
+			continue
+		}
+		s := ReleaseStream{
+			Release: r,
+			Tags:    releasecontroller.SortedReleaseTags(r),
+		}
+		var delays []string
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
+				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
+			}
+			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
+				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
+			}
+		}
+		if len(delays) > 0 {
+			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+		}
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
+			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
+		}
+		page.Streams = append(page.Streams, s)
+	}
+	sort.Sort(preferredReleases(page.Streams))
+	checkReleasePage(page)
+	pruneEndOfLifeTags(page, endOfLifePrefixes)
+	acceptedReleases := make(map[string][]string)
+
+	for _, stream := range page.Streams {
+		var tags []string
+		for _, tag := range stream.Tags {
+			if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
+				if annotation == releasecontroller.ReleasePhaseAccepted {
+					tags = append(tags, tag.Name)
+				}
+			}
+		}
+		acceptedReleases[stream.Release.Config.Name] = tags
+	}
+
+	data, err := json.MarshalIndent(&acceptedReleases, "", " ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
