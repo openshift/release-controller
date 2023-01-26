@@ -719,9 +719,12 @@ type ChangeLogReleaseInfo struct {
 }
 
 type ChangeLogComponentInfo struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	From    string `json:"from,omitempty"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	VersionUrl string `json:"versionUrl,omitempty"`
+	From       string `json:"from,omitempty"`
+	FromUrl    string `json:"fromUrl,omitempty"`
+	DiffUrl    string `json:"diffUrl,omitempty"`
 }
 
 type ChangeLogImageInfo struct {
