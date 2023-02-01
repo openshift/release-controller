@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-
+	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
+	"k8s.io/test-infra/prow/bugzilla"
+	"k8s.io/test-infra/prow/jira"
+	"strings"
+	"sync"
 
 	"github.com/golang/groupcache"
 
@@ -23,6 +26,11 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
+)
+
+const (
+	sourceBugzilla = "bugzilla"
+	sourceJira     = "jira"
 )
 
 type CachingReleaseInfo struct {
@@ -60,6 +68,10 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			s, err = info.ReleaseInfo(parts[1])
 		case "imageinfo":
 			s, err = info.ImageInfo(parts[1], architecture)
+		case "issuesinfo":
+			s, err = info.IssuesInfo(parts[1])
+		case "bugsinfo":
+			s, err = info.BugsInfo(parts[1])
 		}
 		if err != nil {
 			return err
@@ -102,6 +114,18 @@ func (c *CachingReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, erro
 	return releaseInfoToUpgradeInfo(s)
 }
 
+func (c *CachingReleaseInfo) IssuesInfo(changelog string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"issuesinfo", changelog}, "\x00"), groupcache.StringSink(&s))
+	return s, err
+}
+
+func (c *CachingReleaseInfo) BugsInfo(changelog string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"bugsinfo", changelog}, "\x00"), groupcache.StringSink(&s))
+	return s, err
+}
+
 func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"imageinfo", image}, "\x00"), groupcache.StringSink(&s))
@@ -115,26 +139,32 @@ type ReleaseInfo interface {
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
+	IssuesInfo(changelog string) (string, error)
+	BugsInfo(changelog string) (string, error)
 }
 
 type ExecReleaseInfo struct {
-	client      kubernetes.Interface
-	restConfig  *rest.Config
-	namespace   string
-	name        string
-	imageNameFn func() (string, error)
+	client         kubernetes.Interface
+	restConfig     *rest.Config
+	namespace      string
+	name           string
+	imageNameFn    func() (string, error)
+	jiraClient     jira.Client
+	bugzillaClient bugzilla.Client
 }
 
 // NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
 // Release Status website.  The provided name will prevent other instances of the stateful set
 // from being created when created with an identical name.
-func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
+func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error), jiraClient jira.Client, bugzillaClient bugzilla.Client) *ExecReleaseInfo {
 	return &ExecReleaseInfo{
-		client:      client,
-		restConfig:  restConfig,
-		namespace:   namespace,
-		name:        name,
-		imageNameFn: imageNameFn,
+		client:         client,
+		restConfig:     restConfig,
+		namespace:      namespace,
+		name:           name,
+		imageNameFn:    imageNameFn,
+		jiraClient:     jiraClient,
+		bugzillaClient: bugzillaClient,
 	}
 }
 
@@ -329,6 +359,154 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 		return "", fmt.Errorf("could not get image info for %s: %v", image, msg)
 	}
 	return out.String(), nil
+}
+
+func (r *ExecReleaseInfo) BugsInfo(changelog string) (string, error) {
+	var c ChangeLog
+	err := json.Unmarshal([]byte(changelog), &c)
+	if err != nil {
+		return "", err
+	}
+	bugsList := extractBugsFromChangeLog(c, sourceBugzilla)
+	chunk := len(bugsList.bugs) / 10
+
+	// bugzilla can't handle a larger chunk, will return a 400
+	if chunk > 500 {
+		chunk = 500
+	}
+	dividedBugs := divideSlice(bugsList.bugs, chunk)
+	dividedResult := make([]*[]*bugzilla.Bug, 0)
+	var wg sync.WaitGroup
+	var lastError error
+	for _, parts := range dividedBugs {
+		wg.Add(1)
+		filters := make(map[string]string, 0)
+		// TODO - check why the limit is not being considered. The response size limit is the standard 20, possibly a client bug
+		filters["limit"] = "500"
+		filters["id"] = strings.Join(parts, ",")
+		go func(filters map[string]string) {
+			defer wg.Done()
+			bugs, err := r.bugzillaClient.SearchBugs(filters)
+			if err != nil {
+				lastError = err
+				return
+			}
+			dividedResult = append(dividedResult, &bugs)
+		}(filters)
+	}
+	wg.Wait()
+	if lastError != nil {
+		return "", lastError
+	}
+	appendedResult := make([]*bugzilla.Bug, 0)
+	for _, parts := range dividedResult {
+		appendedResult = append(appendedResult, *parts...)
+	}
+	s, err := json.Marshal(appendedResult)
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
+
+}
+
+func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
+	var c ChangeLog
+	err := json.Unmarshal([]byte(changelog), &c)
+	if err != nil {
+		return "", err
+	}
+	issuesList := extractBugsFromChangeLog(c, sourceJira)
+
+	// keep the chunk on the small side, it is much faster
+	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
+	chunk := len(issuesList.issues) / 10
+
+	// jira can't handle more than 500 at once
+	if chunk > 500 {
+		chunk = 500
+	}
+	dividedIssues := divideSlice(issuesList.issues, chunk)
+	dividedResult := make([]*[]jiraBaseClient.Issue, 0)
+	var wg sync.WaitGroup
+	var lastError error
+	for _, parts := range dividedIssues {
+		wg.Add(1)
+		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
+		go func(jql string) {
+			defer wg.Done()
+			a, _, err := r.jiraClient.SearchWithContext(context.Background(), jql, &jiraBaseClient.SearchOptions{MaxResults: 500})
+			if err != nil {
+				lastError = err
+				return
+			}
+			dividedResult = append(dividedResult, &a)
+		}(jql)
+	}
+	wg.Wait()
+	if lastError != nil {
+		return "", lastError
+	}
+	appendedResult := make([]jiraBaseClient.Issue, 0)
+	for _, parts := range dividedResult {
+		appendedResult = append(appendedResult, *parts...)
+	}
+	s, err := json.Marshal(appendedResult)
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
+}
+
+func divideSlice(issues []string, chunk int) [][]string {
+	var divided [][]string
+	for index := 0; index < len(issues); index += chunk {
+		end := index + chunk
+		if end > len(issues) {
+			end = len(issues)
+		}
+		divided = append(divided, issues[index:end])
+	}
+	return divided
+}
+
+func extractBugsFromChangeLog(changelog ChangeLog, bugSource string) bugsAndIssuesList {
+	// store in a map to avoid issue/bug key multiplication
+	issues := make(map[string]bool, 0)
+	bugs := make(map[string]bool, 0)
+	changeLogImageInfo := make(map[string][]ChangeLogImageInfo, 0)
+	changeLogImageInfo["NewImages"] = changelog.NewImages
+	changeLogImageInfo["RemovedImages"] = changelog.RemovedImages
+	changeLogImageInfo["RebuiltImages"] = changelog.RebuiltImages
+	changeLogImageInfo["UpdatedImages"] = changelog.UpdatedImages
+	for _, k := range changeLogImageInfo {
+		for _, changeLogImageInfo := range k {
+			for _, commit := range changeLogImageInfo.Commits {
+				switch bugSource {
+				case sourceJira:
+					for key, _ := range commit.Issues {
+						issues[key] = true
+					}
+				case sourceBugzilla:
+					for key, _ := range commit.Bugs {
+						bugs[key] = true
+					}
+				}
+			}
+		}
+	}
+	var issuesList []string
+	for issue, _ := range issues {
+		issuesList = append(issuesList, issue)
+	}
+	var bugsList []string
+	for bug, _ := range bugs {
+		bugsList = append(bugsList, bug)
+	}
+	return bugsAndIssuesList{
+		issues: issuesList,
+		bugs:   bugsList,
+	}
 }
 
 func (r *ExecReleaseInfo) RefreshPod() error {
