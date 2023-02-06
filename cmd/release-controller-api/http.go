@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"math"
@@ -489,6 +490,26 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	}
 
 	if isJson {
+		// There is an inconsistency with what is returned from ReleaseInfo (amd64) and what
+		// needs to be passed into the RHCOS diff engine (x86_64).
+		var architecture, archExtension string
+
+		if c.architecture == "amd64" {
+			architecture = "x86_64"
+		} else if c.architecture == "arm64" {
+			architecture = "aarch64"
+			archExtension = fmt.Sprintf("-%s", architecture)
+		} else {
+			architecture = c.architecture
+			archExtension = fmt.Sprintf("-%s", architecture)
+		}
+
+		out, err = rhcos.TransformJsonOutput(out, architecture, archExtension)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Internal error\n%v", err), http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, out)
 		return
