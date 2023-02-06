@@ -1415,7 +1415,9 @@ func (c *Controller) filteredStreams(phase string) ([]byte, error) {
 
 		var tags []string
 		for _, tag := range releasecontroller.SortedReleaseTags(r) {
-			if phase != "" {
+			if phase == "" {
+				tags = append(tags, tag.Name)
+			} else {
 				if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
 					if annotation == phase {
 						tags = append(tags, tag.Name)
