@@ -394,7 +394,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 							return
 						}
 
-						if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec()); err != nil {
+						if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
 							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 						}
 					}()
@@ -457,7 +457,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 						return
 					}
 
-					if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec()); err != nil {
+					if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
 						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
 					}
 				}()

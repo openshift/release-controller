@@ -31,6 +31,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20221215163652-cf8eaf357fc0
 	github.com/openshift/api v0.0.0-20220531073726-6c4f186339a7
 	github.com/openshift/build-machinery-go v0.0.0-20220429084610-baff9f8d23b3
