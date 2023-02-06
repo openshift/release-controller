@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"math"
 	"net/http"
 	"net/url"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -147,6 +148,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
+	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
+	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -1301,13 +1304,45 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 }
 
 func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request) {
-	imageStreams, err := c.releaseLister.List(labels.Everything())
+	data, err := c.filteredStreams(releasecontroller.ReleasePhaseAccepted)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
 
-	acceptedReleases := make(map[string][]string)
+func (c *Controller) apiRejectedStreams(w http.ResponseWriter, req *http.Request) {
+	data, err := c.filteredStreams(releasecontroller.ReleasePhaseRejected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiAllStreams(w http.ResponseWriter, req *http.Request) {
+	data, err := c.filteredStreams("")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) filteredStreams(phase string) ([]byte, error) {
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	releases := make(map[string][]string)
 
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
@@ -1320,24 +1355,23 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 
 		var tags []string
 		for _, tag := range releasecontroller.SortedReleaseTags(r) {
-			if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
-				if annotation == releasecontroller.ReleasePhaseAccepted {
-					tags = append(tags, tag.Name)
+			if phase != "" {
+				if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
+					if annotation == phase {
+						tags = append(tags, tag.Name)
+					}
 				}
 			}
 		}
-		acceptedReleases[r.Config.Name] = tags
+		releases[r.Config.Name] = tags
 	}
 
-	data, err := json.MarshalIndent(&acceptedReleases, "", " ")
+	data, err := json.MarshalIndent(&releases, "", " ")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
-	fmt.Fprintln(w)
+	return data, nil
 }
 
 type Inconsistencies struct {
