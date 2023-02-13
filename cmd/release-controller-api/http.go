@@ -5,8 +5,8 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,8 +14,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -147,6 +150,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
+	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
+	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -337,39 +342,52 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var changeLog []byte
+	var changeLogJson releasecontroller.ChangeLog
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
-		ch := make(chan renderResult)
+		var wg sync.WaitGroup
+		renderHTML := renderResult{}
+		renderJSON := renderResult{}
 
-		// run the changelog in a goroutine because it may take significant time
-		go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
-
-		var render renderResult
-		select {
-		case render = <-ch:
-		case <-time.After(500 * time.Millisecond):
-			select {
-			case render = <-ch:
-			case <-time.After(15 * time.Second):
-				render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
-			}
+		for k, v := range map[string]*renderResult{
+			"html": &renderHTML,
+			"json": &renderJSON,
+		} {
+			wg.Add(1)
+			format := k
+			result := v
+			go func() {
+				defer wg.Done()
+				c.changeLogWorker(result, tagInfo, format)
+			}()
 		}
-		if render.err == nil {
-			result := blackfriday.Run([]byte(render.out))
+		wg.Wait()
+
+		if renderHTML.err == nil {
+			result := blackfriday.Run([]byte(renderHTML.out))
 			// make our links targets
 			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
 				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
 			})
 			changeLog = result
 		}
+		if renderJSON.err == nil {
+			err = json.Unmarshal([]byte(renderJSON.out), &changeLogJson)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 	}
+
 	summary := releasecontroller.APIReleaseInfo{
-		Name:         tagInfo.Tag,
-		Phase:        tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:      verificationJobs,
-		UpgradesTo:   c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom: c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:    changeLog,
+		Name:          tagInfo.Tag,
+		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:       verificationJobs,
+		UpgradesTo:    c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:  c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:     changeLog,
+		ChangeLogJson: changeLogJson,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
@@ -381,6 +399,23 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 	fmt.Fprintln(w)
+}
+
+func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagInfo, format string) {
+	ch := make(chan renderResult)
+
+	// run the changelog in a goroutine because it may take significant time
+	go c.getChangeLog(ch, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format)
+
+	select {
+	case *result = <-ch:
+	case <-time.After(500 * time.Millisecond):
+		select {
+		case *result = <-ch:
+		case <-time.After(15 * time.Second):
+			result.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
+		}
+	}
 }
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
@@ -398,13 +433,15 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
-	var isHtml bool
+	var isHtml, isJson bool
 	switch req.URL.Query().Get("format") {
 	case "html":
 		isHtml = true
+	case "json":
+		isJson = true
 	case "markdown", "":
 	default:
-		http.Error(w, fmt.Sprintf("unrecognized format= string: html, markdown, empty accepted"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("unrecognized format= string: html, json, markdown, empty accepted"), http.StatusBadRequest)
 		return
 	}
 
@@ -440,7 +477,7 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	out, err := c.releaseInfo.ChangeLog(fromBase+":"+from, toBase+":"+to)
+	out, err := c.releaseInfo.ChangeLog(fromBase+":"+from, toBase+":"+to, isJson)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal error\n%v", err), http.StatusInternalServerError)
 		return
@@ -452,6 +489,32 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Change log for %s", to)))
 		w.Write(result)
 		fmt.Fprintln(w, htmlPageEnd)
+		return
+	}
+
+	if isJson {
+		// There is an inconsistency with what is returned from ReleaseInfo (amd64) and what
+		// needs to be passed into the RHCOS diff engine (x86_64).
+		var architecture, archExtension string
+
+		if c.architecture == "amd64" {
+			architecture = "x86_64"
+		} else if c.architecture == "arm64" {
+			architecture = "aarch64"
+			archExtension = fmt.Sprintf("-%s", architecture)
+		} else {
+			architecture = c.architecture
+			archExtension = fmt.Sprintf("-%s", architecture)
+		}
+
+		out, err = rhcos.TransformJsonOutput(out, architecture, archExtension)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Internal error\n%v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, out)
 		return
 	}
 
@@ -766,7 +829,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		fmt.Fprintln(w, "<hr>")
-		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name)
+		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
 	}
 
 	var options []string
@@ -1301,13 +1364,45 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 }
 
 func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request) {
-	imageStreams, err := c.releaseLister.List(labels.Everything())
+	data, err := c.filteredStreams(releasecontroller.ReleasePhaseAccepted)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
 
-	acceptedReleases := make(map[string][]string)
+func (c *Controller) apiRejectedStreams(w http.ResponseWriter, req *http.Request) {
+	data, err := c.filteredStreams(releasecontroller.ReleasePhaseRejected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiAllStreams(w http.ResponseWriter, req *http.Request) {
+	data, err := c.filteredStreams("")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) filteredStreams(phase string) ([]byte, error) {
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	releases := make(map[string][]string)
 
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
@@ -1320,24 +1415,25 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 
 		var tags []string
 		for _, tag := range releasecontroller.SortedReleaseTags(r) {
-			if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
-				if annotation == releasecontroller.ReleasePhaseAccepted {
-					tags = append(tags, tag.Name)
+			if phase == "" {
+				tags = append(tags, tag.Name)
+			} else {
+				if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
+					if annotation == phase {
+						tags = append(tags, tag.Name)
+					}
 				}
 			}
 		}
-		acceptedReleases[r.Config.Name] = tags
+		releases[r.Config.Name] = tags
 	}
 
-	data, err := json.MarshalIndent(&acceptedReleases, "", " ")
+	data, err := json.MarshalIndent(&releases, "", " ")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
-	fmt.Fprintln(w)
+	return data, nil
 }
 
 type Inconsistencies struct {

@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	jiraBaseClient "github.com/andygrunwald/go-jira"
+	"strconv"
+	"strings"
+
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
 	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/jira"
-	"strings"
 	"sync"
 
 	"github.com/golang/groupcache"
@@ -59,10 +61,15 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				}
 			}
 		case "changelog":
-			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
+			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
 			} else {
-				s, err = info.ChangeLog(parts[1], parts[2])
+				isJson, err := strconv.ParseBool(parts[3])
+				if err != nil {
+					s, err = "", fmt.Errorf("unable to parse boolean value")
+				} else {
+					s, err = info.ChangeLog(parts[1], parts[2], isJson)
+				}
 			}
 		case "releaseinfo":
 			s, err = info.ReleaseInfo(parts[1])
@@ -93,9 +100,9 @@ func (c *CachingReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 	return bugList(s)
 }
 
-func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
+func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
 	var s string
-	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to}, "\x00"), groupcache.StringSink(&s))
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to, strconv.FormatBool(json)}, "\x00"), groupcache.StringSink(&s))
 	return s, err
 }
 
@@ -135,7 +142,7 @@ func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
-	ChangeLog(from, to string) (string, error)
+	ChangeLog(from, to string, json bool) (string, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
@@ -201,7 +208,7 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	return out.String(), nil
 }
 
-func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
+func (r *ExecReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", from, err)
 	}
@@ -213,6 +220,9 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {
 	}
 
 	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
+	if json {
+		cmd = append(cmd, "--output=json")
+	}
 	klog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
