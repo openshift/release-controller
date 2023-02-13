@@ -418,15 +418,60 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	}
 	issuesList := extractBugsFromChangeLog(c, sourceJira)
 
+	//// keep the chunk on the small side, it is much faster
+	//// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
+	//chunk := len(issuesList.issues) / 10
+	//
+	//// jira can't handle more than 500 at once
+	//if chunk > 500 {
+	//	chunk = 500
+	//}
+	//dividedIssues := divideSlice(issuesList.issues, chunk)
+	//dividedResult := make([]*[]jiraBaseClient.Issue, 0)
+	//var wg sync.WaitGroup
+	//var lastError error
+	//for _, parts := range dividedIssues {
+	//	wg.Add(1)
+	//	jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
+	//	go func(jql string) {
+	//		defer wg.Done()
+	//		a, _, err := r.jiraClient.SearchWithContext(context.Background(), jql, &jiraBaseClient.SearchOptions{MaxResults: 500})
+	//		if err != nil {
+	//			lastError = err
+	//			return
+	//		}
+	//		dividedResult = append(dividedResult, &a)
+	//	}(jql)
+	//}
+	//wg.Wait()
+	//if lastError != nil {
+	//	return "", lastError
+	//}
+	//appendedResult := make([]jiraBaseClient.Issue, 0)
+	//for _, parts := range dividedResult {
+	//	appendedResult = append(appendedResult, *parts...)
+	//}
+	appendedResult, err := r.GetIssuesWithChunks(issuesList.issues)
+	if err != nil {
+		return "", err
+	}
+	s, err := json.Marshal(appendedResult)
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
+}
+
+func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
 	// keep the chunk on the small side, it is much faster
 	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
-	chunk := len(issuesList.issues) / 10
+	chunk := len(issues) / 10
 
 	// jira can't handle more than 500 at once
 	if chunk > 500 {
 		chunk = 500
 	}
-	dividedIssues := divideSlice(issuesList.issues, chunk)
+	dividedIssues := divideSlice(issues, chunk)
 	dividedResult := make([]*[]jiraBaseClient.Issue, 0)
 	var wg sync.WaitGroup
 	var lastError error
@@ -445,17 +490,13 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	}
 	wg.Wait()
 	if lastError != nil {
-		return "", lastError
+		return nil, lastError
 	}
 	appendedResult := make([]jiraBaseClient.Issue, 0)
 	for _, parts := range dividedResult {
 		appendedResult = append(appendedResult, *parts...)
 	}
-	s, err := json.Marshal(appendedResult)
-	if err != nil {
-		return "", err
-	}
-	return string(s), nil
+	return appendedResult, nil
 }
 
 func divideSlice(issues []string, chunk int) [][]string {
