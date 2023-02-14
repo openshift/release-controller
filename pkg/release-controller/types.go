@@ -698,11 +698,6 @@ type UpgradeHistory struct {
 	History map[string]UpgradeResult
 }
 
-type bugsAndIssuesList struct {
-	issues []string
-	bugs   []string
-}
-
 // ChangeLog represents the data structure that oc returns when providing a changelog in JSON format
 // TODO: This is being carried from changes in openshift/oc.  These changes should be removed if/when we bump up our k8s dependencies up to the latest/greatest version.  We're currently pinned at: v0.24.2
 type ChangeLog struct {

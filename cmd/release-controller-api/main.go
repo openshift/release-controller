@@ -114,7 +114,6 @@ func main() {
 	flagset.AddGoFlag(original.Lookup("v"))
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
-	opt.bugzilla.AddFlags(goFlagSet)
 	opt.jira.AddFlags(goFlagSet)
 	flagset.AddGoFlagSet(goFlagSet)
 
@@ -206,15 +205,11 @@ func (o *options) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to create jira client: %v", err)
 	}
-	bugzillaClient, err := o.bugzilla.BugzillaClient()
-	if err != nil {
-		return fmt.Errorf("failed to create bugzilla client: %v", err)
-	}
 
 	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient, bugzillaClient)
+	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient)
 	releaseInfo := releasecontroller.NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
 	graph := releasecontroller.NewUpgradeGraph(architecture)

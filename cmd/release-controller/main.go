@@ -388,7 +388,7 @@ func (o *options) Run() error {
 	}
 
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient, bzClient)
+	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient)
 	releaseInfo := releasecontroller.NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
 	execReleaseFiles := releasecontroller.NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
