@@ -31,8 +31,10 @@ import (
 )
 
 const (
-	sourceBugzilla = "bugzilla"
-	sourceJira     = "jira"
+	sourceBugzilla            = "bugzilla"
+	sourceJira                = "jira"
+	jiraCustomFieldEpicLink   = "customfield_12311140"
+	jiraCustomFieldParentLink = "customfield_12313140"
 )
 
 type CachingReleaseInfo struct {
@@ -432,8 +434,10 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	currentIssues := issues
+
 	// TODO - refactor this part, must be a better way to do this
+	// fetch the parent issues recursively
+	currentIssues := issues
 	for {
 		var parents []string
 		for _, issue := range currentIssues {
@@ -448,11 +452,13 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 		}
 		p, err := r.GetIssuesWithChunks(parents)
 		if err != nil {
-			break
+			// TODO - maybe retry
+			return "", err
 		}
 		issues = append(issues, p...)
 		currentIssues = p
 	}
+
 	s, err := json.Marshal(issues)
 	if err != nil {
 		return "", err
@@ -465,11 +471,11 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
 	chunk := len(issues) / 10
 
-	// jira can't handle more than 500 at once
+	// jira can't handle more than 500 IDs at once
 	if chunk > 500 {
 		chunk = 500
 	}
-	if len(issues) < 100 || chunk == 0 {
+	if len(issues) < 50 || chunk == 0 {
 		chunk = len(issues)
 	}
 	dividedIssues := divideSlice(issues, chunk)
@@ -481,7 +487,18 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
 		go func(jql string) {
 			defer wg.Done()
-			a, _, err := r.jiraClient.SearchWithContext(context.Background(), jql, &jiraBaseClient.SearchOptions{MaxResults: 500, Fields: []string{"summary", "customfield_12311140", "customfield_12313140"}})
+			a, _, err := r.jiraClient.SearchWithContext(
+				context.Background(),
+				jql,
+				&jiraBaseClient.SearchOptions{
+					MaxResults: chunk + 1,
+					Fields: []string{
+						"summary",
+						jiraCustomFieldEpicLink,
+						jiraCustomFieldParentLink,
+					},
+				},
+			)
 			if err != nil {
 				lastError = err
 				return
