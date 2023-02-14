@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"k8s.io/test-infra/prow/jira"
 	"net/http"
 	"os"
 	goruntime "runtime"
@@ -60,8 +61,8 @@ type options struct {
 
 	ARTSuffix string
 
-	jira     flagutil.JiraOptions
-	bugzilla flagutil.BugzillaOptions
+	jira       flagutil.JiraOptions
+	enableJira bool
 }
 
 func main() {
@@ -112,6 +113,7 @@ func main() {
 	flagset.StringVar(&opt.ARTSuffix, "art-suffix", "", "Suffix for ART imagstreams (eg. `-art-latest`)")
 
 	flagset.AddGoFlag(original.Lookup("v"))
+	flagset.BoolVar(&opt.enableJira, "enable-jira", opt.enableJira, "Enable Jira issue fetching")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.jira.AddFlags(goFlagSet)
@@ -201,11 +203,13 @@ func (o *options) Run() error {
 	}
 
 	// jira client
-	jiraClient, err := o.jira.Client()
-	if err != nil {
-		return fmt.Errorf("failed to create jira client: %v", err)
+	var jiraClient jira.Client
+	if o.enableJira {
+		jiraClient, err = o.jira.Client()
+		if err != nil {
+			return fmt.Errorf("failed to create jira client: %v", err)
+		}
 	}
-
 	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
