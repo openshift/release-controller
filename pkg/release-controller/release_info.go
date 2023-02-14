@@ -496,6 +496,8 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 						"summary",
 						jiraCustomFieldEpicLink,
 						jiraCustomFieldParentLink,
+						"issuetype",
+						"description",
 					},
 				},
 			)
