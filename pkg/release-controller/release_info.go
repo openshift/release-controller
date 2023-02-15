@@ -29,8 +29,8 @@ import (
 
 const (
 	sourceJira                = "jira"
-	jiraCustomFieldEpicLink   = "customfield_12311140"
-	jiraCustomFieldParentLink = "customfield_12313140"
+	JiraCustomFieldEpicLink   = "customfield_12311140"
+	JiraCustomFieldParentLink = "customfield_12313140"
 )
 
 type CachingReleaseInfo struct {
@@ -379,35 +379,75 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 		return "", err
 	}
 
-	// TODO - refactor this part, must be a better way to do this
 	// fetch the parent issues recursively
 	currentIssues := issues
-	for {
-		var parents []string
-		for _, issue := range currentIssues {
-			for _, f := range issue.Fields.Unknowns {
-				if f != nil {
-					parents = append(parents, f.(string))
-				}
-			}
-		}
-		if len(parents) == 0 {
-			break
-		}
-		p, err := r.GetIssuesWithChunks(parents)
-		if err != nil {
-			// TODO - maybe retry
-			return "", err
-		}
-		issues = append(issues, p...)
-		currentIssues = p
+	err = r.RecursiveGet(currentIssues, &issues)
+	if err != nil {
+		return "", err
 	}
-
 	s, err := json.Marshal(issues)
 	if err != nil {
 		return "", err
 	}
 	return string(s), nil
+}
+
+func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
+	var parents []string
+	for _, issue := range issues {
+		for _, f := range issue.Fields.Unknowns {
+			if f != nil {
+				parents = append(parents, f.(string))
+			}
+		}
+	}
+	if len(parents) > 0 {
+		p, err := r.GetIssuesWithChunks(parents)
+		if err != nil {
+			// TODO - retry maybe?
+			return err
+		}
+		*allIssues = append(*allIssues, p...)
+		err = r.RecursiveGet(p, allIssues)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type IssueDetails struct {
+	Summary     string
+	Parent      string
+	Epic        string
+	IssueType   string
+	Description string
+}
+
+func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails {
+	t := make(map[string]IssueDetails, 0)
+	for _, issue := range issues {
+		var epic string
+		var parent string
+		for unknownField, value := range issue.Fields.Unknowns {
+			if value != nil {
+				switch unknownField {
+				case JiraCustomFieldEpicLink:
+					epic = value.(string)
+				case JiraCustomFieldParentLink:
+					parent = value.(string)
+				}
+			}
+		}
+		t[issue.Key] = IssueDetails{
+			Summary:     issue.Fields.Summary,
+			Parent:      parent,
+			Epic:        epic,
+			IssueType:   issue.Fields.Type.Name,
+			Description: issue.Fields.Type.Description,
+		}
+	}
+	return t
 }
 
 func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
@@ -438,8 +478,8 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 					MaxResults: chunk + 1,
 					Fields: []string{
 						"summary",
-						jiraCustomFieldEpicLink,
-						jiraCustomFieldParentLink,
+						JiraCustomFieldEpicLink,
+						JiraCustomFieldParentLink,
 						"issuetype",
 						"description",
 					},

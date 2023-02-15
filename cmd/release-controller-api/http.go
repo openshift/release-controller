@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
 	"math"
@@ -153,10 +154,111 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
+	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureReleaseInfo)
+
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
 
 	return mux
+}
+
+func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	changeLogJSON := renderResult{}
+	var changeLog releasecontroller.ChangeLog
+	c.changeLogWorker(&changeLogJSON, tagInfo, "json")
+	if changeLogJSON.err == nil {
+		err = json.Unmarshal([]byte(changeLogJSON.out), &changeLog)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var d []jiraBaseClient.Issue
+	info, err := c.releaseInfo.IssuesInfo(changeLogJSON.out)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = json.Unmarshal([]byte(info), &d)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	mapIssueDetails := releasecontroller.TransformJiraIssues(d)
+	var featureJiraTickets []string
+	for issue, details := range mapIssueDetails {
+		if details.IssueType == "Feature" {
+			featureJiraTickets = append(featureJiraTickets, issue)
+		}
+
+	}
+	var featureTreesTest []*FeatureTree
+	for _, feature := range featureJiraTickets {
+		featureTreesTest = append(featureTreesTest, &FeatureTree{
+			IssueKey:    feature,
+			Summary:     mapIssueDetails[feature].Summary,
+			Description: mapIssueDetails[feature].Description,
+			Type:        mapIssueDetails[feature].IssueType,
+			Children:    nil,
+		})
+	}
+	GetChildrenRecursively(featureTreesTest, mapIssueDetails)
+	data, err := json.MarshalIndent(&featureTreesTest, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+
+}
+
+type FeatureTree struct {
+	IssueKey    string         `json:"key"`
+	Summary     string         `json:"summary"`
+	Description string         `json:"description"`
+	Type        string         `json:"type"`
+	Children    []*FeatureTree `json:"children,omitempty"`
+}
+
+func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails) {
+	for _, child := range children {
+		var children []*FeatureTree
+		for issueKey, issueDetails := range issues {
+			if child.Type == "Feature" {
+				if issueDetails.Parent == child.IssueKey {
+					children = append(children, &FeatureTree{
+						IssueKey:    issueKey,
+						Summary:     issueDetails.Summary,
+						Description: issueDetails.Description,
+						Type:        issueDetails.IssueType,
+						Children:    nil,
+					})
+				}
+			}
+			if child.Type == "Epic" {
+				if issueDetails.Epic == child.IssueKey {
+					children = append(children, &FeatureTree{
+						IssueKey:    issueKey,
+						Summary:     issueDetails.Summary,
+						Description: issueDetails.Description,
+						Type:        issueDetails.IssueType,
+						Children:    nil,
+					})
+				}
+			}
+		}
+		child.Children = children
+		GetChildrenRecursively(child.Children, issues)
+	}
 }
 
 func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
