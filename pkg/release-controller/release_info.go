@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
+	"k8s.io/test-infra/prow/bugzilla"
+	"k8s.io/test-infra/prow/jira"
+	"sync"
 
 	"github.com/golang/groupcache"
 
@@ -24,6 +28,12 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
+)
+
+const (
+	sourceJira                = "jira"
+	jiraCustomFieldEpicLink   = "customfield_12311140"
+	jiraCustomFieldParentLink = "customfield_12313140"
 )
 
 type CachingReleaseInfo struct {
@@ -66,6 +76,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			s, err = info.ReleaseInfo(parts[1])
 		case "imageinfo":
 			s, err = info.ImageInfo(parts[1], architecture)
+		case "issuesinfo":
+			s, err = info.IssuesInfo(parts[1])
 		}
 		if err != nil {
 			return err
@@ -108,6 +120,12 @@ func (c *CachingReleaseInfo) UpgradeInfo(image string) (ReleaseUpgradeInfo, erro
 	return releaseInfoToUpgradeInfo(s)
 }
 
+func (c *CachingReleaseInfo) IssuesInfo(changelog string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"issuesinfo", changelog}, "\x00"), groupcache.StringSink(&s))
+	return s, err
+}
+
 func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"imageinfo", image}, "\x00"), groupcache.StringSink(&s))
@@ -121,26 +139,30 @@ type ReleaseInfo interface {
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
+	IssuesInfo(changelog string) (string, error)
 }
 
 type ExecReleaseInfo struct {
-	client      kubernetes.Interface
-	restConfig  *rest.Config
-	namespace   string
-	name        string
-	imageNameFn func() (string, error)
+	client         kubernetes.Interface
+	restConfig     *rest.Config
+	namespace      string
+	name           string
+	imageNameFn    func() (string, error)
+	jiraClient     jira.Client
+	bugzillaClient bugzilla.Client
 }
 
 // NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
 // Release Status website.  The provided name will prevent other instances of the stateful set
 // from being created when created with an identical name.
-func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error)) *ExecReleaseInfo {
+func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, namespace string, name string, imageNameFn func() (string, error), jiraClient jira.Client) *ExecReleaseInfo {
 	return &ExecReleaseInfo{
 		client:      client,
 		restConfig:  restConfig,
 		namespace:   namespace,
 		name:        name,
 		imageNameFn: imageNameFn,
+		jiraClient:  jiraClient,
 	}
 }
 
@@ -338,6 +360,144 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 		return "", fmt.Errorf("could not get image info for %s: %v", image, msg)
 	}
 	return out.String(), nil
+}
+
+func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
+	var c ChangeLog
+	err := json.Unmarshal([]byte(changelog), &c)
+	if err != nil {
+		return "", err
+	}
+	issuesList := extractIssuesFromChangeLog(c, sourceJira)
+	issues, err := r.GetIssuesWithChunks(issuesList)
+
+	if err != nil {
+		return "", err
+	}
+
+	// TODO - refactor this part, must be a better way to do this
+	// fetch the parent issues recursively
+	currentIssues := issues
+	for {
+		var parents []string
+		for _, issue := range currentIssues {
+			for _, f := range issue.Fields.Unknowns {
+				if f != nil {
+					parents = append(parents, f.(string))
+				}
+			}
+		}
+		if len(parents) == 0 {
+			break
+		}
+		p, err := r.GetIssuesWithChunks(parents)
+		if err != nil {
+			// TODO - maybe retry
+			return "", err
+		}
+		issues = append(issues, p...)
+		currentIssues = p
+	}
+
+	s, err := json.Marshal(issues)
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
+}
+
+func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
+	// keep the chunk on the small side, it is much faster
+	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
+	chunk := len(issues) / 10
+
+	// jira can't handle more than 500 IDs at once
+	if chunk > 500 {
+		chunk = 500
+	}
+	if len(issues) < 50 || chunk == 0 {
+		chunk = len(issues)
+	}
+	dividedIssues := divideSlice(issues, chunk)
+	dividedResult := make([]*[]jiraBaseClient.Issue, 0)
+	var wg sync.WaitGroup
+	var lastError error
+	for _, parts := range dividedIssues {
+		wg.Add(1)
+		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
+		go func(jql string) {
+			defer wg.Done()
+			a, _, err := r.jiraClient.SearchWithContext(
+				context.Background(),
+				jql,
+				&jiraBaseClient.SearchOptions{
+					MaxResults: chunk + 1,
+					Fields: []string{
+						"summary",
+						jiraCustomFieldEpicLink,
+						jiraCustomFieldParentLink,
+						"issuetype",
+						"description",
+					},
+				},
+			)
+			if err != nil {
+				lastError = err
+				return
+			}
+			dividedResult = append(dividedResult, &a)
+		}(jql)
+	}
+	wg.Wait()
+	if lastError != nil {
+		return nil, lastError
+	}
+	appendedResult := make([]jiraBaseClient.Issue, 0)
+	for _, parts := range dividedResult {
+		appendedResult = append(appendedResult, *parts...)
+	}
+	return appendedResult, nil
+}
+
+func divideSlice(issues []string, chunk int) [][]string {
+	var divided [][]string
+	for index := 0; index < len(issues); index += chunk {
+		end := index + chunk
+		if end > len(issues) {
+			end = len(issues)
+		}
+		divided = append(divided, issues[index:end])
+	}
+	return divided
+}
+
+func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) []string {
+	// store in a map to avoid issue/bug key multiplication
+	issues := make(map[string]bool, 0)
+	changeLogImageInfo := make(map[string][]ChangeLogImageInfo, 0)
+	changeLogImageInfo["NewImages"] = changelog.NewImages
+	changeLogImageInfo["RemovedImages"] = changelog.RemovedImages
+	changeLogImageInfo["RebuiltImages"] = changelog.RebuiltImages
+	changeLogImageInfo["UpdatedImages"] = changelog.UpdatedImages
+	for _, k := range changeLogImageInfo {
+		for _, changeLogImageInfo := range k {
+			for _, commit := range changeLogImageInfo.Commits {
+				switch bugSource {
+				case sourceJira:
+					for key, _ := range commit.Issues {
+						issues[key] = true
+					}
+				}
+			}
+		}
+	}
+	var issuesList []string
+	for issue, _ := range issues {
+		issuesList = append(issuesList, issue)
+	}
+
+	return issuesList
+
 }
 
 func (r *ExecReleaseInfo) RefreshPod() error {

@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	bugzillaBaseClient "k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/config/secret"
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
@@ -49,6 +50,7 @@ import (
 	prowconfig "k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
+	jiraBaseClient "k8s.io/test-infra/prow/jira"
 
 	"github.com/openshift/release-controller/pkg/bugzilla"
 	"github.com/openshift/release-controller/pkg/signer"
@@ -349,8 +351,44 @@ func (o *options) Run() error {
 		}
 	}
 
+	var jiraClient jiraBaseClient.Client
+	var bzClient bugzillaBaseClient.Client
+	var tokens []string
+	// Append the path of github and bugzilla secrets.
+	if o.github.TokenPath != "" {
+		tokens = append(tokens, o.github.TokenPath)
+	}
+	if o.github.AppPrivateKeyPath != "" {
+		tokens = append(tokens, o.github.AppPrivateKeyPath)
+	}
+	if o.bugzilla.ApiKeyPath != "" {
+		tokens = append(tokens, o.bugzilla.ApiKeyPath)
+	}
+	if err := secret.Add(tokens...); err != nil {
+		return fmt.Errorf("Error starting secrets agent: %w", err)
+	}
+
+	ghClient, err := o.github.GitHubClient(false)
+	if err != nil {
+		return fmt.Errorf("Failed to create github client: %v", err)
+	}
+	ghClient.Throttle(o.githubThrottle, 0)
+
+	if o.VerifyBugzilla {
+		bzClient, err = o.bugzilla.BugzillaClient()
+		if err != nil {
+			return fmt.Errorf("Failed to create bugzilla client: %v", err)
+		}
+	}
+	if o.VerifyJira {
+		jiraClient, err = o.jira.Client()
+		if err != nil {
+			return fmt.Errorf("Failed to create bugzilla client: %v", err)
+		}
+	}
+
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
-	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get)
+	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient)
 	releaseInfo := releasecontroller.NewCachingReleaseInfo(execReleaseInfo, 64*1024*1024, architecture)
 
 	execReleaseFiles := releasecontroller.NewExecReleaseFiles(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, releaseNamespace, o.Registry, imageCache.Get)
@@ -381,32 +419,7 @@ func (o *options) Run() error {
 		releasePayloadClient.ReleaseV1alpha1(),
 	)
 
-	var tokens []string
-	// Append the path of github and bugzilla secrets.
-	if o.github.TokenPath != "" {
-		tokens = append(tokens, o.github.TokenPath)
-	}
-	if o.github.AppPrivateKeyPath != "" {
-		tokens = append(tokens, o.github.AppPrivateKeyPath)
-	}
-	if o.bugzilla.ApiKeyPath != "" {
-		tokens = append(tokens, o.bugzilla.ApiKeyPath)
-	}
-	if err := secret.Add(tokens...); err != nil {
-		return fmt.Errorf("Error starting secrets agent: %w", err)
-	}
-
-	ghClient, err := o.github.GitHubClient(false)
-	if err != nil {
-		return fmt.Errorf("Failed to create github client: %v", err)
-	}
-	ghClient.Throttle(o.githubThrottle, 0)
-
 	if o.VerifyBugzilla {
-		bzClient, err := o.bugzilla.BugzillaClient()
-		if err != nil {
-			return fmt.Errorf("Failed to create bugzilla client: %v", err)
-		}
 		pluginAgent, err := o.PluginConfig.PluginAgent()
 		if err != nil {
 			return fmt.Errorf("Failed to create plugin agent: %v", err)
@@ -416,10 +429,6 @@ func (o *options) Run() error {
 		c.bugzillaErrorMetrics = bugzillaErrorMetrics
 	}
 	if o.VerifyJira {
-		jiraClient, err := o.jira.Client()
-		if err != nil {
-			return fmt.Errorf("Failed to create bugzilla client: %v", err)
-		}
 		pluginAgent, err := o.PluginConfig.PluginAgent()
 		if err != nil {
 			return fmt.Errorf("Failed to create plugin agent: %v", err)
