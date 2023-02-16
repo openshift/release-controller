@@ -444,7 +444,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			Parent:      parent,
 			Epic:        epic,
 			IssueType:   issue.Fields.Type.Name,
-			Description: issue.Fields.Type.Description,
+			Description: issue.Fields.Description,
 		}
 	}
 	return t
