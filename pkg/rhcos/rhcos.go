@@ -52,26 +52,19 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 		switch {
 		case fromMinor < 9:
 			fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension)
-			fromURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/",
-				RawQuery: (url.Values{
-					"stream":  []string{fromStream},
-					"release": []string{fromRelease},
-				}).Encode(),
-			}
 		default:
-			fromStream = fmt.Sprintf("%s.%s", m[2], m[3])
-			fromURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/storage/browser",
-				RawQuery: (url.Values{
-					"stream": []string{fromStream},
-					"arch":   []string{architecture},
-				}).Encode(),
-			}
+			fromStream = fmt.Sprintf("prod/streams/%s.%s", m[2], m[3])
+		}
+		fromURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: fromRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{fromStream},
+				"arch":    []string{architecture},
+				"release": []string{fromRelease},
+			}).Encode(),
 		}
 
 		toRelease := m[4]
@@ -82,27 +75,21 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 		switch {
 		case toMinor < 9:
 			toStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[5], m[6], architectureExtension)
-			toURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/",
-				RawQuery: (url.Values{
-					"stream":  []string{toStream},
-					"release": []string{toRelease},
-				}).Encode(),
-			}
 		default:
-			toStream = fmt.Sprintf("%s.%s", m[5], m[6])
-			toURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/storage/browser",
-				RawQuery: (url.Values{
-					"stream": []string{toStream},
-					"arch":   []string{architecture},
-				}).Encode(),
-			}
+			toStream = fmt.Sprintf("prod/streams/%s.%s", m[5], m[6])
 		}
+		toURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: toRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{toStream},
+				"arch":    []string{architecture},
+				"release": []string{toRelease},
+			}).Encode(),
+		}
+
 		diffURL := url.URL{
 			Scheme: serviceScheme,
 			Host:   serviceUrl,
@@ -137,26 +124,19 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 		switch {
 		case fromMinor < 9:
 			fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension)
-			fromURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/",
-				RawQuery: (url.Values{
-					"stream":  []string{fromStream},
-					"release": []string{fromRelease},
-				}).Encode(),
-			}
 		default:
-			fromStream = fmt.Sprintf("%s.%s", m[2], m[3])
-			fromURL = url.URL{
-				Scheme: serviceScheme,
-				Host:   serviceUrl,
-				Path:   "/storage/browser",
-				RawQuery: (url.Values{
-					"stream": []string{fromStream},
-					"arch":   []string{architecture},
-				}).Encode(),
-			}
+			fromStream = fmt.Sprintf("prod/streams/%s.%s", m[2], m[3])
+		}
+		fromURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: fromRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{fromStream},
+				"arch":    []string{architecture},
+				"release": []string{fromRelease},
+			}).Encode(),
 		}
 		replace := fmt.Sprintf(
 			`* Red Hat Enterprise Linux CoreOS [%s](%s)`+"\n",
@@ -191,26 +171,19 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 				switch {
 				case minor < 9:
 					toStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[1], m[2], architectureExtension)
-					toURL = url.URL{
-						Scheme: serviceScheme,
-						Host:   serviceUrl,
-						Path:   "/",
-						RawQuery: (url.Values{
-							"stream":  []string{toStream},
-							"release": []string{component.Version},
-						}).Encode(),
-					}
 				default:
-					toStream = fmt.Sprintf("%s.%s", m[1], m[2])
-					toURL = url.URL{
-						Scheme: serviceScheme,
-						Host:   serviceUrl,
-						Path:   "/storage/browser",
-						RawQuery: (url.Values{
-							"stream": []string{toStream},
-							"arch":   []string{architecture},
-						}).Encode(),
-					}
+					toStream = fmt.Sprintf("prod/streams/%s.%s", m[1], m[2])
+				}
+				toURL = url.URL{
+					Scheme:   serviceScheme,
+					Host:     serviceUrl,
+					Path:     "/",
+					Fragment: component.Version,
+					RawQuery: (url.Values{
+						"stream":  []string{toStream},
+						"arch":    []string{architecture},
+						"release": []string{component.Version},
+					}).Encode(),
 				}
 				component.VersionUrl = toURL.String()
 			}
@@ -225,26 +198,19 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 					switch {
 					case fromMinor < 9:
 						fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[1], m[2], architectureExtension)
-						fromURL = url.URL{
-							Scheme: serviceScheme,
-							Host:   serviceUrl,
-							Path:   "/",
-							RawQuery: (url.Values{
-								"stream":  []string{fromStream},
-								"release": []string{component.From},
-							}).Encode(),
-						}
 					default:
-						fromStream = fmt.Sprintf("%s.%s", m[1], m[2])
-						fromURL = url.URL{
-							Scheme: serviceScheme,
-							Host:   serviceUrl,
-							Path:   "/storage/browser",
-							RawQuery: (url.Values{
-								"stream": []string{fromStream},
-								"arch":   []string{architecture},
-							}).Encode(),
-						}
+						fromStream = fmt.Sprintf("prod/streams/%s.%s", m[1], m[2])
+					}
+					fromURL = url.URL{
+						Scheme:   serviceScheme,
+						Host:     serviceUrl,
+						Path:     "/",
+						Fragment: component.From,
+						RawQuery: (url.Values{
+							"stream":  []string{fromStream},
+							"arch":    []string{architecture},
+							"release": []string{component.From},
+						}).Encode(),
 					}
 					component.FromUrl = fromURL.String()
 
