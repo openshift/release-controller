@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/golang/groupcache"
@@ -76,6 +78,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			s, err = info.ImageInfo(parts[1], architecture)
 		case "issuesinfo":
 			s, err = info.IssuesInfo(parts[1])
+		case "featurechildren":
+			s, err = info.GetFeatureChildren(strings.Split(parts[1], ";"), 10*time.Minute)
 		}
 		if err != nil {
 			return err
@@ -130,6 +134,16 @@ func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error
 	return s, err
 }
 
+func (c *CachingReleaseInfo) GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error) {
+	var s string
+	roundedTime := time.Now().Round(validityPeriod)
+	sort.Strings(featuresList)
+	key := strings.Join([]string{"featurechildren", strings.Join(featuresList, ";")}, "\x00")
+	keyWithTime := key + "_" + roundedTime.Format(time.RFC3339)
+	err := c.cache.Get(context.TODO(), keyWithTime, groupcache.StringSink(&s))
+	return s, err
+}
+
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
@@ -138,6 +152,7 @@ type ReleaseInfo interface {
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
 	IssuesInfo(changelog string) (string, error)
+	GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error)
 }
 
 type ExecReleaseInfo struct {
@@ -448,6 +463,45 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 		}
 	}
 	return t
+}
+
+func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	limit := make(chan struct{}, 10) // set the limit to 10 concurrent goroutines
+	results := make(map[string][]jiraBaseClient.Issue)
+
+	// loop to start goroutines
+	for _, feature := range featuresList {
+		wg.Add(1)
+		limit <- struct{}{}
+		go func(id string) {
+			defer func() { <-limit }()
+			defer wg.Done()
+			a, _, err := r.jiraClient.SearchWithContext(
+				context.Background(),
+				fmt.Sprintf("issuekey in childIssuesOf(%s) AND issuetype in (Epic)", id),
+				&jiraBaseClient.SearchOptions{
+					MaxResults: 500, // TODO : here we assume that a feature will not have more than 500 epics, if so, we need to paginate
+					Fields: []string{
+						"key",
+						"status",
+					},
+				},
+			)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			results[id] = a
+			mu.Unlock()
+		}(feature)
+	}
+
+	wg.Wait()
+	close(limit)
+	a, err := json.Marshal(results)
+	return string(a), err
 }
 
 func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
