@@ -162,34 +162,27 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	return mux
 }
 
-func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	tagInfo, err := c.getReleaseTagInfo(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
+func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree, error) {
 	changeLogJSON := renderResult{}
 	var changeLog releasecontroller.ChangeLog
 	c.changeLogWorker(&changeLogJSON, tagInfo, "json")
-	if changeLogJSON.err == nil {
-		err = json.Unmarshal([]byte(changeLogJSON.out), &changeLog)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+
+	if changeLogJSON.err != nil {
+		return []*FeatureTree{}, changeLogJSON.err
 	} else {
-		return
+		err := json.Unmarshal([]byte(changeLogJSON.out), &changeLog)
+		if err != nil {
+			return []*FeatureTree{}, err
+		}
 	}
 	var d []jiraBaseClient.Issue
 	info, err := c.releaseInfo.IssuesInfo(changeLogJSON.out)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return []*FeatureTree{}, err
 	}
 	err = json.Unmarshal([]byte(info), &d)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return []*FeatureTree{}, err
 	}
 	mapIssueDetails := releasecontroller.TransformJiraIssues(d)
 	var featureJiraTickets []string
@@ -203,8 +196,7 @@ func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Requ
 	featureChildren := make(map[string][]jiraBaseClient.Issue)
 	err = json.Unmarshal([]byte(featureChildrenJSON), &featureChildren)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return []*FeatureTree{}, err
 	}
 	var featureTrees []*FeatureTree
 	for _, feature := range featureJiraTickets {
@@ -215,11 +207,26 @@ func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Requ
 			Type:            mapIssueDetails[feature].IssueType,
 			ResolutionDate:  mapIssueDetails[feature].ResolutionDate,
 			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[feature].ResolutionDate),
-			FeatureStatus:   checkFeatureStatus(featureChildren[feature], mapIssueDetails[feature].Status, &changeLog.To.Created),
+			FeatureStatus:   setFeatureChildrenStatus(featureChildren[feature], mapIssueDetails[feature].Status, &changeLog.To.Created),
 			Children:        nil,
 		})
 	}
 	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created)
+
+	return featureTrees, nil
+}
+
+func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	featureTrees, err := c.featureReleaseInfo(tagInfo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data, err := json.MarshalIndent(&featureTrees, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -240,7 +247,7 @@ func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
 	return false
 }
 
-func checkFeatureStatus(featureChildren []jiraBaseClient.Issue, status string, buildTime *time.Time) *featureStatus {
+func setFeatureChildrenStatus(featureChildren []jiraBaseClient.Issue, status string, buildTime *time.Time) *featureStatus {
 	var childStatus []*epicState
 	for _, childIssue := range featureChildren {
 		state := epicState{
@@ -260,9 +267,7 @@ func checkFeatureStatus(featureChildren []jiraBaseClient.Issue, status string, b
 
 type featureStatus struct {
 	Details []*epicState `json:"epics_details,omitempty"`
-	// TODO - currently, the state of the Feature is calculated by the state of its Epics (children). Check if this is
-	// correct, or if we need to rely on the Feature ticket status/resolution (if Status="Closed" and Resolution="Done")
-	State string `json:"current_feature_status,omitempty"`
+	State   string       `json:"current_feature_status,omitempty"`
 }
 
 type epicState struct {
