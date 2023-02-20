@@ -11,6 +11,8 @@ import (
 )
 
 var (
+	changeoverTimestamp = 202212000000
+
 	serviceScheme = "https"
 	serviceUrl    = "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com"
 
@@ -18,7 +20,7 @@ var (
 	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
 	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 
-	reJsonRHCoSVersion = regexp.MustCompile(`(\d)(\d+)\.[\w\.\-]+`)
+	reJsonRHCoSVersion2 = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
 )
 
 func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
@@ -41,55 +43,39 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
 	//       For now, this will have to do.
 	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
+		var ok bool
 		var fromURL, toURL url.URL
 		var fromStream, toStream string
 
 		fromRelease := m[1]
-		fromMinor, err := strconv.Atoi(m[3])
-		if err != nil {
-			return "", err
-		}
-		switch {
-		case fromMinor < 9:
-			fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension)
-		default:
-			fromStream = fmt.Sprintf("prod/streams/%s.%s", m[2], m[3])
-		}
-		fromURL = url.URL{
-			Scheme:   serviceScheme,
-			Host:     serviceUrl,
-			Path:     "/",
-			Fragment: fromRelease,
-			RawQuery: (url.Values{
-				"stream":  []string{fromStream},
-				"arch":    []string{architecture},
-				"release": []string{fromRelease},
-			}).Encode(),
+		if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
+			fromURL = url.URL{
+				Scheme:   serviceScheme,
+				Host:     serviceUrl,
+				Path:     "/",
+				Fragment: fromRelease,
+				RawQuery: (url.Values{
+					"stream":  []string{fromStream},
+					"arch":    []string{architecture},
+					"release": []string{fromRelease},
+				}).Encode(),
+			}
 		}
 
 		toRelease := m[4]
-		toMinor, err := strconv.Atoi(m[6])
-		if err != nil {
-			return "", err
+		if toStream, ok = getRHCoSReleaseStream(toRelease, architectureExtension); ok {
+			toURL = url.URL{
+				Scheme:   serviceScheme,
+				Host:     serviceUrl,
+				Path:     "/",
+				Fragment: toRelease,
+				RawQuery: (url.Values{
+					"stream":  []string{toStream},
+					"arch":    []string{architecture},
+					"release": []string{toRelease},
+				}).Encode(),
+			}
 		}
-		switch {
-		case toMinor < 9:
-			toStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[5], m[6], architectureExtension)
-		default:
-			toStream = fmt.Sprintf("prod/streams/%s.%s", m[5], m[6])
-		}
-		toURL = url.URL{
-			Scheme:   serviceScheme,
-			Host:     serviceUrl,
-			Path:     "/",
-			Fragment: toRelease,
-			RawQuery: (url.Values{
-				"stream":  []string{toStream},
-				"arch":    []string{architecture},
-				"release": []string{toRelease},
-			}).Encode(),
-		}
-
 		diffURL := url.URL{
 			Scheme: serviceScheme,
 			Host:   serviceUrl,
@@ -113,30 +99,23 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 		markdown = strings.ReplaceAll(markdown, m[0], replace)
 	}
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
+		var ok bool
 		var fromURL url.URL
 		var fromStream string
 
 		fromRelease := m[1]
-		fromMinor, err := strconv.Atoi(m[3])
-		if err != nil {
-			return "", err
-		}
-		switch {
-		case fromMinor < 9:
-			fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension)
-		default:
-			fromStream = fmt.Sprintf("prod/streams/%s.%s", m[2], m[3])
-		}
-		fromURL = url.URL{
-			Scheme:   serviceScheme,
-			Host:     serviceUrl,
-			Path:     "/",
-			Fragment: fromRelease,
-			RawQuery: (url.Values{
-				"stream":  []string{fromStream},
-				"arch":    []string{architecture},
-				"release": []string{fromRelease},
-			}).Encode(),
+		if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
+			fromURL = url.URL{
+				Scheme:   serviceScheme,
+				Host:     serviceUrl,
+				Path:     "/",
+				Fragment: fromRelease,
+				RawQuery: (url.Values{
+					"stream":  []string{fromStream},
+					"arch":    []string{architecture},
+					"release": []string{fromRelease},
+				}).Encode(),
+			}
 		}
 		replace := fmt.Sprintf(
 			`* Red Hat Enterprise Linux CoreOS [%s](%s)`+"\n",
@@ -158,23 +137,13 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 	for i, component := range changeLogJson.Components {
 		switch component.Name {
 		case "Red Hat Enterprise Linux CoreOS":
+			var ok bool
 			var fromStream, toStream string
 			if len(component.Version) == 0 {
 				continue
 			}
-			if m := reJsonRHCoSVersion.FindStringSubmatch(component.Version); m != nil {
-				var toURL url.URL
-				minor, err := strconv.Atoi(m[2])
-				if err != nil {
-					return "", err
-				}
-				switch {
-				case minor < 9:
-					toStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[1], m[2], architectureExtension)
-				default:
-					toStream = fmt.Sprintf("prod/streams/%s.%s", m[1], m[2])
-				}
-				toURL = url.URL{
+			if toStream, ok = getRHCoSReleaseStream(component.Version, architectureExtension); ok {
+				toURL := url.URL{
 					Scheme:   serviceScheme,
 					Host:     serviceUrl,
 					Path:     "/",
@@ -189,19 +158,8 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 			}
 
 			if len(component.From) > 0 {
-				if m := reJsonRHCoSVersion.FindStringSubmatch(component.From); m != nil {
-					var fromURL url.URL
-					fromMinor, err := strconv.Atoi(m[2])
-					if err != nil {
-						return "", err
-					}
-					switch {
-					case fromMinor < 9:
-						fromStream = fmt.Sprintf("releases/rhcos-%s.%s%s", m[1], m[2], architectureExtension)
-					default:
-						fromStream = fmt.Sprintf("prod/streams/%s.%s", m[1], m[2])
-					}
-					fromURL = url.URL{
+				if fromStream, ok = getRHCoSReleaseStream(component.From, architectureExtension); ok {
+					fromUrl := url.URL{
 						Scheme:   serviceScheme,
 						Host:     serviceUrl,
 						Path:     "/",
@@ -212,7 +170,7 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 							"release": []string{component.From},
 						}).Encode(),
 					}
-					component.FromUrl = fromURL.String()
+					component.FromUrl = fromUrl.String()
 
 					diffURL := url.URL{
 						Scheme: serviceScheme,
@@ -239,4 +197,24 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 	}
 
 	return string(updated), nil
+}
+
+func getRHCoSReleaseStream(version, architectureExtension string) (string, bool) {
+	if m := reJsonRHCoSVersion2.FindStringSubmatch(version); m != nil {
+		ts, err := strconv.Atoi(m[5])
+		if err != nil {
+			return "", false
+		}
+		minor, err := strconv.Atoi(m[3])
+		if err != nil {
+			return "", false
+		}
+		switch {
+		case ts > changeoverTimestamp && minor >= 9:
+			return fmt.Sprintf("prod/streams/%s.%s", m[2], m[3]), true
+		default:
+			return fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension), true
+		}
+	}
+	return "", false
 }
