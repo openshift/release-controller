@@ -209,15 +209,17 @@ func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Requ
 	var featureTrees []*FeatureTree
 	for _, feature := range featureJiraTickets {
 		featureTrees = append(featureTrees, &FeatureTree{
-			IssueKey:      feature,
-			Summary:       mapIssueDetails[feature].Summary,
-			Description:   mapIssueDetails[feature].Description,
-			Type:          mapIssueDetails[feature].IssueType,
-			FeatureStatus: checkFeatureStatus(featureChildren[feature]),
-			Children:      nil,
+			IssueKey:        feature,
+			Summary:         mapIssueDetails[feature].Summary,
+			Description:     mapIssueDetails[feature].Description,
+			Type:            mapIssueDetails[feature].IssueType,
+			ResolutionDate:  mapIssueDetails[feature].ResolutionDate,
+			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[feature].ResolutionDate),
+			FeatureStatus:   checkFeatureStatus(featureChildren[feature], mapIssueDetails[feature].Status, &changeLog.To.Created),
+			Children:        nil,
 		})
 	}
-	GetChildrenRecursively(featureTrees, mapIssueDetails)
+	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created)
 	data, err := json.MarshalIndent(&featureTrees, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -228,76 +230,92 @@ func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Requ
 
 }
 
-func checkFeatureStatus(featureChildren []jiraBaseClient.Issue) *featureStatus {
-	overallStatus := "completed"
+func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
+	if issueTimestamp.IsZero() {
+		return false
+	}
+	if issueTimestamp.Before(*buildTimeStamp) {
+		return true
+	}
+	return false
+}
+
+func checkFeatureStatus(featureChildren []jiraBaseClient.Issue, status string, buildTime *time.Time) *featureStatus {
 	var childStatus []*epicState
 	for _, childIssue := range featureChildren {
 		state := epicState{
-			Key:    childIssue.Key,
-			Status: childIssue.Fields.Status.Name,
+			Key:             childIssue.Key,
+			Status:          childIssue.Fields.Status.Name,
+			ResolutionDate:  time.Time(childIssue.Fields.Resolutiondate),
+			IncludedOnBuild: statusOnBuild(buildTime, time.Time(childIssue.Fields.Resolutiondate)),
 		}
 		childStatus = append(childStatus, &state)
-		// TODO - check if closed is not be the only status that determines an completed epic (Done? Dev Completed?)
-		if state.Status != "Closed" {
-			overallStatus = "In Progress"
-		}
+
 	}
 	return &featureStatus{
 		Details: childStatus,
-		State:   overallStatus,
+		State:   status,
 	}
 }
 
 type featureStatus struct {
-	Details []*epicState `json:"details,omitempty"`
+	Details []*epicState `json:"epics_details,omitempty"`
 	// TODO - currently, the state of the Feature is calculated by the state of its Epics (children). Check if this is
 	// correct, or if we need to rely on the Feature ticket status/resolution (if Status="Closed" and Resolution="Done")
-	State string `json:"feature_status,omitempty"`
+	State string `json:"current_feature_status,omitempty"`
 }
 
 type epicState struct {
-	Key    string `json:"epic,omitempty"`
-	Status string `json:"status,omitempty"`
+	Key             string    `json:"epic,omitempty"`
+	Status          string    `json:"current_status,omitempty"`
+	ResolutionDate  time.Time `json:"resolution_date"`
+	IncludedOnBuild bool      `json:"included_in_build"`
 }
 
 type FeatureTree struct {
-	IssueKey      string         `json:"key"`
-	Summary       string         `json:"summary"`
-	Description   string         `json:"description"`
-	Type          string         `json:"type"`
-	FeatureStatus *featureStatus `json:"feature_status,omitempty"`
-	Children      []*FeatureTree `json:"children,omitempty"`
+	IssueKey        string         `json:"key"`
+	Summary         string         `json:"summary"`
+	Description     string         `json:"description"`
+	Type            string         `json:"type"`
+	ResolutionDate  time.Time      `json:"resolution_date"`
+	IncludedOnBuild bool           `json:"included_in_build"`
+	FeatureStatus   *featureStatus `json:"feature_status,omitempty"`
+	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
-func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails) {
+func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
 	for _, child := range children {
 		var children []*FeatureTree
 		for issueKey, issueDetails := range issues {
 			if child.Type == "Feature" {
 				if issueDetails.Parent == child.IssueKey {
 					children = append(children, &FeatureTree{
-						IssueKey:    issueKey,
-						Summary:     issueDetails.Summary,
-						Description: issueDetails.Description,
-						Type:        issueDetails.IssueType,
-						Children:    nil,
+						IssueKey:        issueKey,
+						Summary:         issueDetails.Summary,
+						Description:     issueDetails.Description,
+						Type:            issueDetails.IssueType,
+						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
+						ResolutionDate:  issueDetails.ResolutionDate,
+						Children:        nil,
 					})
 				}
 			}
 			if child.Type == "Epic" {
 				if issueDetails.Epic == child.IssueKey {
 					children = append(children, &FeatureTree{
-						IssueKey:    issueKey,
-						Summary:     issueDetails.Summary,
-						Description: issueDetails.Description,
-						Type:        issueDetails.IssueType,
-						Children:    nil,
+						IssueKey:        issueKey,
+						Summary:         issueDetails.Summary,
+						Description:     issueDetails.Description,
+						Type:            issueDetails.IssueType,
+						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
+						ResolutionDate:  issueDetails.ResolutionDate,
+						Children:        nil,
 					})
 				}
 			}
 		}
 		child.Children = children
-		GetChildrenRecursively(child.Children, issues)
+		GetChildrenRecursively(child.Children, issues, buildTimeStamp)
 	}
 }
 

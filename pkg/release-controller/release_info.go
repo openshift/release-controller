@@ -432,11 +432,13 @@ func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues 
 }
 
 type IssueDetails struct {
-	Summary     string
-	Parent      string
-	Epic        string
-	IssueType   string
-	Description string
+	Summary        string
+	Status         string
+	Parent         string
+	Epic           string
+	IssueType      string
+	Description    string
+	ResolutionDate time.Time
 }
 
 func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails {
@@ -455,11 +457,13 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			}
 		}
 		t[issue.Key] = IssueDetails{
-			Summary:     issue.Fields.Summary,
-			Parent:      parent,
-			Epic:        epic,
-			IssueType:   issue.Fields.Type.Name,
-			Description: issue.Fields.Description,
+			Summary:        issue.Fields.Summary,
+			Status:         issue.Fields.Status.Name,
+			Parent:         parent,
+			Epic:           epic,
+			IssueType:      issue.Fields.Type.Name,
+			Description:    issue.Fields.Description,
+			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}
 	}
 	return t
@@ -486,6 +490,7 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 					Fields: []string{
 						"key",
 						"status",
+						"resolutiondate",
 					},
 				},
 			)
@@ -536,6 +541,8 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 						JiraCustomFieldParentLink,
 						"issuetype",
 						"description",
+						"resolutiondate",
+						"status",
 					},
 				},
 			)
