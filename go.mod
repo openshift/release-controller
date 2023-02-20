@@ -32,10 +32,10 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20221215163652-cf8eaf357fc0
+	github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20230213200605-f569adf896f9
 	github.com/openshift/api v0.0.0-20220531073726-6c4f186339a7
 	github.com/openshift/build-machinery-go v0.0.0-20220429084610-baff9f8d23b3
-	github.com/openshift/ci-tools v0.0.0-20230105161510-cc54a53bc9a7
+	github.com/openshift/ci-tools v0.0.0-20230220162948-9d135756f9cd
 	github.com/openshift/client-go v3.9.0+incompatible
 	github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc
 	github.com/prometheus/client_golang v1.12.1
@@ -54,7 +54,7 @@ require (
 	k8s.io/component-base v0.24.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.70.1
-	k8s.io/test-infra v0.0.0-20230105153159-e57429125b2e
+	k8s.io/test-infra v0.0.0-20230220183149-f6cb3f5ca17f
 )
 
 require (
@@ -69,6 +69,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
 	github.com/Azure/go-autorest/logger v0.2.1 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
+	github.com/BurntSushi/toml v0.4.1 // indirect
 	github.com/GoogleCloudPlatform/testgrid v0.0.123 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
@@ -123,6 +124,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-hclog v0.12.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
@@ -172,12 +174,12 @@ require (
 	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	gocloud.dev v0.19.0 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220608161450-d0670ef3b1eb // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/term v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/term v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect

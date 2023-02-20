@@ -48,8 +48,10 @@ const (
 
 // Configuration is the top-level serialization target for plugin Configuration.
 type Configuration struct {
-	// Plugins is a map of repositories (eg "k/k") to lists of
-	// plugin names.
+	// Plugins is a map of organizations (eg "o") or repositories
+	// (eg "o/r") to lists of enabled plugin names.
+	// If it is defined on both organization and repository levels, the list of enabled
+	// plugin names for the repository is the merging list of the two levels.
 	// You can find a comprehensive list of the default available plugins here
 	// https://github.com/kubernetes/test-infra/tree/master/prow/plugins
 	// note that you're also able to add external plugins.
@@ -1477,6 +1479,10 @@ func (s *BugzillaBugState) Matches(bug *bugzilla.Bug) bool {
 type BugzillaBranchOptions struct {
 	// ExcludeDefaults excludes defaults from more generic Bugzilla configurations.
 	ExcludeDefaults *bool `json:"exclude_defaults,omitempty"`
+
+	// EnableBackporting enables functionality to create new backport bugs for
+	// cherrypick PRs created by the cherrypick plugin that reference bugzilla bugs.
+	EnableBackporting *bool
 
 	// ValidateByDefault determines whether a validation check is run for all pull
 	// requests by default

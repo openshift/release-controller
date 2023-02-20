@@ -41,6 +41,8 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
+# github.com/BurntSushi/toml v0.4.1
+## explicit; go 1.16
 # github.com/GoogleCloudPlatform/testgrid v0.0.123
 ## explicit; go 1.14
 github.com/GoogleCloudPlatform/testgrid/metadata
@@ -324,6 +326,8 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.2
 ## explicit; go 1.13
 github.com/hashicorp/go-cleanhttp
+# github.com/hashicorp/go-hclog v0.12.0
+## explicit; go 1.13
 # github.com/hashicorp/go-multierror v1.1.1
 ## explicit; go 1.13
 github.com/hashicorp/go-multierror
@@ -379,7 +383,7 @@ github.com/munnerz/goautoneg
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20221215163652-cf8eaf357fc0
+# github.com/openshift-eng/jira-lifecycle-plugin v0.0.0-20230213200605-f569adf896f9
 ## explicit; go 1.18
 github.com/openshift-eng/jira-lifecycle-plugin/pkg/helpers
 # github.com/openshift/api v0.0.0-20220531073726-6c4f186339a7
@@ -401,8 +405,8 @@ github.com/openshift/build-machinery-go/make/targets/golang
 github.com/openshift/build-machinery-go/make/targets/openshift
 github.com/openshift/build-machinery-go/make/targets/openshift/operator
 github.com/openshift/build-machinery-go/scripts
-# github.com/openshift/ci-tools v0.0.0-20230105161510-cc54a53bc9a7
-## explicit; go 1.18
+# github.com/openshift/ci-tools v0.0.0-20230220162948-9d135756f9cd
+## explicit; go 1.19
 github.com/openshift/ci-tools/pkg/api
 github.com/openshift/ci-tools/pkg/release
 github.com/openshift/ci-tools/pkg/release/official
@@ -677,7 +681,7 @@ golang.org/x/crypto/salsa20/salsa
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.5.0
+# golang.org/x/net v0.7.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -704,7 +708,7 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.4.0
+# golang.org/x/sys v0.5.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -712,10 +716,10 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.4.0
+# golang.org/x/term v0.5.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.6.0
+# golang.org/x/text v0.7.0
 ## explicit; go 1.17
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
@@ -1546,7 +1550,7 @@ k8s.io/kube-openapi/pkg/util
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/util/sets
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/test-infra v0.0.0-20230105153159-e57429125b2e
+# k8s.io/test-infra v0.0.0-20230220183149-f6cb3f5ca17f
 ## explicit; go 1.18
 k8s.io/test-infra/ghproxy/ghcache
 k8s.io/test-infra/ghproxy/ghmetrics
