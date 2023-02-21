@@ -155,6 +155,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
 	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureReleaseInfo)
+	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureReleaseInfo)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -810,6 +811,47 @@ func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, erro
 		TagPullSpec:         tagPull,
 		PreviousTagPullSpec: previousTagPull,
 	}, nil
+}
+
+func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	featureTrees, err := c.featureReleaseInfo(tagInfo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	var data = template.Must(template.New("featureRelease.html").Funcs(
+		template.FuncMap{
+			"checkFeatureStatus": checkFeatureStatus,
+			"epicState":          checkEpicState,
+		},
+	).ParseFS(resources, "featureRelease.html"))
+	if err := data.Execute(w, featureTrees); err != nil {
+		klog.Errorf("Unable to render page: %v", err)
+	}
+}
+
+func checkEpicState(epicsList []*epicState, issueKey string) string {
+	for _, issue := range epicsList {
+		if issue.Key == issueKey {
+			return issue.Status
+		}
+	}
+	return "Unable to determine this Epics' current status!"
+
+}
+
+func checkFeatureStatus(isCompleted bool, issueType string) string {
+	if isCompleted {
+		return ""
+	}
+	return fmt.Sprintf("(This %s was still in progress when this image was build)", issueType)
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {

@@ -462,7 +462,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			Parent:         parent,
 			Epic:           epic,
 			IssueType:      issue.Fields.Type.Name,
-			Description:    issue.Fields.Description,
+			Description:    issue.RenderedFields.Description,
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}
 	}
@@ -544,6 +544,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 						"resolutiondate",
 						"status",
 					},
+					Expand: "renderedFields",
 				},
 			)
 			if err != nil {
