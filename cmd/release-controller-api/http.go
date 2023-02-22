@@ -289,6 +289,12 @@ type FeatureTree struct {
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
+func sortByIncludedOnBuild(slice []*FeatureTree) {
+	sort.Slice(slice, func(i, j int) bool {
+		return slice[i].IncludedOnBuild && !slice[j].IncludedOnBuild
+	})
+}
+
 func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
 	for _, child := range children {
 		var children []*FeatureTree
@@ -832,6 +838,7 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 			"epicState":          checkEpicState,
 		},
 	).ParseFS(resources, "featureRelease.html"))
+	sortByIncludedOnBuild(featureTrees)
 	if err := data.Execute(w, featureTrees); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
