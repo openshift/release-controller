@@ -13,17 +13,21 @@
   <h2>Featured Based Change Log</h2>
   <p><strong>Note:</strong> The <strong>Feature</strong> based change-log groups Jira tickets based on the Feature parent.</p>
   {{ range . }}
-  <div  class="mt-4 col-md-12 id="accordion_{{.IssueKey}}">
+  <div  class="mt-4 col-md-12" id="accordion_{{.IssueKey}}">
     <div class="card border-primary">
       <div class="card-header btn-primary">
-        <a class="btn" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}">
-          {{ .Type }} {{ .IssueKey }}  {{ checkFeatureStatus .IncludedOnBuild .Type }}
+        <a class="btn col-md-12" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="padding-top: 0;padding-bottom: 0;">
+          <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
+            <div class="row" style="padding-top: 0;padding-bottom: 0;">
+              <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
+              <div class="d-flex p-2 fs-6 fst-italic" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ checkFeatureStatus .IncludedOnBuild .Type }}</div>
+            </div>
+          </div>
         </a>
       </div>
       <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
         <div class="card-body">
           <p class="fs-5">Current Status: {{ .FeatureStatus.State }}</p>
-          <p class="fs-5">Summary: {{ .Summary }}</p>
           <p>
             <a class="btn btn-link" style="padding-left: 0;" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
               View the Description
@@ -53,13 +57,17 @@
 <div id="accordion_{{.IssueKey}}">
   <div class="card mt-2 col-md-12 border-info">
     <div class="card-header btn-info">
-      <a class="btn" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}">
-        {{ .Type }} {{ .IssueKey }} {{ checkFeatureStatus .IncludedOnBuild .Type }}
+      <a class="btn col-md-12" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="padding-top: 0;padding-bottom: 0;">
+        <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
+          <div class="row" style="padding-top: 0;padding-bottom: 0;">
+            <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
+            <div class="d-flex p-2 fs-6 fst-italic" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ checkFeatureStatus .IncludedOnBuild .Type }}</div>
+          </div>
+        </div>
       </a>
     </div>
     <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
       <div class="card-body">
-        <p class="fs-5">Summary: {{ .Summary }}</p>
         <p>
           <a class="btn btn-link" style="padding-left: 0;" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample">
             View the Description

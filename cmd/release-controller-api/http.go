@@ -856,9 +856,9 @@ func checkEpicState(epicsList []*epicState, issueKey string) string {
 
 func checkFeatureStatus(isCompleted bool, issueType string) string {
 	if isCompleted {
-		return ""
+		return fmt.Sprintf("This %s is completed", issueType)
 	}
-	return fmt.Sprintf("(This %s was still in progress when this image was build)", issueType)
+	return fmt.Sprintf("*This %s was still in progress when this image was build", issueType)
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
