@@ -289,12 +289,6 @@ type FeatureTree struct {
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
-func sortByIncludedOnBuild(slice []*FeatureTree) {
-	sort.Slice(slice, func(i, j int) bool {
-		return slice[i].IncludedOnBuild && !slice[j].IncludedOnBuild
-	})
-}
-
 func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
 	for _, child := range children {
 		var children []*FeatureTree
@@ -819,6 +813,18 @@ func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, erro
 	}, nil
 }
 
+type Sections struct {
+	Tickets []*FeatureTree
+	Title   string
+	Header  string
+}
+
+type httpFeatureData struct {
+	DisplaySections map[string]Sections
+	From            string
+	To              string
+}
+
 func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
@@ -832,14 +838,37 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	}
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	var completedFeatures []*FeatureTree
+	var unCompletedFeatures []*FeatureTree
+	for _, feature := range featureTrees {
+		if feature.IncludedOnBuild {
+			completedFeatures = append(completedFeatures, feature)
+		} else {
+			unCompletedFeatures = append(unCompletedFeatures, feature)
+		}
+	}
+	completed := Sections{
+		Tickets: completedFeatures,
+		Title:   "Lists of features that were completed when this image was built",
+		Header:  "Completed Features",
+	}
+	unCompleted := Sections{
+		Tickets: unCompletedFeatures,
+		Title:   "Lists of features that were not completed when this image was built",
+		Header:  "Uncompleted Features",
+	}
+	sections := make(map[string]Sections)
+	sections["completed_features"] = completed
+	sections["uncompleted_features"] = unCompleted
 	var data = template.Must(template.New("featureRelease.html").Funcs(
 		template.FuncMap{
 			"checkFeatureStatus": checkFeatureStatus,
 			"epicState":          checkEpicState,
 		},
 	).ParseFS(resources, "featureRelease.html"))
-	sortByIncludedOnBuild(featureTrees)
-	if err := data.Execute(w, featureTrees); err != nil {
+	if err := data.Execute(w, httpFeatureData{
+		DisplaySections: sections,
+	}); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
 }

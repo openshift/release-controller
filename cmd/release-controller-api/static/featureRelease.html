@@ -9,10 +9,13 @@
 </head>
 <body>
 
-<div class="container mt-3">
-  <h2>Featured Based Change Log</h2>
-  <p><strong>Note:</strong> The <strong>Feature</strong> based change-log groups Jira tickets based on the Feature parent.</p>
-  {{ range . }}
+{{range $key, $s := .DisplaySections}}
+<div class="container mt-3"  href="{{$key}}">
+
+  <h2 title="{{$s.Title}}">
+    <a id="{{$key}}" href="#{{$key}}" class="text-dark">{{$s.Header}}</a>
+  </h2>
+  {{ range $s.Tickets }}
   <div  class="mt-4 col-md-12" id="accordion_{{.IssueKey}}">
     <div class="card border-primary">
       <div class="card-header btn-primary">
@@ -20,7 +23,6 @@
           <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
             <div class="row" style="padding-top: 0;padding-bottom: 0;">
               <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
-              <div class="d-flex p-2 fs-6 fst-italic" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ checkFeatureStatus .IncludedOnBuild .Type }}</div>
             </div>
           </div>
         </a>
@@ -49,6 +51,7 @@
   </div>
   {{ end }}
 </div>
+{{ end }}
 </body>
 </html>
 
@@ -61,7 +64,6 @@
         <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
           <div class="row" style="padding-top: 0;padding-bottom: 0;">
             <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
-            <div class="d-flex p-2 fs-6 fst-italic" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ checkFeatureStatus .IncludedOnBuild .Type }}</div>
           </div>
         </div>
       </a>
