@@ -10,36 +10,34 @@
 <body>
 
 {{range $key, $s := .DisplaySections}}
-<div class="container mt-3"  href="{{$key}}">
-
+<div class="container mt-3">
   <h2 title="{{$s.Title}}">
     <a id="{{$key}}" href="#{{$key}}" class="text-dark">{{$s.Header}}</a>
   </h2>
   {{ range $s.Tickets }}
-  <div  class="mt-4 col-md-12" id="accordion_{{.IssueKey}}">
+  <div  class="mt-4 col-md-12">
     <div class="card border-primary">
-      <div class="card-header btn-primary">
-        <a class="btn col-md-12" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="padding-top: 0;padding-bottom: 0;">
-          <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
-            <div class="row" style="padding-top: 0;padding-bottom: 0;">
-              <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
-            </div>
+      <div class="card-header p-0">
+        <div class="row row-cols-1">
+          <div class="col" >
+            <a class="btn col-md-12 text-left" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="text-align: left;font-size: 1.2rem;">
+              {{ .Type }} {{ .IssueKey }}: {{.Summary}}
+            </a>
           </div>
-        </a>
-      </div>
-      <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
-        <div class="card-body">
-          <p class="fs-5">Current Status: {{ .FeatureStatus.State }}</p>
-          <p>
-            <a class="btn btn-link" style="padding-left: 0;" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
+          <div class="col" >
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
               View the Description
             </a>
-          </p>
+          </div>
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
             <div class="card card-body border-light">
               {{ .Description }}
             </div>
           </div>
+        </div>
+      </div>
+      <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
+        <div class="card-body">
           {{- if .Children }}
           {{- range .Children }}
           {{- template "test2" . }}
@@ -58,33 +56,35 @@
 
 {{- define "test2" -}}
 <div id="accordion_{{.IssueKey}}">
-  <div class="card mt-2 col-md-12 border-info">
-    <div class="card-header btn-info">
-      <a class="btn col-md-12" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="padding-top: 0;padding-bottom: 0;">
-        <div class="container" style="padding-left: 0; padding-top: 0;padding-bottom: 0;" >
-          <div class="row" style="padding-top: 0;padding-bottom: 0;">
-            <div class="d-flex p-2 fs-5" style="padding-left: 0; padding-top: 0;padding-bottom: 0;">{{ .Type }} {{ .IssueKey }}: {{.Summary}}</div>
+  <div  class="mt-2 col-md-12">
+    <div class="card border-primary">
+      <div class="card-header p-0">
+        <div class="row row-cols-1">
+          <div class="col" >
+            <a class="btn col-md-12 text-left" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="text-align: left;font-size: 1.2rem;">
+              {{ .Type }} {{ .IssueKey }}: {{.Summary}}
+            </a>
+          </div>
+          <div class="col" >
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
+              View the Description
+            </a>
+          </div>
+          <div class="collapse" id="collapse_description_{{.IssueKey}}">
+            <div class="card card-body border-light">
+              {{ .Description }}
+            </div>
           </div>
         </div>
-      </a>
-    </div>
-    <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
-      <div class="card-body">
-        <p>
-          <a class="btn btn-link" style="padding-left: 0;" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample">
-            View the Description
-          </a>
-        </p>
-        <div class="collapse" id="collapse_description_{{.IssueKey}}">
-          <div class="card card-body border-light">
-            {{ .Description }}
-          </div>
+      </div>
+      <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
+        <div class="card-body">
+          {{- if .Children }}
+          {{- range .Children }}
+          {{- template "test2" . }}
+          {{- end}}
+          {{- end}}
         </div>
-        {{- if .Children }}
-        {{- range .Children }}
-        {{- template "test2" . }}
-        {{- end}}
-        {{- end}}
       </div>
     </div>
   </div>
