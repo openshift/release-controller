@@ -193,12 +193,6 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		}
 
 	}
-	featureChildrenJSON, err := c.releaseInfo.GetFeatureChildren(featureJiraTickets, 10*time.Minute)
-	featureChildren := make(map[string][]jiraBaseClient.Issue)
-	err = json.Unmarshal([]byte(featureChildrenJSON), &featureChildren)
-	if err != nil {
-		return []*FeatureTree{}, err
-	}
 	var featureTrees []*FeatureTree
 	for _, feature := range featureJiraTickets {
 		featureTrees = append(featureTrees, &FeatureTree{
@@ -208,7 +202,6 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			Type:            mapIssueDetails[feature].IssueType,
 			ResolutionDate:  mapIssueDetails[feature].ResolutionDate,
 			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[feature].ResolutionDate),
-			FeatureStatus:   setFeatureChildrenStatus(featureChildren[feature], mapIssueDetails[feature].Status, &changeLog.To.Created),
 			Children:        nil,
 		})
 	}
@@ -248,29 +241,6 @@ func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
 	return false
 }
 
-func setFeatureChildrenStatus(featureChildren []jiraBaseClient.Issue, status string, buildTime *time.Time) *featureStatus {
-	var childStatus []*epicState
-	for _, childIssue := range featureChildren {
-		state := epicState{
-			Key:             childIssue.Key,
-			Status:          childIssue.Fields.Status.Name,
-			ResolutionDate:  time.Time(childIssue.Fields.Resolutiondate),
-			IncludedOnBuild: statusOnBuild(buildTime, time.Time(childIssue.Fields.Resolutiondate)),
-		}
-		childStatus = append(childStatus, &state)
-
-	}
-	return &featureStatus{
-		Details: childStatus,
-		State:   status,
-	}
-}
-
-type featureStatus struct {
-	Details []*epicState `json:"epics_details,omitempty"`
-	State   string       `json:"current_feature_status,omitempty"`
-}
-
 type epicState struct {
 	Key             string    `json:"epic,omitempty"`
 	Status          string    `json:"current_status,omitempty"`
@@ -285,7 +255,6 @@ type FeatureTree struct {
 	Type            string         `json:"type"`
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
-	FeatureStatus   *featureStatus `json:"feature_status,omitempty"`
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
