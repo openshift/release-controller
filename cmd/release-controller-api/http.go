@@ -786,6 +786,7 @@ type Sections struct {
 	Tickets []*FeatureTree
 	Title   string
 	Header  string
+	Note    string
 }
 
 type httpFeatureData struct {
@@ -799,6 +800,10 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
+	}
+	from := req.URL.Query().Get("from")
+	if from == "" {
+		from = "the last version"
 	}
 	featureTrees, err := c.featureReleaseInfo(tagInfo)
 	if err != nil {
@@ -820,11 +825,13 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
 		Header:  "Completed Features",
+		Note:    "These features were completed when this image was assembled",
 	}
 	unCompleted := Sections{
 		Tickets: unCompletedFeatures,
 		Title:   "Lists of features that were not completed when this image was built",
 		Header:  "Uncompleted Features",
+		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
 	}
 	sections := make(map[string]Sections)
 	sections["completed_features"] = completed
@@ -833,13 +840,25 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		template.FuncMap{
 			"checkFeatureStatus": checkFeatureStatus,
 			"epicState":          checkEpicState,
+			"jumpLinks":          jumpLinks,
 		},
 	).ParseFS(resources, "featureRelease.html"))
 	if err := data.Execute(w, httpFeatureData{
 		DisplaySections: sections,
+		To:              tagInfo.Tag,
+		From:            from,
 	}); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
+}
+
+func jumpLinks(data httpFeatureData) string {
+	var releases []string
+	for key, s := range data.DisplaySections {
+		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(key), template.HTMLEscapeString(s.Header)))
+	}
+	return strings.Join(releases, " | ")
+
 }
 
 func checkEpicState(epicsList []*epicState, issueKey string) string {

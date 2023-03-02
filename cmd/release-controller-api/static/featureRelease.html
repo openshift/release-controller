@@ -23,11 +23,26 @@
   </style>
 </head>
 <body>
+<div class="container mt-3">
+  <p><a href="/">Back to index</a></p>
+  <h1>
+    {{.To}}
+  </h1>
+  <p class="small mb-3">
+    Jump to: {{ jumpLinks . }}
+  </p>
+  <h3>
+    Changes from {{.From}}
+  </h3>
+  <p>Note: this page shows the Feature-Based Change Log for a release</p>
+</div>
 {{range $key, $s := .DisplaySections}}
 <div class="container mt-3">
   <h2 title="{{$s.Title}}">
     <a id="{{$key}}" href="#{{$key}}" class="text-dark">{{$s.Header}}</a>
   </h2>
+  <p>{{$s.Note}}</p>
+  <div class="mt-4 col-md-12">
   {{ range $s.Tickets }}
   <div  class="mt-4 col-md-12">
     <div class="card border-primary">
@@ -63,8 +78,9 @@
         </div>
       </div>
     </div>
-  </div>
+    </div>
   {{ end }}
+  </div>
 </div>
 {{ end }}
 <script>
