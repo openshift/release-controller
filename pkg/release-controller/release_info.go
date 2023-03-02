@@ -412,7 +412,10 @@ func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues 
 	for _, issue := range issues {
 		for _, f := range issue.Fields.Unknowns {
 			if f != nil {
-				parents = append(parents, f.(string))
+				switch f.(type) {
+				case string:
+					parents = append(parents, f.(string))
+				}
 			}
 		}
 	}
@@ -457,16 +460,29 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			}
 		}
 		t[issue.Key] = IssueDetails{
-			Summary:        issue.Fields.Summary,
+			Summary:        checkJiraSecurity(issue, issue.Fields.Summary),
 			Status:         issue.Fields.Status.Name,
 			Parent:         parent,
 			Epic:           epic,
 			IssueType:      issue.Fields.Type.Name,
-			Description:    issue.RenderedFields.Description,
+			Description:    checkJiraSecurity(issue, issue.RenderedFields.Description),
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}
 	}
 	return t
+}
+
+func checkJiraSecurity(issue jiraBaseClient.Issue, data string) string {
+	securityField, err := jira.GetIssueSecurityLevel(&issue)
+	if err != nil {
+		return data
+	}
+	// TODO - if the security field name is set (or any field for that matter), we restrict the issue. Check if a whitelist/blacklist is necessary
+	if securityField.Name != "" {
+		return fmt.Sprintf("This issue details are restricted to %s", securityField.Description)
+	} else {
+		return data
+	}
 }
 
 func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error) {
@@ -536,6 +552,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 				&jiraBaseClient.SearchOptions{
 					MaxResults: chunk + 1,
 					Fields: []string{
+						"security",
 						"summary",
 						JiraCustomFieldEpicLink,
 						JiraCustomFieldParentLink,
