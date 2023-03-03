@@ -199,6 +199,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			IssueKey:        feature,
 			Summary:         mapIssueDetails[feature].Summary,
 			Description:     mapIssueDetails[feature].Description,
+			ReleaseNotes:    mapIssueDetails[feature].ReleaseNotes,
 			Type:            mapIssueDetails[feature].IssueType,
 			ResolutionDate:  mapIssueDetails[feature].ResolutionDate,
 			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[feature].ResolutionDate),
@@ -252,6 +253,7 @@ type FeatureTree struct {
 	IssueKey        string         `json:"key"`
 	Summary         string         `json:"summary"`
 	Description     string         `json:"description"`
+	ReleaseNotes    string         `json:"release_notes,omitempty"`
 	Type            string         `json:"type"`
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
@@ -268,6 +270,7 @@ func GetChildrenRecursively(children []*FeatureTree, issues map[string]releaseco
 						IssueKey:        issueKey,
 						Summary:         issueDetails.Summary,
 						Description:     issueDetails.Description,
+						ReleaseNotes:    issueDetails.ReleaseNotes,
 						Type:            issueDetails.IssueType,
 						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
 						ResolutionDate:  issueDetails.ResolutionDate,
@@ -281,6 +284,7 @@ func GetChildrenRecursively(children []*FeatureTree, issues map[string]releaseco
 						IssueKey:        issueKey,
 						Summary:         issueDetails.Summary,
 						Description:     issueDetails.Description,
+						ReleaseNotes:    issueDetails.ReleaseNotes,
 						Type:            issueDetails.IssueType,
 						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
 						ResolutionDate:  issueDetails.ResolutionDate,

@@ -30,9 +30,10 @@ import (
 )
 
 const (
-	sourceJira                = "jira"
-	JiraCustomFieldEpicLink   = "customfield_12311140"
-	JiraCustomFieldParentLink = "customfield_12313140"
+	sourceJira                  = "jira"
+	JiraCustomFieldEpicLink     = "customfield_12311140"
+	JiraCustomFieldParentLink   = "customfield_12313140"
+	JiraCustomFieldReleaseNotes = "customfield_12310211"
 )
 
 type CachingReleaseInfo struct {
@@ -410,11 +411,13 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
 	var parents []string
 	for _, issue := range issues {
-		for _, f := range issue.Fields.Unknowns {
+		for key, f := range issue.Fields.Unknowns {
 			if f != nil {
 				switch f.(type) {
 				case string:
-					parents = append(parents, f.(string))
+					if key == JiraCustomFieldEpicLink || key == JiraCustomFieldParentLink {
+						parents = append(parents, f.(string))
+					}
 				}
 			}
 		}
@@ -441,39 +444,52 @@ type IssueDetails struct {
 	Epic           string
 	IssueType      string
 	Description    string
+	ReleaseNotes   string
 	ResolutionDate time.Time
+}
+
+func typeCheckString(o interface{}) string {
+	switch o.(type) {
+	case string:
+		return o.(string)
+	default:
+		return "Unable to parse field, not a string!"
+	}
 }
 
 func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails {
 	t := make(map[string]IssueDetails, 0)
 	for _, issue := range issues {
-		var epic string
-		var parent string
+		var epic, parent, releaseNotes string
 		for unknownField, value := range issue.Fields.Unknowns {
 			if value != nil {
 				switch unknownField {
 				case JiraCustomFieldEpicLink:
-					epic = value.(string)
+					epic = typeCheckString(value)
 				case JiraCustomFieldParentLink:
-					parent = value.(string)
+					parent = typeCheckString(value)
+				case JiraCustomFieldReleaseNotes:
+					releaseNotes = typeCheckString(value)
 				}
 			}
 		}
 		t[issue.Key] = IssueDetails{
-			Summary:        checkJiraSecurity(issue, issue.Fields.Summary),
-			Status:         issue.Fields.Status.Name,
-			Parent:         parent,
-			Epic:           epic,
-			IssueType:      issue.Fields.Type.Name,
-			Description:    checkJiraSecurity(issue, issue.RenderedFields.Description),
+			Summary:     checkJiraSecurity(&issue, issue.Fields.Summary),
+			Status:      issue.Fields.Status.Name,
+			Parent:      parent,
+			Epic:        epic,
+			IssueType:   issue.Fields.Type.Name,
+			Description: checkJiraSecurity(&issue, issue.RenderedFields.Description),
+			// TODO - check if this should be restricted as well
+			ReleaseNotes:   releaseNotes,
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}
 	}
 	return t
 }
 
-func checkJiraSecurity(issue jiraBaseClient.Issue, data string) string {
-	securityField, err := jira.GetIssueSecurityLevel(&issue)
+func checkJiraSecurity(issue *jiraBaseClient.Issue, data string) string {
+	securityField, err := jira.GetIssueSecurityLevel(issue)
 	if err != nil {
 		return data
 	}
@@ -534,7 +550,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 	if chunk > 500 {
 		chunk = 500
 	}
-	if len(issues) < 50 || chunk == 0 {
+	if chunk < 50 || chunk == 0 {
 		chunk = len(issues)
 	}
 	dividedIssues := divideSlice(issues, chunk)
@@ -556,6 +572,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 						"summary",
 						JiraCustomFieldEpicLink,
 						JiraCustomFieldParentLink,
+						JiraCustomFieldReleaseNotes,
 						"issuetype",
 						"description",
 						"resolutiondate",
