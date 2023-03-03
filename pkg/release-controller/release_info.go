@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stdErrors "errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -35,6 +36,8 @@ const (
 	JiraCustomFieldParentLink   = "customfield_12313140"
 	JiraCustomFieldReleaseNotes = "customfield_12310211"
 )
+
+const maxChunkSize = 500
 
 type CachingReleaseInfo struct {
 	cache *groupcache.Group
@@ -496,7 +499,7 @@ func checkJiraSecurity(issue *jiraBaseClient.Issue, data string) string {
 	}
 	// TODO - if the security field name is set (or any field for that matter), we restrict the issue. Check if a whitelist/blacklist is necessary
 	if securityField.Name != "" {
-		return fmt.Sprintf("This issue details are restricted to %s", securityField.Description)
+		return fmt.Sprintf("The details of this Jira Card are restricted (%s)", securityField.Description)
 	} else {
 		return data
 	}
@@ -542,28 +545,29 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 	return string(a), err
 }
 
-func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
-	// keep the chunk on the small side, it is much faster
-	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
+func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBaseClient.Issue, err error) {
+	// Keep the chunk on the small side, it is much faster
+	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
 	chunk := len(issues) / 10
 
-	// jira can't handle more than 500 IDs at once
-	if chunk > 500 {
-		chunk = 500
+	// Jira can't handle more than 500 IDs at once
+	if chunk > maxChunkSize {
+		chunk = maxChunkSize
 	}
-	if chunk < 50 || chunk == 0 {
-		chunk = len(issues)
-	}
+
+	// Divide issues into chunks
 	dividedIssues := divideSlice(issues, chunk)
-	dividedResult := make([]*[]jiraBaseClient.Issue, 0)
+
+	// Search for issues in parallel
 	var wg sync.WaitGroup
-	var lastError error
+	var mu sync.Mutex
+	var buf bytes.Buffer
 	for _, parts := range dividedIssues {
 		wg.Add(1)
 		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
 		go func(jql string) {
 			defer wg.Done()
-			a, _, err := r.jiraClient.SearchWithContext(
+			issues, _, err := r.jiraClient.SearchWithContext(
 				context.Background(),
 				jql,
 				&jiraBaseClient.SearchOptions{
@@ -583,21 +587,27 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient
 				},
 			)
 			if err != nil {
-				lastError = err
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					err = fmt.Errorf("search failed: %w", err)
+					buf.WriteString(err.Error() + "\n")
+				}
 				return
 			}
-			dividedResult = append(dividedResult, &a)
+			mu.Lock()
+			defer mu.Unlock()
+			result = append(result, issues...)
 		}(jql)
 	}
 	wg.Wait()
-	if lastError != nil {
-		return nil, lastError
+
+	// Combine any errors
+	if buf.Len() > 0 {
+		err = stdErrors.New(buf.String())
 	}
-	appendedResult := make([]jiraBaseClient.Issue, 0)
-	for _, parts := range dividedResult {
-		appendedResult = append(appendedResult, *parts...)
-	}
-	return appendedResult, nil
+
+	return result, err
 }
 
 func divideSlice(issues []string, chunk int) [][]string {
