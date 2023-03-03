@@ -401,7 +401,8 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s, err := json.Marshal(issues)
+	t := TransformJiraIssues(issues)
+	s, err := json.Marshal(t)
 	if err != nil {
 		return "", err
 	}
@@ -480,7 +481,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			Epic:        epic,
 			IssueType:   issue.Fields.Type.Name,
 			Description: checkJiraSecurity(&issue, issue.RenderedFields.Description),
-			// TODO - check if this should be restricted as well
+			// TODO- check if this should be restricted as well
 			ReleaseNotes:   releaseNotes,
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}

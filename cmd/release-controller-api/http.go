@@ -5,7 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
 	"math"
@@ -176,16 +175,15 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			return []*FeatureTree{}, err
 		}
 	}
-	var d []jiraBaseClient.Issue
+	var mapIssueDetails map[string]releasecontroller.IssueDetails
 	info, err := c.releaseInfo.IssuesInfo(changeLogJSON.out)
 	if err != nil {
 		return []*FeatureTree{}, err
 	}
-	err = json.Unmarshal([]byte(info), &d)
+	err = json.Unmarshal([]byte(info), &mapIssueDetails)
 	if err != nil {
 		return []*FeatureTree{}, err
 	}
-	mapIssueDetails := releasecontroller.TransformJiraIssues(d)
 	var featureJiraTickets []string
 	for issue, details := range mapIssueDetails {
 		if details.IssueType == "Feature" {
