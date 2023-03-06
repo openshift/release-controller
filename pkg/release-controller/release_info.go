@@ -199,7 +199,7 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	return out.String(), nil
 }
 
-func (r *ExecReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
+func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", from, err)
 	}
@@ -211,7 +211,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, json bool) (string, error) 
 	}
 
 	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
-	if json {
+	if isJson {
 		cmd = append(cmd, "--output=json")
 	}
 	klog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
@@ -239,7 +239,13 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, json bool) (string, error) 
 		}
 		return "", fmt.Errorf("could not generate a changelog: %v", msg)
 	}
-
+	if isJson {
+		var changeLog ChangeLog
+		if err := json.Unmarshal(out.Bytes(), &changeLog); err != nil {
+			klog.Warningf("invalid changelog JSON: %v", err)
+			return "", err
+		}
+	}
 	return out.String(), nil
 }
 
