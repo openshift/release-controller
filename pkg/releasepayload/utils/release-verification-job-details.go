@@ -16,7 +16,7 @@ const (
 var (
 	stableRelease       = regexp.MustCompile(`(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 	candidateRelease    = regexp.MustCompile(`^(?P<build>[\d-]+)-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
-	prerelease          = regexp.MustCompile(`^(?P<stream>[\w\d-]+)-(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
+	prerelease          = regexp.MustCompile(`^(?P<stream>[\w\d]+)-(?P<architecture>\w+)?-?(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 	upgradeFrom         = regexp.MustCompile(`^(?P<build>[\w\d\\.]+)-(?P<job>upgrade-from[\w\d-\\.]+?)(?:-(?P<count>\d+))?$`)
 	automaticUpgradeJob = regexp.MustCompile(`^upgrade-from-(?P<version>[\d\\.]+)-?(?P<candidate>[e|f|r]c.\d+)?-?(?P<platform>\w+)-?(?P<count>\d+)?$`)
 )
@@ -28,6 +28,7 @@ type PreReleaseDetails struct {
 	CIConfigurationName string
 	Count               string
 	UpgradeFrom         string
+	Architecture        string
 }
 
 type ReleaseVerificationJobDetails struct {
@@ -52,6 +53,9 @@ func (d ReleaseVerificationJobDetails) ToString() string {
 		}
 		return fmt.Sprintf("%d.%d.%d-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.CIConfigurationName, count)
 	default:
+		if len(d.Architecture) > 0 {
+			return fmt.Sprintf("%d.%d.%d-%s.%s-%s-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.Stream, d.Architecture, d.Timestamp, d.CIConfigurationName, count)
+		}
 		return fmt.Sprintf("%d.%d.%d-%s.%s-%s-%s%s", d.X, d.Y, d.Z, d.Build, d.Stream, d.Timestamp, d.CIConfigurationName, count)
 	}
 }
@@ -90,7 +94,7 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 				details.Build = prerelease[0].VersionStr
 			default:
 				details.Stream = StreamStable
-				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				splitVersion(generateCIConfigurationName(prerelease), details)
 				return details, nil
 			}
 		}
@@ -103,13 +107,19 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			switch {
 			case strings.HasPrefix(prerelease[0].VersionStr, "upgrade-from-"):
 				details.Stream = StreamStable
-				ciConfigurationName := generateCIConfigurationName(prerelease)
-				details.CIConfigurationName = ciConfigurationName
-				if automaticUpgradeJob.MatchString(ciConfigurationName) {
-					matches := automaticUpgradeJob.FindStringSubmatch(ciConfigurationName)
+				splitVersion(generateCIConfigurationName(prerelease), details)
+				if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
+					matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
 					if len(matches) == 5 {
-						details.UpgradeFrom = matches[1]
+						candidate := ""
+						if len(matches[2]) > 0 {
+							candidate = fmt.Sprintf("-%s", matches[2])
+						}
+						details.UpgradeFrom = fmt.Sprintf("%s%s", matches[1], candidate)
 						details.CIConfigurationName = matches[3]
+						if len(matches[4]) > 0 {
+							details.Count = matches[4]
+						}
 					}
 				}
 				return details, nil
@@ -131,8 +141,15 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 					if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
 						matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
 						if len(matches) == 5 {
-							details.UpgradeFrom = matches[1]
+							candidate := ""
+							if len(matches[2]) > 0 {
+								candidate = fmt.Sprintf("-%s", matches[2])
+							}
+							details.UpgradeFrom = fmt.Sprintf("%s%s", matches[1], candidate)
 							details.CIConfigurationName = matches[3]
+							if len(matches[4]) > 0 {
+								details.Count = matches[4]
+							}
 						}
 					}
 				}
@@ -140,6 +157,22 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 			default:
 				details.Stream = StreamStable
 				details.CIConfigurationName = generateCIConfigurationName(prerelease)
+				if strings.HasPrefix(details.CIConfigurationName, "upgrade-from-") {
+					if automaticUpgradeJob.MatchString(details.CIConfigurationName) {
+						matches := automaticUpgradeJob.FindStringSubmatch(details.CIConfigurationName)
+						if len(matches) == 5 {
+							candidate := ""
+							if len(matches[2]) > 0 {
+								candidate = fmt.Sprintf("-%s", matches[2])
+							}
+							details.UpgradeFrom = fmt.Sprintf("%s%s", matches[1], candidate)
+							details.CIConfigurationName = matches[3]
+							if len(matches[4]) > 0 {
+								details.Count = matches[4]
+							}
+						}
+					}
+				}
 				return details, nil
 			}
 		}
@@ -163,6 +196,9 @@ func parsePreRelease(prerelease []semver.PRVersion) (*PreReleaseDetails, error) 
 							}
 							details.UpgradeFrom = fmt.Sprintf("%s%s", matches[1], candidate)
 							details.CIConfigurationName = matches[3]
+							if len(matches[4]) > 0 {
+								details.Count = matches[4]
+							}
 						}
 					}
 				}
@@ -199,6 +235,8 @@ func splitVersion(version string, details *PreReleaseDetails) {
 			default:
 				details.Build = value
 			}
+		case "architecture":
+			details.Architecture = value
 		}
 	}
 }
