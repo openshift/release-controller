@@ -38,12 +38,12 @@
 </div>
 {{range $key, $s := .DisplaySections}}
 <div class="container mt-3">
-  <h2 title="{{$s.Title}}">
-    <a id="{{$key}}" href="#{{$key}}" class="text-dark">{{$s.Header}}</a>
+  <h2 title="{{$s.Section.Title}}">
+    <a id="{{$s.Name}}" href="#{{$s.Name}}" class="text-dark">{{$s.Section.Header}}</a>
   </h2>
-  <p>{{$s.Note}}</p>
+  <p>{{$s.Section.Note}}</p>
   <div class="mt-4 col-md-12">
-  {{ range $s.Tickets }}
+  {{ range $s.Section.Tickets }}
   <div  class="mt-4 col-md-12">
     <div class="card border-primary">
       <div class="card-header p-0">

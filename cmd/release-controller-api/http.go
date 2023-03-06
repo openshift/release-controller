@@ -778,9 +778,14 @@ type Sections struct {
 }
 
 type httpFeatureData struct {
-	DisplaySections map[string]Sections
+	DisplaySections []SectionInfo
 	From            string
 	To              string
+}
+
+type SectionInfo struct {
+	Name    string
+	Section Sections
 }
 
 func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
@@ -813,6 +818,8 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		}
 	}
 
+	var sections []SectionInfo
+
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
@@ -827,9 +834,8 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
 	}
 
-	sections := make(map[string]Sections)
-	sections["completed_features"] = completed
-	sections["uncompleted_features"] = unCompleted
+	sections = append(sections, SectionInfo{"completed_features", completed})
+	sections = append(sections, SectionInfo{"uncompleted_features", unCompleted})
 
 	data := template.Must(template.New("featureRelease.html").Funcs(
 		template.FuncMap{
@@ -855,8 +861,8 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 
 func jumpLinks(data httpFeatureData) string {
 	var sb strings.Builder
-	for key, s := range data.DisplaySections {
-		link := fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(key), template.HTMLEscapeString(s.Header))
+	for _, s := range data.DisplaySections {
+		link := fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(s.Name), template.HTMLEscapeString(s.Section.Header))
 		sb.WriteString(link)
 		sb.WriteString(" | ")
 	}
