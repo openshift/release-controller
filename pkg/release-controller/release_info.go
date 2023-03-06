@@ -242,6 +242,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 	if isJson {
 		var changeLog ChangeLog
 		if err := json.Unmarshal(out.Bytes(), &changeLog); err != nil {
+			klog.Warningf("invalid changelog JSON: %v", err)
 			return "", err
 		}
 	}
