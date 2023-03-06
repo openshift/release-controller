@@ -163,50 +163,84 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 }
 
 func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree, error) {
+	// Get change log
 	changeLogJSON := renderResult{}
-	var changeLog releasecontroller.ChangeLog
 	c.changeLogWorker(&changeLogJSON, tagInfo, "json")
-
 	if changeLogJSON.err != nil {
-		return []*FeatureTree{}, changeLogJSON.err
-	} else {
-		err := json.Unmarshal([]byte(changeLogJSON.out), &changeLog)
-		if err != nil {
-			return []*FeatureTree{}, err
-		}
+		return nil, changeLogJSON.err
 	}
-	var mapIssueDetails map[string]releasecontroller.IssueDetails
+
+	var changeLog releasecontroller.ChangeLog
+	if err := json.Unmarshal([]byte(changeLogJSON.out), &changeLog); err != nil {
+		return nil, err
+	}
+
+	// Get issue details
 	info, err := c.releaseInfo.IssuesInfo(changeLogJSON.out)
 	if err != nil {
-		return []*FeatureTree{}, err
+		return nil, err
 	}
-	err = json.Unmarshal([]byte(info), &mapIssueDetails)
-	if err != nil {
-		return []*FeatureTree{}, err
-	}
-	var featureJiraTickets []string
-	for issue, details := range mapIssueDetails {
-		if details.IssueType == "Feature" {
-			featureJiraTickets = append(featureJiraTickets, issue)
-		}
 
+	var mapIssueDetails map[string]releasecontroller.IssueDetails
+	if err := json.Unmarshal([]byte(info), &mapIssueDetails); err != nil {
+		return nil, err
 	}
+
+	// Create feature trees
 	var featureTrees []*FeatureTree
-	for _, feature := range featureJiraTickets {
-		featureTrees = append(featureTrees, &FeatureTree{
-			IssueKey:        feature,
-			Summary:         mapIssueDetails[feature].Summary,
-			Description:     mapIssueDetails[feature].Description,
-			ReleaseNotes:    mapIssueDetails[feature].ReleaseNotes,
-			Type:            mapIssueDetails[feature].IssueType,
-			ResolutionDate:  mapIssueDetails[feature].ResolutionDate,
-			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[feature].ResolutionDate),
+	for key, details := range mapIssueDetails {
+		if details.IssueType != "Feature" {
+			continue
+		}
+		featureTree := &FeatureTree{
+			IssueKey:        key,
+			Summary:         details.Summary,
+			Description:     details.Description,
+			ReleaseNotes:    details.ReleaseNotes,
+			Type:            details.IssueType,
+			ResolutionDate:  details.ResolutionDate,
+			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, details.ResolutionDate),
 			Children:        nil,
-		})
+		}
+		featureTrees = append(featureTrees, featureTree)
 	}
+
+	// Add children
 	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created)
 
 	return featureTrees, nil
+}
+
+func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
+	for _, child := range children {
+		var children []*FeatureTree
+		for issueKey, issueDetails := range issues {
+			var featureTree *FeatureTree
+			if child.Type == "Feature" && issueDetails.Parent == child.IssueKey {
+				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+			} else if child.Type == "Epic" && issueDetails.Epic == child.IssueKey {
+				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+			}
+			if featureTree != nil {
+				children = append(children, featureTree)
+			}
+		}
+		child.Children = children
+		GetChildrenRecursively(child.Children, issues, buildTimeStamp)
+	}
+}
+
+func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buildTimeStamp *time.Time) *FeatureTree {
+	return &FeatureTree{
+		IssueKey:        issueKey,
+		Summary:         issueDetails.Summary,
+		Description:     issueDetails.Description,
+		ReleaseNotes:    issueDetails.ReleaseNotes,
+		Type:            issueDetails.IssueType,
+		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
+		ResolutionDate:  issueDetails.ResolutionDate,
+		Children:        nil,
+	}
 }
 
 func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
@@ -226,25 +260,15 @@ func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	w.Write(data)
-
 }
 
 func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
-	if issueTimestamp.IsZero() {
-		return false
-	}
-	if issueTimestamp.Before(*buildTimeStamp) {
+	if !issueTimestamp.IsZero() && issueTimestamp.Before(*buildTimeStamp) {
 		return true
 	}
 	return false
-}
-
-type epicState struct {
-	Key             string    `json:"epic,omitempty"`
-	Status          string    `json:"current_status,omitempty"`
-	ResolutionDate  time.Time `json:"resolution_date"`
-	IncludedOnBuild bool      `json:"included_in_build"`
 }
 
 type FeatureTree struct {
@@ -256,44 +280,6 @@ type FeatureTree struct {
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
 	Children        []*FeatureTree `json:"children,omitempty"`
-}
-
-func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
-	for _, child := range children {
-		var children []*FeatureTree
-		for issueKey, issueDetails := range issues {
-			if child.Type == "Feature" {
-				if issueDetails.Parent == child.IssueKey {
-					children = append(children, &FeatureTree{
-						IssueKey:        issueKey,
-						Summary:         issueDetails.Summary,
-						Description:     issueDetails.Description,
-						ReleaseNotes:    issueDetails.ReleaseNotes,
-						Type:            issueDetails.IssueType,
-						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
-						ResolutionDate:  issueDetails.ResolutionDate,
-						Children:        nil,
-					})
-				}
-			}
-			if child.Type == "Epic" {
-				if issueDetails.Epic == child.IssueKey {
-					children = append(children, &FeatureTree{
-						IssueKey:        issueKey,
-						Summary:         issueDetails.Summary,
-						Description:     issueDetails.Description,
-						ReleaseNotes:    issueDetails.ReleaseNotes,
-						Type:            issueDetails.IssueType,
-						IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
-						ResolutionDate:  issueDetails.ResolutionDate,
-						Children:        nil,
-					})
-				}
-			}
-		}
-		child.Children = children
-		GetChildrenRecursively(child.Children, issues, buildTimeStamp)
-	}
 }
 
 func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
@@ -803,19 +789,22 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
 	from := req.URL.Query().Get("from")
 	if from == "" {
 		from = "the last version"
 	}
+
 	featureTrees, err := c.featureReleaseInfo(tagInfo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	var buf bytes.Buffer
 	var completedFeatures []*FeatureTree
 	var unCompletedFeatures []*FeatureTree
+
 	for _, feature := range featureTrees {
 		if feature.IncludedOnBuild {
 			completedFeatures = append(completedFeatures, feature)
@@ -823,61 +812,55 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 			unCompletedFeatures = append(unCompletedFeatures, feature)
 		}
 	}
+
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
 		Header:  "Completed Features",
 		Note:    "These features were completed when this image was assembled",
 	}
+
 	unCompleted := Sections{
 		Tickets: unCompletedFeatures,
 		Title:   "Lists of features that were not completed when this image was built",
 		Header:  "Uncompleted Features",
 		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
 	}
+
 	sections := make(map[string]Sections)
 	sections["completed_features"] = completed
 	sections["uncompleted_features"] = unCompleted
-	var data = template.Must(template.New("featureRelease.html").Funcs(
+
+	data := template.Must(template.New("featureRelease.html").Funcs(
 		template.FuncMap{
-			"checkFeatureStatus": checkFeatureStatus,
-			"epicState":          checkEpicState,
-			"jumpLinks":          jumpLinks,
+			"jumpLinks": jumpLinks,
 		},
 	).ParseFS(resources, "featureRelease.html"))
-	if err := data.Execute(w, httpFeatureData{
+
+	err = data.Execute(&buf, httpFeatureData{
 		DisplaySections: sections,
 		To:              tagInfo.Tag,
 		From:            from,
-	}); err != nil {
+	})
+
+	if err != nil {
 		klog.Errorf("Unable to render page: %v", err)
+		http.Error(w, "Unable to render page", http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	w.Write(buf.Bytes())
 }
 
 func jumpLinks(data httpFeatureData) string {
-	var releases []string
+	var sb strings.Builder
 	for key, s := range data.DisplaySections {
-		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(key), template.HTMLEscapeString(s.Header)))
+		link := fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(key), template.HTMLEscapeString(s.Header))
+		sb.WriteString(link)
+		sb.WriteString(" | ")
 	}
-	return strings.Join(releases, " | ")
-
-}
-
-func checkEpicState(epicsList []*epicState, issueKey string) string {
-	for _, issue := range epicsList {
-		if issue.Key == issueKey {
-			return issue.Status
-		}
-	}
-	return "Unable to determine this Epics' current status!"
-
-}
-
-func checkFeatureStatus(isCompleted bool, issueType string) string {
-	if isCompleted {
-		return fmt.Sprintf("This %s is completed", issueType)
-	}
-	return fmt.Sprintf("*This %s was still in progress when this image was build", issueType)
+	return sb.String()
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
