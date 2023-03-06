@@ -788,6 +788,12 @@ type SectionInfo struct {
 	Section Sections
 }
 
+func sortByTitle(features []*FeatureTree) {
+	sort.Slice(features, func(i, j int) bool {
+		return features[i].IssueKey < features[j].IssueKey
+	})
+}
+
 func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
@@ -818,8 +824,10 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		}
 	}
 
-	var sections []SectionInfo
+	sortByTitle(completedFeatures)
+	sortByTitle(unCompletedFeatures)
 
+	var sections []SectionInfo
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
