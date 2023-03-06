@@ -269,6 +269,24 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:        "ProductionJobWithEmbeddedVersionStringWithRetries",
+			prowjobName: "4.10.41-aws-sdn-upgrade-4.10-micro-1",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 10,
+				Z: 41,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-upgrade-4.10-micro",
+					Count:               "1",
+					UpgradeFrom:         "",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:        "AutomaticReleaseUpgradeTest",
 			prowjobName: "4.11.14-upgrade-from-4.11.13-aws",
 			want: &ReleaseVerificationJobDetails{
@@ -374,8 +392,8 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "CandidateAutomaticReleaseUpgradeToCandidateTest",
-			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws",
+			name:        "CandidateAutomaticReleaseUpgradeToStableTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-aws",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
 				Y: 12,
@@ -386,14 +404,14 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 					Timestamp:           "",
 					CIConfigurationName: "aws",
 					Count:               "",
-					UpgradeFrom:         "4.12.0-rc.6",
+					UpgradeFrom:         "4.12.0",
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name:        "CandidateAutomaticReleaseUpgradeToCandidateWithCountTest",
-			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-2",
+			name:        "CandidateAutomaticReleaseUpgradeToStableWithCountTest",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-aws-2",
 			want: &ReleaseVerificationJobDetails{
 				X: 4,
 				Y: 12,
@@ -401,6 +419,78 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 				PreReleaseDetails: &PreReleaseDetails{
 					Build:               "rc.7",
 					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "2",
+					UpgradeFrom:         "4.12.0",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "StableAutomaticReleaseUpgradeTest",
+			prowjobName: "4.12.6-upgrade-from-4.12.5-aws",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.12.5",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "StableAutomaticReleaseUpgradeWithCountTest",
+			prowjobName: "4.12.6-upgrade-from-4.12.5-aws-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "2",
+					UpgradeFrom:         "4.12.5",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "StableAutomaticReleaseUpgradeToCandidateTest",
+			prowjobName: "4.12.6-upgrade-from-4.12.0-rc.6-aws",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws",
+					Count:               "",
+					UpgradeFrom:         "4.12.0-rc.6",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "StableAutomaticReleaseUpgradeToCandidateWithCountTest",
+			prowjobName: "4.12.6-upgrade-from-4.12.0-rc.6-aws-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "",
+					Stream:              "Stable",
 					Timestamp:           "",
 					CIConfigurationName: "aws",
 					Count:               "2",
@@ -529,6 +619,40 @@ func TestReleaseVerificationJobDetails_ToString(t *testing.T) {
 			},
 			want: "4.12.0-rc.0-upgrade-from-4.11.0-rc.9-aws",
 		},
+		{
+			name: "MultiArchPreRelease",
+			details: ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-06-03-013657",
+					CIConfigurationName: "aws-serial",
+					Count:               "",
+					Architecture:        "s390x",
+				},
+			},
+			want: "4.12.6-0.nightly-s390x-2022-06-03-013657-aws-serial",
+		},
+		{
+			name: "MultiArchPreReleaseWithRetries",
+			details: ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 12,
+				Z: 6,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-06-03-013657",
+					CIConfigurationName: "aws-serial",
+					Count:               "2",
+					Architecture:        "ppc64le",
+				},
+			},
+			want: "4.12.6-0.nightly-ppc64le-2022-06-03-013657-aws-serial-2",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -549,20 +673,44 @@ func Test_parse(t *testing.T) {
 			name: "PreRelease",
 			line: "ci-2022-06-02-152750-aws-serial",
 			want: map[string]string{
-				"stream":    "ci",
-				"timestamp": "2022-06-02-152750",
-				"job":       "aws-serial",
-				"count":     "",
+				"stream":       "ci",
+				"architecture": "",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "",
 			},
 		},
 		{
 			name: "PreReleaseWithRetries",
 			line: "ci-2022-06-02-152750-aws-serial-1",
 			want: map[string]string{
-				"stream":    "ci",
-				"timestamp": "2022-06-02-152750",
-				"job":       "aws-serial",
-				"count":     "1",
+				"stream":       "ci",
+				"architecture": "",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "1",
+			},
+		},
+		{
+			name: "MultiArchPreRelease",
+			line: "nightly-ppc64le-2022-06-02-152750-aws-serial",
+			want: map[string]string{
+				"stream":       "nightly",
+				"architecture": "ppc64le",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "",
+			},
+		},
+		{
+			name: "MultiArchPreReleaseWithRetries",
+			line: "nightly-s390x-2022-06-02-152750-aws-serial-3",
+			want: map[string]string{
+				"stream":       "nightly",
+				"architecture": "s390x",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "3",
 			},
 		},
 		{
@@ -616,6 +764,11 @@ func Test_parse(t *testing.T) {
 				"job":   "upgrade-from-4.11.13",
 				"count": "1",
 			},
+		},
+		{
+			name: "Unimplemented",
+			line: "*this_is_garbage*",
+			want: map[string]string{},
 		},
 	}
 	for _, tt := range tests {
