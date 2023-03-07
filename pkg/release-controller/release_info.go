@@ -31,10 +31,12 @@ import (
 )
 
 const (
-	sourceJira                  = "jira"
-	JiraCustomFieldEpicLink     = "customfield_12311140"
-	JiraCustomFieldParentLink   = "customfield_12313140"
-	JiraCustomFieldReleaseNotes = "customfield_12310211"
+	sourceJira                       = "jira"
+	JiraCustomFieldEpicLink          = "customfield_12311140"
+	JiraCustomFieldFeatureLinkOnEpic = "customfield_12313140"
+	JiraCustomFieldFeatureLink       = "customfield_12318341"
+	JiraCustomFieldReleaseNotes      = "customfield_12310211"
+	JiraTypeSubTask                  = "Sub-task"
 )
 
 const maxChunkSize = 500
@@ -415,12 +417,27 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
 	var parents []string
 	for _, issue := range issues {
+		if issue.Fields.Type.Name == JiraTypeSubTask {
+			if issue.Fields.Parent != nil {
+				if issue.Fields.Parent.Key != "" {
+					parents = append(parents, issue.Fields.Parent.Key)
+					continue
+				}
+			}
+		}
 		for key, f := range issue.Fields.Unknowns {
 			if f != nil {
 				switch f.(type) {
 				case string:
-					if key == JiraCustomFieldEpicLink || key == JiraCustomFieldParentLink {
-						parents = append(parents, f.(string))
+					if key == JiraCustomFieldEpicLink || key == JiraCustomFieldFeatureLinkOnEpic {
+						parents = append(parents, typeCheck(f))
+					}
+				// TODO - fix the type here
+				case map[string]interface{}:
+					if key == JiraCustomFieldFeatureLink {
+						t := f.(map[string]interface{})
+						// TODO use const
+						parents = append(parents, typeCheck(t["key"]))
 					}
 				}
 			}
@@ -445,6 +462,7 @@ type IssueDetails struct {
 	Summary        string
 	Status         string
 	Parent         string
+	Feature        string
 	Epic           string
 	IssueType      string
 	Description    string
@@ -452,35 +470,45 @@ type IssueDetails struct {
 	ResolutionDate time.Time
 }
 
-func typeCheckString(o interface{}) string {
+func typeCheck(o interface{}) string {
 	switch o.(type) {
 	case string:
 		return o.(string)
 	default:
-		return "Unable to parse field, not a string!"
+		return "Unable to parse the field!"
 	}
 }
 
 func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails {
 	t := make(map[string]IssueDetails, 0)
 	for _, issue := range issues {
-		var epic, parent, releaseNotes string
+		var epic, feature, releaseNotes, parent string
 		for unknownField, value := range issue.Fields.Unknowns {
 			if value != nil {
 				switch unknownField {
 				case JiraCustomFieldEpicLink:
-					epic = typeCheckString(value)
-				case JiraCustomFieldParentLink:
-					parent = typeCheckString(value)
+					epic = typeCheck(value)
+				case JiraCustomFieldFeatureLinkOnEpic:
+					feature = typeCheck(value)
+				case JiraCustomFieldFeatureLink:
+					t := value.(map[string]interface{})
+					// TODO use const
+					feature = typeCheck(t["key"])
 				case JiraCustomFieldReleaseNotes:
-					releaseNotes = typeCheckString(value)
+					releaseNotes = typeCheck(value)
 				}
+			}
+		}
+		if issue.Fields.Parent != nil {
+			if issue.Fields.Parent.Key != "" {
+				parent = issue.Fields.Parent.Key
 			}
 		}
 		t[issue.Key] = IssueDetails{
 			Summary:     checkJiraSecurity(&issue, issue.Fields.Summary),
 			Status:      issue.Fields.Status.Name,
 			Parent:      parent,
+			Feature:     feature,
 			Epic:        epic,
 			IssueType:   issue.Fields.Type.Name,
 			Description: checkJiraSecurity(&issue, issue.RenderedFields.Description),
@@ -576,12 +604,14 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 						"security",
 						"summary",
 						JiraCustomFieldEpicLink,
-						JiraCustomFieldParentLink,
+						JiraCustomFieldFeatureLinkOnEpic,
 						JiraCustomFieldReleaseNotes,
+						JiraCustomFieldFeatureLink,
 						"issuetype",
 						"description",
 						"resolutiondate",
 						"status",
+						"parent",
 					},
 					Expand: "renderedFields",
 				},

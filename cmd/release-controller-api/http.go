@@ -40,6 +40,15 @@ var resources, _ = fs.Sub(static, "static")
 var htmlPageStart = loadStaticHTML("htmlPageStart.html")
 var htmlPageEnd = loadStaticHTML("htmlPageEnd.html")
 
+const (
+	sectionTypeNoEpicWithFeature = "noEpicWithFeature"
+	sectionTypeNoFeatureWithEpic = "noFeatureWithEpic"
+	sectionTypeNoEpicNoFeature   = "noEpicNoFeature"
+	sectionTypeUnknowns          = "unknowns"
+)
+
+var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns)
+
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
 	for _, tag := range tags {
@@ -205,28 +214,109 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		featureTrees = append(featureTrees, featureTree)
 	}
 
-	// Add children
-	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created)
+	linkedIssues := sets.String{}
+	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues)
+
+	var noEpicNoFeature []*FeatureTree
+	var noEpicWithFeature []*FeatureTree
+	var noFeatureWithEpic []*FeatureTree
+	var unknowns []*FeatureTree
+	for issue, details := range mapIssueDetails {
+		if !linkedIssues.Has(issue) && details.IssueType != "Epic" && details.IssueType != "Feature" {
+			if details.Feature == "" && details.Epic == "" {
+				noEpicNoFeature = append(noEpicNoFeature, &FeatureTree{
+					IssueKey:    issue,
+					Type:        mapIssueDetails[issue].IssueType,
+					Description: mapIssueDetails[issue].Description,
+					Summary:     mapIssueDetails[issue].Summary,
+					Children:    nil,
+				})
+			} else if details.Feature != "" {
+				noEpicWithFeature = append(noEpicWithFeature, &FeatureTree{
+					IssueKey: issue,
+					Type:     sectionTypeNoEpicWithFeature,
+					Children: nil,
+				})
+			} else if details.Epic != "" {
+				noFeatureWithEpic = append(noFeatureWithEpic, &FeatureTree{
+					IssueKey:    issue,
+					Type:        mapIssueDetails[issue].IssueType,
+					Description: mapIssueDetails[issue].Description,
+					Summary:     mapIssueDetails[issue].Summary,
+					Children:    nil,
+				})
+			} else {
+				unknowns = append(unknowns, &FeatureTree{
+					IssueKey: issue,
+					Type:     sectionTypeUnknowns,
+					Children: nil,
+				})
+			}
+		}
+	}
+
+	epicWithoutFeatureMap := make(map[string][]*FeatureTree, 0)
+	for _, child := range noFeatureWithEpic {
+		epicDetails := mapIssueDetails[child.IssueKey]
+		epicWithoutFeatureMap[epicDetails.Epic] = append(epicWithoutFeatureMap[epicDetails.Parent], child)
+	}
+
+	var epicWithoutFeature []*FeatureTree
+	for epic, children := range epicWithoutFeatureMap {
+		f := &FeatureTree{
+			IssueKey:        epic,
+			Summary:         mapIssueDetails[epic].Summary,
+			Description:     mapIssueDetails[epic].Description,
+			ReleaseNotes:    mapIssueDetails[epic].ReleaseNotes,
+			Type:            mapIssueDetails[epic].IssueType,
+			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
+			IncludedOnBuild: true,
+			Children:        children,
+		}
+		epicWithoutFeature = append(epicWithoutFeature, f)
+	}
+	type otherSectionDetails struct {
+		title       string
+		sectionType string
+	}
+	otherSections := make(map[otherSectionDetails][]*FeatureTree, 0)
+	otherSections[otherSectionDetails{"Issues without an Epic or a Feature", sectionTypeNoEpicNoFeature}] = noEpicNoFeature
+	otherSections[otherSectionDetails{"List of all Epics not linked with a Feature", sectionTypeNoFeatureWithEpic}] = epicWithoutFeature
+	otherSections[otherSectionDetails{"Issues without an Epic, but linked to a Feature", sectionTypeNoEpicWithFeature}] = noEpicWithFeature
+	otherSections[otherSectionDetails{"Issues that can not be categorised", sectionTypeUnknowns}] = unknowns
+	for details, children := range otherSections {
+		featureTrees = append(featureTrees, &FeatureTree{
+			Summary:       details.title,
+			IssueKey:      details.sectionType,
+			NotLinkedType: details.sectionType,
+			Children:      children,
+		})
+	}
 
 	return featureTrees, nil
 }
 
-func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time) {
+func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String) {
 	for _, child := range children {
 		var children []*FeatureTree
 		for issueKey, issueDetails := range issues {
 			var featureTree *FeatureTree
-			if child.Type == "Feature" && issueDetails.Parent == child.IssueKey {
+			if child.Type == "Feature" && issueDetails.Feature == child.IssueKey {
 				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
 			} else if child.Type == "Epic" && issueDetails.Epic == child.IssueKey {
 				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+				linkedIssues.Insert(issueKey)
+			} else {
+				if issueDetails.Parent == child.IssueKey {
+					featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+				}
 			}
 			if featureTree != nil {
 				children = append(children, featureTree)
 			}
 		}
 		child.Children = children
-		GetChildrenRecursively(child.Children, issues, buildTimeStamp)
+		GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues)
 	}
 }
 
@@ -277,6 +367,7 @@ type FeatureTree struct {
 	Description     string         `json:"description"`
 	ReleaseNotes    string         `json:"release_notes,omitempty"`
 	Type            string         `json:"type"`
+	NotLinkedType   string         `json:"not_linkedt_ype,omitempty"`
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
 	Children        []*FeatureTree `json:"children,omitempty"`
@@ -815,17 +906,30 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	var buf bytes.Buffer
 	var completedFeatures []*FeatureTree
 	var unCompletedFeatures []*FeatureTree
+	var epicWithoutFeature []*FeatureTree
+	var noEpicNoFeature []*FeatureTree
 
 	for _, feature := range featureTrees {
-		if feature.IncludedOnBuild {
-			completedFeatures = append(completedFeatures, feature)
-		} else {
-			unCompletedFeatures = append(unCompletedFeatures, feature)
+		if !unlinkedIssuesSections.Has(feature.NotLinkedType) {
+			if feature.IncludedOnBuild {
+				completedFeatures = append(completedFeatures, feature)
+			} else {
+				unCompletedFeatures = append(unCompletedFeatures, feature)
+			}
 		}
+		if feature.NotLinkedType == sectionTypeNoFeatureWithEpic {
+			epicWithoutFeature = append(epicWithoutFeature, feature)
+		}
+		if feature.NotLinkedType == sectionTypeNoEpicNoFeature {
+			noEpicNoFeature = append(noEpicNoFeature, feature)
+		}
+
 	}
 
 	sortByTitle(completedFeatures)
 	sortByTitle(unCompletedFeatures)
+	sortByTitle(epicWithoutFeature)
+	sortByTitle(noEpicNoFeature)
 
 	var sections []SectionInfo
 	completed := Sections{
@@ -842,12 +946,29 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
 	}
 
+	unlinkedEpics := Sections{
+		Tickets: epicWithoutFeature,
+		Title:   "Issues linked with an Epic, but without a Feature link",
+		Header:  "Epics unlinked to a Feature",
+		Note:    "This section includes Jira cards linked to an Epic, which is instead not linked to a Feature",
+	}
+
+	noEpicNoFeatureSection := Sections{
+		Tickets: noEpicNoFeature,
+		Title:   "Issues not linked to an Epic or a Feature",
+		Header:  "Unlinked Issues",
+		Note:    "This section includes Jira cards not linked to neither an Epic or a Feature",
+	}
+
 	sections = append(sections, SectionInfo{"completed_features", completed})
 	sections = append(sections, SectionInfo{"uncompleted_features", unCompleted})
+	sections = append(sections, SectionInfo{"epic_without_feature", unlinkedEpics})
+	sections = append(sections, SectionInfo{"no_epic_no_feature", noEpicNoFeatureSection})
 
 	data := template.Must(template.New("featureRelease.html").Funcs(
 		template.FuncMap{
-			"jumpLinks": jumpLinks,
+			"jumpLinks":  jumpLinks,
+			"includeKey": includeKey,
 		},
 	).ParseFS(resources, "featureRelease.html"))
 
@@ -865,6 +986,13 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	w.Write(buf.Bytes())
+}
+
+func includeKey(key string) bool {
+	if unlinkedIssuesSections.Has(key) {
+		return false
+	}
+	return true
 }
 
 func jumpLinks(data httpFeatureData) string {

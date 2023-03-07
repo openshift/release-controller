@@ -53,9 +53,12 @@
               <i class="bi bi-chevron-down collapse-icon rotate-icon" id="icon_{{.IssueKey}}"></i>
             </a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;">{{ .Type }} </a>
+            {{ if includeKey .IssueKey}}
             <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1.2rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
+            {{ end }}
             <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;"> {{.Summary}}</a>
           </div>
+          {{ if .Description }}
           <div class="col" >
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
               View the Description
@@ -66,6 +69,7 @@
               {{ .Description }}
             </div>
           </div>
+          {{ end }}
         </div>
       </div>
       <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
