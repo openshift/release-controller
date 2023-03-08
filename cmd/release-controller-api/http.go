@@ -942,7 +942,7 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	unCompleted := Sections{
 		Tickets: unCompletedFeatures,
 		Title:   "Lists of features that were not completed when this image was built",
-		Header:  "Uncompleted Features",
+		Header:  "Incomplete Features",
 		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
 	}
 
