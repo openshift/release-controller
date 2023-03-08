@@ -499,6 +499,16 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 				}
 			}
 		}
+		// TODO - there must be a better way to do this
+		if issue.Fields.Type.Name != JiraTypeSubTask && epic != "" {
+			feature = ""
+		} else {
+			if issue.Fields.Type.Name == JiraTypeSubTask {
+				if issue.Fields.Parent != nil {
+					feature = ""
+				}
+			}
+		}
 		if issue.Fields.Parent != nil {
 			if issue.Fields.Parent.Key != "" {
 				parent = issue.Fields.Parent.Key
