@@ -50,8 +50,9 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				var bugDetailsArr []BugDetails
 				bugDetailsArr, err = info.Bugs(parts[1], parts[2])
 				if err == nil {
-					bugDetailsByte, parseErr := json.Marshal(bugDetailsArr)
-					if parseErr != nil {
+					var bugDetailsByte []byte
+					bugDetailsByte, err = json.Marshal(bugDetailsArr)
+					if err != nil {
 						klog.V(4).Infof("Failed to Marshal Bug Details Array; from: %s to: %s; %s", parts[1], parts[2], err)
 					} else {
 						s = string(bugDetailsByte)
