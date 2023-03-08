@@ -280,10 +280,9 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		sectionType string
 	}
 	otherSections := make(map[otherSectionDetails][]*FeatureTree, 0)
-	otherSections[otherSectionDetails{"Issues without an Epic or a Feature", sectionTypeNoEpicNoFeature}] = noEpicNoFeature
-	otherSections[otherSectionDetails{"List of all Epics not linked with a Feature", sectionTypeNoFeatureWithEpic}] = epicWithoutFeature
-	otherSections[otherSectionDetails{"Issues without an Epic, but linked to a Feature", sectionTypeNoEpicWithFeature}] = noEpicWithFeature
-	otherSections[otherSectionDetails{"Issues that can not be categorised", sectionTypeUnknowns}] = unknowns
+	otherSections[otherSectionDetails{"List of Jira Cards that are not associated with either an Epic or a Feature", sectionTypeNoEpicNoFeature}] = noEpicNoFeature
+	otherSections[otherSectionDetails{"List of all Epics that are not connected to any Features, along with the Jira cards that are linked to each of these Epics", sectionTypeNoFeatureWithEpic}] = epicWithoutFeature
+	otherSections[otherSectionDetails{"List of Issues that can not be categorised", sectionTypeUnknowns}] = unknowns
 	for details, children := range otherSections {
 		featureTrees = append(featureTrees, &FeatureTree{
 			Summary:       details.title,
@@ -943,21 +942,21 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		Tickets: unCompletedFeatures,
 		Title:   "Lists of features that were not completed when this image was built",
 		Header:  "Incomplete Features",
-		Note:    "These features were not completed when this image was assembled. Only the stories included in the cards are part of this release",
+		Note:    "When this image was assembled, these features were not yet completed. Therefore, only the Jira Cards included here are part of this release",
 	}
 
 	unlinkedEpics := Sections{
 		Tickets: epicWithoutFeature,
-		Title:   "Issues linked with an Epic, but without a Feature link",
-		Header:  "Epics unlinked to a Feature",
-		Note:    "This section includes Jira cards linked to an Epic, which is instead not linked to a Feature",
+		Title:   "",
+		Header:  "Jira Cards Linked to Unconnected Epics",
+		Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature",
 	}
 
 	noEpicNoFeatureSection := Sections{
 		Tickets: noEpicNoFeature,
-		Title:   "Issues not linked to an Epic or a Feature",
-		Header:  "Unlinked Issues",
-		Note:    "This section includes Jira cards not linked to neither an Epic or a Feature",
+		Title:   "",
+		Header:  "Jira Cards Without Epic or Feature Links",
+		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature.",
 	}
 
 	sections = append(sections, SectionInfo{"completed_features", completed})
