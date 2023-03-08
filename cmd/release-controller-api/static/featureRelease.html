@@ -45,7 +45,7 @@
   <div class="mt-4 col-md-12">
   {{ range $s.Section.Tickets }}
   <div  class="mt-4 col-md-12">
-    <div class="card border-primary">
+    <div class="card border border-primary border-start border-1">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -105,7 +105,50 @@
 {{- define "test2" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border-primary">
+    <div class="card border border-success border-start border-1">
+      <div class="card-header p-0">
+        <div class="row row-cols-1">
+          <div class="col d-flex align-items-start">
+            <a class="btn px-0-55" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="font-size: 1.2rem;">
+              {{if .Children}}
+              <i class="bi bi-chevron-down collapse-icon rotate-icon" id="icon_{{.IssueKey}}"></i>
+              {{end}}
+            </a>
+            <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;">{{ .Type }} </a>
+            <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1.2rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
+            <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;"> {{.Summary}}</a>
+          </div>
+          <div class="col" >
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
+              View the Description
+            </a>
+          </div>
+          <div class="collapse" id="collapse_description_{{.IssueKey}}">
+            <div class="card card-body border-light">
+              {{ .Description }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="collapse_{{.IssueKey}}" class="collapse" data-bs-parent="#accordion_{{.IssueKey}}">
+        <div class="card-body">
+          {{- if .Children }}
+          {{- range .Children }}
+          {{- template "temp3" . }}
+          {{- end}}
+          {{- end}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{- end -}}
+
+
+{{- define "temp3" -}}
+<div id="accordion_{{.IssueKey}}">
+  <div  class="mt-2 col-md-12">
+    <div class="card border border-info border-start border-1">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
