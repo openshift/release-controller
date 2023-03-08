@@ -152,12 +152,14 @@
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
+            {{if .Children}}
             <a class="btn px-0-55" data-bs-toggle="collapse" href="#collapse_{{.IssueKey}}" style="font-size: 1.2rem;">
-              {{if .Children}}
               <i class="bi bi-chevron-down collapse-icon rotate-icon" id="icon_{{.IssueKey}}"></i>
-              {{end}}
             </a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;">{{ .Type }} </a>
+            {{else}}
+            <a class="btn px-0-55" style="text-align: left;font-size: 1.2rem;">{{ .Type }} </a>
+            {{end}}
             <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1.2rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;"> {{.Summary}}</a>
           </div>
