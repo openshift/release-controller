@@ -5,29 +5,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"strconv"
 	"strings"
-
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/klog"
-	"k8s.io/test-infra/prow/bugzilla"
-	"k8s.io/test-infra/prow/jira"
 	"sync"
 
+	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/golang/groupcache"
-
+	imagereference "github.com/openshift/library-go/pkg/image/reference"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
-
-	imagereference "github.com/openshift/library-go/pkg/image/reference"
+	"k8s.io/klog"
+	"k8s.io/test-infra/prow/bugzilla"
+	"k8s.io/test-infra/prow/jira"
 )
 
 const (
@@ -53,7 +50,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				var bugDetailsArr []BugDetails
 				bugDetailsArr, err = info.Bugs(parts[1], parts[2])
 				if err == nil {
-					bugDetailsByte, err := json.Marshal(bugDetailsArr)
+					var bugDetailsByte []byte
+					bugDetailsByte, err = json.Marshal(bugDetailsArr)
 					if err != nil {
 						klog.V(4).Infof("Failed to Marshal Bug Details Array; from: %s to: %s; %s", parts[1], parts[2], err)
 					} else {
@@ -65,8 +63,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
 			} else {
-				isJson, err := strconv.ParseBool(parts[3])
-				if err != nil {
+				isJson, parseErr := strconv.ParseBool(parts[3])
+				if parseErr != nil {
 					s, err = "", fmt.Errorf("unable to parse boolean value")
 				} else {
 					s, err = info.ChangeLog(parts[1], parts[2], isJson)
