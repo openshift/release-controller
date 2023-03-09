@@ -49,7 +49,11 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 		return nil, err
 	}
 
-	return &is.Spec.Tags[len(is.Spec.Tags)-1], nil
+	isTag := releasecontroller.FindSpecTag(is.Spec.Tags, tag.Name)
+	if isTag == nil {
+		return nil, fmt.Errorf("unable to locate imagestreamtag: %s/%s:%s", target.Namespace, target.Name, tag.Name)
+	}
+	return isTag, nil
 }
 
 func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Release, tag *imagev1.TagReference) error {
