@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+const (
+	rhelCoreOs         = "Red Hat Enterprise Linux CoreOS"
+	centosStreamCoreOs = "CentOS Stream CoreOS"
+)
+
 var (
 	changeoverTimestamp = 202212000000
 
@@ -17,10 +22,14 @@ var (
 	serviceUrl    = "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com"
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
+
 	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
 	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 
-	reJsonRHCoSVersion2 = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
+	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+
+	reCoreOsVersion = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
 )
 
 func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
@@ -43,86 +52,14 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
 	//       For now, this will have to do.
 	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
-		var ok bool
-		var fromURL, toURL url.URL
-		var fromStream, toStream string
-
-		fromRelease := m[1]
-		if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
-			fromURL = url.URL{
-				Scheme:   serviceScheme,
-				Host:     serviceUrl,
-				Path:     "/",
-				Fragment: fromRelease,
-				RawQuery: (url.Values{
-					"stream":  []string{fromStream},
-					"arch":    []string{architecture},
-					"release": []string{fromRelease},
-				}).Encode(),
-			}
-		}
-
-		toRelease := m[4]
-		if toStream, ok = getRHCoSReleaseStream(toRelease, architectureExtension); ok {
-			toURL = url.URL{
-				Scheme:   serviceScheme,
-				Host:     serviceUrl,
-				Path:     "/",
-				Fragment: toRelease,
-				RawQuery: (url.Values{
-					"stream":  []string{toStream},
-					"arch":    []string{architecture},
-					"release": []string{toRelease},
-				}).Encode(),
-			}
-		}
-		diffURL := url.URL{
-			Scheme: serviceScheme,
-			Host:   serviceUrl,
-			Path:   "/diff.html",
-			RawQuery: (url.Values{
-				"first_stream":   []string{fromStream},
-				"first_release":  []string{fromRelease},
-				"second_stream":  []string{toStream},
-				"second_release": []string{toRelease},
-				"arch":           []string{architecture},
-			}).Encode(),
-		}
-		replace := fmt.Sprintf(
-			`* Red Hat Enterprise Linux CoreOS upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n",
-			fromRelease,
-			fromURL.String(),
-			toRelease,
-			toURL.String(),
-			diffURL.String(),
-		)
-		markdown = strings.ReplaceAll(markdown, m[0], replace)
+		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
+	} else if m = reMdCentOSCoSDiff.FindStringSubmatch(markdown); m != nil {
+		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
 	}
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
-		var ok bool
-		var fromURL url.URL
-		var fromStream string
-
-		fromRelease := m[1]
-		if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
-			fromURL = url.URL{
-				Scheme:   serviceScheme,
-				Host:     serviceUrl,
-				Path:     "/",
-				Fragment: fromRelease,
-				RawQuery: (url.Values{
-					"stream":  []string{fromStream},
-					"arch":    []string{architecture},
-					"release": []string{fromRelease},
-				}).Encode(),
-			}
-		}
-		replace := fmt.Sprintf(
-			`* Red Hat Enterprise Linux CoreOS [%s](%s)`+"\n",
-			fromRelease,
-			fromURL.String(),
-		)
-		markdown = strings.ReplaceAll(markdown, m[0], replace)
+		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
+	} else if m = reMdCentOSCoSVersion.FindStringSubmatch(markdown); m != nil {
+		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
 	}
 	return markdown, nil
 }
@@ -136,7 +73,7 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 
 	for i, component := range changeLogJson.Components {
 		switch component.Name {
-		case "Red Hat Enterprise Linux CoreOS":
+		case rhelCoreOs, centosStreamCoreOs:
 			var ok bool
 			var fromStream, toStream string
 			if len(component.Version) == 0 {
@@ -200,7 +137,7 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 }
 
 func getRHCoSReleaseStream(version, architectureExtension string) (string, bool) {
-	if m := reJsonRHCoSVersion2.FindStringSubmatch(version); m != nil {
+	if m := reCoreOsVersion.FindStringSubmatch(version); m != nil {
 		ts, err := strconv.Atoi(m[5])
 		if err != nil {
 			return "", false
@@ -211,10 +148,100 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 		}
 		switch {
 		case ts > changeoverTimestamp && minor >= 9:
+			// TODO: This should hopefully only be temporary...
+			if m[4] == "92" {
+				return fmt.Sprintf("prod/streams/%s.%s-9.2", m[2], m[3]), true
+			}
 			return fmt.Sprintf("prod/streams/%s.%s", m[2], m[3]), true
 		default:
 			return fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension), true
 		}
 	}
 	return "", false
+}
+
+func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, input string, matches []string) string {
+	var ok bool
+	var fromURL, toURL url.URL
+	var fromStream, toStream string
+
+	fromRelease := matches[1]
+	if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
+		fromURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: fromRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{fromStream},
+				"arch":    []string{architecture},
+				"release": []string{fromRelease},
+			}).Encode(),
+		}
+	}
+
+	toRelease := matches[4]
+	if toStream, ok = getRHCoSReleaseStream(toRelease, architectureExtension); ok {
+		toURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: toRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{toStream},
+				"arch":    []string{architecture},
+				"release": []string{toRelease},
+			}).Encode(),
+		}
+	}
+	diffURL := url.URL{
+		Scheme: serviceScheme,
+		Host:   serviceUrl,
+		Path:   "/diff.html",
+		RawQuery: (url.Values{
+			"first_stream":   []string{fromStream},
+			"first_release":  []string{fromRelease},
+			"second_stream":  []string{toStream},
+			"second_release": []string{toRelease},
+			"arch":           []string{architecture},
+		}).Encode(),
+	}
+	replace := fmt.Sprintf(
+		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n",
+		name,
+		fromRelease,
+		fromURL.String(),
+		toRelease,
+		toURL.String(),
+		diffURL.String(),
+	)
+	return strings.ReplaceAll(input, matches[0], replace)
+}
+
+func transformCoreOSLinks(name, architecture, architectureExtension, input string, matches []string) string {
+	var ok bool
+	var fromURL url.URL
+	var fromStream string
+
+	fromRelease := matches[1]
+	if fromStream, ok = getRHCoSReleaseStream(fromRelease, architectureExtension); ok {
+		fromURL = url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: fromRelease,
+			RawQuery: (url.Values{
+				"stream":  []string{fromStream},
+				"arch":    []string{architecture},
+				"release": []string{fromRelease},
+			}).Encode(),
+		}
+	}
+	replace := fmt.Sprintf(
+		`* %s [%s](%s)`+"\n",
+		name,
+		fromRelease,
+		fromURL.String(),
+	)
+	return strings.ReplaceAll(input, matches[0], replace)
 }
