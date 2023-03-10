@@ -229,12 +229,13 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			continue
 		}
 		feature := &FeatureTree{
-			IssueKey:    issue,
-			Type:        details.IssueType,
-			Description: details.Description,
-			Summary:     details.Summary,
-			PRs:         details.PRs,
-			Children:    nil,
+			IssueKey:     issue,
+			Type:         details.IssueType,
+			Description:  details.Description,
+			Summary:      details.Summary,
+			PRs:          details.PRs,
+			ReleaseNotes: details.ReleaseNotes,
+			Children:     nil,
 		}
 		if details.Feature == "" && details.Epic == "" {
 			noEpicNoFeature = append(noEpicNoFeature, feature)
