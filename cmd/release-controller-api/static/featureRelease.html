@@ -60,7 +60,7 @@
           </div>
           {{ if .Description }}
           <div class="col" >
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" >
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="descriptionBtn_{{.IssueKey}}">
               View the Description
             </a>
           </div>
@@ -98,7 +98,19 @@
     });
   });
 </script>
-
+<script>
+  const descriptionBtns = document.querySelectorAll('.btn[data-bs-toggle="collapse"]');
+  descriptionBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const btnText = btn.textContent.trim();
+      if (btnText === 'View the Description') {
+        btn.textContent = 'Hide the Description';
+      } else {
+        btn.textContent = 'View the Description';
+      }
+    });
+  });
+</script>
 </body>
 </html>
 
