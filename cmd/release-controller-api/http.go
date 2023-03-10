@@ -261,6 +261,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			ReleaseNotes:    mapIssueDetails[epic].ReleaseNotes,
 			Type:            mapIssueDetails[epic].IssueType,
 			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
+			PRs:             mapIssueDetails[epic].PRs,
 			IncludedOnBuild: true,
 			Children:        children,
 		}
