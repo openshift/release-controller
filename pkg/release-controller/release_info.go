@@ -393,7 +393,14 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	issuesList := extractIssuesFromChangeLog(c, sourceJira)
+	issuesToPRMap := extractIssuesFromChangeLog(c, sourceJira)
+	issuesList := func() []string {
+		result := make([]string, 0)
+		for key := range issuesToPRMap {
+			result = append(result, key)
+		}
+		return result
+	}()
 	issues, err := r.GetIssuesWithChunks(issuesList)
 
 	if err != nil {
@@ -406,7 +413,7 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	t := TransformJiraIssues(issues)
+	t := TransformJiraIssues(issues, issuesToPRMap)
 	s, err := json.Marshal(t)
 	if err != nil {
 		return "", err
@@ -432,12 +439,9 @@ func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues 
 					if key == JiraCustomFieldEpicLink || key == JiraCustomFieldFeatureLinkOnEpic {
 						parents = append(parents, typeCheck(f))
 					}
-				// TODO - fix the type here
 				case map[string]interface{}:
 					if key == JiraCustomFieldFeatureLink {
-						t := f.(map[string]interface{})
-						// TODO use const
-						parents = append(parents, typeCheck(t["key"]))
+						parents = append(parents, typeCheck(f))
 					}
 				}
 			}
@@ -467,6 +471,7 @@ type IssueDetails struct {
 	IssueType      string
 	Description    string
 	ReleaseNotes   string
+	PRs            []string
 	ResolutionDate time.Time
 }
 
@@ -474,12 +479,16 @@ func typeCheck(o interface{}) string {
 	switch o.(type) {
 	case string:
 		return o.(string)
+	case map[string]interface{}:
+		t := o.(map[string]interface{})
+		return typeCheck(t["key"])
 	default:
-		return "Unable to parse the field!"
+		klog.Warningf("unable to parse the Jira unknown field: %v\n", o)
+		return ""
 	}
 }
 
-func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails {
+func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]string) map[string]IssueDetails {
 	t := make(map[string]IssueDetails, 0)
 	for _, issue := range issues {
 		var epic, feature, releaseNotes, parent string
@@ -491,9 +500,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 				case JiraCustomFieldFeatureLinkOnEpic:
 					feature = typeCheck(value)
 				case JiraCustomFieldFeatureLink:
-					t := value.(map[string]interface{})
-					// TODO use const
-					feature = typeCheck(t["key"])
+					feature = typeCheck(value)
 				case JiraCustomFieldReleaseNotes:
 					releaseNotes = typeCheck(value)
 				}
@@ -524,6 +531,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue) map[string]IssueDetails 
 			Description: checkJiraSecurity(&issue, issue.RenderedFields.Description),
 			// TODO- check if this should be restricted as well
 			ReleaseNotes:   releaseNotes,
+			PRs:            prMap[issue.Key],
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 		}
 	}
@@ -592,7 +600,9 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	if chunk > maxChunkSize {
 		chunk = maxChunkSize
 	}
-
+	if chunk < 50 {
+		chunk = 50
+	}
 	// Divide issues into chunks
 	dividedIssues := divideSlice(issues, chunk)
 
@@ -662,9 +672,8 @@ func divideSlice(issues []string, chunk int) [][]string {
 	return divided
 }
 
-func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) []string {
-	// store in a map to avoid issue/bug key multiplication
-	issues := make(map[string]bool, 0)
+func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) map[string][]string {
+	issues := make(map[string][]string, 0)
 	changeLogImageInfo := make(map[string][]ChangeLogImageInfo, 0)
 	changeLogImageInfo["NewImages"] = changelog.NewImages
 	changeLogImageInfo["RemovedImages"] = changelog.RemovedImages
@@ -676,18 +685,13 @@ func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) []string 
 				switch bugSource {
 				case sourceJira:
 					for key, _ := range commit.Issues {
-						issues[key] = true
+						issues[key] = append(issues[key], commit.PullURL)
 					}
 				}
 			}
 		}
 	}
-	var issuesList []string
-	for issue, _ := range issues {
-		issuesList = append(issuesList, issue)
-	}
-
-	return issuesList
+	return issues
 
 }
 

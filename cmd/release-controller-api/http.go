@@ -209,6 +209,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			Type:            details.IssueType,
 			ResolutionDate:  details.ResolutionDate,
 			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, details.ResolutionDate),
+			PRs:             details.PRs,
 			Children:        nil,
 		}
 		featureTrees = append(featureTrees, featureTree)
@@ -217,41 +218,30 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	linkedIssues := sets.String{}
 	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues)
 
-	var noEpicNoFeature []*FeatureTree
-	var noEpicWithFeature []*FeatureTree
-	var noFeatureWithEpic []*FeatureTree
-	var unknowns []*FeatureTree
+	var (
+		noEpicNoFeature   []*FeatureTree
+		noFeatureWithEpic []*FeatureTree
+		unknowns          []*FeatureTree
+	)
+
 	for issue, details := range mapIssueDetails {
-		if !linkedIssues.Has(issue) && details.IssueType != "Epic" && details.IssueType != "Feature" {
-			if details.Feature == "" && details.Epic == "" {
-				noEpicNoFeature = append(noEpicNoFeature, &FeatureTree{
-					IssueKey:    issue,
-					Type:        mapIssueDetails[issue].IssueType,
-					Description: mapIssueDetails[issue].Description,
-					Summary:     mapIssueDetails[issue].Summary,
-					Children:    nil,
-				})
-			} else if details.Feature != "" {
-				noEpicWithFeature = append(noEpicWithFeature, &FeatureTree{
-					IssueKey: issue,
-					Type:     sectionTypeNoEpicWithFeature,
-					Children: nil,
-				})
-			} else if details.Epic != "" {
-				noFeatureWithEpic = append(noFeatureWithEpic, &FeatureTree{
-					IssueKey:    issue,
-					Type:        mapIssueDetails[issue].IssueType,
-					Description: mapIssueDetails[issue].Description,
-					Summary:     mapIssueDetails[issue].Summary,
-					Children:    nil,
-				})
-			} else {
-				unknowns = append(unknowns, &FeatureTree{
-					IssueKey: issue,
-					Type:     sectionTypeUnknowns,
-					Children: nil,
-				})
-			}
+		if linkedIssues.Has(issue) || details.IssueType == "Epic" || details.IssueType == "Feature" {
+			continue
+		}
+		feature := &FeatureTree{
+			IssueKey:    issue,
+			Type:        details.IssueType,
+			Description: details.Description,
+			Summary:     details.Summary,
+			PRs:         details.PRs,
+			Children:    nil,
+		}
+		if details.Feature == "" && details.Epic == "" {
+			noEpicNoFeature = append(noEpicNoFeature, feature)
+		} else if details.Epic != "" {
+			noFeatureWithEpic = append(noFeatureWithEpic, feature)
+		} else {
+			unknowns = append(unknowns, feature)
 		}
 	}
 
@@ -328,6 +318,7 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 		Type:            issueDetails.IssueType,
 		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
 		ResolutionDate:  issueDetails.ResolutionDate,
+		PRs:             issueDetails.PRs,
 		Children:        nil,
 	}
 }
@@ -369,6 +360,7 @@ type FeatureTree struct {
 	NotLinkedType   string         `json:"not_linkedt_ype,omitempty"`
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
+	PRs             []string       `json:"prs,omitempty"`
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
