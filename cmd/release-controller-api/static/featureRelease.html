@@ -72,7 +72,7 @@
             </a>
             {{ end }}
             {{ if .PRs }}
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_release_notes_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_PRs_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
               View the PRs linked with this Card
             </a>
             {{ end }}
@@ -92,7 +92,7 @@
           </div>
           {{ end }}
           {{ if .PRs }}
-          <div class="collapse" id="collapse_release_notes_{{.IssueKey}}">
+          <div class="collapse" id="collapse_PRs_{{.IssueKey}}">
             <div class="card card-body border-light">
               <ul>
                 {{- range .PRs}}
@@ -164,7 +164,7 @@
 {{- define "test2" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-dark border-opacity-65 border-2">
+    <div class="card border border-dark border-opacity-50 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -244,7 +244,7 @@
 {{- define "temp3" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-dark border-opacity-35 border-2">
+    <div class="card border border-dark border-opacity-25 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -322,7 +322,7 @@
 {{- define "temp4" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-dark border-opacity-10 border-2">
+    <div class="card border border-dark border-opacity-0 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
