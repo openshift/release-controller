@@ -16,7 +16,8 @@
       padding-right: 0.125rem !important;
     }
   </style>
-  <style>.col {
+  <style>
+    .col {
     display: flex;
     align-items: center;
   }
@@ -45,7 +46,7 @@
   <div class="mt-4 col-md-12">
   {{ range $s.Section.Tickets }}
   <div  class="mt-4 col-md-12">
-    <div class="card border border-dark border-start border-2">
+    <div class="card border border-dark border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -147,6 +148,12 @@
       if (btnText === 'Hide the Release Notes') {
         btn.textContent = 'View the Release Notes';
       }
+      if (btnText === 'View the PRs linked with this Card') {
+        btn.textContent = 'Hide the PRs linked with this Card';
+      }
+      if (btnText === 'Hide the PRs linked with this Card') {
+        btn.textContent = 'View the PRs linked with this Card';
+      }
     });
   });
 </script>
@@ -157,7 +164,7 @@
 {{- define "test2" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-success border-start border-2">
+    <div class="card border border-dark border-opacity-65 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -237,7 +244,7 @@
 {{- define "temp3" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-secondary border-secondary border-2">
+    <div class="card border border-dark border-opacity-35 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
@@ -315,7 +322,7 @@
 {{- define "temp4" -}}
 <div id="accordion_{{.IssueKey}}">
   <div  class="mt-2 col-md-12">
-    <div class="card border border-primary border-start border-2">
+    <div class="card border border-dark border-opacity-10 border-2">
       <div class="card-header p-0">
         <div class="row row-cols-1">
           <div class="col d-flex align-items-start">
