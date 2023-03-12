@@ -206,7 +206,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	}
 
 	linkedIssues := sets.String{}
-	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues)
+	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000)
 
 	var noFeatureWithEpic []*FeatureTree
 
@@ -247,12 +247,13 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		}
 		featureTrees = append(featureTrees, f)
 	}
-
 	return featureTrees, nil
 }
 
-func GetChildrenRecursively(children []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String) {
-	for _, child := range children {
+// GetChildrenRecursively TODO - check for a better way to do this, without the arbitrary limit
+// the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
+func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int) {
+	for _, child := range ft {
 		var children []*FeatureTree
 		for issueKey, issueDetails := range issues {
 			var featureTree *FeatureTree
@@ -271,7 +272,14 @@ func GetChildrenRecursively(children []*FeatureTree, issues map[string]releaseco
 			}
 		}
 		child.Children = children
-		GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues)
+
+		// Recursively sort the children of this node, limiting to the given iteration limit
+		if limit > 1 {
+			GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1)
+		} else {
+			klog.Errorf("breaking the recursion: limit reached for the sGetChildrenRecursively func! This might indicate a cyclic tree!")
+		}
+
 	}
 }
 
@@ -896,10 +904,12 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	}
 	for _, s := range [][]*FeatureTree{completedFeatures, unCompletedFeatures, completedEpicWithoutFeature, unCompletedEpicWithoutFeature} {
 		sortByTitle(s)
+		sortByPRs(s, 1000)
 	}
 
 	var sections []SectionInfo
 
+	// define the UI sections
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
@@ -937,6 +947,7 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were not completed when this image was assembled",
 	}
 
+	// the key needs to be a unique value per section
 	for _, section := range []SectionInfo{
 		{"completed_features", completed},
 		{"uncompleted_features", unCompleted},
@@ -971,6 +982,35 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	w.Write(buf.Bytes())
+}
+
+// TODO - check for a better way to do this, without the arbitrary limit
+// the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
+func sortByPRs(tree []*FeatureTree, limit int) {
+	if len(tree) == 0 {
+		return
+	}
+
+	// Divide the tree into two groups, those with PRs and those without
+	var withPRs []*FeatureTree
+	var withoutPRs []*FeatureTree
+	for _, node := range tree {
+		if node.PRs != nil {
+			withPRs = append(withPRs, node)
+		} else {
+			withoutPRs = append(withoutPRs, node)
+		}
+
+		// Recursively sort the children of this node, limiting to the given iteration limit
+		if limit > 1 {
+			sortByPRs(node.Children, limit-1)
+		} else {
+			klog.Errorf("breaking the recursion: limit reached for the sortByPrs func! This might indicate a cyclic tree!")
+		}
+	}
+
+	// Concatenate the two groups, withPRs first
+	copy(tree, append(withPRs, withoutPRs...))
 }
 
 func includeKey(key string) bool {

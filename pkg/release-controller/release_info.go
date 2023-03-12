@@ -37,6 +37,8 @@ const (
 	JiraCustomFieldFeatureLink       = "customfield_12318341"
 	JiraCustomFieldReleaseNotes      = "customfield_12310211"
 	JiraTypeSubTask                  = "Sub-task"
+	JiraTypeEpic                     = "Epic"
+	JiraTypeFeature                  = "Feature"
 )
 
 const maxChunkSize = 500
@@ -409,6 +411,7 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 
 	// fetch the parent issues recursively
 	currentIssues := issues
+
 	err = r.RecursiveGet(currentIssues, &issues)
 	if err != nil {
 		return "", err
@@ -419,6 +422,11 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 		return "", err
 	}
 	return string(s), nil
+}
+
+type parentDetails struct {
+	key        string
+	parentType string
 }
 
 func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
