@@ -45,6 +45,7 @@ const (
 	sectionTypeNoFeatureWithEpic = "noFeatureWithEpic"
 	sectionTypeNoEpicNoFeature   = "noEpicNoFeature"
 	sectionTypeUnknowns          = "unknowns"
+	sectionTypeUnsortedUnknowns  = "unsorted_unknowns"
 )
 
 var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns)
@@ -198,7 +199,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	// Create feature trees
 	var featureTrees []*FeatureTree
 	for key, details := range mapIssueDetails {
-		if details.IssueType != "Feature" {
+		if details.IssueType != releasecontroller.JiraTypeFeature {
 			continue
 		}
 		featureTree := addChild(key, details, &changeLog.To.Created)
@@ -209,20 +210,21 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000)
 
 	var noFeatureWithEpic []*FeatureTree
+	var unknowns []*FeatureTree
 
 	for issue, details := range mapIssueDetails {
-		if linkedIssues.Has(issue) || details.IssueType == "Epic" || details.IssueType == "Feature" {
+		if linkedIssues.Has(issue) || details.IssueType == releasecontroller.JiraTypeEpic || details.IssueType == releasecontroller.JiraTypeFeature || details.IssueType == releasecontroller.JiraTypeMarketProblem {
 			continue
 		}
 		feature := addChild(issue, details, &changeLog.To.Created)
-		if details.Feature == "" && details.Epic == "" {
+		if details.Feature == "" && details.Epic == "" && details.Parent == "" {
 			feature.NotLinkedType = sectionTypeNoEpicNoFeature
 			featureTrees = append(featureTrees, feature)
 		} else if details.Epic != "" {
 			noFeatureWithEpic = append(noFeatureWithEpic, feature)
 		} else {
 			feature.NotLinkedType = sectionTypeUnknowns
-			featureTrees = append(featureTrees, feature)
+			unknowns = append(unknowns, feature)
 		}
 	}
 
@@ -239,6 +241,9 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			Description:     mapIssueDetails[epic].Description,
 			ReleaseNotes:    mapIssueDetails[epic].ReleaseNotes,
 			Type:            mapIssueDetails[epic].IssueType,
+			Epic:            mapIssueDetails[epic].Epic,
+			Feature:         mapIssueDetails[epic].Feature,
+			Parent:          mapIssueDetails[epic].Parent,
 			NotLinkedType:   sectionTypeNoFeatureWithEpic,
 			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
 			PRs:             mapIssueDetails[epic].PRs,
@@ -247,24 +252,92 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		}
 		featureTrees = append(featureTrees, f)
 	}
+
+	// TODO - find a better way to do this, this it is to expensive
+	redistributedUnknowns := sets.String{}
+	for _, unknown := range unknowns {
+		if unknown.Parent != "" {
+			redistributeUnknowns(featureTrees, unknown.Parent, unknown, &redistributedUnknowns)
+		}
+		if unknown.Epic != "" {
+			redistributeUnknowns(featureTrees, unknown.Epic, unknown, &redistributedUnknowns)
+		}
+		if unknown.Feature != "" {
+			redistributeUnknowns(featureTrees, unknown.Feature, unknown, &redistributedUnknowns)
+		}
+	}
+	for _, ticket := range unknowns {
+		if !redistributedUnknowns.Has(ticket.IssueKey) {
+			ticket.NotLinkedType = sectionTypeUnsortedUnknowns
+			featureTrees = append(featureTrees, ticket)
+		}
+	}
+
+	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
+	// change log, i.e. it is an unlinked part of the parent/epics/features gatherer for the featureTree, but it was
+	// not linked properly
+	for _, ticket := range featureTrees {
+		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
+			if isPRsEmpty(ticket) {
+				removeFeatureTree(featureTrees, ticket.IssueKey)
+			}
+		}
+	}
+
 	return featureTrees, nil
 }
 
-// GetChildrenRecursively TODO - check for a better way to do this, without the arbitrary limit
+func removeFeatureTree(slice []*FeatureTree, issueKey string) {
+	for i, ft := range slice {
+		if ft.IssueKey == issueKey {
+			// Remove the element by swapping it with the last element
+			slice[i] = slice[len(slice)-1]
+			slice = slice[:len(slice)-1]
+			break
+		}
+	}
+}
+
+func isPRsEmpty(ft *FeatureTree) bool {
+	if len(ft.PRs) > 0 {
+		return false
+	}
+	for _, child := range ft.Children {
+		if !isPRsEmpty(child) {
+			return false
+		}
+	}
+	return true
+}
+
+func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.String) bool {
+	for _, node := range slice {
+		if node.IssueKey == key {
+			node.Children = append(node.Children, feature)
+			s.Insert(feature.IssueKey)
+			return true
+		}
+		redistributeUnknowns(node.Children, key, feature, s)
+	}
+	return false
+}
+
+// TODO - check for a better way to do this, without the arbitrary limit
 // the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
 func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int) {
 	for _, child := range ft {
 		var children []*FeatureTree
 		for issueKey, issueDetails := range issues {
 			var featureTree *FeatureTree
-			if child.Type == "Feature" && issueDetails.Feature == child.IssueKey {
+			if child.Type == releasecontroller.JiraTypeFeature && issueDetails.Feature == child.IssueKey {
 				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
-			} else if child.Type == "Epic" && issueDetails.Epic == child.IssueKey {
+			} else if child.Type == releasecontroller.JiraTypeEpic && issueDetails.Epic == child.IssueKey {
 				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
 				linkedIssues.Insert(issueKey)
 			} else {
 				if issueDetails.Parent == child.IssueKey {
 					featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+					linkedIssues.Insert(issueKey)
 				}
 			}
 			if featureTree != nil {
@@ -290,6 +363,9 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 		Description:     issueDetails.Description,
 		ReleaseNotes:    issueDetails.ReleaseNotes,
 		Type:            issueDetails.IssueType,
+		Epic:            issueDetails.Epic,
+		Feature:         issueDetails.Feature,
+		Parent:          issueDetails.Parent,
 		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
 		ResolutionDate:  issueDetails.ResolutionDate,
 		PRs:             issueDetails.PRs,
@@ -335,6 +411,9 @@ type FeatureTree struct {
 	ResolutionDate  time.Time      `json:"resolution_date"`
 	IncludedOnBuild bool           `json:"included_in_build"`
 	PRs             []string       `json:"prs,omitempty"`
+	Epic            string         `json:"epic,omitempty"`
+	Feature         string         `json:",omitempty"`
+	Parent          string         `json:"parent,omitempty"`
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
@@ -904,7 +983,8 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 	}
 	for _, s := range [][]*FeatureTree{completedFeatures, unCompletedFeatures, completedEpicWithoutFeature, unCompletedEpicWithoutFeature} {
 		sortByTitle(s)
-		sortByPRs(s, 1000)
+		// TODO - check this, should be moot, since every leaf has a PR linked to it
+		//sortByPRs(s, 1000)
 	}
 
 	var sections []SectionInfo

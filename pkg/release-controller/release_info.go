@@ -39,6 +39,8 @@ const (
 	JiraTypeSubTask                  = "Sub-task"
 	JiraTypeEpic                     = "Epic"
 	JiraTypeFeature                  = "Feature"
+	JiraTypeStory                    = "Story"
+	JiraTypeMarketProblem            = "Market Problem"
 )
 
 const maxChunkSize = 500
@@ -424,36 +426,37 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	return string(s), nil
 }
 
-type parentDetails struct {
-	key        string
-	parentType string
-}
-
 func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
 	var parents []string
 	for _, issue := range issues {
 		if issue.Fields.Type.Name == JiraTypeSubTask {
 			if issue.Fields.Parent != nil {
-				if issue.Fields.Parent.Key != "" {
+				// TODO - check if this is expected - we do not check for parents of Features, since we consider that to be the root
+				if issue.Fields.Parent.Key != "" && issue.Fields.Type.Name != JiraTypeFeature {
 					parents = append(parents, issue.Fields.Parent.Key)
 					continue
 				}
 			}
 		}
-		for key, f := range issue.Fields.Unknowns {
-			if f != nil {
-				switch f.(type) {
-				case string:
-					if key == JiraCustomFieldEpicLink || key == JiraCustomFieldFeatureLinkOnEpic {
-						parents = append(parents, typeCheck(f))
-					}
-				case map[string]interface{}:
-					if key == JiraCustomFieldFeatureLink {
-						parents = append(parents, typeCheck(f))
+		// TODO - check if this is expected - we do not check for parents of Features, since we consider that to be the root
+		if issue.Fields.Type.Name != JiraTypeFeature {
+			for key, f := range issue.Fields.Unknowns {
+				if f != nil {
+					switch f.(type) {
+					case string:
+						if key == JiraCustomFieldEpicLink || key == JiraCustomFieldFeatureLinkOnEpic {
+							parents = append(parents, typeCheck(f))
+
+						}
+					case map[string]interface{}:
+						if key == JiraCustomFieldFeatureLink {
+							parents = append(parents, typeCheck(f))
+						}
 					}
 				}
 			}
 		}
+
 	}
 	if len(parents) > 0 {
 		p, err := r.GetIssuesWithChunks(parents)
