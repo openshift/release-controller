@@ -1112,6 +1112,35 @@ func jumpLinks(data httpFeatureData) string {
 	return sb.String()
 }
 
+func (c *Controller) nextMinor(tagInfo *releaseTagInfo) string {
+	var v []string
+	for _, release := range tagInfo.Info.Stable.Releases {
+		for _, version := range release.Versions {
+			if strings.Contains(version.Tag.Name, "ci") || strings.Contains(version.Tag.Name, "nightly") {
+				continue
+			}
+			v = append(v, version.Tag.Name)
+		}
+	}
+	return findLastMinor(v, tagInfo.Tag)
+}
+
+func findLastMinor(versions []string, tag string) string {
+	tagSplit := strings.Split(tag, ".")
+	tagMajor, _ := strconv.Atoi(tagSplit[0])
+	tagMinor, _ := strconv.Atoi(tagSplit[1])
+	tagMinor = tagMinor - 1
+	for _, v := range versions {
+		if strings.HasPrefix(v, fmt.Sprintf("%d.%d", tagMajor, tagMinor)) {
+			return v
+		}
+	}
+	tagMinor = tagMinor - 1
+	findLastMinor(versions, fmt.Sprintf("%d.%d", tagMajor, tagMinor))
+
+	return "Error: the version could not be computed!"
+}
+
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
@@ -1138,11 +1167,35 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			h3 { font-size: 1.35rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h4 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h3 a { text-transform: uppercase; font-size: 1rem; }
+			.mb-custom {
+			  margin-bottom: 0.5rem !important; /* use !important to override other margin-bottom styles */
+			}
 		</style>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
 		`)
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
+	//fmt.Fprintf(w, "<div class=\"mb-custom d-flex align-items-center\">")
+	//fmt.Fprintf(w, "<h1 class=\"m-0\" >%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
+	//fmt.Fprintf(w, "<i class=\"bi bi-gift\"></i>")
+	//fmt.Fprintf(w, "<p class=\"m-0 ms-2\">New string goes here</p>")
+	//fmt.Fprintf(w, "</div>")
+
+	fmt.Fprintf(w, "<div class=\"mb-custom\">"+
+		"<div class=\"row align-items-center\">"+
+		"<div class=\"col\">"+
+		"<h1 class=\"m-0\">%s</h1>"+
+		"</div>"+
+		"</div>"+
+		"<div class=\"row align-items-center\">"+
+		"<div class=\"col-auto\">"+
+		"<i class=\"bi bi-gift\"></i>"+
+		"</div>"+
+		"<div class=\"col text-nowrap p-0\">"+
+		"<p class=\"m-0\"><a href=\"/features/4-dev-preview/release/%s?from=%s\">New features since version %s</a></p>"+
+		"</div>"+
+		"</div>"+
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
