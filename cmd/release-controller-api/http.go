@@ -1159,6 +1159,8 @@ func findLastMinor(versions []string, tag string) string {
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	release := vars["release"]
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
@@ -1204,10 +1206,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		"<i class=\"bi bi-gift\"></i>"+
 		"</div>"+
 		"<div class=\"col text-nowrap p-0\">"+
-		"<p class=\"m-0\"><a href=\"/features/4-dev-preview/release/%s?from=%s\">New features since version %s</a></p>"+
+		"<p class=\"m-0\"><a href=\"/features/%s/release/%s?from=%s\">New features since version %s</a></p>"+
 		"</div>"+
 		"</div>"+
-		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), release, template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
