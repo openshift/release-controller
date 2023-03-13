@@ -323,11 +323,20 @@ func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree
 	return false
 }
 
-// TODO - check for a better way to do this, without the arbitrary limit
-// the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
+// GetChildrenRecursively TODO - handle the limit better. Currently the page will never receive an error if the limit is reached and it will
+// get stucked in a "loading" state.
 func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) {
+
+	// add a fail-safe to protect against stack-overflow caused by a cyclic link.  If the limit has been reached, the
+	//function will return immediately without making any further recursive calls.
+	if limit <= 0 {
+		klog.Errorf("breaking the recursion: limit reached for the GetChildrenRecursively func! This might indicate a cyclic tree!")
+		return
+	}
+
 	for _, child := range ft {
-		// Check if the child has already been visited
+
+		// Check if the child has already been visited. This will protect against cyclic links and redundant cycles
 		if visited[child.IssueKey] {
 			klog.Infof("Skipping child %v as it has already been visited", child.IssueKey)
 			continue
@@ -354,12 +363,8 @@ func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroll
 		}
 		child.Children = children
 
-		// Recursively sort the children of this node, limiting to the given iteration limit
-		if limit > 1 {
-			GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
-		} else {
-			klog.Errorf("breaking the recursion: limit reached for the GetChildrenRecursively func! This might indicate a cyclic tree!")
-		}
+		GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
+
 	}
 }
 

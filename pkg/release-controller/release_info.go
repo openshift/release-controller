@@ -413,8 +413,8 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 
 	// fetch the parent issues recursively
 	currentIssues := issues
-
-	err = r.RecursiveGet(currentIssues, &issues)
+	visited := make(map[string]bool)
+	err = r.JiraRecursiveGet(currentIssues, &issues, visited, 10000)
 	if err != nil {
 		return "", err
 	}
@@ -426,9 +426,20 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	return string(s), nil
 }
 
-func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue) error {
+func (r *ExecReleaseInfo) JiraRecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue, visited map[string]bool, limit int) error {
+	// add a fail-safe to protect against stack-overflows, in case of an infinite cycle
+	if limit == 0 {
+		return stdErrors.New("maximum recursion depth reached")
+	}
 	var parents []string
 	for _, issue := range issues {
+		// skip processing already processed issues. This will protect against cyclic loops and redundant work
+		if visited[issue.Key] {
+			klog.Info("Skipping issue %s as it was already processed", issue.Key)
+			continue
+		}
+
+		visited[issue.Key] = true
 		if issue.Fields.Type.Name == JiraTypeSubTask {
 			if issue.Fields.Parent != nil {
 				// TODO - check if this is expected - we do not check for parents of Features, since we consider that to be the root
@@ -465,7 +476,7 @@ func (r *ExecReleaseInfo) RecursiveGet(issues []jiraBaseClient.Issue, allIssues 
 			return err
 		}
 		*allIssues = append(*allIssues, p...)
-		err = r.RecursiveGet(p, allIssues)
+		err = r.JiraRecursiveGet(p, allIssues, visited, limit-1)
 		if err != nil {
 			return err
 		}
