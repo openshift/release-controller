@@ -231,8 +231,7 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 
 	epicWithoutFeatureMap := make(map[string][]*FeatureTree, 0)
 	for _, child := range noFeatureWithEpic {
-		epicDetails := mapIssueDetails[child.IssueKey]
-		epicWithoutFeatureMap[epicDetails.Epic] = append(epicWithoutFeatureMap[epicDetails.Parent], child)
+		epicWithoutFeatureMap[child.Epic] = append(epicWithoutFeatureMap[child.Epic], child)
 	}
 
 	for epic, children := range epicWithoutFeatureMap {
