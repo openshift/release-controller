@@ -207,7 +207,8 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	}
 
 	linkedIssues := sets.String{}
-	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000)
+	visited := make(map[string]bool)
+	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000, visited)
 
 	var noFeatureWithEpic []*FeatureTree
 	var unknowns []*FeatureTree
@@ -324,8 +325,15 @@ func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree
 
 // TODO - check for a better way to do this, without the arbitrary limit
 // the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
-func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int) {
+func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) {
 	for _, child := range ft {
+		// Check if the child has already been visited
+		if visited[child.IssueKey] {
+			klog.Infof("Skipping child %v as it has already been visited", child.IssueKey)
+			continue
+		}
+		visited[child.IssueKey] = true // mark the child as visited
+
 		var children []*FeatureTree
 		for issueKey, issueDetails := range issues {
 			var featureTree *FeatureTree
@@ -348,11 +356,10 @@ func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroll
 
 		// Recursively sort the children of this node, limiting to the given iteration limit
 		if limit > 1 {
-			GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1)
+			GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
 		} else {
-			klog.Errorf("breaking the recursion: limit reached for the sGetChildrenRecursively func! This might indicate a cyclic tree!")
+			klog.Errorf("breaking the recursion: limit reached for the GetChildrenRecursively func! This might indicate a cyclic tree!")
 		}
-
 	}
 }
 
