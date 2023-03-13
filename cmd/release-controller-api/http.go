@@ -164,8 +164,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
-	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureInfo)
-	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureInfo)
+	mux.HandleFunc("/api/v1/features/{tag}", c.apiFeatureInfo)
+	mux.HandleFunc("/features/{tag}", c.httpFeatureInfo)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -1010,7 +1010,7 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
-		Header:  "Completed Features",
+		Header:  "Complete Features",
 		Note:    "These features were completed when this image was assembled",
 	}
 	unCompleted := Sections{
@@ -1159,8 +1159,6 @@ func findLastMinor(versions []string, tag string) string {
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	vars := mux.Vars(req)
-	release := vars["release"]
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
@@ -1206,10 +1204,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		"<i class=\"bi bi-gift\"></i>"+
 		"</div>"+
 		"<div class=\"col text-nowrap p-0\">"+
-		"<p class=\"m-0\"><a href=\"/features/%s/release/%s?from=%s\">New features since version %s</a></p>"+
+		"<p class=\"m-0\"><a href=\"/features/%s?from=%s\">New features since version %s</a></p>"+
 		"</div>"+
 		"</div>"+
-		"</div>", template.HTMLEscapeString(tagInfo.Tag), release, template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
