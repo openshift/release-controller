@@ -435,7 +435,7 @@ func (r *ExecReleaseInfo) JiraRecursiveGet(issues []jiraBaseClient.Issue, allIss
 	for _, issue := range issues {
 		// skip processing already processed issues. This will protect against cyclic loops and redundant work
 		if visited[issue.Key] {
-			klog.Info("Skipping issue %s as it was already processed", issue.Key)
+			klog.Infof("Skipping issue %s as it was already processed", issue.Key)
 			continue
 		}
 
