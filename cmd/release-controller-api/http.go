@@ -164,8 +164,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
-	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureInfo)
-	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureInfo)
+	mux.HandleFunc("/api/v1/features/{tag}", c.apiFeatureInfo)
+	mux.HandleFunc("/features/{tag}", c.httpFeatureInfo)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -250,7 +250,7 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			NotLinkedType:   sectionTypeNoFeatureWithEpic,
 			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
 			PRs:             mapIssueDetails[epic].PRs,
-			IncludedOnBuild: true,
+			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate),
 			Children:        children,
 		}
 		featureTrees = append(featureTrees, f)
@@ -279,26 +279,25 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
 	// change log, i.e. Cards part of the parent/epics/features group gathered for the featureTree, but not linked
 	// properly (e.g. an Epic that links directly to a "Market Problem" instead of a Feature, and Feature is the root)
+	toRemove := sets.String{}
 	for _, ticket := range featureTrees {
 		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
 			if isPRsEmpty(ticket) {
-				removeFeatureTree(featureTrees, ticket.IssueKey)
+				toRemove.Insert(ticket.IssueKey)
 			}
 		}
 	}
-
-	return featureTrees, nil
+	return removeUnnecessaryTrees(featureTrees, toRemove), nil
 }
 
-func removeFeatureTree(slice []*FeatureTree, issueKey string) {
-	for i, ft := range slice {
-		if ft.IssueKey == issueKey {
-			// Remove the element by swapping it with the last element
-			slice[i] = slice[len(slice)-1]
-			slice = slice[:len(slice)-1]
-			break
+func removeUnnecessaryTrees(slice []*FeatureTree, toRemove sets.String) []*FeatureTree {
+	newFeatureTree := make([]*FeatureTree, 0)
+	for _, feature := range slice {
+		if !toRemove.Has(feature.IssueKey) {
+			newFeatureTree = append(newFeatureTree, feature)
 		}
 	}
+	return newFeatureTree
 }
 
 func isPRsEmpty(ft *FeatureTree) bool {
@@ -1010,7 +1009,7 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	completed := Sections{
 		Tickets: completedFeatures,
 		Title:   "Lists of features that were completed when this image was built",
-		Header:  "Completed Features",
+		Header:  "Complete Features",
 		Note:    "These features were completed when this image was assembled",
 	}
 	unCompleted := Sections{
@@ -1159,8 +1158,6 @@ func findLastMinor(versions []string, tag string) string {
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
-	vars := mux.Vars(req)
-	release := vars["release"]
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
@@ -1206,10 +1203,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		"<i class=\"bi bi-gift\"></i>"+
 		"</div>"+
 		"<div class=\"col text-nowrap p-0\">"+
-		"<p class=\"m-0\"><a href=\"/features/%s/release/%s?from=%s\">New features since version %s</a></p>"+
+		"<p class=\"m-0\"><a href=\"/features/%s?from=%s\">New features since version %s</a></p>"+
 		"</div>"+
 		"</div>"+
-		"</div>", template.HTMLEscapeString(tagInfo.Tag), release, template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
