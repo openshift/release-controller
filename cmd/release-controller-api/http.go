@@ -48,7 +48,7 @@ const (
 	sectionTypeUnsortedUnknowns  = "unsorted_unknowns"
 )
 
-var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns)
+var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns, sectionTypeUnsortedUnknowns)
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
@@ -275,8 +275,8 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	}
 
 	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
-	// change log, i.e. it is an unlinked part of the parent/epics/features gatherer for the featureTree, but it was
-	// not linked properly
+	// change log, i.e. Cards part of the parent/epics/features group gathered for the featureTree, but not linked
+	// properly (e.g. an Epic that links directly to a "Market Problem" instead of a Feature, and Feature is the root)
 	for _, ticket := range featureTrees {
 		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
 			if isPRsEmpty(ticket) {
