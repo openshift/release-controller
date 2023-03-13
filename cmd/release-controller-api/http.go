@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
@@ -39,6 +40,16 @@ var resources, _ = fs.Sub(static, "static")
 
 var htmlPageStart = loadStaticHTML("htmlPageStart.html")
 var htmlPageEnd = loadStaticHTML("htmlPageEnd.html")
+
+const (
+	sectionTypeNoEpicWithFeature = "noEpicWithFeature"
+	sectionTypeNoFeatureWithEpic = "noFeatureWithEpic"
+	sectionTypeNoEpicNoFeature   = "noEpicNoFeature"
+	sectionTypeUnknowns          = "unknowns"
+	sectionTypeUnsortedUnknowns  = "unsorted_unknowns"
+)
+
+var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns, sectionTypeUnsortedUnknowns)
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
@@ -153,10 +164,274 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
+	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureInfo)
+	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureInfo)
+
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
 
 	return mux
+}
+
+func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree, error) {
+	// Get change log
+	changeLogJSON := renderResult{}
+	c.changeLogWorker(&changeLogJSON, tagInfo, "json")
+	if changeLogJSON.err != nil {
+		return nil, changeLogJSON.err
+	}
+
+	var changeLog releasecontroller.ChangeLog
+	if err := json.Unmarshal([]byte(changeLogJSON.out), &changeLog); err != nil {
+		return nil, err
+	}
+
+	// Get issue details
+	info, err := c.releaseInfo.IssuesInfo(changeLogJSON.out)
+	if err != nil {
+		return nil, err
+	}
+
+	var mapIssueDetails map[string]releasecontroller.IssueDetails
+	if err := json.Unmarshal([]byte(info), &mapIssueDetails); err != nil {
+		return nil, err
+	}
+
+	// Create feature trees
+	var featureTrees []*FeatureTree
+	for key, details := range mapIssueDetails {
+		if details.IssueType != releasecontroller.JiraTypeFeature {
+			continue
+		}
+		featureTree := addChild(key, details, &changeLog.To.Created)
+		featureTrees = append(featureTrees, featureTree)
+	}
+
+	linkedIssues := sets.String{}
+	visited := make(map[string]bool)
+	if !GetFeatureInfo(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000, visited) {
+		return nil, errors.New("failed getting the features information, cycle limit reached! ")
+	}
+
+	var noFeatureWithEpic []*FeatureTree
+	var unknowns []*FeatureTree
+
+	for issue, details := range mapIssueDetails {
+		if linkedIssues.Has(issue) || details.IssueType == releasecontroller.JiraTypeEpic || details.IssueType == releasecontroller.JiraTypeFeature || details.IssueType == releasecontroller.JiraTypeMarketProblem {
+			continue
+		}
+		feature := addChild(issue, details, &changeLog.To.Created)
+		if details.Feature == "" && details.Epic == "" && details.Parent == "" {
+			feature.NotLinkedType = sectionTypeNoEpicNoFeature
+			featureTrees = append(featureTrees, feature)
+		} else if details.Epic != "" {
+			noFeatureWithEpic = append(noFeatureWithEpic, feature)
+		} else {
+			feature.NotLinkedType = sectionTypeUnknowns
+			unknowns = append(unknowns, feature)
+		}
+	}
+
+	epicWithoutFeatureMap := make(map[string][]*FeatureTree, 0)
+	for _, child := range noFeatureWithEpic {
+		epicWithoutFeatureMap[child.Epic] = append(epicWithoutFeatureMap[child.Epic], child)
+	}
+
+	for epic, children := range epicWithoutFeatureMap {
+		f := &FeatureTree{
+			IssueKey:        epic,
+			Summary:         mapIssueDetails[epic].Summary,
+			Description:     mapIssueDetails[epic].Description,
+			ReleaseNotes:    mapIssueDetails[epic].ReleaseNotes,
+			Type:            mapIssueDetails[epic].IssueType,
+			Epic:            mapIssueDetails[epic].Epic,
+			Feature:         mapIssueDetails[epic].Feature,
+			Parent:          mapIssueDetails[epic].Parent,
+			NotLinkedType:   sectionTypeNoFeatureWithEpic,
+			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
+			PRs:             mapIssueDetails[epic].PRs,
+			IncludedOnBuild: true,
+			Children:        children,
+		}
+		featureTrees = append(featureTrees, f)
+	}
+
+	// TODO - find a better way to do this, this it is to expensive
+	redistributedUnknowns := sets.String{}
+	for _, unknown := range unknowns {
+		if unknown.Parent != "" {
+			redistributeUnknowns(featureTrees, unknown.Parent, unknown, &redistributedUnknowns, 10000)
+		}
+		if unknown.Epic != "" {
+			redistributeUnknowns(featureTrees, unknown.Epic, unknown, &redistributedUnknowns, 10000)
+		}
+		if unknown.Feature != "" {
+			redistributeUnknowns(featureTrees, unknown.Feature, unknown, &redistributedUnknowns, 10000)
+		}
+	}
+	for _, ticket := range unknowns {
+		if !redistributedUnknowns.Has(ticket.IssueKey) {
+			ticket.NotLinkedType = sectionTypeUnsortedUnknowns
+			featureTrees = append(featureTrees, ticket)
+		}
+	}
+
+	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
+	// change log, i.e. Cards part of the parent/epics/features group gathered for the featureTree, but not linked
+	// properly (e.g. an Epic that links directly to a "Market Problem" instead of a Feature, and Feature is the root)
+	for _, ticket := range featureTrees {
+		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
+			if isPRsEmpty(ticket) {
+				removeFeatureTree(featureTrees, ticket.IssueKey)
+			}
+		}
+	}
+
+	return featureTrees, nil
+}
+
+func removeFeatureTree(slice []*FeatureTree, issueKey string) {
+	for i, ft := range slice {
+		if ft.IssueKey == issueKey {
+			// Remove the element by swapping it with the last element
+			slice[i] = slice[len(slice)-1]
+			slice = slice[:len(slice)-1]
+			break
+		}
+	}
+}
+
+func isPRsEmpty(ft *FeatureTree) bool {
+	if len(ft.PRs) > 0 {
+		return false
+	}
+	for _, child := range ft.Children {
+		if !isPRsEmpty(child) {
+			return false
+		}
+	}
+	return true
+}
+
+func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.String, limit int) bool {
+	if limit <= 0 {
+		klog.Errorf("breaking the recursion: limit reached for the redistributeUnknowns func! This might indicate a cyclic tree!")
+		return false
+	}
+	for _, node := range slice {
+		if node.IssueKey == key {
+			node.Children = append(node.Children, feature)
+			s.Insert(feature.IssueKey)
+			return true
+		}
+		redistributeUnknowns(node.Children, key, feature, s, limit-1)
+	}
+	return false
+}
+
+func GetFeatureInfo(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) bool {
+
+	// add a fail-safe to protect against stack-overflows caused by a cyclic link. If the limit has been reached, the
+	//function will return immediately without making any further recursive calls.
+	if limit <= 0 {
+		klog.Errorf("breaking the recursion: limit reached for the GetFeatureInfo func! This might indicate a cyclic tree!")
+		return false
+	}
+
+	for _, child := range ft {
+
+		// Check if the child has already been visited. This will protect against cyclic links and redundant work
+		if visited[child.IssueKey] {
+			klog.Infof("Skipping child %v as it has already been visited", child.IssueKey)
+			continue
+		}
+		visited[child.IssueKey] = true // mark the child as visited
+
+		var children []*FeatureTree
+		for issueKey, issueDetails := range issues {
+			var featureTree *FeatureTree
+			if child.Type == releasecontroller.JiraTypeFeature && issueDetails.Feature == child.IssueKey {
+				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+			} else if child.Type == releasecontroller.JiraTypeEpic && issueDetails.Epic == child.IssueKey {
+				featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+				linkedIssues.Insert(issueKey)
+			} else {
+				if issueDetails.Parent == child.IssueKey {
+					featureTree = addChild(issueKey, issueDetails, buildTimeStamp)
+					linkedIssues.Insert(issueKey)
+				}
+			}
+			if featureTree != nil {
+				children = append(children, featureTree)
+			}
+		}
+		child.Children = children
+
+		GetFeatureInfo(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
+
+	}
+	return true
+}
+
+func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buildTimeStamp *time.Time) *FeatureTree {
+	return &FeatureTree{
+		IssueKey:        issueKey,
+		Summary:         issueDetails.Summary,
+		Description:     issueDetails.Description,
+		ReleaseNotes:    issueDetails.ReleaseNotes,
+		Type:            issueDetails.IssueType,
+		Epic:            issueDetails.Epic,
+		Feature:         issueDetails.Feature,
+		Parent:          issueDetails.Parent,
+		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
+		ResolutionDate:  issueDetails.ResolutionDate,
+		PRs:             issueDetails.PRs,
+		Children:        nil,
+	}
+}
+
+func (c *Controller) apiFeatureInfo(w http.ResponseWriter, req *http.Request) {
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	featureTrees, err := c.releaseFeatureInfo(tagInfo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data, err := json.MarshalIndent(&featureTrees, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
+	if !issueTimestamp.IsZero() && issueTimestamp.Before(*buildTimeStamp) {
+		return true
+	}
+	return false
+}
+
+type FeatureTree struct {
+	IssueKey        string         `json:"key"`
+	Summary         string         `json:"summary"`
+	Description     string         `json:"description"`
+	ReleaseNotes    string         `json:"release_notes,omitempty"`
+	Type            string         `json:"type"`
+	NotLinkedType   string         `json:"not_linkedt_ype,omitempty"`
+	ResolutionDate  time.Time      `json:"resolution_date"`
+	IncludedOnBuild bool           `json:"included_in_build"`
+	PRs             []string       `json:"prs,omitempty"`
+	Epic            string         `json:"epic,omitempty"`
+	Feature         string         `json:",omitempty"`
+	Parent          string         `json:"parent,omitempty"`
+	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
 func (c *Controller) urlForArtifacts(tagName string) (string, bool) {
@@ -647,7 +922,245 @@ func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, erro
 	}, nil
 }
 
+type Sections struct {
+	Tickets []*FeatureTree
+	Title   string
+	Header  string
+	Note    string
+}
+
+type httpFeatureData struct {
+	DisplaySections []SectionInfo
+	From            string
+	To              string
+}
+
+type SectionInfo struct {
+	Name    string
+	Section Sections
+}
+
+func sortByTitle(features []*FeatureTree) {
+	sort.Slice(features, func(i, j int) bool {
+		return features[i].IssueKey < features[j].IssueKey
+	})
+}
+
+func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
+	tagInfo, err := c.getReleaseTagInfo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	from := req.URL.Query().Get("from")
+	if from == "" {
+		from = "the last version"
+	}
+
+	featureTrees, err := c.releaseFeatureInfo(tagInfo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var (
+		buf                           bytes.Buffer
+		completedFeatures             []*FeatureTree
+		unCompletedFeatures           []*FeatureTree
+		completedEpicWithoutFeature   []*FeatureTree
+		unCompletedEpicWithoutFeature []*FeatureTree
+		completedNoEpicNoFeature      []*FeatureTree
+		unCompletedNoEpicNoFeature    []*FeatureTree
+	)
+
+	for _, feature := range featureTrees {
+		if !unlinkedIssuesSections.Has(feature.NotLinkedType) {
+			if feature.IncludedOnBuild {
+				completedFeatures = append(completedFeatures, feature)
+			} else {
+				unCompletedFeatures = append(unCompletedFeatures, feature)
+			}
+		}
+		if feature.NotLinkedType == sectionTypeNoFeatureWithEpic {
+			if feature.IncludedOnBuild {
+				completedEpicWithoutFeature = append(completedEpicWithoutFeature, feature)
+			} else {
+				unCompletedEpicWithoutFeature = append(unCompletedEpicWithoutFeature, feature)
+			}
+
+		}
+		if feature.NotLinkedType == sectionTypeNoEpicNoFeature {
+			if feature.IncludedOnBuild {
+				completedNoEpicNoFeature = append(completedNoEpicNoFeature, feature)
+			} else {
+				unCompletedNoEpicNoFeature = append(unCompletedNoEpicNoFeature, feature)
+			}
+		}
+	}
+	for _, s := range [][]*FeatureTree{completedFeatures, unCompletedFeatures, completedEpicWithoutFeature, unCompletedEpicWithoutFeature} {
+		sortByTitle(s)
+		// TODO - check this, should be moot, since every leaf has a PR linked to it
+		//sortByPRs(s, 1000)
+	}
+
+	var sections []SectionInfo
+
+	// define the UI sections
+	completed := Sections{
+		Tickets: completedFeatures,
+		Title:   "Lists of features that were completed when this image was built",
+		Header:  "Completed Features",
+		Note:    "These features were completed when this image was assembled",
+	}
+	unCompleted := Sections{
+		Tickets: unCompletedFeatures,
+		Title:   "Lists of features that were not completed when this image was built",
+		Header:  "Incomplete Features",
+		Note:    "When this image was assembled, these features were not yet completed. Therefore, only the Jira Cards included here are part of this release",
+	}
+	completedEpicWithoutFeatureSection := Sections{
+		Tickets: completedEpicWithoutFeature,
+		Title:   "",
+		Header:  "Complete Epics",
+		Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were completed when this image was assembled",
+	}
+	unCompletedEpicWithoutFeatureSection := Sections{
+		Tickets: unCompletedEpicWithoutFeature,
+		Title:   "",
+		Header:  "Incomplete Epics",
+		Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were not completed when this image was assembled",
+	}
+	completedNoEpicNoFeatureSection := Sections{
+		Tickets: completedNoEpicNoFeature,
+		Title:   "",
+		Header:  "Other Complete",
+		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were completed when this image was assembled",
+	}
+	unCompletedNoEpicNoFeatureSection := Sections{
+		Tickets: unCompletedNoEpicNoFeature,
+		Title:   "",
+		Header:  "Other Incomplete",
+		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were not completed when this image was assembled",
+	}
+
+	// the key needs to be a unique value per section
+	for _, section := range []SectionInfo{
+		{"completed_features", completed},
+		{"uncompleted_features", unCompleted},
+		{"completed_epic_without_feature", completedEpicWithoutFeatureSection},
+		{"uncompleted_epic_without_feature", unCompletedEpicWithoutFeatureSection},
+		{"completed_no_epic_no_feature", completedNoEpicNoFeatureSection},
+		{"uncompleted_no_epic_no_feature", unCompletedNoEpicNoFeatureSection},
+	} {
+		if len(section.Section.Tickets) > 0 {
+			sections = append(sections, section)
+		}
+	}
+
+	data := template.Must(template.New("featureRelease.html").Funcs(
+		template.FuncMap{
+			"jumpLinks":  jumpLinks,
+			"includeKey": includeKey,
+		},
+	).ParseFS(resources, "featureRelease.html"))
+
+	err = data.Execute(&buf, httpFeatureData{
+		DisplaySections: sections,
+		To:              tagInfo.Tag,
+		From:            from,
+	})
+
+	if err != nil {
+		klog.Errorf("Unable to render page: %v", err)
+		http.Error(w, "Unable to render page", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	w.Write(buf.Bytes())
+}
+
+// TODO - check for a better way to do this, without the arbitrary limit
+// the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
+func sortByPRs(tree []*FeatureTree, limit int) {
+	if len(tree) == 0 {
+		return
+	}
+
+	// Divide the tree into two groups, those with PRs and those without
+	var withPRs []*FeatureTree
+	var withoutPRs []*FeatureTree
+	for _, node := range tree {
+		if node.PRs != nil {
+			withPRs = append(withPRs, node)
+		} else {
+			withoutPRs = append(withoutPRs, node)
+		}
+
+		// Recursively sort the children of this node, limiting to the given iteration limit
+		if limit > 1 {
+			sortByPRs(node.Children, limit-1)
+		} else {
+			klog.Errorf("breaking the recursion: limit reached for the sortByPrs func! This might indicate a cyclic tree!")
+		}
+	}
+
+	// Concatenate the two groups, withPRs first
+	copy(tree, append(withPRs, withoutPRs...))
+}
+
+func includeKey(key string) bool {
+	if unlinkedIssuesSections.Has(key) {
+		return false
+	}
+	return true
+}
+
+func jumpLinks(data httpFeatureData) string {
+	var sb strings.Builder
+	for _, s := range data.DisplaySections {
+		if len(s.Section.Tickets) > 0 {
+			link := fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(s.Name), template.HTMLEscapeString(s.Section.Header))
+			sb.WriteString(link)
+			sb.WriteString(" | ")
+		}
+	}
+	return sb.String()
+}
+
+func (c *Controller) nextMinor(tagInfo *releaseTagInfo) string {
+	var v []string
+	for _, release := range tagInfo.Info.Stable.Releases {
+		for _, version := range release.Versions {
+			if strings.Contains(version.Tag.Name, "ci") || strings.Contains(version.Tag.Name, "nightly") {
+				continue
+			}
+			v = append(v, version.Tag.Name)
+		}
+	}
+	return findLastMinor(v, tagInfo.Tag)
+}
+
+func findLastMinor(versions []string, tag string) string {
+	tagSplit := strings.Split(tag, ".")
+	tagMajor, _ := strconv.Atoi(tagSplit[0])
+	tagMinor, _ := strconv.Atoi(tagSplit[1])
+	tagMinor = tagMinor - 1
+	for _, v := range versions {
+		if strings.HasPrefix(v, fmt.Sprintf("%d.%d", tagMajor, tagMinor)) {
+			return v
+		}
+	}
+	tagMinor = tagMinor - 1
+	findLastMinor(versions, fmt.Sprintf("%d.%d", tagMajor, tagMinor))
+
+	return "Error: the version could not be computed!"
+}
+
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	release := vars["release"]
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
@@ -673,11 +1186,30 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			h3 { font-size: 1.35rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h4 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h3 a { text-transform: uppercase; font-size: 1rem; }
+			.mb-custom {
+			  margin-bottom: 0.5rem !important; /* use !important to override other margin-bottom styles */
+			}
 		</style>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
 		`)
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-	fmt.Fprintf(w, "<h1>%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
+
+	fmt.Fprintf(w, "<div class=\"mb-custom\">"+
+		"<div class=\"row align-items-center\">"+
+		"<div class=\"col\">"+
+		"<h1 class=\"m-0\">%s</h1>"+
+		"</div>"+
+		"</div>"+
+		"<div class=\"row align-items-center\">"+
+		"<div class=\"col-auto\">"+
+		"<i class=\"bi bi-gift\"></i>"+
+		"</div>"+
+		"<div class=\"col text-nowrap p-0\">"+
+		"<p class=\"m-0\"><a href=\"/features/%s/release/%s?from=%s\">New features since version %s</a></p>"+
+		"</div>"+
+		"</div>"+
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), release, template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:

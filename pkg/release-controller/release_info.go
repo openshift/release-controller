@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stdErrors "errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/golang/groupcache"
@@ -28,10 +31,19 @@ import (
 )
 
 const (
-	sourceJira                = "jira"
-	jiraCustomFieldEpicLink   = "customfield_12311140"
-	jiraCustomFieldParentLink = "customfield_12313140"
+	sourceJira                       = "jira"
+	JiraCustomFieldEpicLink          = "customfield_12311140"
+	JiraCustomFieldFeatureLinkOnEpic = "customfield_12313140"
+	JiraCustomFieldFeatureLink       = "customfield_12318341"
+	JiraCustomFieldReleaseNotes      = "customfield_12310211"
+	JiraTypeSubTask                  = "Sub-task"
+	JiraTypeEpic                     = "Epic"
+	JiraTypeFeature                  = "Feature"
+	JiraTypeStory                    = "Story"
+	JiraTypeMarketProblem            = "Market Problem"
 )
+
+const maxChunkSize = 500
 
 type CachingReleaseInfo struct {
 	cache *groupcache.Group
@@ -76,6 +88,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			s, err = info.ImageInfo(parts[1], architecture)
 		case "issuesinfo":
 			s, err = info.IssuesInfo(parts[1])
+		case "featurechildren":
+			s, err = info.GetFeatureChildren(strings.Split(parts[1], ";"), 10*time.Minute)
 		}
 		if err != nil {
 			return err
@@ -130,6 +144,16 @@ func (c *CachingReleaseInfo) ImageInfo(image, archtecture string) (string, error
 	return s, err
 }
 
+func (c *CachingReleaseInfo) GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error) {
+	var s string
+	roundedTime := time.Now().Round(validityPeriod)
+	sort.Strings(featuresList)
+	key := strings.Join([]string{"featurechildren", strings.Join(featuresList, ";")}, "\x00")
+	keyWithTime := key + "_" + roundedTime.Format(time.RFC3339)
+	err := c.cache.Get(context.TODO(), keyWithTime, groupcache.StringSink(&s))
+	return s, err
+}
+
 type ReleaseInfo interface {
 	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
@@ -138,6 +162,7 @@ type ReleaseInfo interface {
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
 	IssuesInfo(changelog string) (string, error)
+	GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error)
 }
 
 type ExecReleaseInfo struct {
@@ -372,95 +397,288 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	issuesList := extractIssuesFromChangeLog(c, sourceJira)
+	issuesToPRMap := extractIssuesFromChangeLog(c, sourceJira)
+	issuesList := func() []string {
+		result := make([]string, 0)
+		for key := range issuesToPRMap {
+			result = append(result, key)
+		}
+		return result
+	}()
 	issues, err := r.GetIssuesWithChunks(issuesList)
 
 	if err != nil {
 		return "", err
 	}
 
-	// TODO - refactor this part, must be a better way to do this
 	// fetch the parent issues recursively
 	currentIssues := issues
-	for {
-		var parents []string
-		for _, issue := range currentIssues {
-			for _, f := range issue.Fields.Unknowns {
-				if f != nil {
-					parents = append(parents, f.(string))
-				}
-			}
-		}
-		if len(parents) == 0 {
-			break
-		}
-		p, err := r.GetIssuesWithChunks(parents)
-		if err != nil {
-			// TODO - maybe retry
-			return "", err
-		}
-		issues = append(issues, p...)
-		currentIssues = p
+	visited := make(map[string]bool)
+	err = r.JiraRecursiveGet(currentIssues, &issues, visited, 10000)
+	if err != nil {
+		return "", err
 	}
-
-	s, err := json.Marshal(issues)
+	t := TransformJiraIssues(issues, issuesToPRMap)
+	s, err := json.Marshal(t)
 	if err != nil {
 		return "", err
 	}
 	return string(s), nil
 }
 
-func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) ([]jiraBaseClient.Issue, error) {
-	// keep the chunk on the small side, it is much faster
-	// there is a limit for API calls per second in Akamai for Jira, don't chunk too much
+func (r *ExecReleaseInfo) JiraRecursiveGet(issues []jiraBaseClient.Issue, allIssues *[]jiraBaseClient.Issue, visited map[string]bool, limit int) error {
+	// add a fail-safe to protect against stack-overflows, in case of an infinite cycle
+	if limit == 0 {
+		return stdErrors.New("maximum recursion depth reached")
+	}
+	var parents []string
+	for _, issue := range issues {
+		// skip processing already processed issues. This will protect against cyclic loops and redundant work
+		if visited[issue.Key] {
+			continue
+		}
+
+		visited[issue.Key] = true
+		if issue.Fields.Type.Name == JiraTypeSubTask {
+			if issue.Fields.Parent != nil {
+				// TODO - check if this is expected - we do not check for parents of Features, since we consider that to be the root
+				if issue.Fields.Parent.Key != "" && issue.Fields.Type.Name != JiraTypeFeature {
+					parents = append(parents, issue.Fields.Parent.Key)
+					continue
+				}
+			}
+		}
+		// TODO - check if this is expected - we do not check for parents of Features, since we consider that to be the root
+		if issue.Fields.Type.Name != JiraTypeFeature {
+			for key, f := range issue.Fields.Unknowns {
+				if f != nil {
+					switch f.(type) {
+					case string:
+						if key == JiraCustomFieldEpicLink || key == JiraCustomFieldFeatureLinkOnEpic {
+							parents = append(parents, typeCheck(f))
+
+						}
+					case map[string]interface{}:
+						if key == JiraCustomFieldFeatureLink {
+							parents = append(parents, typeCheck(f))
+						}
+					}
+				}
+			}
+		}
+
+	}
+	if len(parents) > 0 {
+		p, err := r.GetIssuesWithChunks(parents)
+		if err != nil {
+			// TODO - retry maybe?
+			return err
+		}
+		*allIssues = append(*allIssues, p...)
+		err = r.JiraRecursiveGet(p, allIssues, visited, limit-1)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type IssueDetails struct {
+	Summary        string
+	Status         string
+	Parent         string
+	Feature        string
+	Epic           string
+	IssueType      string
+	Description    string
+	ReleaseNotes   string
+	PRs            []string
+	ResolutionDate time.Time
+}
+
+func typeCheck(o interface{}) string {
+	switch o.(type) {
+	case string:
+		return o.(string)
+	case map[string]interface{}:
+		t := o.(map[string]interface{})
+		return typeCheck(t["key"])
+	default:
+		klog.Warningf("unable to parse the Jira unknown field: %v\n", o)
+		return ""
+	}
+}
+
+func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]string) map[string]IssueDetails {
+	t := make(map[string]IssueDetails, 0)
+	for _, issue := range issues {
+		var epic, feature, releaseNotes, parent string
+		for unknownField, value := range issue.Fields.Unknowns {
+			if value != nil {
+				switch unknownField {
+				case JiraCustomFieldEpicLink:
+					epic = typeCheck(value)
+				case JiraCustomFieldFeatureLinkOnEpic:
+					feature = typeCheck(value)
+				case JiraCustomFieldFeatureLink:
+					feature = typeCheck(value)
+				case JiraCustomFieldReleaseNotes:
+					releaseNotes = typeCheck(value)
+				}
+			}
+		}
+		// TODO - there must be a better way to do this
+		if issue.Fields.Type.Name != JiraTypeSubTask && epic != "" {
+			feature = ""
+		} else {
+			if issue.Fields.Type.Name == JiraTypeSubTask {
+				if issue.Fields.Parent != nil {
+					feature = ""
+				}
+			}
+		}
+		if issue.Fields.Parent != nil {
+			if issue.Fields.Parent.Key != "" {
+				parent = issue.Fields.Parent.Key
+			}
+		}
+		t[issue.Key] = IssueDetails{
+			Summary:     checkJiraSecurity(&issue, issue.Fields.Summary),
+			Status:      issue.Fields.Status.Name,
+			Parent:      parent,
+			Feature:     feature,
+			Epic:        epic,
+			IssueType:   issue.Fields.Type.Name,
+			Description: checkJiraSecurity(&issue, issue.RenderedFields.Description),
+			// TODO- check if this should be restricted as well
+			ReleaseNotes:   releaseNotes,
+			PRs:            prMap[issue.Key],
+			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
+		}
+	}
+	return t
+}
+
+func checkJiraSecurity(issue *jiraBaseClient.Issue, data string) string {
+	securityField, err := jira.GetIssueSecurityLevel(issue)
+	if err != nil {
+		return data
+	}
+	// TODO - if the security field name is set (or any field for that matter), we restrict the issue. Check if a whitelist/blacklist is necessary
+	if securityField.Name != "" {
+		return fmt.Sprintf("The details of this Jira Card are restricted (%s)", securityField.Description)
+	} else {
+		return data
+	}
+}
+
+func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeriod time.Duration) (string, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	limit := make(chan struct{}, 10) // set the limit to 10 concurrent goroutines
+	results := make(map[string][]jiraBaseClient.Issue)
+
+	// loop to start goroutines
+	for _, feature := range featuresList {
+		wg.Add(1)
+		limit <- struct{}{}
+		go func(id string) {
+			defer func() { <-limit }()
+			defer wg.Done()
+			a, _, err := r.jiraClient.SearchWithContext(
+				context.Background(),
+				fmt.Sprintf("issuekey in childIssuesOf(%s) AND issuetype in (Epic)", id),
+				&jiraBaseClient.SearchOptions{
+					MaxResults: 500, // TODO : here we assume that a feature will not have more than 500 epics, if so, we need to paginate
+					Fields: []string{
+						"key",
+						"status",
+						"resolutiondate",
+					},
+				},
+			)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			results[id] = a
+			mu.Unlock()
+		}(feature)
+	}
+
+	wg.Wait()
+	close(limit)
+	a, err := json.Marshal(results)
+	return string(a), err
+}
+
+func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBaseClient.Issue, err error) {
+	// Keep the chunk on the small side, it is much faster
+	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
 	chunk := len(issues) / 10
 
-	// jira can't handle more than 500 IDs at once
-	if chunk > 500 {
-		chunk = 500
+	// Jira can't handle more than 500 IDs at once
+	if chunk > maxChunkSize {
+		chunk = maxChunkSize
 	}
-	if len(issues) < 50 || chunk == 0 {
-		chunk = len(issues)
+	if chunk < 50 {
+		chunk = 50
 	}
+	// Divide issues into chunks
 	dividedIssues := divideSlice(issues, chunk)
-	dividedResult := make([]*[]jiraBaseClient.Issue, 0)
+
+	// Search for issues in parallel
 	var wg sync.WaitGroup
-	var lastError error
+	var mu sync.Mutex
+	var buf bytes.Buffer
 	for _, parts := range dividedIssues {
 		wg.Add(1)
 		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
 		go func(jql string) {
 			defer wg.Done()
-			a, _, err := r.jiraClient.SearchWithContext(
+			issues, _, err := r.jiraClient.SearchWithContext(
 				context.Background(),
 				jql,
 				&jiraBaseClient.SearchOptions{
 					MaxResults: chunk + 1,
 					Fields: []string{
+						"security",
 						"summary",
-						jiraCustomFieldEpicLink,
-						jiraCustomFieldParentLink,
+						JiraCustomFieldEpicLink,
+						JiraCustomFieldFeatureLinkOnEpic,
+						JiraCustomFieldReleaseNotes,
+						JiraCustomFieldFeatureLink,
 						"issuetype",
 						"description",
+						"resolutiondate",
+						"status",
+						"parent",
 					},
+					Expand: "renderedFields",
 				},
 			)
 			if err != nil {
-				lastError = err
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					err = fmt.Errorf("search failed: %w", err)
+					buf.WriteString(err.Error() + "\n")
+				}
 				return
 			}
-			dividedResult = append(dividedResult, &a)
+			mu.Lock()
+			defer mu.Unlock()
+			result = append(result, issues...)
 		}(jql)
 	}
 	wg.Wait()
-	if lastError != nil {
-		return nil, lastError
+
+	// Combine any errors
+	if buf.Len() > 0 {
+		err = stdErrors.New(buf.String())
 	}
-	appendedResult := make([]jiraBaseClient.Issue, 0)
-	for _, parts := range dividedResult {
-		appendedResult = append(appendedResult, *parts...)
-	}
-	return appendedResult, nil
+
+	return result, err
 }
 
 func divideSlice(issues []string, chunk int) [][]string {
@@ -475,9 +693,8 @@ func divideSlice(issues []string, chunk int) [][]string {
 	return divided
 }
 
-func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) []string {
-	// store in a map to avoid issue/bug key multiplication
-	issues := make(map[string]bool, 0)
+func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) map[string][]string {
+	issues := make(map[string][]string, 0)
 	changeLogImageInfo := make(map[string][]ChangeLogImageInfo, 0)
 	changeLogImageInfo["NewImages"] = changelog.NewImages
 	changeLogImageInfo["RemovedImages"] = changelog.RemovedImages
@@ -489,18 +706,13 @@ func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) []string 
 				switch bugSource {
 				case sourceJira:
 					for key, _ := range commit.Issues {
-						issues[key] = true
+						issues[key] = append(issues[key], commit.PullURL)
 					}
 				}
 			}
 		}
 	}
-	var issuesList []string
-	for issue, _ := range issues {
-		issuesList = append(issuesList, issue)
-	}
-
-	return issuesList
+	return issues
 
 }
 
