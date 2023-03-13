@@ -250,7 +250,7 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			NotLinkedType:   sectionTypeNoFeatureWithEpic,
 			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
 			PRs:             mapIssueDetails[epic].PRs,
-			IncludedOnBuild: true,
+			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate),
 			Children:        children,
 		}
 		featureTrees = append(featureTrees, f)
@@ -279,26 +279,25 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
 	// change log, i.e. Cards part of the parent/epics/features group gathered for the featureTree, but not linked
 	// properly (e.g. an Epic that links directly to a "Market Problem" instead of a Feature, and Feature is the root)
+	toRemove := sets.String{}
 	for _, ticket := range featureTrees {
 		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
 			if isPRsEmpty(ticket) {
-				removeFeatureTree(featureTrees, ticket.IssueKey)
+				toRemove.Insert(ticket.IssueKey)
 			}
 		}
 	}
-
-	return featureTrees, nil
+	return removeUnnecessaryTrees(featureTrees, toRemove), nil
 }
 
-func removeFeatureTree(slice []*FeatureTree, issueKey string) {
-	for i, ft := range slice {
-		if ft.IssueKey == issueKey {
-			// Remove the element by swapping it with the last element
-			slice[i] = slice[len(slice)-1]
-			slice = slice[:len(slice)-1]
-			break
+func removeUnnecessaryTrees(slice []*FeatureTree, toRemove sets.String) []*FeatureTree {
+	newFeatureTree := make([]*FeatureTree, 0)
+	for _, feature := range slice {
+		if !toRemove.Has(feature.IssueKey) {
+			newFeatureTree = append(newFeatureTree, feature)
 		}
 	}
+	return newFeatureTree
 }
 
 func isPRsEmpty(ft *FeatureTree) bool {
