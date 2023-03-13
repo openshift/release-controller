@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
@@ -163,8 +164,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 
-	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureReleaseInfo)
-	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureReleaseInfo)
+	mux.HandleFunc("/api/v1/features/{release}/release/{tag}", c.apiFeatureInfo)
+	mux.HandleFunc("/features/{release}/release/{tag}", c.httpFeatureInfo)
 
 	// static files
 	mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(resources))))
@@ -172,7 +173,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	return mux
 }
 
-func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree, error) {
+func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree, error) {
 	// Get change log
 	changeLogJSON := renderResult{}
 	c.changeLogWorker(&changeLogJSON, tagInfo, "json")
@@ -208,7 +209,9 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 
 	linkedIssues := sets.String{}
 	visited := make(map[string]bool)
-	GetChildrenRecursively(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000, visited)
+	if !GetFeatureInfo(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000, visited) {
+		return nil, errors.New("failed getting the features information, cycle limit reached! ")
+	}
 
 	var noFeatureWithEpic []*FeatureTree
 	var unknowns []*FeatureTree
@@ -257,13 +260,13 @@ func (c *Controller) featureReleaseInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	redistributedUnknowns := sets.String{}
 	for _, unknown := range unknowns {
 		if unknown.Parent != "" {
-			redistributeUnknowns(featureTrees, unknown.Parent, unknown, &redistributedUnknowns)
+			redistributeUnknowns(featureTrees, unknown.Parent, unknown, &redistributedUnknowns, 10000)
 		}
 		if unknown.Epic != "" {
-			redistributeUnknowns(featureTrees, unknown.Epic, unknown, &redistributedUnknowns)
+			redistributeUnknowns(featureTrees, unknown.Epic, unknown, &redistributedUnknowns, 10000)
 		}
 		if unknown.Feature != "" {
-			redistributeUnknowns(featureTrees, unknown.Feature, unknown, &redistributedUnknowns)
+			redistributeUnknowns(featureTrees, unknown.Feature, unknown, &redistributedUnknowns, 10000)
 		}
 	}
 	for _, ticket := range unknowns {
@@ -310,32 +313,34 @@ func isPRsEmpty(ft *FeatureTree) bool {
 	return true
 }
 
-func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.String) bool {
+func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.String, limit int) bool {
+	if limit <= 0 {
+		klog.Errorf("breaking the recursion: limit reached for the redistributeUnknowns func! This might indicate a cyclic tree!")
+		return false
+	}
 	for _, node := range slice {
 		if node.IssueKey == key {
 			node.Children = append(node.Children, feature)
 			s.Insert(feature.IssueKey)
 			return true
 		}
-		redistributeUnknowns(node.Children, key, feature, s)
+		redistributeUnknowns(node.Children, key, feature, s, limit-1)
 	}
 	return false
 }
 
-// GetChildrenRecursively TODO - handle the limit better. Currently the page will never receive an error if the limit is reached and it will
-// get stucked in a "loading" state.
-func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) {
+func GetFeatureInfo(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) bool {
 
-	// add a fail-safe to protect against stack-overflow caused by a cyclic link.  If the limit has been reached, the
+	// add a fail-safe to protect against stack-overflows caused by a cyclic link. If the limit has been reached, the
 	//function will return immediately without making any further recursive calls.
 	if limit <= 0 {
-		klog.Errorf("breaking the recursion: limit reached for the GetChildrenRecursively func! This might indicate a cyclic tree!")
-		return
+		klog.Errorf("breaking the recursion: limit reached for the GetFeatureInfo func! This might indicate a cyclic tree!")
+		return false
 	}
 
 	for _, child := range ft {
 
-		// Check if the child has already been visited. This will protect against cyclic links and redundant cycles
+		// Check if the child has already been visited. This will protect against cyclic links and redundant work
 		if visited[child.IssueKey] {
 			klog.Infof("Skipping child %v as it has already been visited", child.IssueKey)
 			continue
@@ -362,9 +367,10 @@ func GetChildrenRecursively(ft []*FeatureTree, issues map[string]releasecontroll
 		}
 		child.Children = children
 
-		GetChildrenRecursively(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
+		GetFeatureInfo(child.Children, issues, buildTimeStamp, linkedIssues, limit-1, visited)
 
 	}
+	return true
 }
 
 func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buildTimeStamp *time.Time) *FeatureTree {
@@ -384,13 +390,13 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 	}
 }
 
-func (c *Controller) apiFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) apiFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	featureTrees, err := c.featureReleaseInfo(tagInfo)
+	featureTrees, err := c.releaseFeatureInfo(tagInfo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -940,7 +946,7 @@ func sortByTitle(features []*FeatureTree) {
 	})
 }
 
-func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -952,7 +958,7 @@ func (c *Controller) httpFeatureReleaseInfo(w http.ResponseWriter, req *http.Req
 		from = "the last version"
 	}
 
-	featureTrees, err := c.featureReleaseInfo(tagInfo)
+	featureTrees, err := c.releaseFeatureInfo(tagInfo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1186,11 +1192,6 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		`)
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
-	//fmt.Fprintf(w, "<div class=\"mb-custom d-flex align-items-center\">")
-	//fmt.Fprintf(w, "<h1 class=\"m-0\" >%s</h1>\n", template.HTMLEscapeString(tagInfo.Tag))
-	//fmt.Fprintf(w, "<i class=\"bi bi-gift\"></i>")
-	//fmt.Fprintf(w, "<p class=\"m-0 ms-2\">New string goes here</p>")
-	//fmt.Fprintf(w, "</div>")
 
 	fmt.Fprintf(w, "<div class=\"mb-custom\">"+
 		"<div class=\"row align-items-center\">"+
