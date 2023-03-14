@@ -250,9 +250,8 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			Feature:         mapIssueDetails[epic].Feature,
 			Parent:          mapIssueDetails[epic].Parent,
 			NotLinkedType:   sectionTypeNoFeatureWithEpic,
-			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
 			PRs:             mapIssueDetails[epic].PRs,
-			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate, mapIssueDetails[epic].Transitions),
+			IncludedInBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate, mapIssueDetails[epic].Transitions),
 			Children:        children,
 		}
 		featureTrees = append(featureTrees, f)
@@ -384,8 +383,7 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 		Epic:            issueDetails.Epic,
 		Feature:         issueDetails.Feature,
 		Parent:          issueDetails.Parent,
-		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate, issueDetails.Transitions),
-		ResolutionDate:  issueDetails.ResolutionDate,
+		IncludedInBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate, issueDetails.Transitions),
 		PRs:             issueDetails.PRs,
 		Children:        nil,
 	}
@@ -440,13 +438,12 @@ type FeatureTree struct {
 	Description     string         `json:"description"`
 	ReleaseNotes    string         `json:"release_notes,omitempty"`
 	Type            string         `json:"type"`
-	NotLinkedType   string         `json:"not_linkedt_ype,omitempty"`
-	ResolutionDate  time.Time      `json:"resolution_date"`
-	IncludedOnBuild bool           `json:"included_in_build"`
+	NotLinkedType   string         `json:"-"`
+	IncludedInBuild bool           `json:"included_in_build"`
 	PRs             []string       `json:"prs,omitempty"`
-	Epic            string         `json:"epic,omitempty"`
-	Feature         string         `json:",omitempty"`
-	Parent          string         `json:"parent,omitempty"`
+	Epic            string         `json:"-"`
+	Feature         string         `json:"-"`
+	Parent          string         `json:"-"`
 	Children        []*FeatureTree `json:"children,omitempty"`
 }
 
@@ -992,14 +989,14 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 
 	for _, feature := range featureTrees {
 		if !unlinkedIssuesSections.Has(feature.NotLinkedType) {
-			if feature.IncludedOnBuild {
+			if feature.IncludedInBuild {
 				completedFeatures = append(completedFeatures, feature)
 			} else {
 				unCompletedFeatures = append(unCompletedFeatures, feature)
 			}
 		}
 		if feature.NotLinkedType == sectionTypeNoFeatureWithEpic {
-			if feature.IncludedOnBuild {
+			if feature.IncludedInBuild {
 				completedEpicWithoutFeature = append(completedEpicWithoutFeature, feature)
 			} else {
 				unCompletedEpicWithoutFeature = append(unCompletedEpicWithoutFeature, feature)
@@ -1007,7 +1004,7 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 
 		}
 		if feature.NotLinkedType == sectionTypeNoEpicNoFeature {
-			if feature.IncludedOnBuild {
+			if feature.IncludedInBuild {
 				completedNoEpicNoFeature = append(completedNoEpicNoFeature, feature)
 			} else {
 				unCompletedNoEpicNoFeature = append(unCompletedNoEpicNoFeature, feature)
