@@ -494,6 +494,7 @@ type IssueDetails struct {
 	ReleaseNotes   string
 	PRs            []string
 	ResolutionDate time.Time
+	Transitions    []Transition
 }
 
 func typeCheck(o interface{}) string {
@@ -554,9 +555,36 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]strin
 			ReleaseNotes:   releaseNotes,
 			PRs:            prMap[issue.Key],
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
+			Transitions:    extractTransitions(issue.Changelog),
 		}
 	}
 	return t
+}
+
+type Transition struct {
+	FromStatus string
+	ToStatus   string
+	Time       time.Time
+}
+
+func extractTransitions(changelog *jiraBaseClient.Changelog) []Transition {
+	transitions := make([]Transition, 0)
+	for _, history := range changelog.Histories {
+		transitionTime, err := time.Parse("2006-01-02T15:04:05.999-0700", history.Created)
+		if err != nil {
+			klog.Errorf("failed to parse string to time.Time: %s", err)
+		}
+		for _, item := range history.Items {
+			if item.Field == "status" {
+				transitions = append(transitions, Transition{
+					FromStatus: item.FromString,
+					ToStatus:   item.ToString,
+					Time:       transitionTime,
+				})
+			}
+		}
+	}
+	return transitions
 }
 
 func checkJiraSecurity(issue *jiraBaseClient.Issue, data string) string {
@@ -654,7 +682,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 						"status",
 						"parent",
 					},
-					Expand: "renderedFields",
+					Expand: "renderedFields,changelog",
 				},
 			)
 			if err != nil {

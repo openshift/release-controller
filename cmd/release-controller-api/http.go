@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
+	"k8s.io/test-infra/prow/jira"
 	"math"
 	"net/http"
 	"net/url"
@@ -50,6 +51,7 @@ const (
 )
 
 var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns, sectionTypeUnsortedUnknowns)
+var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.ToLower(jira.StatusVerified), strings.ToLower(jira.StatusModified), strings.ToLower(jira.StatusClosed))
 
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
@@ -250,7 +252,7 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			NotLinkedType:   sectionTypeNoFeatureWithEpic,
 			ResolutionDate:  mapIssueDetails[epic].ResolutionDate,
 			PRs:             mapIssueDetails[epic].PRs,
-			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate),
+			IncludedOnBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate, mapIssueDetails[epic].Transitions),
 			Children:        children,
 		}
 		featureTrees = append(featureTrees, f)
@@ -382,7 +384,7 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 		Epic:            issueDetails.Epic,
 		Feature:         issueDetails.Feature,
 		Parent:          issueDetails.Parent,
-		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate),
+		IncludedOnBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate, issueDetails.Transitions),
 		ResolutionDate:  issueDetails.ResolutionDate,
 		PRs:             issueDetails.PRs,
 		Children:        nil,
@@ -410,11 +412,26 @@ func (c *Controller) apiFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	w.Write(data)
 }
 
-func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time) bool {
+func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time, transitions []releasecontroller.Transition) bool {
 	if !issueTimestamp.IsZero() && issueTimestamp.Before(*buildTimeStamp) {
 		return true
 	}
+	status := getPastStatus(transitions, buildTimeStamp)
+	if statusComplete.Has(strings.ToLower(status)) {
+		return true
+	}
 	return false
+}
+
+func getPastStatus(transitions []releasecontroller.Transition, buildTime *time.Time) string {
+	status := "New"
+	for _, t := range transitions {
+		if t.Time.After(*buildTime) {
+			break
+		}
+		status = t.ToStatus
+	}
+	return status
 }
 
 type FeatureTree struct {
