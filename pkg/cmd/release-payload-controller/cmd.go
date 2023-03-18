@@ -3,6 +3,8 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
+	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
@@ -85,6 +87,15 @@ func (o *Options) Run(ctx context.Context) error {
 	prowJobInformerFactory := prowjobinformers.NewSharedInformerFactory(prowJobClient, controllerDefaultResyncDuration)
 	prowJobInformer := prowJobInformerFactory.Prow().V1().ProwJobs()
 
+	// ImageStream Informers
+	imageStreamClient, err := imageclientset.NewForConfig(inClusterConfig)
+	if err != nil {
+		klog.Fatalf("Error building imagestream clientset: %s", err.Error())
+	}
+
+	imageStreamInformerFactory := imageinformers.NewSharedInformerFactory(imageStreamClient, controllerDefaultResyncDuration)
+	imageStreamInformer := imageStreamInformerFactory.Image().V1().ImageStreams()
+
 	// Payload Verification Controller
 	payloadVerificationController, err := NewPayloadVerificationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
@@ -133,10 +144,17 @@ func (o *Options) Run(ctx context.Context) error {
 		return err
 	}
 
+	// ProwJob Controller
+	legacyResultsController, err := NewLegacyJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), imageStreamInformer, o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
 	// Start the informers
 	kubeFactory.Start(ctx.Done())
 	releasePayloadInformerFactory.Start(ctx.Done())
 	prowJobInformerFactory.Start(ctx.Done())
+	imageStreamInformerFactory.Start(ctx.Done())
 
 	// Run the Controllers
 	go payloadVerificationController.RunWorkers(ctx, 10)
@@ -147,6 +165,7 @@ func (o *Options) Run(ctx context.Context) error {
 	go payloadRejectedController.RunWorkers(ctx, 10)
 	go pjController.RunWorkers(ctx, 10)
 	go aggregateStateController.RunWorkers(ctx, 10)
+	go legacyResultsController.RunWorkers(ctx, 10)
 
 	<-ctx.Done()
 

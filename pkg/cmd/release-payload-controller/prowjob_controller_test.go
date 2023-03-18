@@ -269,6 +269,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{},
@@ -284,6 +287,9 @@ func TestProwJobStatusSync(t *testing.T) {
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
@@ -307,6 +313,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
@@ -324,6 +333,9 @@ func TestProwJobStatusSync(t *testing.T) {
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
@@ -353,6 +365,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
@@ -372,6 +387,9 @@ func TestProwJobStatusSync(t *testing.T) {
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
@@ -407,6 +425,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
@@ -424,6 +445,9 @@ func TestProwJobStatusSync(t *testing.T) {
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
@@ -463,6 +487,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					BlockingJobResults: []v1alpha1.JobStatus{
@@ -483,6 +510,9 @@ func TestProwJobStatusSync(t *testing.T) {
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
@@ -526,6 +556,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					UpgradeJobResults: []v1alpha1.JobStatus{
@@ -546,6 +579,9 @@ func TestProwJobStatusSync(t *testing.T) {
 							Namespace: "ci",
 						},
 					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					UpgradeJobResults: []v1alpha1.JobStatus{
@@ -558,6 +594,142 @@ func TestProwJobStatusSync(t *testing.T) {
 						newJobStatus("gcp", "release-openshift-origin-installer-e2e-gcp-upgrade", 0, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
 							newJobRunResult("4.11.22-upgrade-from-4.11.10-gcp", "ci", "build03", v1alpha1.JobRunStateSuccess, "https://abc.123.com", v1alpha1.JobRunUpgradeTypeUpgrade),
 						}),
+					},
+				},
+			},
+		},
+		{
+			name: "InvalidPayloadVerificationDataSource",
+			prowjob: []runtime.Object{
+				newProwJob("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "4.11.0-0.nightly-2022-02-09-091559", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", "ocp/4.11-art-latest", "build01", v1.SuccessState, "https://abc.123.com"),
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: "Invalid",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: "Invalid",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+		},
+		{
+			name: "MissingPayloadVerificationDataSource",
+			prowjob: []runtime.Object{
+				newProwJob("4.11.0-0.nightly-2022-02-09-091559-aws-serial", "ci", "4.11.0-0.nightly-2022-02-09-091559", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", "ocp/4.11-art-latest", "build01", v1.SuccessState, "https://abc.123.com"),
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+		},
+		{
+			name:    "ImageStreamPayloadVerificationDataSource",
+			prowjob: []runtime.Object{},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceImageStream,
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceImageStream,
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("aws-serial", "periodic-ci-openshift-release-master-nightly-4.10-e2e-aws-serial", 0, 0, v1alpha1.JobStateUnknown, nil),
 					},
 				},
 			},
@@ -620,7 +792,10 @@ func TestProwJobStatusSync(t *testing.T) {
 			}
 
 			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil && err != testCase.expectedErr {
+			if err != nil && testCase.expectedErr == nil {
+				t.Fatalf("%s - encountered unexpected error: %v", testCase.name, err)
+			}
+			if err != nil && !cmp.Equal(err.Error(), testCase.expectedErr.Error()) {
 				t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
 			}
 

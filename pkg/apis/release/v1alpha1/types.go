@@ -208,6 +208,8 @@ type ReleasePayloadOverride struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// PayloadVerificationConfig specifies the configuration used to verify the ReleasePayload
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.payloadVerificationDataSource) || has(self.payloadVerificationDataSource)", message="PayloadVerificationDataSource is required once set"
 type PayloadVerificationConfig struct {
 	// BlockingJobs are release verification jobs that will prevent a ReleasePayload from being Accepted if the job fails
 	BlockingJobs []CIConfiguration `json:"blockingJobs,omitempty"`
@@ -215,7 +217,30 @@ type PayloadVerificationConfig struct {
 	InformingJobs []CIConfiguration `json:"informingJobs,omitempty"`
 	// UpgradeJobs are automatically generated jobs used to execute upgrade tests against a ReleasePayload
 	UpgradeJobs []CIConfiguration `json:"upgradeJobs,omitempty"`
+	// PayloadVerificationDataSource where JobRunResult will be collected from.
+	// +kubebuilder:default=BuildFarmLookup
+	// +optional
+	PayloadVerificationDataSource PayloadVerificationDataSource `json:"payloadVerificationDataSource,omitempty"`
 }
+
+// PayloadVerificationDataSource specifies the location where JobRunResult will be collected from
+// If BuildFarmLookup, the results are expected to be picked up, in realtime, as ProwJobs execute on the various
+// CI build farms.  This is the default value if not specified.
+// If ImageStreamTagAnnotation, the results will be scrapped from the ImageStreamTag's annotations of the
+// respective release.
+// +kubebuilder:validation:Optional
+// +kubebuilder:validation:Enum=BuildFarmLookup;ImageStreamTagAnnotation
+// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="PayloadVerificationDataSource is immutable"
+type PayloadVerificationDataSource string
+
+const (
+	// PayloadVerificationDataSourceBuildFarm payload verification results will be collected from the ProwJobs running
+	// on the various build farms
+	PayloadVerificationDataSourceBuildFarm PayloadVerificationDataSource = "BuildFarmLookup"
+	// PayloadVerificationDataSourceImageStream payload verification results will be collected from respective release's
+	// ImageStream Annotation
+	PayloadVerificationDataSourceImageStream PayloadVerificationDataSource = "ImageStreamTagAnnotation"
+)
 
 // CIConfiguration is an Openshift CI system's job definition of a verification test to run against a ReleasePayload
 type CIConfiguration struct {
