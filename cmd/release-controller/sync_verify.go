@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/go-retryablehttp"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"github.com/blang/semver"
+	"github.com/hashicorp/go-retryablehttp"
 	imagev1 "github.com/openshift/api/image/v1"
 	citools "github.com/openshift/ci-tools/pkg/release/official"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -170,35 +170,36 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
 			version.Minor--
 			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
-				for _, stable := range ref.Releases {
-					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
-					sort.Sort(versions)
-					if v := releasecontroller.FirstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
-						previousTag = v.Tag.Name
-						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-						break
-					}
-				}
+				previousTag, previousReleasePullSpec = findLatestStableForVersion(ref, version)
 			}
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousPatch:
 		if version, err := semver.Parse(releaseTag.Name); err == nil {
 			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
-				for _, stable := range ref.Releases {
-					versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
-					sort.Sort(versions)
-					if v := releasecontroller.FirstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
-						previousTag = v.Tag.Name
-						previousReleasePullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + previousTag
-						break
-					}
-				}
+				previousTag, previousReleasePullSpec = findLatestStableForVersion(ref, version)
 			}
 		}
 	default:
 		return "", "", fmt.Errorf("release %s has job %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
 	}
 	return previousTag, previousReleasePullSpec, err
+}
+
+func findLatestStableForVersion(ref *releasecontroller.StableReferences, version semver.Version) (string, string) {
+	var currentLatestRelease *semver.Version
+	var latestTag, latestPullSpec string
+	for _, stable := range ref.Releases {
+		versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
+		sort.Sort(versions)
+		if v := releasecontroller.FirstTagWithMajorMinorSemanticVersion(versions, version); v != nil {
+			if currentLatestRelease == nil || v.Version.Compare(*currentLatestRelease) > 0 {
+				currentLatestRelease = v.Version
+				latestTag = v.Tag.Name
+				latestPullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + latestTag
+			}
+		}
+	}
+	return latestTag, latestPullSpec
 }
 
 func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.UpgradeRelease, release *releasecontroller.Release) (string, string, error) {
