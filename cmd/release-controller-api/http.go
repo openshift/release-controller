@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/rhcos"
 	"io/fs"
-	"k8s.io/test-infra/prow/jira"
 	"math"
 	"net/http"
 	"net/url"
@@ -20,9 +18,8 @@ import (
 	"text/template"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/rhcos"
 
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -32,7 +29,9 @@ import (
 	"github.com/russross/blackfriday"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+	"k8s.io/test-infra/prow/jira"
 )
 
 //go:embed static
@@ -1142,30 +1141,28 @@ func jumpLinks(data httpFeatureData) string {
 	return sb.String()
 }
 
-func (c *Controller) nextMinor(tagInfo *releaseTagInfo) string {
-	var v []string
+func nextMinor(tagInfo *releaseTagInfo) string {
+	var v semver.Versions
 	for _, release := range tagInfo.Info.Stable.Releases {
 		for _, version := range release.Versions {
-			if strings.Contains(version.Tag.Name, "ci") || strings.Contains(version.Tag.Name, "nightly") {
-				continue
-			}
-			v = append(v, version.Tag.Name)
+			v = append(v, *version.Version)
 		}
 	}
+	sort.Sort(sort.Reverse(v))
 	return findLastMinor(v, tagInfo.Tag)
 }
 
-func findLastMinor(versions []string, tag string) string {
-	tagSplit := strings.Split(tag, ".")
-	tagMajor, _ := strconv.Atoi(tagSplit[0])
-	tagMinor, _ := strconv.Atoi(tagSplit[1])
-	tagMinor = tagMinor - 1
+func findLastMinor(versions semver.Versions, tag string) string {
+	parsedTag, err := releasecontroller.SemverParseTolerant(tag)
+	if err != nil {
+		return "Error: the version could not be computed!"
+	}
+	tagMajor, tagMinor := parsedTag.Major, parsedTag.Minor-1
 	for _, v := range versions {
-		if strings.HasPrefix(v, fmt.Sprintf("%d.%d", tagMajor, tagMinor)) {
-			return v
+		if v.Major == tagMajor && v.Minor == tagMinor {
+			return v.String()
 		}
 	}
-	tagMinor = tagMinor - 1
 	findLastMinor(versions, fmt.Sprintf("%d.%d", tagMajor, tagMinor))
 
 	return "Error: the version could not be computed!"
@@ -1220,7 +1217,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		"<p class=\"m-0\"><a href=\"/features/%s?from=%s\">New features since version %s</a></p>"+
 		"</div>"+
 		"</div>"+
-		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), c.nextMinor(tagInfo), c.nextMinor(tagInfo))
+		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), nextMinor(tagInfo), nextMinor(tagInfo))
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
