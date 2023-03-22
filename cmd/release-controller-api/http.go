@@ -1141,7 +1141,7 @@ func jumpLinks(data httpFeatureData) string {
 	return sb.String()
 }
 
-func nextMinor(tagInfo *releaseTagInfo) string {
+func previousMinor(tagInfo *releaseTagInfo) string {
 	var v semver.Versions
 	for _, release := range tagInfo.Info.Stable.Releases {
 		for _, version := range release.Versions {
@@ -1149,11 +1149,14 @@ func nextMinor(tagInfo *releaseTagInfo) string {
 		}
 	}
 	sort.Sort(sort.Reverse(v))
-	return findLastMinor(v, tagInfo.Tag)
+	return findPreviousMinor(v, tagInfo.Tag)
 }
 
-func findLastMinor(versions semver.Versions, tag string) string {
+func findPreviousMinor(versions semver.Versions, tag string) string {
 	parsedTag, err := releasecontroller.SemverParseTolerant(tag)
+	if parsedTag.Minor == 0 {
+		return ""
+	}
 	if err != nil {
 		return "Error: the version could not be computed!"
 	}
@@ -1163,9 +1166,7 @@ func findLastMinor(versions semver.Versions, tag string) string {
 			return v.String()
 		}
 	}
-	findLastMinor(versions, fmt.Sprintf("%d.%d", tagMajor, tagMinor))
-
-	return "Error: the version could not be computed!"
+	return findPreviousMinor(versions, fmt.Sprintf("%d.%d", tagMajor, tagMinor))
 }
 
 func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
@@ -1203,21 +1204,31 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprintf(w, "<p><a href=\"/\">Back to index</a></p>\n")
 
-	fmt.Fprintf(w, "<div class=\"mb-custom\">"+
-		"<div class=\"row align-items-center\">"+
-		"<div class=\"col\">"+
-		"<h1 class=\"m-0\">%s</h1>"+
-		"</div>"+
-		"</div>"+
-		"<div class=\"row align-items-center\">"+
-		"<div class=\"col-auto\">"+
-		"<i class=\"bi bi-gift\"></i>"+
-		"</div>"+
-		"<div class=\"col text-nowrap p-0\">"+
-		"<p class=\"m-0\"><a href=\"/features/%s?from=%s\">New features since version %s</a></p>"+
-		"</div>"+
-		"</div>"+
-		"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), nextMinor(tagInfo), nextMinor(tagInfo))
+	if previousMinor(tagInfo) == "" {
+		fmt.Fprintf(w, "<div class=\"mb-custom\">"+
+			"<div class=\"row align-items-center\">"+
+			"<div class=\"col\">"+
+			"<h1 class=\"m-0\">%s</h1>"+
+			"</div>"+
+			"</div>"+
+			"</div>", template.HTMLEscapeString(tagInfo.Tag))
+	} else {
+		fmt.Fprintf(w, "<div class=\"mb-custom\">"+
+			"<div class=\"row align-items-center\">"+
+			"<div class=\"col\">"+
+			"<h1 class=\"m-0\">%s</h1>"+
+			"</div>"+
+			"</div>"+
+			"<div class=\"row align-items-center\">"+
+			"<div class=\"col-auto\">"+
+			"<i class=\"bi bi-gift\"></i>"+
+			"</div>"+
+			"<div class=\"col text-nowrap p-0\">"+
+			"<p class=\"m-0\"><a href=\"/features/%s?from=%s\">New features since version %s</a></p>"+
+			"</div>"+
+			"</div>"+
+			"</div>", template.HTMLEscapeString(tagInfo.Tag), template.HTMLEscapeString(tagInfo.Tag), previousMinor(tagInfo), previousMinor(tagInfo))
+	}
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:

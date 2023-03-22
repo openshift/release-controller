@@ -79,7 +79,7 @@ func TestNextMinor(t *testing.T) {
 	}}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actualTag := nextMinor(&tc.tagInfo)
+			actualTag := previousMinor(&tc.tagInfo)
 			if actualTag != tc.expectedTag {
 				t.Errorf("Expected tag %s, got %s", tc.expectedTag, actualTag)
 			}
