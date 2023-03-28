@@ -832,6 +832,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 						Image: image,
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
+							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
 							{Name: "GIT_COMMITTER_NAME", Value: "test"},
 							{Name: "GIT_COMMITTER_EMAIL", Value: "test@test.com"},
 						},
@@ -853,13 +854,13 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							trap 'kill $(jobs -p); exit 0' TERM
 
 							# ensure we are logged in to our registry
-							mkdir -p /tmp/.docker/
+							mkdir -p /tmp/.docker/ "${XDG_RUNTIME_DIR}"
 							cp /tmp/pull-secret/* /tmp/.docker/ || true
 
 							git config --global credential.helper store
 							git config --global user.name test
 							git config --global user.email test@test.com
-							oc registry login
+							oc registry login --to /tmp/.docker/config.json
 							while true; do
 							  sleep 180 & wait
 							done
@@ -991,6 +992,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 						WorkingDir: "/srv/cache",
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
+							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
 							{Name: "RELEASE_NAMESPACE", Value: r.releaseNamespace},
 							{Name: "REGISTRY", Value: r.registry},
 						},
@@ -1014,9 +1016,9 @@ set -euo pipefail
 trap 'kill $(jobs -p); exit 0' TERM
 
 # ensure we are logged in to our registry
-mkdir -p /tmp/.docker/
+mkdir -p /tmp/.docker/ "${XDG_RUNTIME_DIR}"
 cp /tmp/pull-secret/* /tmp/.docker/ || true
-oc registry login
+oc registry login --to /tmp/.docker/config.json
 
 if which python3 2> /dev/null; then
   # If python3 is available, use it
