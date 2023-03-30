@@ -146,11 +146,6 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 		return err
 	}
 
-	// If PayloadVerificationDataSource is not the Build Farm, then we don't have anything to do...
-	if originalReleasePayload.Spec.PayloadVerificationConfig.PayloadVerificationDataSource != v1alpha1.PayloadVerificationDataSourceBuildFarm {
-		return nil
-	}
-
 	// If the prow coordinates are not set, then we cannot proceed...
 	if len(originalReleasePayload.Spec.PayloadCreationConfig.ProwCoordinates.Namespace) == 0 {
 		klog.Warning(fmt.Sprintf("unable to process prowjobs for releasepayload %q", originalReleasePayload.Name))
