@@ -282,12 +282,14 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 		prefix = `
 			set -eu
 			mkdir $HOME/.docker/
+			mkdir -p "${XDG_RUNTIME_DIR}"
 			cp -Lf /tmp/pull-secret/* $HOME/.docker/
-			oc registry login
+			oc registry login --to $HOME/.docker/config.json
 			`
 	} else {
 		prefix = `
 			set -eu
+			mkdir -p "${XDG_RUNTIME_DIR}"
 			oc registry login
 			`
 	}
@@ -312,6 +314,7 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 
 							Env: []corev1.EnvVar{
 								{Name: "HOME", Value: "/tmp"},
+								{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
 							},
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 						},
