@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
+	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
+	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/jira"
 	"strings"
 	"time"
@@ -47,26 +49,25 @@ import (
 // in a release is updated. A consumer sets the release.openshift.io/config
 // annotation on an image stream in the release namespace and the controller will
 //
-// 1. Create a tag in the "release" image stream that uses the release name +
-//    current timestamp.
-// 2. Mirror all of the tags in the input image stream so that they can't be
-//    pruned.
-// 3. Launch a job in the job namespace to invoke 'oc adm release new' from
-//    the mirror pointing to the release tag we created in step 1.
-// 4. If the job succeeds in pushing the tag, set an annotation on that tag
-//    release.openshift.io/phase = "Ready", indicating that the release can be
-//    used by other steps
+//  1. Create a tag in the "release" image stream that uses the release name +
+//     current timestamp.
+//  2. Mirror all of the tags in the input image stream so that they can't be
+//     pruned.
+//  3. Launch a job in the job namespace to invoke 'oc adm release new' from
+//     the mirror pointing to the release tag we created in step 1.
+//  4. If the job succeeds in pushing the tag, set an annotation on that tag
+//     release.openshift.io/phase = "Ready", indicating that the release can be
+//     used by other steps
 //
 // TODO:
 //
-// 5. Perform a number of manual and automated tasks on the release - if all are
-//    successful, set the phase to "Verified" and then promote the tag to external
-//    locations.
+//  5. Perform a number of manual and automated tasks on the release - if all are
+//     successful, set the phase to "Verified" and then promote the tag to external
+//     locations.
 //
 // Invariants:
 //
 // 1. ...
-//
 type Controller struct {
 	eventRecorder record.EventRecorder
 
@@ -95,6 +96,8 @@ type Controller struct {
 	bugzillaQueue workqueue.RateLimitingInterface
 	// jiraQueue is the list of releases whose fixed issues must be synced to jira
 	jiraQueue workqueue.RateLimitingInterface
+	// legacyResultsQueue is the list of previous releases that need to migrate to ReleasePayloads
+	legacyResultsQueue workqueue.RateLimitingInterface
 
 	// auditTracker keeps track of when tags were audited
 	auditTracker *AuditTracker
@@ -147,6 +150,7 @@ type Controller struct {
 	artSuffix    string
 
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter
+	releasePayloadLister releasepayloadlister.ReleasePayloadLister
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -167,6 +171,7 @@ func NewController(
 	architecture string,
 	artSuffix string,
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter,
+	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -228,6 +233,9 @@ func NewController(
 		artSuffix:    artSuffix,
 
 		releasePayloadClient: releasePayloadClient,
+		releasePayloadLister: releasePayloadInformer.Lister(),
+
+		legacyResultsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "legacyResults"),
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)
@@ -308,6 +316,10 @@ func (c *Controller) addBugzillaQueueKey(key queueKey) {
 
 func (c *Controller) addJiraQueueKey(key queueKey) {
 	c.jiraQueue.Add(key)
+}
+
+func (c *Controller) addLegacyResultsQueueKey(key queueKey) {
+	c.legacyResultsQueue.Add(key)
 }
 
 func (c *Controller) processJob(obj interface{}) {
@@ -408,6 +420,11 @@ func (c *Controller) RunAudit(workers int, stopCh <-chan struct{}) {
 func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
+	defer c.gcQueue.ShutDown()
+	defer c.auditQueue.ShutDown()
+	defer c.bugzillaQueue.ShutDown()
+	defer c.jiraQueue.ShutDown()
+	defer c.legacyResultsQueue.ShutDown()
 
 	klog.Infof("Starting controller")
 
@@ -432,6 +449,10 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.jiraWorker, time.Second, stopCh)
+	}
+
+	for i := 0; i < workers; i++ {
+		go wait.Until(c.legacyResultsWorker, time.Second, stopCh)
 	}
 
 	<-stopCh
@@ -579,6 +600,29 @@ func (c *Controller) processNextJira() bool {
 	err := c.syncJira(key)
 	c.handleNamespaceErr(c.jiraQueue, err, key)
 	klog.V(5).Infof("jira worker processing %v end", key)
+
+	return true
+}
+
+func (c *Controller) legacyResultsWorker() {
+	for c.processNextLegacyResult() {
+	}
+	klog.V(4).Infof("Worker stopped")
+}
+
+func (c *Controller) processNextLegacyResult() bool {
+	obj, quit := c.legacyResultsQueue.Get()
+	if quit {
+		return false
+	}
+	defer c.legacyResultsQueue.Done(obj)
+
+	key := obj.(queueKey)
+
+	klog.V(5).Infof("legacy results worker processing %v begin", key)
+	err := c.syncLegacyResults(key)
+	c.handleNamespaceErr(c.legacyResultsQueue, err, key)
+	klog.V(5).Infof("legacy results worker processing %v end", key)
 
 	return true
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	"net/http"
 	"net/url"
 	"os"
@@ -109,6 +110,8 @@ type options struct {
 	PruneGraph        bool
 	PrintPrunedGraph  string
 	ConfirmPruneGraph bool
+
+	ProcessLegacyResults bool
 }
 
 // Add metrics for bugzilla verifier errors
@@ -222,6 +225,8 @@ func main() {
 	flagset.BoolVar(&opt.PruneGraph, "prune-graph", opt.PruneGraph, "Reads the upgrade graph, prunes edges, and prints the result")
 	flagset.StringVar(&opt.PrintPrunedGraph, "print-pruned-graph", opt.PrintPrunedGraph, "Print the result of pruning the graph.  Valid options are: <|secret|debug>. The default, 'secret', is the base64 encoded secret payload. The 'debug' option will pretty print the json payload")
 	flagset.BoolVar(&opt.ConfirmPruneGraph, "confirm-prune-graph", opt.ConfirmPruneGraph, "Persist the pruned graph")
+
+	flagset.BoolVar(&opt.ProcessLegacyResults, "process-legacy-results", opt.ProcessLegacyResults, "enable the migration of imagestream based results to ReleasePayloads")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -399,6 +404,9 @@ func (o *options) Run() error {
 	if err != nil {
 		klog.Fatal(err)
 	}
+	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, 24*time.Hour)
+	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+	hasSynced = append(hasSynced, releasePayloadInformer.Informer().HasSynced)
 
 	c := NewController(
 		client.CoreV1(),
@@ -417,6 +425,7 @@ func (o *options) Run() error {
 		architecture,
 		o.ARTSuffix,
 		releasePayloadClient.ReleaseV1alpha1(),
+		releasePayloadInformer,
 	)
 
 	if o.VerifyBugzilla {
@@ -498,6 +507,7 @@ func (o *options) Run() error {
 	}
 
 	batchFactory.Start(stopCh)
+	releasePayloadInformerFactory.Start(stopCh)
 
 	// register the publish and release namespaces
 	publishNamespaces := sets.NewString(o.PublishNamespaces...)
@@ -602,6 +612,10 @@ func (o *options) Run() error {
 		go releasecontroller.SyncGraphToSecret(graph, true, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 		// maintain the release pods
 		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
+
+		if o.ProcessLegacyResults {
+			go c.processLegacyResults(6*time.Hour, stopCh)
+		}
 
 		c.RunSync(3, stopCh)
 		return nil

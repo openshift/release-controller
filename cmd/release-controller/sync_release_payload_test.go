@@ -29,6 +29,7 @@ func TestNewReleasePayload(t *testing.T) {
 		prowNamespace    string
 		verificationJobs map[string]releasecontroller.ReleaseVerification
 		upgradeJobs      map[string]releasecontroller.UpgradeVerification
+		dataSource       v1alpha1.PayloadVerificationDataSource
 		expected         *v1alpha1.ReleasePayload
 	}{
 		{
@@ -43,6 +44,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -64,9 +66,10 @@ func TestNewReleasePayload(t *testing.T) {
 						},
 					},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
-						BlockingJobs:  []v1alpha1.CIConfiguration{},
-						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
+						BlockingJobs:                  []v1alpha1.CIConfiguration{},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -85,6 +88,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -112,8 +116,58 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 							},
 						},
-						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+				},
+			},
+		},
+		{
+			name:          "LegacyBlockingJob",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"blocking-job": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+					},
+				},
+			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceImageStream,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "blocking-job",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+							},
+						},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceImageStream,
 					},
 				},
 			},
@@ -133,6 +187,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -161,8 +216,9 @@ func TestNewReleasePayload(t *testing.T) {
 								MaxRetries:             3,
 							},
 						},
-						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -182,6 +238,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -210,7 +267,8 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 							},
 						},
-						UpgradeJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -231,6 +289,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -260,7 +319,8 @@ func TestNewReleasePayload(t *testing.T) {
 								MaxRetries:             3,
 							},
 						},
-						UpgradeJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -289,6 +349,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.12.11",
@@ -326,6 +387,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
 							},
 						},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -355,6 +417,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.12.11",
@@ -388,6 +451,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "release-openshift-origin-installer-e2e-azure-upgrade",
 							},
 						},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -410,6 +474,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -444,7 +509,8 @@ func TestNewReleasePayload(t *testing.T) {
 								AnalysisJobCount:       10,
 							},
 						},
-						UpgradeJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -470,6 +536,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -504,7 +571,8 @@ func TestNewReleasePayload(t *testing.T) {
 								AnalysisJobCount:       10,
 							},
 						},
-						UpgradeJobs: []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -592,6 +660,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -675,6 +744,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "release-openshift-origin-installer-e2e-gcp-upgrade",
 							},
 						},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
 				},
 			},
@@ -683,7 +753,7 @@ func TestNewReleasePayload(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs)
+			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
 			}
