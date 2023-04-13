@@ -143,6 +143,7 @@ func TestVerifyIssues(t *testing.T) {
 	var onQAIssue2 jira.Issue
 	var onQAIssue3 jira.Issue
 	var verifiedIssue jira.Issue
+	var verifiedAndCommentedIssue jira.Issue
 	var inProgressIssue jira.Issue
 	var inProgressIssue2 jira.Issue
 
@@ -165,6 +166,10 @@ func TestVerifyIssues(t *testing.T) {
 		{
 			issueJSON: verifiedIssueJSON,
 			object:    &verifiedIssue,
+		},
+		{
+			issueJSON: verifiedAndCommentedIssueJSON,
+			object:    &verifiedAndCommentedIssue,
 		},
 		{
 			issueJSON: inProgressIssueJSON,
@@ -255,7 +260,22 @@ func TestVerifyIssues(t *testing.T) {
 			expected: expectedResult{
 				errors:  nil,
 				status:  "Verified",
-				message: "",
+				message: "Fix included in accepted release 4.10",
+			},
+		},
+		{
+			name: "Already verified and Commented Issue",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&verifiedAndCommentedIssue},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+			},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.13.0-0.nightly-2022-11-12",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.13.0-0.nightly-2022-11-12",
 			},
 		},
 		{
@@ -340,7 +360,7 @@ func TestVerifyIssues(t *testing.T) {
 			if tc.expected.message != "" {
 				foundExpectedComment := false
 				for _, comment := range jc.Issues[0].Fields.Comments.Comments {
-					if comment.Body == tc.expected.message && (comment.Author.Name == "") {
+					if comment.Body == tc.expected.message {
 						foundExpectedComment = true
 						break
 					}
@@ -410,6 +430,64 @@ const verifiedIssueJSON = `
     ],
     "comment": {
       "comments": []
+    }
+  }
+}
+`
+
+const verifiedAndCommentedIssueJSON = `
+{
+  "key": "OCPBUGS-123",
+  "fields": {
+    "status": {
+      "description": "Issue is verified",
+      "name": "Verified"
+    },
+    "customfield_12315948": {
+      "name": "qa_contact@redhat.com",
+      "key": "qa_contact",
+      "emailAddress": "qa_contact@redhat.com",
+      "displayName": "Jack Smith"
+    },
+    "customfield_12319940": [
+      {
+        "self": "https://issues.redhat.com/rest/api/2/version/12390168",
+        "id": "12390168",
+        "description": "Release Version",
+        "name": "4.13.0"
+      }
+    ],
+    "comment": {
+      "comments": [
+		{
+			"author": {
+				"self": "https://issues.redhat.com/rest/api/2/user?username=openshift-crt-jira-release-controller",
+				"name": "openshift-crt-jira-release-controller",
+				"key": "JIRAUSER189509",
+				"emailAddress": "brawilli+openshift-crt-jira-release-controller@redhat.com",
+
+				"displayName": "OpenShift Release-Controller Bot",
+				"active": true,
+				"timeZone": "America/New_York"
+			},
+			"body": "Fix included in accepted release 4.13.0-0.nightly-2022-11-12",
+			"updateAuthor": {
+				"self": "https://issues.redhat.com/rest/api/2/user?username=openshift-crt-jira-release-controller",
+				"name": "openshift-crt-jira-release-controller",
+				"key": "JIRAUSER189509",
+				"emailAddress": "brawilli+openshift-crt-jira-release-controller@redhat.com",
+				"displayName": "OpenShift Release-Controller Bot",
+				"active": true,
+				"timeZone": "America/New_York"
+			},
+			"created": "2022-11-12T20:56:58.911+0000",
+			"updated": "2022-11-12T20:56:58.911+0000",
+			"visibility": {
+				"type": "group",
+				"value": "Red Hat Employee"
+			}
+		}
+    ]
     }
   }
 }
