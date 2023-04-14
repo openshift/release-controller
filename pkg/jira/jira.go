@@ -85,30 +85,29 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 	return unlabeledPRs, nil
 }
 
-func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs []error, tagName string) (bool, string, []error, bool) {
+func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
 	var success bool
 	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
 	var unlabeledPRs []pr
-	var issueErrs []error
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
 		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
-		return true, "", nil, false
+		return message, false
 	} else {
 		for _, extPR := range extPRs {
 			var newErr error
 			unlabeledPRs, newErr = c.ghUnlabeledPRs(extPR)
 			if newErr != nil {
-				errs = append(errs, newErr)
-				return false, "", errs, false
+				*errs = append(*errs, newErr)
+				return "", false
 			}
 		}
 	}
-	if len(unlabeledPRs) > 0 || len(issueErrs) > 0 {
+	if len(unlabeledPRs) > 0 || len(*errs) > 0 {
 		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", message, jira.StatusVerified)
 		for _, extPR := range unlabeledPRs {
 			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by the QA Contact", message, extPR.org, extPR.repo, extPR.prNum)
 		}
-		for _, err := range issueErrs {
+		for _, err := range *errs {
 			message = fmt.Sprintf("%s\n- %s", message, err)
 		}
 		message = fmt.Sprintf("%s\n\nThis issue must now be manually moved to VERIFIED", message)
@@ -122,11 +121,39 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs [
 	if success {
 		message = fmt.Sprintf("%s\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED", message)
 	}
-	return false, message, errs, success
+	return message, success
 }
 
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
 // reviewed and lgtm'd by the bug's QA Contact
+
+func (c *Verifier) commentIssue(errs *[]error, issue *jiraBaseClient.Issue, message string) {
+	if message == "" {
+		return
+	}
+	comments, err := c.jiraClient.GetIssue(issue.ID)
+	if err != nil {
+		*errs = append(*errs, fmt.Errorf("failed to get comments on issue %s: %w", issue.ID, err))
+		return
+	}
+	for _, comment := range comments.Fields.Comments.Comments {
+		// if a ticket is on the verified state but does not contain a comment from the bot, it will add one
+		// if a manually verified ticket is already commented, we won't check the message body
+		if (comment.Body == message || strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified)) && (comment.Author.Name == "openshift-crt-jira-release-controller" || comment.Author.EmailAddress == "brawilli+openshift-crt-jira-release-controller@redhat.com") {
+			return
+		}
+	}
+
+	restrictedComment := &jiraBaseClient.CommentVisibility{
+		Type:  "group",
+		Value: "Red Hat Employee",
+	}
+	if _, err := c.jiraClient.AddComment(issue.ID, &jiraBaseClient.Comment{Body: message, Visibility: *restrictedComment}); err != nil {
+		*errs = append(*errs, fmt.Errorf("failed to comment on issue %s: %w", issue.ID, err))
+	}
+
+	return
+}
 
 func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 	tagSemVer, err := releasecontroller.SemverParseTolerant(tagName)
@@ -151,37 +178,16 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			errs = append(errs, tagError)
 			continue
 		}
-		notOnQA, message, newErr, success := c.verifyExtPRs(issue, extPRs, errs, tagName)
-		if notOnQA {
-			// the issue is not marked as on_qa; ignore
+		message, success := c.verifyExtPRs(issue, extPRs, &errs, tagName)
+		if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
+			if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
+				c.commentIssue(&errs, issue, message)
+			}
 			continue
 		}
-		errs = append(errs, newErr...)
-		if message != "" {
-			// TODO - use the GetIssueWithOptions method when the PR is merged comments
-			// err := c.jiraClient.GetIssueWithOptions(issueID, &jiraBaseClient.GetQueryOptions{Fields: "comment"})
-			comments, err := c.jiraClient.GetIssue(issueID)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to get comments on issue %s: %w", issue.ID, err))
-				continue
-			}
-			var alreadyCommented bool
-			for _, comment := range comments.Fields.Comments.Comments {
-				if comment.Body == message && (comment.Author.Name == "openshift-crt-jira-release-controller" || comment.Author.EmailAddress == "brawilli+openshift-crt-jira-release-controller@redhat.com") {
-					alreadyCommented = true
-					break
-				}
-			}
-			if !alreadyCommented {
-				restrictedComment := &jiraBaseClient.CommentVisibility{
-					Type:  "group",
-					Value: "Red Hat Employee",
-				}
-				if _, err := c.jiraClient.AddComment(issueID, &jiraBaseClient.Comment{Body: message, Visibility: *restrictedComment}); err != nil {
-					errs = append(errs, fmt.Errorf("failed to comment on issue %s: %w", issue.ID, err))
-				}
-			}
-		}
+
+		c.commentIssue(&errs, issue, message)
+
 		if success {
 			klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
 			if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
