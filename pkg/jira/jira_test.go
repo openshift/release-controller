@@ -26,6 +26,37 @@ func (f fakeGHClient) GetIssueLabels(owner, repo string, number int) ([]github.L
 	return f.FakeClient.GetIssueLabels(owner, repo, number)
 }
 
+// TestCommentOnPR tests the commentOnPR method.
+func TestCommentOnPR(t *testing.T) {
+	// Set up the mock GitHub client with an empty map of comments
+	mockClient := fakegithub.NewFakeClient()
+
+	// Set up the Verifier instance with the mock GitHub client
+	verifier := &Verifier{ghClient: mockClient}
+
+	// Create a mock PR and message
+	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
+	message := "test message"
+
+	// Test the case where the message doesn't already exist
+	err, created := verifier.commentOnPR(extPR, message)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if !created {
+		t.Errorf("Expected comment to be created, but it wasn't")
+	}
+
+	// Test the case where the message already exists
+	err, created = verifier.commentOnPR(extPR, message)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if created {
+		t.Errorf("Expected comment not to be created, but it was")
+	}
+}
+
 func TestGetPRS(t *testing.T) {
 	issue := jira.Issue{ID: "OCPBUGS-0000"}
 	removeLinkArray := []jira.RemoteLink{
@@ -337,7 +368,9 @@ func TestVerifyIssues(t *testing.T) {
 				ExistingLinks: tc.jiraFakeClientData.existingLinks,
 				Transitions:   tc.jiraFakeClientData.transitions,
 			}
-			upstreamFakeGH := &fakegithub.FakeClient{IssueLabelsExisting: tc.gitHubFakeClientData.issueLabelsExisting}
+			// Initialize IssueComments
+			ghCommentMap := make(map[int][]github.IssueComment, 0)
+			upstreamFakeGH := &fakegithub.FakeClient{IssueLabelsExisting: tc.gitHubFakeClientData.issueLabelsExisting, IssueComments: ghCommentMap}
 			gh := &fakeGHClient{GetIssueLabelsError: tc.labelsError, FakeClient: upstreamFakeGH}
 			v := NewVerifier(jc, gh, &plugins.Configuration{})
 			err := v.VerifyIssues([]string{tc.issueToVerify}, tc.tagName)
