@@ -16,6 +16,8 @@ import (
 
 type githubClient interface {
 	GetIssueLabels(org, repo string, number int) ([]github.Label, error)
+	CreateComment(org, repo string, number int, comment string) error
+	ListIssueComments(org, repo string, number int) ([]github.IssueComment, error)
 }
 type Verifier struct {
 	// jiraClient is used to retrieve external issue links and mark QA reviewed issues as VERIFIED
@@ -85,6 +87,26 @@ func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
 	return unlabeledPRs, nil
 }
 
+func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
+	// Get the comments from that PR
+	comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
+	if err != nil {
+		return err, false
+	}
+	// Check to see if the same message has already been posted.
+	for _, comment := range comments {
+		if strings.Contains(comment.Body, message) {
+			return nil, false
+		}
+	}
+	// If the message hasn't already been posted, post it.
+	err = c.ghClient.CreateComment(extPR.org, extPR.repo, extPR.prNum, message)
+	if err != nil {
+		return err, false
+	}
+	return err, true
+}
+
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
 	var success bool
 	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
@@ -99,6 +121,11 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 			if newErr != nil {
 				*errs = append(*errs, newErr)
 				return "", false
+			}
+			// Comment on the PR saying that this PR is included in the release
+			prError, prSuccess := c.commentOnPR(extPR, message)
+			if !prSuccess {
+				klog.Warningf("Failed to comment to PR [%s/%s#%d]: %v", extPR.org, extPR.repo, extPR.prNum, prError)
 			}
 		}
 	}
