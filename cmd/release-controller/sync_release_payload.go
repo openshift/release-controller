@@ -17,7 +17,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	if err != nil {
 		return nil, err
 	}
-	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade), metav1.CreateOptions{})
+	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm), metav1.CreateOptions{})
 	if err == nil {
 		klog.V(4).Infof("ReleasePayload: %s/%s created", payload.Namespace, payload.Name)
 		return payload, nil
@@ -28,7 +28,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	return nil, err
 }
 
-func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification) *v1alpha1.ReleasePayload {
+func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource) *v1alpha1.ReleasePayload {
 	payload := v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -48,9 +48,10 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 				ProwCoordinates: v1alpha1.ProwCoordinates{Namespace: prowNamespace},
 			},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
-				BlockingJobs:  []v1alpha1.CIConfiguration{},
-				InformingJobs: []v1alpha1.CIConfiguration{},
-				UpgradeJobs:   []v1alpha1.CIConfiguration{},
+				BlockingJobs:                  []v1alpha1.CIConfiguration{},
+				InformingJobs:                 []v1alpha1.CIConfiguration{},
+				UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+				PayloadVerificationDataSource: dataSource,
 			},
 		},
 	}
