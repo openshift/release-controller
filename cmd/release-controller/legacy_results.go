@@ -25,7 +25,7 @@ func (c *Controller) processLegacyResults(interval time.Duration, stopCh <-chan 
 			if _, ok := stream.Annotations[releasecontroller.ReleaseAnnotationConfig]; ok {
 				release, err := c.loadReleaseForSync(stream.Namespace, stream.Name)
 				if err != nil || release == nil {
-					klog.Warningf("could not load release for sync for %s/%s", stream.Namespace, stream.Name)
+					klog.Warningf("could not load release for sync for %s/%s: %v", stream.Namespace, stream.Name, err)
 					continue
 				}
 				if release.Config.As != releasecontroller.ReleaseConfigModeStable {
@@ -51,7 +51,7 @@ func (c *Controller) syncLegacyResults(key queueKey) error {
 
 	release, err := c.loadReleaseForSync(key.namespace, key.name)
 	if err != nil || release == nil {
-		klog.V(6).Infof("could not load release for sync for %s/%s", key.namespace, key.name)
+		klog.V(6).Infof("could not load release for sync for %s/%s: %v", key.namespace, key.name, err)
 		return err
 	}
 
