@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/origin/centos:stream8
+FROM registry.ci.openshift.org/origin/centos:stream9
 LABEL maintainer="apavel@redhat.com"
 
 RUN yum install -y graphviz
