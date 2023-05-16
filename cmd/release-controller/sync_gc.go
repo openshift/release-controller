@@ -36,6 +36,10 @@ func (c *Controller) garbageCollectSync() error {
 	if err != nil {
 		return err
 	}
+	payloads, err := c.releasePayloadLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
 
 	// find all valid releases and targets
 	active := sets.NewString()
@@ -82,16 +86,16 @@ func (c *Controller) garbageCollectSync() error {
 			continue
 		}
 		if generation < targetGeneration {
-			klog.V(2).Infof("Removing orphaned release job %s", job.Name)
+			klog.V(2).Infof("Removing orphaned release job %s/%s", job.Namespace, job.Name)
 			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{PropagationPolicy: &policy}); err != nil && !errors.IsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s: %v", job.Name, err))
+				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release job %s/%s: %v", job.Namespace, job.Name, err))
 			}
 			continue
 		}
 		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Time.Before(time.Now().Add(-2*time.Hour)) {
-			klog.V(2).Infof("Removing old completed release job %s", job.Name)
+			klog.V(2).Infof("Removing old completed release job %s/%s", job.Namespace, job.Name)
 			if err := c.jobClient.Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{PropagationPolicy: &policy}); err != nil && !errors.IsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s: %v", job.Name, err))
+				utilruntime.HandleError(fmt.Errorf("can't delete old release job %s/%s: %v", job.Namespace, job.Name, err))
 			}
 			continue
 		}
@@ -111,10 +115,21 @@ func (c *Controller) garbageCollectSync() error {
 			continue
 		}
 		if generation < targetGeneration {
-			klog.V(2).Infof("Removing orphaned release mirror %s", mirror.Name)
+			klog.V(2).Infof("Removing orphaned release mirror %s/%s", mirror.Namespace, mirror.Name)
 			if err := c.imageClient.ImageStreams(mirror.Namespace).Delete(context.TODO(), mirror.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s: %v", mirror.Name, err))
+				utilruntime.HandleError(fmt.Errorf("can't delete orphaned release mirror %s/%s: %v", mirror.Namespace, mirror.Name, err))
 			}
+		}
+	}
+
+	// all releasepayloads created for releases that no longer exist should be deleted
+	for _, payload := range payloads {
+		if active.Has(payload.Name) {
+			continue
+		}
+		klog.V(2).Infof("Removing orphaned releasepayload %s/%s", payload.Namespace, payload.Name)
+		if err := c.releasePayloadClient.ReleasePayloads(payload.Namespace).Delete(context.TODO(), payload.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("can't delete orphaned releasepayload %s/%s: %v", payload.Namespace, payload.Name, err))
 		}
 	}
 	return nil
