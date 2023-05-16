@@ -404,9 +404,6 @@ func (o *options) Run() error {
 	if err != nil {
 		klog.Fatal(err)
 	}
-	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, 24*time.Hour)
-	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
-	hasSynced = append(hasSynced, releasePayloadInformer.Informer().HasSynced)
 
 	c := NewController(
 		client.CoreV1(),
@@ -425,7 +422,6 @@ func (o *options) Run() error {
 		architecture,
 		o.ARTSuffix,
 		releasePayloadClient.ReleaseV1alpha1(),
-		releasePayloadInformer,
 	)
 
 	if o.VerifyBugzilla {
@@ -507,7 +503,15 @@ func (o *options) Run() error {
 	}
 
 	batchFactory.Start(stopCh)
-	releasePayloadInformerFactory.Start(stopCh)
+
+	// register the releasepayload namespaces
+	for _, ns := range o.ReleaseNamespaces {
+		releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactoryWithOptions(releasePayloadClient, 24*time.Hour, releasepayloadinformers.WithNamespace(ns))
+		releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+		c.AddReleasePayloadNamespace(ns, releasePayloadInformer)
+		hasSynced = append(hasSynced, releasePayloadInformer.Informer().HasSynced)
+		releasePayloadInformerFactory.Start(stopCh)
+	}
 
 	// register the publish and release namespaces
 	publishNamespaces := sets.NewString(o.PublishNamespaces...)
