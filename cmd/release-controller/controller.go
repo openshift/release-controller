@@ -4,7 +4,7 @@ import (
 	"fmt"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
-	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/jira"
 	"strings"
 	"time"
@@ -150,7 +150,7 @@ type Controller struct {
 	artSuffix    string
 
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter
-	releasePayloadLister releasepayloadlister.ReleasePayloadLister
+	releasePayloadLister *releasecontroller.MultiReleasePayloadLister
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -171,7 +171,6 @@ func NewController(
 	architecture string,
 	artSuffix string,
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter,
-	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -233,7 +232,7 @@ func NewController(
 		artSuffix:    artSuffix,
 
 		releasePayloadClient: releasePayloadClient,
-		releasePayloadLister: releasePayloadInformer.Lister(),
+		releasePayloadLister: &releasecontroller.MultiReleasePayloadLister{Listers: make(map[string]v1alpha1.ReleasePayloadNamespaceLister)},
 
 		legacyResultsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "legacyResults"),
 	}
@@ -285,6 +284,12 @@ func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.
 // images by stream, but which may not contain release streams.
 func (c *Controller) AddPublishNamespace(ns string, imagestreams imageinformers.ImageStreamInformer) {
 	c.publishLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
+}
+
+// AddReleasePayloadNamespace adds a new namespace scoped informer to the controller, which will be watched
+// for releasepayloads.
+func (c *Controller) AddReleasePayloadNamespace(ns string, releasePayloads releasepayloadinformer.ReleasePayloadInformer) {
+	c.releasePayloadLister.Listers[ns] = releasePayloads.Lister().ReleasePayloads(ns)
 }
 
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the
