@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	"net/http"
 	"net/url"
 	"os"
 	goruntime "runtime"
 	"strings"
 	"time"
+
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	"github.com/openshift/release-controller/pkg/jira"
@@ -39,7 +40,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	bugzillaBaseClient "k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/config/secret"
 	configflagutil "k8s.io/test-infra/prow/flagutil/config"
 	pluginflagutil "k8s.io/test-infra/prow/flagutil/plugins"
@@ -53,7 +53,6 @@ import (
 	"k8s.io/test-infra/prow/interrupts"
 	jiraBaseClient "k8s.io/test-infra/prow/jira"
 
-	"github.com/openshift/release-controller/pkg/bugzilla"
 	"github.com/openshift/release-controller/pkg/signer"
 )
 
@@ -87,9 +86,6 @@ type options struct {
 	githubThrottle int
 	github         flagutil.GitHubOptions
 
-	VerifyBugzilla bool
-	bugzilla       flagutil.BugzillaOptions
-
 	VerifyJira bool
 	jira       flagutil.JiraOptions
 
@@ -113,17 +109,6 @@ type options struct {
 
 	ProcessLegacyResults bool
 }
-
-// Add metrics for bugzilla verifier errors
-var (
-	bugzillaErrorMetrics = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "release_controller_bugzilla_errors_total",
-			Help: "The total number of errors encountered by the release-controller's bugzilla verifier",
-		},
-		[]string{"type"},
-	)
-)
 
 // Add metrics for jira verifier errors
 var (
@@ -197,9 +182,8 @@ func main() {
 
 	flagset.StringVar(&opt.ListenAddr, "listen", opt.ListenAddr, "The address to serve metrics on")
 
-	flagset.BoolVar(&opt.VerifyBugzilla, "verify-bugzilla", opt.VerifyBugzilla, "Update status of bugs fixed in accepted release to VERIFIED if PR was approved by QE.")
 	flagset.BoolVar(&opt.VerifyJira, "verify-jira", opt.VerifyJira, "Update status of issues fixed in accepted release to VERIFIED if PR was approved by QE.")
-	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by bugzilla and jira verifier.")
+	flagset.IntVar(&opt.githubThrottle, "github-throttle", 0, "Maximum number of GitHub requests per hour. Used by jira verifier.")
 
 	flagset.StringVar(&opt.validateConfigs, "validate-configs", "", "Validate configs at specified directory and exit without running operator")
 	flagset.BoolVar(&opt.softDeleteReleaseTags, "soft-delete-release-tags", false, "If set to true, annotate imagestreamtags instead of deleting them")
@@ -230,7 +214,6 @@ func main() {
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
-	opt.bugzilla.AddFlags(goFlagSet)
 	opt.jira.AddFlags(goFlagSet)
 	opt.PluginConfig.AddFlags(goFlagSet)
 	flagset.AddGoFlagSet(goFlagSet)
@@ -357,17 +340,13 @@ func (o *options) Run() error {
 	}
 
 	var jiraClient jiraBaseClient.Client
-	var bzClient bugzillaBaseClient.Client
 	var tokens []string
-	// Append the path of github and bugzilla secrets.
+	// Append the path of github secrets.
 	if o.github.TokenPath != "" {
 		tokens = append(tokens, o.github.TokenPath)
 	}
 	if o.github.AppPrivateKeyPath != "" {
 		tokens = append(tokens, o.github.AppPrivateKeyPath)
-	}
-	if o.bugzilla.ApiKeyPath != "" {
-		tokens = append(tokens, o.bugzilla.ApiKeyPath)
 	}
 	if err := secret.Add(tokens...); err != nil {
 		return fmt.Errorf("Error starting secrets agent: %w", err)
@@ -379,16 +358,10 @@ func (o *options) Run() error {
 	}
 	ghClient.Throttle(o.githubThrottle, 0)
 
-	if o.VerifyBugzilla {
-		bzClient, err = o.bugzilla.BugzillaClient()
-		if err != nil {
-			return fmt.Errorf("Failed to create bugzilla client: %v", err)
-		}
-	}
 	if o.VerifyJira {
 		jiraClient, err = o.jira.Client()
 		if err != nil {
-			return fmt.Errorf("Failed to create bugzilla client: %v", err)
+			return fmt.Errorf("Failed to create jira client: %v", err)
 		}
 	}
 
@@ -424,15 +397,6 @@ func (o *options) Run() error {
 		releasePayloadClient.ReleaseV1alpha1(),
 	)
 
-	if o.VerifyBugzilla {
-		pluginAgent, err := o.PluginConfig.PluginAgent()
-		if err != nil {
-			return fmt.Errorf("Failed to create plugin agent: %v", err)
-		}
-		c.bugzillaVerifier = bugzilla.NewVerifier(bzClient, ghClient, pluginAgent.Config())
-		initializeMetrics(bugzillaErrorMetrics)
-		c.bugzillaErrorMetrics = bugzillaErrorMetrics
-	}
 	if o.VerifyJira {
 		pluginAgent, err := o.PluginConfig.PluginAgent()
 		if err != nil {

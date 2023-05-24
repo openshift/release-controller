@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/jira"
-	"strings"
-	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -40,8 +41,6 @@ import (
 
 	"github.com/openshift/release-controller/pkg/signer"
 	prowconfig "k8s.io/test-infra/prow/config"
-
-	"github.com/openshift/release-controller/pkg/bugzilla"
 )
 
 // Controller ensures that OpenShift update payload images (also known as
@@ -92,8 +91,6 @@ type Controller struct {
 	gcQueue workqueue.RateLimitingInterface
 	// auditQueue is inputs that must be audited
 	auditQueue workqueue.RateLimitingInterface
-	// bugzillaQueue is the list of releases whose fixed bugs must be synced to bugzilla
-	bugzillaQueue workqueue.RateLimitingInterface
 	// jiraQueue is the list of releases whose fixed issues must be synced to jira
 	jiraQueue workqueue.RateLimitingInterface
 	// legacyResultsQueue is the list of previous releases that need to migrate to ReleasePayloads
@@ -134,9 +131,6 @@ type Controller struct {
 	// parsedReleaseConfigCache caches the parsed release config object for any release
 	// config serialized json.
 	parsedReleaseConfigCache *lru.Cache
-
-	bugzillaVerifier     *bugzilla.Verifier
-	bugzillaErrorMetrics *prometheus.CounterVec
 
 	jiraVerifier     *jira.Verifier
 	jiraErrorMetrics *prometheus.CounterVec
@@ -195,8 +189,6 @@ func NewController(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 2*time.Hour),
 			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Every(5), 2)},
 		), "audit"),
-
-		bugzillaQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "bugzilla"),
 
 		jiraQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "jira"),
 
@@ -315,10 +307,6 @@ func (c *Controller) addQueueKey(key queueKey) {
 	c.queue.Add(key)
 }
 
-func (c *Controller) addBugzillaQueueKey(key queueKey) {
-	c.bugzillaQueue.Add(key)
-}
-
 func (c *Controller) addJiraQueueKey(key queueKey) {
 	c.jiraQueue.Add(key)
 }
@@ -394,7 +382,6 @@ func (c *Controller) processImageStream(obj interface{}) {
 		if key, ok := queueKeyFor(t.Annotations[releasecontroller.ReleaseAnnotationSource]); ok {
 			klog.V(6).Infof("Image stream %s was created by %v, queuing source", t.Name, key)
 			c.addQueueKey(key)
-			c.addBugzillaQueueKey(key)
 			c.addJiraQueueKey(key)
 			return
 		}
@@ -427,7 +414,6 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 	defer c.queue.ShutDown()
 	defer c.gcQueue.ShutDown()
 	defer c.auditQueue.ShutDown()
-	defer c.bugzillaQueue.ShutDown()
 	defer c.jiraQueue.ShutDown()
 	defer c.legacyResultsQueue.ShutDown()
 
@@ -446,10 +432,6 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.auditWorker, time.Second, stopCh)
-	}
-
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.bugzillaWorker, time.Second, stopCh)
 	}
 
 	for i := 0; i < workers; i++ {
@@ -551,33 +533,6 @@ func (c *Controller) processNextAudit() bool {
 	err := c.syncAuditTag(key.(string))
 	c.handleNamespaceErr(c.auditQueue, err, key)
 	klog.V(5).Infof("audit processing %v end", key)
-
-	return true
-}
-
-func (c *Controller) bugzillaWorker() {
-	for c.processNextBugzilla() {
-	}
-	klog.V(4).Infof("Worker stopped")
-}
-
-func (c *Controller) processNextBugzilla() bool {
-	obj, quit := c.bugzillaQueue.Get()
-	if quit {
-		return false
-	}
-	defer c.bugzillaQueue.Done(obj)
-
-	// don't run if we don't have a verifier
-	if c.bugzillaVerifier == nil {
-		return true
-	}
-	key := obj.(queueKey)
-
-	klog.V(5).Infof("bz worker processing %v begin", key)
-	err := c.syncBugzilla(key)
-	c.handleNamespaceErr(c.bugzillaQueue, err, key)
-	klog.V(5).Infof("bz worker processing %v end", key)
 
 	return true
 }

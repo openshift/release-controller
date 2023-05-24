@@ -269,7 +269,7 @@ func parse(line string) map[string]string {
 
 func generateCIConfigurationName(prerelease []semver.PRVersion) string {
 	var pieces []string
-	for idx, _ := range prerelease {
+	for idx := range prerelease {
 		switch {
 		case prerelease[idx].IsNum:
 			pieces = append(pieces, fmt.Sprintf("%d", prerelease[idx].VersionNum))

@@ -215,7 +215,7 @@ func SortedUpgradesByReleaseMap(supportedUpgrades []string) SortedVersionsMap {
 		}
 	}
 	var sortedKeys []string
-	for key, _ := range releaseBuckets {
+	for key := range releaseBuckets {
 		sortedKeys = append(sortedKeys, key)
 		sort.Sort(releaseBuckets[key])
 	}

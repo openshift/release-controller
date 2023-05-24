@@ -31,12 +31,14 @@ const (
 
 // PayloadAcceptedController is responsible for Accepting ReleasePayloads when any of the following scenarios
 // occur:
-//   1) all Blocking Jobs complete successfully
-//   2) the payload is manually accepted
+//  1. all Blocking Jobs complete successfully
+//  2. the payload is manually accepted
+//
 // The PayloadAcceptedController reads the following pieces of information:
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
 //   - .status.releaseCreationJobResult.status
+//
 // and populates the following condition:
 //   - .status.conditions.PayloadAccepted
 type PayloadAcceptedController struct {

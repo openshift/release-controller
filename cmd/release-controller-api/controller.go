@@ -19,26 +19,25 @@ import (
 // in a release is updated. A consumer sets the release.openshift.io/config
 // annotation on an image stream in the release namespace and the controller will
 //
-// 1. Create a tag in the "release" image stream that uses the release name +
-//    current timestamp.
-// 2. Mirror all of the tags in the input image stream so that they can't be
-//    pruned.
-// 3. Launch a job in the job namespace to invoke 'oc adm release new' from
-//    the mirror pointing to the release tag we created in step 1.
-// 4. If the job succeeds in pushing the tag, set an annotation on that tag
-//    release.openshift.io/phase = "Ready", indicating that the release can be
-//    used by other steps
+//  1. Create a tag in the "release" image stream that uses the release name +
+//     current timestamp.
+//  2. Mirror all of the tags in the input image stream so that they can't be
+//     pruned.
+//  3. Launch a job in the job namespace to invoke 'oc adm release new' from
+//     the mirror pointing to the release tag we created in step 1.
+//  4. If the job succeeds in pushing the tag, set an annotation on that tag
+//     release.openshift.io/phase = "Ready", indicating that the release can be
+//     used by other steps
 //
 // TODO:
 //
-// 5. Perform a number of manual and automated tasks on the release - if all are
-//    successful, set the phase to "Verified" and then promote the tag to external
-//    locations.
+//  5. Perform a number of manual and automated tasks on the release - if all are
+//     successful, set the phase to "Verified" and then promote the tag to external
+//     locations.
 //
 // Invariants:
 //
 // 1. ...
-//
 type Controller struct {
 	eventRecorder record.EventRecorder
 	releaseLister *releasecontroller.MultiImageStreamLister

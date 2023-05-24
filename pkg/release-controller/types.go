@@ -3,8 +3,9 @@ package releasecontroller
 import (
 	"bytes"
 	"fmt"
-	"github.com/opencontainers/go-digest"
 	"time"
+
+	"github.com/opencontainers/go-digest"
 
 	imagev1 "github.com/openshift/api/image/v1"
 
@@ -168,8 +169,6 @@ type ReleasePublish struct {
 	TagRef *PublishTagReference `json:"tagRef"`
 	// ImageStreamRef copies all images to another image stream in one transaction.
 	ImageStreamRef *PublishStreamReference `json:"imageStreamRef"`
-	// VerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
-	VerifyBugs *PublishVerifyBugs `json:"verifyBugs"`
 	// VerifyIssue marks jira issues fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
 	VerifyIssues *PublishVerifyIssues `json:"verifyIssues"`
 }
@@ -195,24 +194,6 @@ type PublishStreamReference struct {
 	// ExcludeTags if set will explicitly not publish these tags. Is applied after the
 	// tags field is checked.
 	ExcludeTags []string `json:"excludeTags"`
-}
-
-// PublishVerifyBugs marks bugs fixed by this tag as VERIFIED in bugzilla if the QA contact reviewed and approved the bugfix PR
-type PublishVerifyBugs struct {
-	// PreviousRelease points to the last release created before the imagestream
-	// being published was created. It is used to verify bugs on the oldest tag
-	// in the release being published.
-	PreviousReleaseTag *VerifyBugsTagInfo `json:"previousReleaseTag"`
-}
-
-// VerifyBugsTagInfo contains the necessary data to get a tag reference as needed in the bugzilla verification support.
-type VerifyBugsTagInfo struct {
-	// Namespace is the namespace where the imagestream resides.
-	Namespace string `json:"namespace"`
-	// Name is the name of the imagestream
-	Name string `json:"name"`
-	// Tag is the tag that is being referenced in the image stream
-	Tag string `json:"tag"`
 }
 
 // PublishVerifyIssues marks jira issue fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
@@ -545,10 +526,6 @@ const (
 	// ReleaseAnnotationFromImageStream specifies the imagestream
 	// a release was promoted from. It has the format <namespace>/<imagestream name>
 	ReleaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
-
-	// ReleaseAnnotationBugsVerified indicates whether or not the release has been
-	// processed by the BugzillaVerifier
-	ReleaseAnnotationBugsVerified = "release.openshift.io/bugs-verified"
 
 	// ReleaseAnnotationIssuesVerified indicates whether the release has been
 	// processed by the JiraVerifier
