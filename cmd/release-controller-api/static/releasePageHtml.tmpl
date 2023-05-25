@@ -10,7 +10,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
 {{ displayAuthMessage }}
 
 <p class="small mb-3">
-    Jump to: {{ releaseJoin .Streams }}
+    Jump to: {{ releaseJoin .Streams true }}
 </p>
 
 <div class="row">

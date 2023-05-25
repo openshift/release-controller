@@ -4,12 +4,12 @@
 </p>
 <div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. For information about the available builds, please reference the <a href="https://mirror.openshift.com/pub/openshift-v4/OpenShift_Release_Types.pdf" target="_blank">OpenShift Release Types documentation</a>.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
 <p class="small mb-3">
-    Jump to: {{ releaseJoin .Streams }}
+    Jump to: {{ releaseJoin .Streams false }}
 </p>
 <div class="row">
     <div class="col">
         {{ range .Streams }}
-        {{ if ne .Release.Config.Name "4-stable" }}
+        {{ if and (ne .Release.Config.Name "4-stable") (ne .Release.Config.Name "4-dev-preview") }}
         <h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
         {{ publishDescription . }}
         {{ $upgrades := .Upgrades }}
@@ -42,7 +42,7 @@
                 {{ tableLink $release.Config $tag $release.HasInconsistencies }}
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
-                {{ upgradeJobs $upgrades $index $created }}
+                {{ if $upgrades }}{{ upgradeJobs $upgrades $index $created }}{{ end }}
             </tr>
             {{end}}
             {{ end }}
