@@ -31,13 +31,15 @@ const (
 
 // PayloadRejectedController is responsible for Rejecting ReleasePayloads when any of the following scenarios
 // occur:
-//   1) any Blocking Job fails
-//   2) the payload is manually rejected
-//   2) the release creation job fails
+//  1. any Blocking Job fails
+//  2. the payload is manually rejected
+//  2. the release creation job fails
+//
 // The PayloadRejectedController reads the following pieces of information:
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
 //   - .status.releaseCreationJobResult.status
+//
 // and populates the following condition:
 //   - .status.conditions.PayloadRejected
 type PayloadRejectedController struct {

@@ -32,6 +32,7 @@ const (
 // on whether the release payload creation job completed successfully or not.
 // The PayloadCreationController reads the following pieces of information:
 //   - .status.releaseCreationJobResult.status
+//
 // and populates the following conditions:
 //   - .status.conditions.PayloadCreated
 //   - .status.conditions.PayloadFailed

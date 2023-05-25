@@ -47,6 +47,7 @@ var ErrCoordinatesNotSet = errors.New("unable to lookup release creation job: co
 // updating the respective ReleasePayload with the status, of the job, when it completes.
 // The ReleaseCreationStatusController watches for changes to the following resources:
 //   - batchv1.Jobs
+//
 // and write the following information:
 //   - .status.releaseCreationJobResult.status
 //   - .status.releaseCreationJobResult.message

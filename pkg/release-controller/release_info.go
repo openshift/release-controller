@@ -26,7 +26,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog"
-	"k8s.io/test-infra/prow/bugzilla"
 	"k8s.io/test-infra/prow/jira"
 )
 
@@ -155,7 +154,7 @@ func (c *CachingReleaseInfo) GetFeatureChildren(featuresList []string, validityP
 }
 
 type ReleaseInfo interface {
-	// Bugs returns a list of bugzilla bug IDs for bugs fixed between the provided release tags
+	// Bugs returns a list of jira bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
 	ChangeLog(from, to string, json bool) (string, error)
 	ReleaseInfo(image string) (string, error)
@@ -166,13 +165,12 @@ type ReleaseInfo interface {
 }
 
 type ExecReleaseInfo struct {
-	client         kubernetes.Interface
-	restConfig     *rest.Config
-	namespace      string
-	name           string
-	imageNameFn    func() (string, error)
-	jiraClient     jira.Client
-	bugzillaClient bugzilla.Client
+	client      kubernetes.Interface
+	restConfig  *rest.Config
+	namespace   string
+	name        string
+	imageNameFn func() (string, error)
+	jiraClient  jira.Client
 }
 
 // NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
@@ -733,7 +731,7 @@ func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) map[strin
 			for _, commit := range changeLogImageInfo.Commits {
 				switch bugSource {
 				case sourceJira:
-					for key, _ := range commit.Issues {
+					for key := range commit.Issues {
 						issues[key] = append(issues[key], commit.PullURL)
 					}
 				}

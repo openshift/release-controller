@@ -58,7 +58,7 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 
 	// Sort the ReleaseVerification items into a consistent order
 	var sortedKeys []string
-	for key, _ := range verificationJobs {
+	for key := range verificationJobs {
 		sortedKeys = append(sortedKeys, key)
 	}
 	sort.Strings(sortedKeys)
@@ -103,7 +103,7 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 
 	// Sort the UpgradeVerification items into a consistent order
 	sortedKeys = nil
-	for key, _ := range upgradeJobs {
+	for key := range upgradeJobs {
 		sortedKeys = append(sortedKeys, key)
 	}
 	sort.Strings(sortedKeys)
