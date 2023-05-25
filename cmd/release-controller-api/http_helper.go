@@ -516,9 +516,12 @@ func renderAlerts(release ReleaseStream) string {
 	return strings.Join(msgs, "\n")
 }
 
-func releaseJoin(streams []ReleaseStream) string {
+func releaseJoin(streams []ReleaseStream, showStableReleases bool) string {
 	releases := []string{}
 	for _, s := range streams {
+		if !showStableReleases && s.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+			continue
+		}
 		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(s.Release.Config.Name), template.HTMLEscapeString(s.Release.Config.Name)))
 	}
 	return strings.Join(releases, " | ")
