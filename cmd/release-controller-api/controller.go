@@ -1,6 +1,7 @@
 package main
 
 import (
+	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -60,6 +61,9 @@ type Controller struct {
 	architecture string
 
 	artSuffix string
+
+	releasePayloadNamespace string
+	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -71,6 +75,8 @@ func NewController(
 	authenticationMessage string,
 	architecture string,
 	artSuffix string,
+	releasePayloadNamespace string,
+	releasePayloadLister releasepayloadlister.ReleasePayloadLister,
 ) *Controller {
 	// log events at v2 and send them to the server
 	broadcaster := record.NewBroadcaster()
@@ -102,6 +108,9 @@ func NewController(
 		architecture: architecture,
 
 		artSuffix: artSuffix,
+
+		releasePayloadNamespace: releasePayloadNamespace,
+		releasePayloadLister:    releasePayloadLister,
 	}
 
 	c.dashboards = []Dashboard{

@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"k8s.io/test-infra/prow/jira"
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	"net/http"
 	"os"
 	goruntime "runtime"
@@ -218,6 +220,14 @@ func (o *options) Run() error {
 
 	graph := releasecontroller.NewUpgradeGraph(architecture)
 
+	releasePayloadClient, err := releasepayloadclient.NewForConfig(inClusterCfg)
+	if err != nil {
+		klog.Fatal(err)
+	}
+
+	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, 24*time.Hour)
+	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+
 	c := NewController(
 		client.CoreV1(),
 		o.ArtifactsHost,
@@ -226,6 +236,8 @@ func (o *options) Run() error {
 		o.AuthenticationMessage,
 		architecture,
 		o.ARTSuffix,
+		releaseNamespace,
+		releasePayloadInformer.Lister(),
 	)
 
 	var hasSynced []cache.InformerSynced
@@ -238,6 +250,9 @@ func (o *options) Run() error {
 		factory.Start(stopCh)
 	}
 	imageCache.SetLister(c.releaseLister.ImageStreams(releaseNamespace))
+
+	releasePayloadInformerFactory.Start(stopCh)
+	hasSynced = append(hasSynced, releasePayloadInformer.Informer().HasSynced)
 
 	prowInformers := releasecontroller.NewDynamicSharedIndexInformer(prowClient, o.ProwNamespace, 10*time.Minute, labels.SelectorFromSet(labels.Set{releasecontroller.ReleaseLabelVerify: "true"}))
 	hasSynced = append(hasSynced, prowInformers.HasSynced)

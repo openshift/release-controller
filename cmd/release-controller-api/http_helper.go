@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/releasepayload"
 	"io"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 	"net/url"
 	"sort"
 	"strings"
@@ -257,17 +259,29 @@ func tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference
 	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
 }
 
+func (c *Controller) GetReleasePayload(name string) *v1alpha1.ReleasePayload {
+	payload, err := c.releasePayloadLister.ReleasePayloads(c.releasePayloadNamespace).Get(name)
+	if err != nil {
+		klog.Warningf("Unable to locate releasepayload (%s): %v", name, err)
+		return nil
+	}
+	return payload
+}
+
 func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.Release) string {
-	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
-	if len(links) == 0 {
-		return ""
+	payload := c.GetReleasePayload(tag.Name)
+	if payload == nil {
+		klog.Errorf("unable to find releasepayload: %q", tag.Name)
+		return "error"
 	}
 	var status releasecontroller.VerificationStatusMap
-	if err := json.Unmarshal([]byte(links), &status); err != nil {
+	if ok := releasepayload.GenerateVerificationStatusMap(payload, &status); !ok {
+		klog.Errorf("unable to generate VerificationStatusMap for: %q", tag.Name)
 		return "error"
 	}
 	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
 	if err != nil {
+		klog.Errorf("unable to retrieve VerificationJobs for: %q", tag.Name)
 		return "error"
 	}
 	pending, failing := make([]string, 0, len(verificationJobs)), make([]string, 0, len(verificationJobs))
@@ -354,21 +368,24 @@ func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.
 }
 
 func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *releasecontroller.Release) (*releasecontroller.VerificationJobsSummary, string) {
-	links := tag.Annotations[releasecontroller.ReleaseAnnotationVerify]
-	if len(links) == 0 {
-		return nil, fmt.Sprintf(`<p><em>No tests for this release</em>`)
+	payload := c.GetReleasePayload(tag.Name)
+	if payload == nil {
+		klog.Errorf("unable to find releasepayload: %q", tag.Name)
+		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load ReleasePayload info for: %s</em>`, tag.Name)
 	}
 	var status releasecontroller.VerificationStatusMap
-	if err := json.Unmarshal([]byte(links), &status); err != nil {
-		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load test info</em>`)
+	if ok := releasepayload.GenerateVerificationStatusMap(payload, &status); !ok {
+		klog.Errorf("unable to generate VerificationStatusMap for: %q", tag.Name)
+		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load test info for: %s</em>`, tag.Name)
+	}
+	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
+	if err != nil {
+		klog.Errorf("unable to retrieve VerificationJobs for: %q", tag.Name)
+		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load VerificationJobs for: %s</em>`, tag.Name)
 	}
 	blockingJobs := make(releasecontroller.VerificationStatusMap)
 	informingJobs := make(releasecontroller.VerificationStatusMap)
 	pendingJobs := make(releasecontroller.VerificationStatusMap)
-	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, &tag, c.artSuffix)
-	if err != nil {
-		return nil, fmt.Sprintf(`<p><em class="text-danger">Unable to load verification jobs</em>`)
-	}
 	keys := make([]string, 0, len(verificationJobs))
 	for k := range verificationJobs {
 		keys = append(keys, k)
