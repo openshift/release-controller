@@ -477,6 +477,9 @@ func TestComputeJobState(t *testing.T) {
 					{
 						State: v1alpha1.JobRunStateFailure,
 					},
+					{
+						State: v1alpha1.JobRunStateFailure,
+					},
 				},
 			},
 			expected: v1alpha1.JobStateFailure,
@@ -971,6 +974,9 @@ func TestProcessRetryJobResults(t *testing.T) {
 		{
 			name: "FailureJobRunResults",
 			results: []v1alpha1.JobRunResult{
+				{
+					State: v1alpha1.JobRunStateFailure,
+				},
 				{
 					State: v1alpha1.JobRunStateFailure,
 				},
