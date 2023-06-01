@@ -208,6 +208,12 @@ func processAnalysisJobResults(results []v1alpha1.JobRunResult, count int) v1alp
 // attempts have failed, the JobStatus will be "Failed".
 func processRetryJobResults(results []v1alpha1.JobRunResult, count int) v1alpha1.JobState {
 	attempts := len(results)
+	// For any individual job, there should always be at least a single JobRunResult.  Retries are consecutive
+	// attempts of the initial job that ended in a failure state.  Therefore, the maximum number of JobRunResults
+	// should amount to 1 + job.MaxRetries.  This *must* be enforced by the ReleaseController because the
+	// ReleasePayloadController does not care.  It simply keeps track of all the results of a job that are
+	// attributable back to a particular ReleasePayload.
+	maxResults := count + 1
 
 	var pendingJobs, successfulJobs, failedJobs, _ = interrogateJobResults(results)
 
@@ -218,7 +224,7 @@ func processRetryJobResults(results []v1alpha1.JobRunResult, count int) v1alpha1
 		return v1alpha1.JobStatePending
 	case len(failedJobs) > 0:
 		switch {
-		case attempts < count:
+		case attempts < maxResults:
 			return v1alpha1.JobStatePending
 		default:
 			return v1alpha1.JobStateFailure
