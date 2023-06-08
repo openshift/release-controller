@@ -266,6 +266,10 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 	var errs []error
 	for _, jiraID := range input {
 		extBugs, err := jiraClient.GetRemoteLinks(jiraID)
+		if jira.JiraErrorStatusCode(err) == 403 {
+			klog.Warningf("Permissions error getting issue %s; ignoring", jiraID)
+			continue
+		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to get external bugs for jira issue %s: %w", jiraID, err))
 			continue
