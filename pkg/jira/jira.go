@@ -191,6 +191,10 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 	jiraPRs, errs := getPRs(issues, c.jiraClient)
 	for issueID, extPRs := range jiraPRs {
 		issue, err := c.jiraClient.GetIssue(issueID)
+		if jira.JiraErrorStatusCode(err) == 403 {
+			klog.Warningf("Permissions error getting issue %s; ignoring", issueID)
+			continue
+		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("unable to get jira ID %s: %w", issueID, err))
 			continue
