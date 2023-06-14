@@ -884,6 +884,11 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 			// TODO: check something here?
 			continue
 		}
+		if isStaleStatusTag(tag, target) {
+			// TODO: These should be pruned, by whom is the question!?!?
+			klog.Warningf("found stale status tag: %s/%s:%s", target.Namespace, target.Name, tag.Tag)
+			continue
+		}
 		sourceTag := statusTags[tag.Tag]
 		delete(statusTags, tag.Tag)
 
@@ -931,6 +936,15 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 		result.Errors = append(result.Errors, fmt.Sprintf("Found recent tags downstream that are not built upstream (not in %s/%s): %s", parent.Source.Namespace, parent.Source.Name, strings.Join(errDoesNotExist, ", ")))
 	}
 	return result
+}
+
+func isStaleStatusTag(tag imagev1.NamedTagEventList, target *imagev1.ImageStream) bool {
+	for _, specTag := range target.Spec.Tags {
+		if specTag.Name == tag.Tag {
+			return false
+		}
+	}
+	return true
 }
 
 func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.String) {
