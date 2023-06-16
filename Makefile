@@ -43,6 +43,11 @@ crd: ensure-controller-gen
 # Ensure codegen is run before generating the CRD, so updates to Godoc are included.
 update-crd: update-codegen-script crd
 
+sonar-reports:
+	go test ./... -coverprofile=coverage.out -covermode=count -json > report.json
+	golangci-lint run ./... --verbose --no-config --out-format checkstyle --issues-exit-code 0 > golangci-lint.out
+.PHONY: sonar-reports
+
 # Legacy targets
 image:
 	imagebuilder -t openshift/release-controller:latest .
@@ -52,4 +57,3 @@ vendor:
 	go mod tidy
 	go mod vendor
 .PHONY: vendor
-
