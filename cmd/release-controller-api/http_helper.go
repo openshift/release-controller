@@ -324,7 +324,7 @@ func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.
 				default:
 					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
 				}
-				buf.WriteString(template.HTMLEscapeString(s.URL))
+				buf.WriteString(template.HTMLEscapeString(releasecontroller.GenerateProwJobResultsURL(s.URL)))
 				buf.WriteString("\">")
 				buf.WriteString(template.HTMLEscapeString(key))
 				buf.WriteString("</a>")
@@ -469,7 +469,7 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			default:
 				buf.WriteString("<li><a class=\"\" href=\"")
 			}
-			buf.WriteString(template.HTMLEscapeString(value.URL))
+			buf.WriteString(template.HTMLEscapeString(releasecontroller.GenerateProwJobResultsURL(value.URL)))
 			buf.WriteString("\">")
 			buf.WriteString(template.HTMLEscapeString(key))
 			switch value.State {

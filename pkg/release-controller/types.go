@@ -554,6 +554,9 @@ const (
 
 	// ReleaseLabelPayload indicates the ReleasePayload of the release
 	ReleaseLabelPayload = "release.openshift.io/payload"
+
+	// ProwJobResultsURLPrefix the URL prefix for ProwJob Results
+	ProwJobResultsURLPrefix = "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs"
 )
 
 type Duration time.Duration
