@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"k8s.io/test-infra/prow/jira"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	"k8s.io/test-infra/prow/jira"
 	"net/http"
 	"os"
 	goruntime "runtime"
@@ -289,7 +289,7 @@ func (o *options) Run() error {
 				}
 				graph.Add(from, to, releasecontroller.UpgradeResult{
 					State: status.State,
-					URL:   status.URL,
+					URL:   releasecontroller.GenerateProwJobResultsURL(status.URL),
 				})
 			}
 		}, 2*time.Minute, stopCh)

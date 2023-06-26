@@ -130,7 +130,7 @@ func (c *LegacyJobStatusController) sync(ctx context.Context, key string) error 
 		klog.V(4).Infof("Processing legacy result for: %q", ciConfigurationName)
 		current := &v1alpha1.JobRunResult{
 			State:               getLegacyJobRunState(status.State),
-			HumanProwResultsURL: status.URL,
+			HumanProwResultsURL: releasecontroller.GenerateProwJobResultsURL(status.URL),
 		}
 
 		jobStatus, err := findLegacyJobStatus(originalReleasePayload.Name, &originalReleasePayload.Status, ciConfigurationName)

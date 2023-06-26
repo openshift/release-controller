@@ -104,7 +104,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
 			}
 			if status.State == releasecontroller.ReleaseVerificationStateSucceeded {
-				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, releasecontroller.GenerateProwJobResultsURL(status.URL))
 			}
 			if verifyStatus == nil {
 				verifyStatus = make(releasecontroller.VerificationStatusMap)
