@@ -110,7 +110,7 @@ var fourXBranches = regexp.MustCompile(`^(release|enterprise|openshift)-(4\.[0-9
 func FlavorForBranch(branch string) string {
 	var flavor string
 	if branch == "master" || branch == "main" {
-		flavor = "master"
+		flavor = branch
 	} else if m := fourXBranches.FindStringSubmatch(branch); m != nil {
 		flavor = m[2] // the 4.x release string
 	} else if m := releaseBranches.FindStringSubmatch(branch); m != nil {
@@ -130,17 +130,15 @@ func LogFieldsFor(metadata Metadata) logrus.Fields {
 	}
 }
 
-func BuildCacheFor(metadata Metadata) MultiArchImageStreamTagReference {
+func BuildCacheFor(metadata Metadata) ImageStreamTagReference {
 	tag := metadata.Branch
 	if metadata.Variant != "" {
 		tag = fmt.Sprintf("%s-%s", tag, metadata.Variant)
 	}
-	return MultiArchImageStreamTagReference{
-		ImageStreamTagReference: ImageStreamTagReference{
-			Namespace: "build-cache",
-			Name:      fmt.Sprintf("%s-%s", metadata.Org, metadata.Repo),
-			Tag:       tag,
-		},
+	return ImageStreamTagReference{
+		Namespace: "build-cache",
+		Name:      fmt.Sprintf("%s-%s", metadata.Org, metadata.Repo),
+		Tag:       tag,
 	}
 }
 
