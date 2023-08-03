@@ -117,6 +117,7 @@ func NewController(
 		{"Index", "/"},
 		{"Overview", "/dashboards/overview"},
 		{"Compare", "/dashboards/compare"},
+		{"Telco KPI Results (VPN Required)", "http://ocp-far-edge-vran-deployment-kpi.hosts.prod.psi.rdu2.redhat.com:8080/"},
 	}
 
 	return c
