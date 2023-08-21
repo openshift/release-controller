@@ -831,6 +831,70 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
 					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-pull-secret", Optional: &isTrue}}},
 				},
+				InitContainers: []corev1.Container{
+					{
+						Name:  "git",
+						Image: image,
+						Env: []corev1.EnvVar{
+							{Name: "HOME", Value: "/tmp"},
+							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
+							{Name: "GIT_COMMITTER_NAME", Value: "test"},
+							{Name: "GIT_COMMITTER_EMAIL", Value: "test@test.com"},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "git", MountPath: "/tmp/git/"},
+							{Name: "git-credentials", MountPath: "/tmp/.git-credentials", SubPath: ".git-credentials"},
+							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU: resource.MustParse("50m"),
+							},
+						},
+						Command: []string{
+							"/bin/bash",
+							"-c",
+							`#!/bin/bash
+							set -euo pipefail
+							trap 'kill $(jobs -p); exit 0' TERM
+
+							SECONDS=0
+
+							# ensure we are logged in to our registry
+							mkdir -p /tmp/.docker/ ${XDG_RUNTIME_DIR}
+							cp /tmp/pull-secret/* /tmp/.docker/ || true
+
+							git config --global credential.helper store
+							git config --global user.name test
+							git config --global user.email test@test.com
+							oc registry login --to /tmp/.docker/config.json
+
+							if [ -x /tmp/git/github.com ]
+							then
+							  echo "Performing git maintenance..."
+							  for repo in $(find /tmp/git -type d -a -name .git | xargs dirname)
+							  do
+								(cd $repo && git gc && git pull)
+							  done
+							else
+							  FROM=$(curl -s https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestreams/accepted | jq -r '.["4-stable"][0] // empty')
+							  TO=$(curl -s https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestreams/accepted | jq -r '.["4-dev-preview"][0] // empty')
+
+							  if [[ -n "$FROM" && -n "$TO" ]]
+							  then
+								echo "Pre-populating the git cache..."
+								oc adm release info --changelog=/tmp/git quay.io/openshift-release-dev/ocp-release:$FROM-x86_64 quay.io/openshift-release-dev/ocp-release:$TO-x86_64
+							  else
+								echo "Unable to Pre-populate the git cache!"
+							  fi
+							fi
+
+							DURATION=$SECONDS
+							echo "Took: $(($DURATION / 60))m $(($DURATION % 60))s"
+							`,
+						},
+					},
+				},
 				Containers: []corev1.Container{
 					{
 						Name:  "git",
