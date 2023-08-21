@@ -2,16 +2,22 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/blang/semver"
 	v1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/prometheus/client_golang/prometheus"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
-	"time"
+	"k8s.io/test-infra/prow/jira"
 )
 
 const (
@@ -21,6 +27,12 @@ const (
 	jiraNoRegistry              = "no_configured_registry"
 	jiraUnableToGenerateBuglist = "unable_to_generate_buglist"
 	jiraVerifier                = "verifier"
+	jiraChangelogGeneration     = "changelog_generation"
+	jiraChangelogUnmarshal      = "changelog_unmarshal"
+	jiraIssuesParse             = "issues_parse"
+	jiraIssuesUnmarshal         = "issues_unmarshal"
+	jiraStableReleases          = "stable_releases"
+	jiraFeatureVersion          = "features"
 	jiraFailedAnnotation        = "failed_annotation"
 	jiraImagestreamGetErr       = "imagestream_get_error"
 )
@@ -151,6 +163,70 @@ func (c *Controller) syncJira(key queueKey) error {
 		return utilerrors.NewAggregate(errs)
 	}
 
+	// Handle feature tags
+	// Generate the change log from image digests; this should be pretty quick since the Bugs function was run recently
+	changelogJSON, err := c.releaseInfo.ChangeLog(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name, true)
+	if err != nil {
+		klog.V(4).Infof("Jira: Unable to generate changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
+		c.jiraErrorMetrics.WithLabelValues(jiraChangelogGeneration).Inc()
+		return fmt.Errorf("jira: unable to generate changelog from %s to %s: %w", prevTag.Name, tag.Name, err)
+	}
+	var changelog releasecontroller.ChangeLog
+	if err := json.Unmarshal([]byte(changelogJSON), &changelog); err != nil {
+		klog.V(4).Infof("Jira: Unable to unmarshal changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
+		c.jiraErrorMetrics.WithLabelValues(jiraChangelogUnmarshal).Inc()
+		return fmt.Errorf("jira: unable to unmarshal changelog from %s to %s: %w", prevTag.Name, tag.Name, err)
+	}
+	// Get issue details
+	info, err := c.releaseInfo.IssuesInfo(changelogJSON)
+	if err != nil {
+		klog.V(4).Infof("Jira: Unable to parse issue info from changelog of %s to %s: %v", prevTag.Name, tag.Name, err)
+		c.jiraErrorMetrics.WithLabelValues(jiraIssuesParse).Inc()
+		return fmt.Errorf("jira: unable to parse issue info from changelog of %s to %s: %w", prevTag.Name, tag.Name, err)
+	}
+
+	var mapIssueDetails map[string]releasecontroller.IssueDetails
+	if err := json.Unmarshal([]byte(info), &mapIssueDetails); err != nil {
+		klog.V(4).Infof("Jira: Unable to unmarshal issue info from changelog of %s to %s: %v", prevTag.Name, tag.Name, err)
+		c.jiraErrorMetrics.WithLabelValues(jiraIssuesUnmarshal).Inc()
+		return fmt.Errorf("jira: unable to unmarshal issue info from changelog of %s to %s: %w", prevTag.Name, tag.Name, err)
+	}
+
+	completedFeatures := []string{}
+	for key, details := range mapIssueDetails {
+		if details.IssueType == releasecontroller.JiraTypeFeature && statusOnBuild(&changelog.To.Created, details.ResolutionDate, details.Transitions) {
+			completedFeatures = append(completedFeatures, key)
+		}
+	}
+
+	// figure out what fix version should be applied
+	tagSemver := semver.MustParse(tag.Name)
+	fixVersion := fmt.Sprintf("%d.%d.0", tagSemver.Major, tagSemver.Minor)
+	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
+	if err != nil {
+		klog.V(4).Infof("Jira: Error getting stable releases: %v", err)
+		c.jiraErrorMetrics.WithLabelValues(jiraStableReleases).Inc()
+		return fmt.Errorf("jira: unable to get stable releases: %v", err)
+	}
+	for _, release := range stableReleases.Releases {
+		if release.Version.LT(semver.MustParse(fixVersion)) {
+			break
+		}
+		if release.Version.EQ(semver.MustParse(fixVersion)) {
+			// if 4.y.0 was published before this tag, update fixVersion to 4.y.z
+			if release.Release.Target.CreationTimestamp.Time.Before(changelog.To.Created) {
+				fixVersion = fmt.Sprintf("%d.%d.z", tagSemver.Major, tagSemver.Minor)
+			}
+			break
+		}
+	}
+
+	if errs := append(errs, c.jiraVerifier.SetFeatureFixedVersions(completedFeatures, tag.Name, fixVersion)...); len(errs) != 0 {
+		klog.V(4).Infof("Error(s) updating versions for completed features: %v", utilerrors.NewAggregate(errs))
+		c.jiraErrorMetrics.WithLabelValues(jiraFeatureVersion).Inc()
+		return utilerrors.NewAggregate(errs)
+	}
+
 	var lastErr error
 	err = wait.PollImmediate(15*time.Second, 1*time.Minute, func() (bool, error) {
 		// Get the latest version of ImageStream before trying to update annotations
@@ -186,4 +262,28 @@ func (c *Controller) syncJira(key queueKey) error {
 	}
 
 	return nil
+}
+
+// from cmd/release-controller-api/http.go
+var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.ToLower(jira.StatusVerified), strings.ToLower(jira.StatusModified), strings.ToLower(jira.StatusClosed))
+
+func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time, transitions []releasecontroller.Transition) bool {
+	if !issueTimestamp.IsZero() && issueTimestamp.Before(*buildTimeStamp) {
+		return true
+	}
+	status := getPastStatus(transitions, buildTimeStamp)
+	if statusComplete.Has(strings.ToLower(status)) {
+		return true
+	}
+	return false
+}
+func getPastStatus(transitions []releasecontroller.Transition, buildTime *time.Time) string {
+	status := "New"
+	for _, t := range transitions {
+		if t.Time.After(*buildTime) {
+			break
+		}
+		status = t.ToStatus
+	}
+	return status
 }

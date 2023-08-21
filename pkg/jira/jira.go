@@ -178,8 +178,32 @@ func (c *Verifier) commentIssue(errs *[]error, issue *jiraBaseClient.Issue, mess
 	if _, err := c.jiraClient.AddComment(issue.ID, &jiraBaseClient.Comment{Body: message, Visibility: *restrictedComment}); err != nil {
 		*errs = append(*errs, fmt.Errorf("failed to comment on issue %s: %w", issue.ID, err))
 	}
+}
 
-	return
+func (c *Verifier) SetFeatureFixedVersions(issues []string, tagName, version string) []error {
+	errs := []error{}
+	for _, featureID := range issues {
+		feature, err := c.jiraClient.GetIssue(featureID)
+		if jira.JiraErrorStatusCode(err) == 403 {
+			klog.Warningf("Permissions error getting issue %s; ignoring", featureID)
+			continue
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("unable to get jira ID %s: %w", featureID, err))
+			continue
+		}
+		if feature.Fields.FixVersions == nil || len(feature.Fields.FixVersions) == 0 {
+			feature.Fields.FixVersions = []*jiraBaseClient.FixVersion{{Name: version}}
+			if _, err := c.jiraClient.UpdateIssue(feature); err != nil {
+				errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
+			}
+			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
+			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, version)
+		} else {
+			klog.V(4).Infof("Jira feature issue %s already set to %+v; not updating", feature.Key, feature.Fields.FixVersions)
+		}
+	}
+	return errs
 }
 
 func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
