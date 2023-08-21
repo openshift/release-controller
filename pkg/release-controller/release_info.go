@@ -833,7 +833,7 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 				},
 				InitContainers: []corev1.Container{
 					{
-						Name:  "git",
+						Name:  "init-git",
 						Image: image,
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
