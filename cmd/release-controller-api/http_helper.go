@@ -490,13 +490,19 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			}
 			continue
 		}
-		switch value.State {
-		case releasecontroller.ReleaseVerificationStateFailed:
-			buf.WriteString("<li><span class=\"text-danger\">")
-		case releasecontroller.ReleaseVerificationStateSucceeded:
-			buf.WriteString("<li><span class=\"text-success\">")
-		default:
-			buf.WriteString("<li><span class=\"\">")
+		// Synthetic upgrade jobs are always successful and never have a URL.  This can cause confusion, so we're going
+		// to render them in a different color...
+		if verificationJobs[key].Upgrade && len(value.URL) == 0 && value.State == releasecontroller.ReleaseVerificationStateSucceeded {
+			buf.WriteString("<li><span class=\"text-muted\">")
+		} else {
+			switch value.State {
+			case releasecontroller.ReleaseVerificationStateFailed:
+				buf.WriteString("<li><span class=\"text-danger\">")
+			case releasecontroller.ReleaseVerificationStateSucceeded:
+				buf.WriteString("<li><span class=\"text-success\">")
+			default:
+				buf.WriteString("<li><span class=\"\">")
+			}
 		}
 		buf.WriteString(template.HTMLEscapeString(key))
 		switch value.State {
