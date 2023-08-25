@@ -499,6 +499,78 @@ func TestParseReleaseVerificationJobName(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:        "NightlyMultiArchJob",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-upgrade",
+					Count:               "",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyMultiArchJobWithRetries",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-upgrade",
+					Count:               "2",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyMultiArchTruncatedJob",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-5w4rkb2",
+					Count:               "",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyMultiArchTruncatedJobWithRetries",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-3",
+			want: &ReleaseVerificationJobDetails{
+				X: 4,
+				Y: 13,
+				Z: 0,
+				PreReleaseDetails: &PreReleaseDetails{
+					Build:               "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-5w4rkb2",
+					Count:               "3",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
