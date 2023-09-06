@@ -208,7 +208,7 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		featureTrees = append(featureTrees, featureTree)
 	}
 
-	linkedIssues := sets.String{}
+	linkedIssues := sets.Set[string]{}
 	visited := make(map[string]bool)
 	if !GetFeatureInfo(featureTrees, mapIssueDetails, &changeLog.To.Created, &linkedIssues, 10000, visited) {
 		return nil, errors.New("failed getting the features information, cycle limit reached! ")
@@ -328,7 +328,7 @@ func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree
 	return false
 }
 
-func GetFeatureInfo(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.String, limit int, visited map[string]bool) bool {
+func GetFeatureInfo(ft []*FeatureTree, issues map[string]releasecontroller.IssueDetails, buildTimeStamp *time.Time, linkedIssues *sets.Set[string], limit int, visited map[string]bool) bool {
 
 	// add a fail-safe to protect against stack-overflows caused by a cyclic link. If the limit has been reached, the
 	//function will return immediately without making any further recursive calls.

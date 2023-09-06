@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/blang/semver"
 	v1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -21,20 +22,22 @@ import (
 )
 
 const (
-	jiraPrevReleaseUnset        = "previous_release_unset"
-	jiraPrevImagestreamGetErr   = "previous_imagestream_get_error"
-	jiraMissingTag              = "missing_tag"
-	jiraNoRegistry              = "no_configured_registry"
-	jiraUnableToGenerateBuglist = "unable_to_generate_buglist"
-	jiraVerifier                = "verifier"
-	jiraChangelogGeneration     = "changelog_generation"
-	jiraChangelogUnmarshal      = "changelog_unmarshal"
-	jiraIssuesParse             = "issues_parse"
-	jiraIssuesUnmarshal         = "issues_unmarshal"
-	jiraStableReleases          = "stable_releases"
-	jiraFeatureVersion          = "features"
-	jiraFailedAnnotation        = "failed_annotation"
-	jiraImagestreamGetErr       = "imagestream_get_error"
+	jiraPrevReleaseUnset         = "previous_release_unset"
+	jiraPrevImagestreamGetErr    = "previous_imagestream_get_error"
+	jiraMissingTag               = "missing_tag"
+	jiraNoRegistry               = "no_configured_registry"
+	jiraUnableToGenerateBuglist  = "unable_to_generate_buglist"
+	jiraVerifier                 = "verifier"
+	jiraChangelogGeneration      = "changelog_generation"
+	jiraChangelogUnmarshal       = "changelog_unmarshal"
+	jiraIssuesParse              = "issues_parse"
+	jiraIssuesUnmarshal          = "issues_unmarshal"
+	jiraFeatureChildren          = "feature_children"
+	jiraFeatureChildrenUnmarshal = "feature_children_unmarshal"
+	jiraStableReleases           = "stable_releases"
+	jiraFeatureVersion           = "features"
+	jiraFailedAnnotation         = "failed_annotation"
+	jiraImagestreamGetErr        = "imagestream_get_error"
 )
 
 // initializeJiraMetrics initializes all labels used by the jira error metrics to 0. This allows
@@ -192,10 +195,52 @@ func (c *Controller) syncJira(key queueKey) error {
 		return fmt.Errorf("jira: unable to unmarshal issue info from changelog of %s to %s: %w", prevTag.Name, tag.Name, err)
 	}
 
-	completedFeatures := []string{}
+	parentFeatures := []string{}
 	for key, details := range mapIssueDetails {
-		if details.IssueType == releasecontroller.JiraTypeFeature && statusOnBuild(&changelog.To.Created, details.ResolutionDate, details.Transitions) {
-			completedFeatures = append(completedFeatures, key)
+		if strings.HasPrefix(key, "OSDOCS-") || strings.HasPrefix(key, "PLMCORE-") {
+			continue
+		}
+		if details.IssueType == releasecontroller.JiraTypeFeature {
+			parentFeatures = append(parentFeatures, key)
+		}
+	}
+
+	// this gets all children of the feature that are type `Epic`
+	featureChildrenJSON, err := c.releaseInfo.GetFeatureChildren(parentFeatures, 10*time.Minute)
+	if err != nil {
+		klog.V(4).Infof("Jira: Error getting feature children: %v", err)
+		c.jiraErrorMetrics.WithLabelValues(jiraFeatureChildren).Inc()
+		return fmt.Errorf("jira: unable to get feature children: %v", err)
+	}
+	var featureChildren map[string][]jiraBaseClient.Issue
+	if err := json.Unmarshal([]byte(featureChildrenJSON), &featureChildren); err != nil {
+		klog.V(4).Infof("Jira: Error unmarhsalling feature children: %v", err)
+		c.jiraErrorMetrics.WithLabelValues(jiraFeatureChildrenUnmarshal).Inc()
+		return fmt.Errorf("jira: unable unmarshal feature children: %v", err)
+	}
+
+	fixVersionUpdateList := sets.New[string]()
+	for _, issue := range issueList {
+		if strings.HasPrefix(issue, "OSDOCS-") || strings.HasPrefix(issue, "PLMCORE-") {
+			continue
+		}
+		fixVersionUpdateList = fixVersionUpdateList.Insert(issue)
+		if mapIssueDetails[issue].Epic != "" && !(strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-")) {
+			fixVersionUpdateList = fixVersionUpdateList.Insert(mapIssueDetails[issue].Epic)
+		}
+	}
+	for _, feature := range parentFeatures {
+		unsetEpic := false
+		for _, epic := range featureChildren[feature] {
+			if strings.HasPrefix(epic.Key, "OSDOCS-") || strings.HasPrefix(epic.Key, "PLMCORE-") ||
+				fixVersionUpdateList.Has(epic.Key) || (epic.Fields != nil && epic.Fields.FixVersions != nil && len(epic.Fields.FixVersions) > 0) {
+				continue
+			}
+			unsetEpic = true
+			break
+		}
+		if !unsetEpic {
+			fixVersionUpdateList.Insert(feature)
 		}
 	}
 
@@ -221,7 +266,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		}
 	}
 
-	if errs := append(errs, c.jiraVerifier.SetFeatureFixedVersions(completedFeatures, tag.Name, fixVersion)...); len(errs) != 0 {
+	if errs := append(errs, c.jiraVerifier.SetFeatureFixedVersions(fixVersionUpdateList, tag.Name, fixVersion)...); len(errs) != 0 {
 		klog.V(4).Infof("Error(s) updating versions for completed features: %v", utilerrors.NewAggregate(errs))
 		c.jiraErrorMetrics.WithLabelValues(jiraFeatureVersion).Inc()
 		return utilerrors.NewAggregate(errs)
