@@ -8,6 +8,7 @@ import (
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/openshift-eng/jira-lifecycle-plugin/pkg/helpers"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/jira"
@@ -180,9 +181,9 @@ func (c *Verifier) commentIssue(errs *[]error, issue *jiraBaseClient.Issue, mess
 	}
 }
 
-func (c *Verifier) SetFeatureFixedVersions(issues []string, tagName, version string) []error {
+func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, version string) []error {
 	errs := []error{}
-	for _, featureID := range issues {
+	for featureID := range issues {
 		feature, err := c.jiraClient.GetIssue(featureID)
 		if jira.JiraErrorStatusCode(err) == 403 {
 			klog.Warningf("Permissions error getting issue %s; ignoring", featureID)
