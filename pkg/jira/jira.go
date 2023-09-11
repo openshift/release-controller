@@ -194,9 +194,11 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			continue
 		}
 		if feature.Fields.FixVersions == nil || len(feature.Fields.FixVersions) == 0 {
-			feature.Fields.FixVersions = []*jiraBaseClient.FixVersion{{Name: version}}
-			if _, err := c.jiraClient.UpdateIssue(feature); err != nil {
+			tmpIssue := &jiraBaseClient.Issue{Key: feature.Key}
+			tmpIssue.Fields.FixVersions = []*jiraBaseClient.FixVersion{{Name: version}}
+			if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
 				errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
+				continue
 			}
 			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
 			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, version)
