@@ -207,7 +207,11 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
 			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, version)
 		} else {
-			klog.V(4).Infof("Jira feature issue %s already set to %+v; not updating", feature.Key, feature.Fields.FixVersions)
+			versions := []string{}
+			for _, v := range feature.Fields.FixVersions {
+				versions = append(versions, v.Name)
+			}
+			klog.V(4).Infof("Jira feature issue %s already set to [%s]; not updating", feature.Key, strings.Join(versions, ","))
 		}
 	}
 	return errs
