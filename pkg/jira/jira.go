@@ -97,7 +97,7 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 	// Check to see if the same message has already been posted.
 	for _, comment := range comments {
 		if strings.Contains(comment.Body, message) {
-			return nil, false
+			return nil, true
 		}
 	}
 	// If the message hasn't already been posted, post it.
@@ -105,7 +105,7 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 	if err != nil {
 		return err, false
 	}
-	return err, true
+	return nil, true
 }
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
