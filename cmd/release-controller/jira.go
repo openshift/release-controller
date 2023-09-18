@@ -268,8 +268,9 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	if errs := append(errs, c.jiraVerifier.SetFeatureFixedVersions(fixVersionUpdateList, tag.Name, fixVersion)...); len(errs) != 0 {
 		klog.V(4).Infof("Error(s) updating versions for completed features: %v", utilerrors.NewAggregate(errs))
-		c.jiraErrorMetrics.WithLabelValues(jiraFeatureVersion).Inc()
-		return utilerrors.NewAggregate(errs)
+		// Temporarily ignore errors in fixversion updating due to issues with various projects
+		//c.jiraErrorMetrics.WithLabelValues(jiraFeatureVersion).Inc()
+		//return utilerrors.NewAggregate(errs)
 	}
 
 	var lastErr error
