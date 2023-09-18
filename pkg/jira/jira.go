@@ -171,7 +171,7 @@ func (c *Verifier) commentIssue(errs *[]error, issue *jiraBaseClient.Issue, mess
 		if !exists {
 			*errs = append(*errs, fmt.Errorf("Internal Error on Automation"))
 		}
-		klog.Warningf("failed to get comments on issue %s: %w", issue.ID, err)
+		klog.Warningf("failed to get comments on issue %s: %v", issue.ID, err)
 		return
 	}
 	for _, comment := range comments.Fields.Comments.Comments {
@@ -251,7 +251,7 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			if !exists {
 				errs = append(errs, fmt.Errorf("Internal Error on Automation"))
 			}
-			klog.Warningf("unable to get jira ID %s: %w", issueID, err)
+			klog.Warningf("unable to get jira ID %s: %v", issueID, err)
 			continue
 		}
 		checkTargetRelease, tagError := issueTargetReleaseCheck(issue, tagRelease, tagName)
@@ -336,7 +336,7 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 			if !exists {
 				errs = append(errs, fmt.Errorf("Internal Error on Automation"))
 			}
-			klog.Warningf("failed to get external bugs for jira issue %s: %w", jiraID, err)
+			klog.Warningf("failed to get external bugs for jira issue %s: %v", jiraID, err)
 			continue
 		}
 		foundPR := false
