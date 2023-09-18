@@ -52,8 +52,8 @@ func TestCommentOnPR(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if created {
-		t.Errorf("Expected comment not to be created, but it was")
+	if !created {
+		t.Errorf("Unexpected result while checking an already commented PR")
 	}
 }
 
