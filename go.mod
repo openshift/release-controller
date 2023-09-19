@@ -1,6 +1,6 @@
 module github.com/openshift/release-controller
 
-go 1.18
+go 1.20
 
 replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
@@ -59,7 +59,7 @@ require (
 	k8s.io/component-base v0.27.2
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.100.1
-	k8s.io/test-infra v0.0.0-20230814043119-417a0389ccd8
+	k8s.io/test-infra v0.0.0-20230919194854-a4926a4d0269
 )
 
 require (
@@ -82,6 +82,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cjwagner/httpcache v0.0.0-20230907212505-d4841bbad466 // indirect
 	github.com/clarketm/json v1.13.4 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.4.0 // indirect
@@ -122,7 +123,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go v2.0.2+incompatible // indirect
 	github.com/googleapis/gax-go/v2 v2.11.0 // indirect
-	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
