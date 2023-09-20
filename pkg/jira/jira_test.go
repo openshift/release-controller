@@ -352,7 +352,7 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{errors.New("unable to get labels for github pull openshift/vmware-vsphere-csi-driver-operator#105: injected error")},
+				errors:  []error{errors.New("Internal Error on Automation")},
 				status:  "ON_QA",
 				message: "",
 			},
