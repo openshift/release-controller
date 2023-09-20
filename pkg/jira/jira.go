@@ -120,7 +120,17 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 			var newErr error
 			unlabeledPRs, newErr = c.ghUnlabeledPRs(extPR)
 			if newErr != nil {
-				*errs = append(*errs, newErr)
+				exists := false
+				for _, tmpErr := range *errs {
+					if tmpErr.Error() == "Internal Error on Automation" {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					*errs = append(*errs, fmt.Errorf("Internal Error on Automation"))
+				}
+				klog.Warning(newErr)
 				return "", false
 			}
 			// Comment on the PR saying that this PR is included in the release
