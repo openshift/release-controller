@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -253,16 +254,16 @@ func (c *Controller) syncJira(key queueKey) error {
 		c.jiraErrorMetrics.WithLabelValues(jiraStableReleases).Inc()
 		return fmt.Errorf("jira: unable to get stable releases: %v", err)
 	}
-	for _, release := range stableReleases.Releases {
-		if release.Version.LT(semver.MustParse(fixVersion)) {
-			break
-		}
-		if release.Version.EQ(semver.MustParse(fixVersion)) {
-			// if 4.y.0 was published before this tag, update fixVersion to 4.y.z
-			if release.Release.Target.CreationTimestamp.Time.Before(changelog.To.Created) {
-				fixVersion = fmt.Sprintf("%d.%d.z", tagSemver.Major, tagSemver.Minor)
+	stableVersionTag := findStableVersionTag(stableReleases, semver.MustParse(fixVersion))
+	if stableVersionTag != nil {
+		if timestamp, ok := stableVersionTag.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp]; ok {
+			created, err := time.Parse(time.RFC3339, timestamp)
+			if err == nil {
+				// if 4.y.0 was published before this tag, update fixVersion to 4.y.z
+				if created.Before(changelog.To.Created) {
+					fixVersion = fmt.Sprintf("%d.%d.z", tagSemver.Major, tagSemver.Minor)
+				}
 			}
-			break
 		}
 	}
 
@@ -307,6 +308,23 @@ func (c *Controller) syncJira(key queueKey) error {
 		return err
 	}
 
+	return nil
+}
+
+func findStableVersionTag(ref *releasecontroller.StableReferences, version semver.Version) *v1.TagReference {
+	for _, stable := range ref.Releases {
+		versions := releasecontroller.UnsortedSemanticReleaseTags(stable.Release, releasecontroller.ReleasePhaseAccepted)
+		sort.Sort(versions)
+
+		for _, v := range versions {
+			if v.Version == nil {
+				continue
+			}
+			if v.Version.EQ(version) {
+				return v.Tag
+			}
+		}
+	}
 	return nil
 }
 
