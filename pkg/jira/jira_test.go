@@ -410,6 +410,199 @@ func TestVerifyIssues(t *testing.T) {
 	}
 }
 
+// TestDetermineFixVersion tests the determineFixVersion method.
+func TestDetermineFixVersion(t *testing.T) {
+	testCases := []struct {
+		name            string
+		projectVersions map[string][]*jira.Version
+		feature         *jira.Issue
+		version         string
+		expected        string
+	}{
+		{
+			name:            "NilProjectVersions",
+			projectVersions: nil,
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name:            "NoProjectVersions",
+			projectVersions: map[string][]*jira.Version{},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "NoMatchingProject",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT2": {
+					{
+						Name: "X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithMatchingVersion",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithMatchingVersionWithPrefix",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "openshift-X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithNonMatchingVersion",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "A.B.c",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithNonMatchingVersionWithPrefix",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-A.B.c",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "MultipleMatchingVersions1",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "X.Y.z",
+					},
+					{
+						Name: "openshift-X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+		{
+			name: "MultipleMatchingVersions2",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y.z",
+					},
+					{
+						Name: "X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.z",
+			expected: "X.Y.z",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClient := &fakejira.FakeClient{
+				ProjectVersions: tc.projectVersions,
+			}
+			verifier := NewVerifier(mockClient, &fakeGHClient{}, &plugins.Configuration{})
+			fixVersion, err := verifier.determineFixVersion(tc.feature, tc.version)
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if fixVersion != tc.expected {
+				t.Errorf("expected: %s, but got: %s", tc.expected, fixVersion)
+			}
+		})
+	}
+}
+
 const onQAIssueJSON = `
 {
   "key": "OCPBUGS-123",
