@@ -213,11 +213,16 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			errs = append(errs, fmt.Errorf("unable to get jira ID %s: %w", featureID, err))
 			continue
 		}
+		fixVersion, err := c.determineFixVersion(feature, version)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
 		if feature.Fields.FixVersions == nil || len(feature.Fields.FixVersions) == 0 {
 			tmpIssue := &jiraBaseClient.Issue{
 				Key: feature.Key,
 				Fields: &jiraBaseClient.IssueFields{
-					FixVersions: []*jiraBaseClient.FixVersion{{Name: version}},
+					FixVersions: []*jiraBaseClient.FixVersion{{Name: fixVersion}},
 				},
 			}
 			if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
@@ -225,7 +230,7 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 				continue
 			}
 			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
-			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, version)
+			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, fixVersion)
 		} else {
 			versions := []string{}
 			for _, v := range feature.Fields.FixVersions {
@@ -371,4 +376,28 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 		}
 	}
 	return jiraPRs, errs
+}
+
+func (c *Verifier) determineFixVersion(feature *jiraBaseClient.Issue, version string) (string, error) {
+	versions, err := c.jiraClient.GetProjectVersions(feature.Fields.Project.Key)
+	if jira.JiraErrorStatusCode(err) == 403 {
+		return "", fmt.Errorf("permissions error getting project versions for jira issue: %s; ignoring", feature.Key)
+	}
+	if err != nil {
+		return "", fmt.Errorf("unable to get project versions for jira issue %q: %w", feature.Key, err)
+	}
+	// Give preference to versions without any prefix...
+	for _, v := range versions {
+		if v.Name == version {
+			return v.Name, nil
+		}
+	}
+	// Then, versions with a prefix...
+	for _, v := range versions {
+		if v.Name == fmt.Sprintf("openshift-%s", version) {
+			return v.Name, nil
+		}
+	}
+	// If no match is found, return the version we calculated
+	return version, nil
 }
