@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/prow"
+	"regexp"
 	"strings"
+
+	"github.com/openshift/release-controller/pkg/prow"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -82,14 +84,13 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			spec.Cluster = buildClusterDistribution.Get()
 		}
 	}
-	// Currently, all "metal" jobs must be run on the `build05` cluster
-	if strings.Contains(jobName, "metal") {
+
+	// Currently, there is a set of jobs that must be run on the `build05` cluster
+	r := regexp.MustCompile(`\b(e2e-agent|metal|telco5g)\b`)
+	if r.FindString(jobName) != "" {
 		spec.Cluster = "build05"
 	}
-	// Currently, all "telco5g" jobs must be run on the `build05` cluster
-	if strings.Contains(jobName, "telco5g") {
-		spec.Cluster = "build05"
-	}
+
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
 	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
 	if err != nil {
