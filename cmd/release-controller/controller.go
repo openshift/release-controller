@@ -145,6 +145,8 @@ type Controller struct {
 
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter
 	releasePayloadLister *releasecontroller.MultiReleasePayloadLister
+
+	manifestListMode bool
 }
 
 // NewController instantiates a Controller to manage release objects.
@@ -165,6 +167,7 @@ func NewController(
 	architecture string,
 	artSuffix string,
 	releasePayloadClient releasepayloadclient.ReleasePayloadsGetter,
+	manifestListMode bool,
 ) *Controller {
 
 	// log events at v2 and send them to the server
@@ -227,6 +230,8 @@ func NewController(
 		releasePayloadLister: &releasecontroller.MultiReleasePayloadLister{Listers: make(map[string]v1alpha1.ReleasePayloadNamespaceLister)},
 
 		legacyResultsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "legacyResults"),
+
+		manifestListMode: manifestListMode,
 	}
 
 	c.auditTracker = NewAuditTracker(c.auditQueue)

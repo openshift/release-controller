@@ -29,13 +29,18 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
+		manifestListMode := "false"
+		if c.manifestListMode {
+			manifestListMode = "true"
+		}
+
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5"
+			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"
 			`,
 			"",
-			name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode,
+			name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, manifestListMode,
 		}
 
 		job.Annotations[releasecontroller.ReleaseAnnotationSource] = mirror.Annotations[releasecontroller.ReleaseAnnotationSource]
@@ -63,6 +68,11 @@ func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name s
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
+		manifestListMode := "false"
+		if c.manifestListMode {
+			manifestListMode = "true"
+		}
+
 		container := job.Spec.Template.Spec.Containers[0]
 
 		// load the release image's cli image to status message if necessary
@@ -82,29 +92,29 @@ func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name s
 		init1.Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3"
+			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3" "--keep-manifest-list=$4"
 			`,
 			"",
-			toImage, mirror.Name, mirror.Namespace,
+			toImage, mirror.Name, mirror.Namespace, manifestListMode,
 		}
 		// rebuild the payload using the provided metadata
 		if _, ok := ref.Annotations[releasecontroller.ReleaseAnnotationMirrorImages]; ok {
 			job.Spec.Template.Spec.Containers[0].Command = []string{
 				"/bin/bash", "-c",
 				prefix + `
-			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" --to-image="$4" "--reference-mode=$5" "--metadata=$6"
+			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" --to-image="$4" "--reference-mode=$5" "--metadata=$6" "--keep-manifest-list=$7"
 			`,
 				"",
-				name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, metadataJSON,
+				name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, metadataJSON, manifestListMode,
 			}
 		} else {
 			job.Spec.Template.Spec.Containers[0].Command = []string{
 				"/bin/bash", "-c",
 				prefix + `
-			oc adm release new "--name=$1" "--from-release=$2" --to-image="$3" "--reference-mode=$4" "--metadata=$5"
+			oc adm release new "--name=$1" "--from-release=$2" --to-image="$3" "--reference-mode=$4" "--metadata=$5" "--keep-manifest-list=$6"
 			`,
 				"",
-				name, toImage, toImage, release.Config.ReferenceMode, metadataJSON,
+				name, toImage, toImage, release.Config.ReferenceMode, metadataJSON, manifestListMode,
 			}
 		}
 
@@ -132,6 +142,11 @@ func (c *Controller) ensureImportJob(release *releasecontroller.Release, name st
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
+		manifestListMode := "false"
+		if c.manifestListMode {
+			manifestListMode = "true"
+		}
+
 		container := job.Spec.Template.Spec.Containers[0]
 
 		// load the release image's cli image to status message if necessary
@@ -148,10 +163,10 @@ func (c *Controller) ensureImportJob(release *releasecontroller.Release, name st
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3"
+			oc adm release mirror "$1" --to-image-stream="$2" "--namespace=$3" "--keep-manifest-list=$4"
 			`,
 			"",
-			toImage, mirror.Name, mirror.Namespace,
+			toImage, mirror.Name, mirror.Namespace, manifestListMode,
 		}
 
 		job.Annotations[releasecontroller.ReleaseAnnotationSource] = mirror.Annotations[releasecontroller.ReleaseAnnotationSource]
