@@ -108,6 +108,7 @@ type options struct {
 	ConfirmPruneGraph bool
 
 	ProcessLegacyResults bool
+	ManifestListMode     bool
 }
 
 // Add metrics for jira verifier errors
@@ -211,6 +212,7 @@ func main() {
 	flagset.BoolVar(&opt.ConfirmPruneGraph, "confirm-prune-graph", opt.ConfirmPruneGraph, "Persist the pruned graph")
 
 	flagset.BoolVar(&opt.ProcessLegacyResults, "process-legacy-results", opt.ProcessLegacyResults, "enable the migration of imagestream based results to ReleasePayloads")
+	flagset.BoolVar(&opt.ManifestListMode, "manifest-list-mode", opt.ManifestListMode, "enable manifest list support for oc operations")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
@@ -395,6 +397,7 @@ func (o *options) Run() error {
 		architecture,
 		o.ARTSuffix,
 		releasePayloadClient.ReleaseV1alpha1(),
+		o.ManifestListMode,
 	)
 
 	if o.VerifyJira {
