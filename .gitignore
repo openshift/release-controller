@@ -3,9 +3,12 @@
 /release-controller
 /release-controller-api
 /release-payload-controller
+/release-reimport-controller
 /_output
 
 .dccache
+python-env
+
 .scannerwork/
 coverage.out
 golangci-lint.out
