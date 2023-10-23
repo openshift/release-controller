@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package unit provides units.
-//
-// This package is currently in a pre-GA phase. Backwards incompatible changes
-// may be introduced in subsequent minor version releases as we work to track
-// the evolving OpenTelemetry specification and user feedback.
-package unit // import "go.opentelemetry.io/otel/metric/unit"
+//go:build linux
+// +build linux
+
+package resource // import "go.opentelemetry.io/otel/sdk/resource"
+
+var platformHostIDReader hostIDReader = &hostIDReaderLinux{
+	readFile: readFile,
+}
