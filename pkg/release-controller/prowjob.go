@@ -46,6 +46,9 @@ func ProwJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 }
 
 func truncateProwJobResultsURL(url string) string {
+	if len(url) == 0 {
+		return url
+	}
 	if strings.HasPrefix(url, ProwJobResultsURLPrefix) {
 		return strings.TrimPrefix(url, ProwJobResultsURLPrefix)
 	}
