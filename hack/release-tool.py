@@ -6,6 +6,7 @@ import logging
 import os.path
 import re
 import tempfile
+
 import time
 
 import openshift as oc
@@ -442,7 +443,7 @@ def delete_archived_imagestreamtags(ctx, namespace, name, spec_tags, status_tags
 def reimport(ctx, namespace, imagestream, execute):
     logger.info(f'Importing tags from imagestream: {namespace}/{imagestream}')
 
-    with oc.options(ctx), oc.tracking(), oc.timeout(5*60):
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
             with oc.project(namespace):
                 stream = oc.selector(f'imagestream/{imagestream}').object(ignore_not_found=True)
@@ -464,6 +465,41 @@ def reimport(ctx, namespace, imagestream, execute):
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to to process imagestream: "{namespace}/{imagestream}"')
+            raise e
+
+
+def keep(ctx, namespace, imagestream, release, delete, execute):
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(namespace):
+                if release is not None:
+                    tag = oc.selector(f'imagestreamtag/{imagestream}:{release}').object(ignore_not_found=True)
+                    if not tag:
+                        logger.error(f'Unable to locate imagestreamtag: {namespace}/{imagestream}:{release}')
+                        return
+
+                    if execute:
+                        if delete:
+                            logger.info(f'Removing keep annotation from release: {namespace}/{imagestream}:{release}')
+                            tag.annotate(annotations={'release.openshift.io/keep': None})
+                        else:
+                            logger.info(f'Adding keep annotation to release: {namespace}/{imagestream}:{release}')
+                            tag.annotate(annotations={'release.openshift.io/keep': True})
+                    else:
+                        if delete:
+                            logger.info(f'[dry-run] Removing keep annotation from release: {namespace}/{imagestream}:{release}')
+                        else:
+                            logger.info(f'[dry-run] Adding keep annotation to release: {namespace}/{imagestream}:{release}')
+                else:
+                    tags = oc.selector(f'imagestreamtags').objects(ignore_not_found=True)
+
+                    logger.info(f'ImagestreamTags with the keep annotation:')
+                    for tag in tags:
+                        if tag.get_annotation('release.openshift.io/keep') is not None:
+                            logger.info(f' - {namespace}/{tag.name()}')
+
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
 
@@ -508,6 +544,12 @@ if __name__ == '__main__':
     import_parser.set_defaults(action='import')
     import_parser.add_argument('imagestream', help='The name of the imagestream to process (i.e. 4.13-art-latest)')
 
+    keep_parser = subparsers.add_parser('keep',
+                                        help='Add/Delete the keep annotation from the respective release or list all imagestreamtags with keep annotation if no options are specified')
+    keep_parser.set_defaults(action='keep')
+    keep_parser.add_argument('-d', '--delete', help='Remove the keep annotation', action='store_true')
+    keep_parser.add_argument('-r', '--release', help='The name of the release (i.e. 4.13.0-0.nightly-2023-10-24-100542)', default=None)
+
     args = vars(parser.parse_args())
 
     if args['verbose']:
@@ -548,3 +590,5 @@ if __name__ == '__main__':
         archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'import':
         reimport(context, release_namespace, release_image_stream, args['execute'])
+    elif args['action'] == 'keep':
+        keep(context, release_namespace, release_image_stream, args['release'], args['delete'], args['execute'])
