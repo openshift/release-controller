@@ -52,7 +52,7 @@ func (c *ImageReimportController) sync() {
 	}
 	for _, stream := range streams {
 		// only handle release imagestreams
-		if stream.Annotations["release.openshift.io/config"] == "" {
+		if _, ok := stream.Annotations[releasecontroller.ReleaseAnnotationConfig]; !ok {
 			continue
 		}
 		for _, tag := range stream.Status.Tags {
