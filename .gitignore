@@ -5,6 +5,7 @@
 /release-payload-controller
 /_output
 
+.dccache
 .scannerwork/
 coverage.out
 golangci-lint.out
