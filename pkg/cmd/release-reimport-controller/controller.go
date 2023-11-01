@@ -29,7 +29,7 @@ func NewImageReimportController(imageClient *imageclientset.Clientset, namespace
 	var hasSynced []cache.InformerSynced
 	stopCh := wait.NeverStop
 	for _, ns := range namespaces {
-		klog.Infof("Adding %s namespace to reimport controller", ns)
+		klog.V(3).Infof("Adding %s namespace to reimport controller", ns)
 		factory := imageinformers.NewSharedInformerFactoryWithOptions(imageClient, 10*time.Minute, imageinformers.WithNamespace(ns))
 		streams := factory.Image().V1().ImageStreams()
 		c.releaseLister.Listers[ns] = streams.Lister().ImageStreams(ns)
@@ -46,6 +46,7 @@ func (c *ImageReimportController) Run(ctx context.Context, interval time.Duratio
 }
 
 func (c *ImageReimportController) sync() {
+	klog.V(4).Info("Checking if images need reimport")
 	streams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("Failed to list releases: %s", err)
@@ -58,7 +59,7 @@ func (c *ImageReimportController) sync() {
 		for _, tag := range stream.Status.Tags {
 			for _, condition := range tag.Conditions {
 				if condition.Type == "ImportSuccess" && condition.Status == "False" {
-					klog.Infof("Reimporting %s:%s", stream.Name, tag.Tag)
+					klog.V(4).Infof("Reimporting %s:%s", stream.Name, tag.Tag)
 					commandSlice := []string{"import-image"}
 					if c.dryRun {
 						commandSlice = append(commandSlice, "--dry-run")
@@ -70,9 +71,10 @@ func (c *ImageReimportController) sync() {
 						klog.Errorf("Failed to run `%s`: %v", cmd.String(), err)
 						continue
 					}
-					klog.Infof("Output of `%s`: %s", cmd.String(), out)
+					klog.V(4).Infof("Output of `%s`: %s", cmd.String(), out)
 				}
 			}
 		}
 	}
+	klog.V(4).Infof("Finished image reimporting")
 }
