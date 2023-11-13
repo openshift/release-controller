@@ -37,6 +37,7 @@ func NewReleaseReimportControllerCommand(name string) *cobra.Command {
 
 		return nil
 	})
+	ccc.DisableLeaderElection = true
 
 	cmd := ccc.NewCommandWithContext(context.Background())
 	cmd.Use = name

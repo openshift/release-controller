@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
@@ -46,20 +47,32 @@ func (c *ImageReimportController) Run(ctx context.Context, interval time.Duratio
 }
 
 func (c *ImageReimportController) sync() {
-	klog.V(4).Info("Checking if images need reimport")
+	klog.V(3).Info("Checking if images need reimport")
 	streams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("Failed to list releases: %s", err)
 	}
+	isNames := ""
+	for _, stream := range streams {
+		isNames += stream.Name + ", "
+	}
+	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames, ", "))
 	for _, stream := range streams {
 		// only handle release imagestreams
 		if _, ok := stream.Annotations[releasecontroller.ReleaseAnnotationConfig]; !ok {
+			klog.V(4).Infof("Imagestream %s does not have release annotation", stream.Name)
 			continue
 		}
+		klog.V(4).Infof("Checking tags for imagestream %s", stream.Name)
 		for _, tag := range stream.Status.Tags {
+			if len(tag.Conditions) == 0 {
+				klog.V(4).Infof("%s/%s has no conditions", stream.Name, tag.Tag)
+			} else {
+				klog.V(4).Infof("%s/%s has the following conditions: %+v", stream.Name, tag.Tag, tag.Conditions)
+			}
 			for _, condition := range tag.Conditions {
 				if condition.Type == "ImportSuccess" && condition.Status == "False" {
-					klog.V(4).Infof("Reimporting %s:%s", stream.Name, tag.Tag)
+					klog.V(3).Infof("Reimporting %s:%s", stream.Name, tag.Tag)
 					commandSlice := []string{"import-image"}
 					if c.dryRun {
 						commandSlice = append(commandSlice, "--dry-run")
@@ -76,5 +89,5 @@ func (c *ImageReimportController) sync() {
 			}
 		}
 	}
-	klog.V(4).Infof("Finished image reimporting")
+	klog.V(3).Infof("Finished image reimporting")
 }
