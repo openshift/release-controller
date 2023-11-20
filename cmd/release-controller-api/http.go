@@ -52,6 +52,32 @@ const (
 var unlinkedIssuesSections = sets.NewString(sectionTypeNoEpicWithFeature, sectionTypeNoFeatureWithEpic, sectionTypeNoEpicNoFeature, sectionTypeUnknowns, sectionTypeUnsortedUnknowns)
 var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.ToLower(jira.StatusVerified), strings.ToLower(jira.StatusModified), strings.ToLower(jira.StatusClosed))
 
+// Find the stream from releaseTag.
+// Eg if we have release.openshift.io/releaseTag, we find the corresponding stream metadata
+func (c *Controller) getStreamFromTag(tag string) (*imagev1.ImageStream, error) {
+	// Get all imagestreams from app.ci
+	imageStreams, err := c.releaseLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	// Go through each image stream
+	for _, stream := range imageStreams {
+		// Get the field release.openshift.io/releaseTag from Annotations
+		releaseTag, ok := stream.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]
+		if !ok {
+			// Image stream might not have that annotation, but that's okay. We move on.
+			continue
+		}
+
+		// We found the correct stream
+		if releaseTag == tag {
+			return stream, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find an image stream with the tag %s", tag)
+}
+
 func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...string) (map[string]*ReleaseStreamTag, bool) {
 	needed := make(map[string]*ReleaseStreamTag)
 	for _, tag := range tags {
@@ -2017,19 +2043,19 @@ func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Requ
 	type1Inconsistency := PayloadInconsistencyDetails{}
 	m := make(map[string]PayloadInconsistencyDetails)
 
-	tagInfo, err := c.getReleaseTagInfo(req)
+	releaseStream, err := c.getStreamFromTag(vars["tag"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if inconsistencyMessage, ok := tagInfo.Info.Release.Source.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
+	if inconsistencyMessage, ok := releaseStream.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
 		message, err := jsonArrayToString(inconsistencyMessage)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		imageStreamInconsistencies.AssemblyWideInconsistencies = message
 	}
-	for _, tag := range tagInfo.Info.Release.Source.Spec.Tags {
+	for _, tag := range releaseStream.Spec.Tags {
 		if inconsistencyMessage, ok := tag.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
 			type1Inconsistency.PullSpec = tag.From.Name
 			message, err := jsonArrayToString(inconsistencyMessage)
