@@ -67,16 +67,25 @@ func (c imageInfoConfig) GenerateDigestPullSpec() string {
 	return fmt.Sprintf("%s@%s", strings.Split(c.Name, ":")[0], c.Digest)
 }
 
-func (r *Release) HasInconsistencies() bool {
+func (r *Release) GetInconsistencyMap() map[string]bool {
+	// Find if each release has an inconsistency. This data is only in the ImageStream.
+	// Use the getStreamFromTag to get that data, but that function be improved since we only need to
+	// get the ImageStreams from app.ci, only once
+	myMap := make(map[string]bool)
+
 	for _, tag := range r.Source.Spec.Tags {
-		if _, ok := tag.Annotations[ReleaseAnnotationInconsistency]; ok {
-			return true
+		// Get the image stream from tag
+		// TODO: Fix import errors
+		imageStream := getStreamFromTag(tag.name)
+
+		if _, ok := imageStream.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
+			myMap[tag.Name] = true
+		} else {
+			myMap[tag.Name] = false
 		}
 	}
-	if _, ok := r.Source.ObjectMeta.Annotations[ReleaseAnnotationInconsistency]; ok {
-		return true
-	}
-	return false
+
+	return myMap
 }
 
 func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, eventRecorder record.EventRecorder, releaseLister MultiImageStreamLister) (*Release, bool, error) {

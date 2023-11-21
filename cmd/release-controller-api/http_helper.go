@@ -243,12 +243,12 @@ func canLink(tag imagev1.TagReference) bool {
 	}
 }
 
-func tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference, inconsistencies bool) string {
+func tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference, inconsistencies map[string]bool) string {
 	if canLink(tag) {
 		if value, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
 			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
-		if strings.Contains(tag.Name, "nightly") && inconsistencies {
+		if strings.Contains(tag.Name, "nightly") && inconsistencies[tag.Name] {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))
 		} else if config.As == releasecontroller.ReleaseConfigModeStable {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" style="padding-left:15px" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
