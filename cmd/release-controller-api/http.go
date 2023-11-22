@@ -55,14 +55,8 @@ var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.To
 // Find the stream from releaseTag.
 // Eg if we have release.openshift.io/releaseTag, we find the corresponding stream metadata
 func (c *Controller) getStreamFromTag(tag string) (*imagev1.ImageStream, error) {
-	// Get all imagestreams from app.ci
-	imageStreams, err := c.releaseLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
 	// Go through each image stream
-	for _, stream := range imageStreams {
+	for _, stream := range c.imageStreams {
 		// Get the field release.openshift.io/releaseTag from Annotations
 		releaseTag, ok := stream.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]
 		if !ok {
@@ -1509,6 +1503,10 @@ func (c *Controller) tableLink(config *releasecontroller.ReleaseConfig, tag imag
 }
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
+	// Get the data just once per run
+	imageStreams, _ := c.releaseLister.List(labels.Everything())
+	c.imageStreams = imageStreams
+
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 

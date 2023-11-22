@@ -1,6 +1,7 @@
 package main
 
 import (
+	imagev1 "github.com/openshift/api/image/v1"
 	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -64,6 +65,9 @@ type Controller struct {
 
 	releasePayloadNamespace string
 	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
+
+	// All image streams from app.ci cluster
+	imageStreams []*imagev1.ImageStream
 }
 
 // NewController instantiates a Controller to manage release objects.
