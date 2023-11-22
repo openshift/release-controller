@@ -43,7 +43,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
             {{ range $index, $tag := .Tags }}
             {{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
             <tr>
-                {{ tableLink $release.Config $tag $release.HasInconsistencies }}
+                {{ tableLink $release.Config $tag }}
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
                 <td>{{ links . $release }}</td>
