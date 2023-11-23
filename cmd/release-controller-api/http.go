@@ -55,14 +55,8 @@ var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.To
 // Find the stream from releaseTag.
 // Eg if we have release.openshift.io/releaseTag, we find the corresponding stream metadata
 func (c *Controller) getStreamFromTag(tag string) (*imagev1.ImageStream, error) {
-	// Get all imagestreams from app.ci
-	imageStreams, err := c.releaseLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
 	// Go through each image stream
-	for _, stream := range imageStreams {
+	for _, stream := range c.imageStreams {
 		// Get the field release.openshift.io/releaseTag from Annotations
 		releaseTag, ok := stream.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]
 		if !ok {
@@ -1477,7 +1471,42 @@ func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.
 	http.Redirect(w, req, u, http.StatusFound)
 }
 
+// Find the stream from app.ci and check whether it has the
+// inconsistency annotation
+func (c *Controller) doesInconsistencyExist(tag string) bool {
+	releaseStream, err := c.getStreamFromTag(tag)
+	if err == nil {
+		if inconsistencyMessage, ok := releaseStream.Annotations[releasecontroller.ReleaseAnnotationInconsistency]; ok {
+			_, nil := jsonArrayToString(inconsistencyMessage)
+			if nil == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *Controller) tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference) string {
+	if canLink(tag) {
+		if value, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
+			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+		}
+		if strings.Contains(tag.Name, "nightly") && c.doesInconsistencyExist(tag.Name) {
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))
+		} else if config.As == releasecontroller.ReleaseConfigModeStable {
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" style="padding-left:15px" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+		} else {
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+		}
+	}
+	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
+}
+
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
+	// Get the data just once per run
+	imageStreams, _ := c.releaseLister.List(labels.Everything())
+	c.imageStreams = imageStreams
+
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
@@ -1570,7 +1599,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":       tableLink,
+			"tableLink":       c.tableLink,
 			"versionGrouping": versionGrouping,
 			"stableStream":    stableStream,
 			"phaseCell":       phaseCell,
@@ -1735,7 +1764,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				}
 				return ""
 			},
-			"tableLink":      tableLink,
+			"tableLink":      c.tableLink,
 			"phaseCell":      phaseCell,
 			"phaseAlert":     phaseAlert,
 			"inc":            func(i int) int { return i + 1 },
