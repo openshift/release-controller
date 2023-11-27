@@ -2067,6 +2067,12 @@ func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Requ
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 
+	// If someone directly goes to this page, then sync images streams if empty
+	if c.imageStreams == nil {
+		imageStreams, _ := c.releaseLister.List(labels.Everything())
+		c.imageStreams = imageStreams
+	}
+
 	vars := mux.Vars(req)
 	imageStreamInconsistencies := Inconsistencies{}
 	type1Inconsistency := PayloadInconsistencyDetails{}
