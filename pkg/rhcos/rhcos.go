@@ -59,7 +59,7 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
 		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
 	} else if m = reMdCentOSCoSVersion.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
 	}
 	return markdown, nil
 }
