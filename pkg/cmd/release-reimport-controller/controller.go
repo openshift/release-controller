@@ -73,11 +73,11 @@ func (c *ImageReimportController) sync() {
 			for _, condition := range tag.Conditions {
 				if condition.Type == "ImportSuccess" && condition.Status == "False" {
 					klog.V(3).Infof("Reimporting %s:%s", stream.Name, tag.Tag)
-					commandSlice := []string{"import-image"}
+					commandSlice := []string{"import-image", "--namespace", stream.Namespace}
 					if c.dryRun {
 						commandSlice = append(commandSlice, "--dry-run")
 					}
-					commandSlice = append(commandSlice, fmt.Sprintf("%s:%s", stream.Name, tag.Tag))
+					commandSlice = append(commandSlice, fmt.Sprintf("is/%s:%s", stream.Name, tag.Tag))
 					cmd := exec.Command("oc", commandSlice...)
 					out, err := cmd.Output()
 					if err != nil {
