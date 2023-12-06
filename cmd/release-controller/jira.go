@@ -198,7 +198,7 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	parentFeatures := []string{}
 	for key, details := range mapIssueDetails {
-		if strings.HasPrefix(key, "OSDOCS-") || strings.HasPrefix(key, "PLMCORE-") || strings.HasPrefix(key, "OCPSTRAT-") {
+		if strings.HasPrefix(key, "OSDOCS-") || strings.HasPrefix(key, "PLMCORE-") {
 			continue
 		}
 		if details.IssueType == releasecontroller.JiraTypeFeature {
@@ -222,18 +222,18 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	fixVersionUpdateList := sets.New[string]()
 	for _, issue := range issueList {
-		if strings.HasPrefix(issue, "OSDOCS-") || strings.HasPrefix(issue, "PLMCORE-") || strings.HasPrefix(issue, "OCPSTRAT-") {
+		if strings.HasPrefix(issue, "OSDOCS-") || strings.HasPrefix(issue, "PLMCORE-") {
 			continue
 		}
 		fixVersionUpdateList = fixVersionUpdateList.Insert(issue)
-		if mapIssueDetails[issue].Epic != "" && !(strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "OCPSTRAT-")) {
+		if mapIssueDetails[issue].Epic != "" && !(strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-")) {
 			fixVersionUpdateList = fixVersionUpdateList.Insert(mapIssueDetails[issue].Epic)
 		}
 	}
 	for _, feature := range parentFeatures {
 		unsetEpic := false
 		for _, epic := range featureChildren[feature] {
-			if strings.HasPrefix(epic.Key, "OSDOCS-") || strings.HasPrefix(epic.Key, "PLMCORE-") || strings.HasPrefix(epic.Key, "OCPSTRAT-") ||
+			if strings.HasPrefix(epic.Key, "OSDOCS-") || strings.HasPrefix(epic.Key, "PLMCORE-") ||
 				fixVersionUpdateList.Has(epic.Key) || (epic.Fields != nil && epic.Fields.FixVersions != nil && len(epic.Fields.FixVersions) > 0) {
 				continue
 			}
