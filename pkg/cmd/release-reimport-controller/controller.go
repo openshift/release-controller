@@ -79,12 +79,12 @@ func (c *ImageReimportController) sync() {
 					}
 					commandSlice = append(commandSlice, fmt.Sprintf("is/%s:%s", stream.Name, tag.Tag))
 					cmd := exec.Command("oc", commandSlice...)
-					out, err := cmd.Output()
+					out, err := cmd.CombinedOutput()
 					if err != nil {
-						klog.Errorf("Failed to run `%s`: %v", cmd.String(), err)
+						klog.Errorf("Failed to run `%s`: %v: %v", cmd.String(), err, string(out))
 						continue
 					}
-					klog.V(4).Infof("Output of `%s`: %s", cmd.String(), out)
+					klog.V(4).Infof("Output of `%s`: %s", cmd.String(), string(out))
 				}
 			}
 		}
