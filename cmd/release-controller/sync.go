@@ -507,7 +507,9 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 			if !releasecontroller.AllOptional(verificationJobs, names...) {
 				klog.V(4).Infof("Release %s was rejected", releaseTag.Name)
 				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
-				annotations[releasecontroller.ReleaseAnnotationVerify] = toJSONString(status)
+				// When a release is rejected, naturally, we no longer need to carry the verification results because its ReleasePayload will hold all the same information
+				// and the UI relies on the ReleasePayload for its results.  Setting the annotation's value to an empty string will delete it from the tag all together.
+				annotations[releasecontroller.ReleaseAnnotationVerify] = ""
 				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhaseReady}, releasecontroller.ReleasePhaseRejected, annotations, releaseTag.Name); err != nil {
 					return err
 				}
@@ -516,8 +518,10 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 			klog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
 		}
 
-		// if all jobs are complete and there are no failures, this is accepted
-		if err := c.markReleaseAccepted(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
+		// If all jobs are complete and there are no failures, this is accepted
+		// When a release is accepted, naturally, we no longer need to carry the verification results because its ReleasePayload will hold all the same information
+		// and the UI relies on the ReleasePayload for its results.  Setting the annotation's value to an empty string will delete it from the tag all together.
+		if err := c.markReleaseAccepted(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: ""}, releaseTag.Name); err != nil {
 			return err
 		}
 		klog.V(4).Infof("Release %s accepted", releaseTag.Name)

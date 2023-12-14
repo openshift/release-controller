@@ -265,7 +265,11 @@ func (c *Controller) transitionReleasePhaseFailure(release *releasecontroller.Re
 			}
 			tag.Annotations[releasecontroller.ReleaseAnnotationPhase] = phase
 			for k, v := range annotations {
-				tag.Annotations[k] = v
+				if len(v) == 0 {
+					delete(tag.Annotations, k)
+				} else {
+					tag.Annotations[k] = v
+				}
 			}
 			klog.V(2).Infof("Marking release %s failed: %v", name, annotations)
 			changed++
