@@ -790,6 +790,9 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
+	// Enabling CORS (OCPCRT-290)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	if isHtml {
 		result := blackfriday.Run([]byte(out))
 		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
