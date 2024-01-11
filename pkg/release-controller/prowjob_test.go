@@ -13,13 +13,13 @@ func TestTruncateProwJobResultsURL(t *testing.T) {
 	}{
 		{
 			name:     "Matching Prefix",
-			url:      "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			url:      "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
 			expected: "/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
 		},
 		{
 			name:     "Non-Matching Prefix",
-			url:      "https://prow.ci.openshift.org/view/gs/origin-ci-test2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
-			expected: "https://prow.ci.openshift.org/view/gs/origin-ci-test2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			url:      "https://prow.ci.openshift.org/view/gs/test-platform-results2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			expected: "https://prow.ci.openshift.org/view/gs/test-platform-results2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
 		},
 		{
 			name:     "Garbage",
@@ -46,12 +46,12 @@ func TestGenerateProwJobResultsURL(t *testing.T) {
 		{
 			name:     "Truncated URL",
 			url:      "/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
-			expected: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			expected: "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
 		},
 		{
 			name:     "Full URL",
-			url:      "https://prow.ci.openshift.org/view/gs/origin-ci-test2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
-			expected: "https://prow.ci.openshift.org/view/gs/origin-ci-test2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			url:      "https://prow.ci.openshift.org/view/gs/test-platform-results2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
+			expected: "https://prow.ci.openshift.org/view/gs/test-platform-results2/logs/periodic-ci-openshift-release-master-nightly-4.8-e2e-aws/1577585519322206208",
 		},
 		{
 			name:     "Garbage",
