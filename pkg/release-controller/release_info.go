@@ -1179,7 +1179,21 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
 		},
-		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{},
+		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cache",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							"storage": resource.MustParse("500Gi"),
+						},
+					},
+				},
+			},
+		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
@@ -1189,7 +1203,6 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 			},
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
-					{Name: "cache", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "files-pull-secret", Optional: &isTrue}}},
 				},
 				TerminationGracePeriodSeconds: &one,
@@ -1197,7 +1210,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 					{
 						Name:       "files",
 						Image:      image,
-						WorkingDir: "/srv/cache",
+						WorkingDir: "/mnt/cache",
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
 							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
@@ -1205,7 +1218,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 							{Name: "REGISTRY", Value: r.registry},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{Name: "cache", MountPath: "/srv/cache/"},
+							{Name: "cache", MountPath: "/mnt"},
 							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
 						},
 						Resources: corev1.ResourceRequirements{
@@ -1217,8 +1230,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 
 						Command: []string{"/bin/bash", "-c"},
 						Args: []string{
-							`
-#!/bin/bash
+							`#!/bin/bash
 
 set -euo pipefail
 trap 'kill $(jobs -p); exit 0' TERM
@@ -1235,7 +1247,7 @@ from subprocess import CalledProcessError
 
 handler = http.server.SimpleHTTPRequestHandler
 
-CACHE_DIR = '/srv/cache'
+CACHE_DIR = '/mnt/cache'
 RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 REGISTRY = os.getenv('REGISTRY', 'registry.ci.openshift.org')
 
@@ -1421,7 +1433,7 @@ class Thread(threading.Thread):
 time.sleep(9e9)
 END
 python3 /tmp/serve.py
-              `,
+`,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
@@ -1429,6 +1441,42 @@ python3 /tmp/serve.py
 						}},
 						ReadinessProbe: probe,
 						LivenessProbe:  probe,
+					},
+				},
+				InitContainers: []corev1.Container{
+					{
+						Name:       "purge",
+						Image:      image,
+						WorkingDir: "/mnt",
+						Env: []corev1.EnvVar{
+							{Name: "HOME", Value: "/tmp"},
+							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "cache", MountPath: "/mnt"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
+
+						Command: []string{"/bin/bash", "-c"},
+						Args: []string{
+							`#!/bin/bash
+set -euo pipefail
+trap 'kill $(jobs -p); exit 0' TERM
+if [ ! -d /mnt/cache ]; then
+  echo "Creating cache..."
+  mkdir /mnt/cache
+else
+  echo "Wiping cache after restart..."
+  rm -rfv /mnt/cache/4.*
+fi
+exit 0
+`,
+						},
 					},
 				},
 			},
