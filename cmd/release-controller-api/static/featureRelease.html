@@ -80,6 +80,11 @@
               View the linked PRs
             </a>
             {{ end }}
+            {{ if .Demos }}
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_Demos_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
+              View Demos
+            </a>
+            {{ end }}
           </div>
           {{ if .Description }}
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
@@ -100,6 +105,17 @@
             <div class="card card-body border-light">
               <ul>
                 {{- range .PRs}}
+                <li><a target="_blank" href="{{.}}">{{.}}</a></li>
+                {{- end}}
+              </ul>
+            </div>
+          </div>
+          {{ end }}
+          {{ if .Demos }}
+          <div class="collapse" id="collapse_Demos_{{.IssueKey}}">
+            <div class="card card-body border-light">
+              <ul>
+                {{- range .Demos}}
                 <li><a target="_blank" href="{{.}}">{{.}}</a></li>
                 {{- end}}
               </ul>
@@ -158,6 +174,12 @@
       if (btnText === 'Hide the linked PRs') {
         btn.textContent = 'View the linked PRs';
       }
+      if (btnText === 'View Demos') {
+        btn.textContent = 'Hide Demos';
+      }
+      if (btnText === 'Hide Demos') {
+        btn.textContent = 'View Demos';
+      }
     });
   });
 </script>
@@ -198,6 +220,11 @@
             {{ if .PRs }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_prs_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
               View the linked PRs
+            </a>
+            {{ end }}
+            {{ if .Demos }}
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_Demos_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
+              View Demos
             </a>
             {{ end }}
           </div>
@@ -280,6 +307,11 @@
               View the linked PRs
             </a>
             {{ end }}
+            {{ if .Demos }}
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_Demos_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
+              View Demos
+            </a>
+            {{ end }}
           </div>
           {{ if .Description }}
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
@@ -356,6 +388,11 @@
             {{ if .PRs }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_prs_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
               View the linked PRs
+            </a>
+            {{ end }}
+            {{ if .Demos }}
+            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_Demos_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
+              View Demos
             </a>
             {{ end }}
           </div>

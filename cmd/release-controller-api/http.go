@@ -272,12 +272,13 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 			PRs:             mapIssueDetails[epic].PRs,
 			IncludedInBuild: statusOnBuild(&changeLog.To.Created, mapIssueDetails[epic].ResolutionDate, mapIssueDetails[epic].Transitions),
 			Children:        children,
+			Demos:           mapIssueDetails[epic].Demos,
 		}
 		featureTrees = append(featureTrees, f)
 	}
 
 	// TODO - find a better way to do this, this it is to expensive
-	redistributedUnknowns := sets.String{}
+	redistributedUnknowns := sets.Set[string]{}
 	for _, unknown := range unknowns {
 		if unknown.Parent != "" {
 			redistributeUnknowns(featureTrees, unknown.Parent, unknown, &redistributedUnknowns, 10000)
@@ -296,10 +297,11 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 		}
 	}
 
-	// remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it means that it is not part of the
-	// change log, i.e. Cards part of the parent/epics/features group gathered for the featureTree, but not linked
-	// properly (e.g. an Epic that links directly to a "Market Problem" instead of a Feature, and Feature is the root)
-	toRemove := sets.String{}
+	// Remove every tree from sectionTypeNoEpicNoFeature that has no PRs, since it implies that it is not part of the
+	// change log. Specifically, cards within the parent/epics/features group are gathered for the featureTree but are
+	// not linked properly (e.g., an Epic that links directly to a "Market Problem" instead of a Feature, and Feature
+	// is the root).
+	toRemove := sets.Set[string]{}
 	for _, ticket := range featureTrees {
 		if ticket.NotLinkedType == sectionTypeNoEpicNoFeature {
 			if isPRsEmpty(ticket) {
@@ -310,7 +312,7 @@ func (c *Controller) releaseFeatureInfo(tagInfo *releaseTagInfo) ([]*FeatureTree
 	return removeUnnecessaryTrees(featureTrees, toRemove), nil
 }
 
-func removeUnnecessaryTrees(slice []*FeatureTree, toRemove sets.String) []*FeatureTree {
+func removeUnnecessaryTrees(slice []*FeatureTree, toRemove sets.Set[string]) []*FeatureTree {
 	newFeatureTree := make([]*FeatureTree, 0)
 	for _, feature := range slice {
 		if !toRemove.Has(feature.IssueKey) {
@@ -332,7 +334,7 @@ func isPRsEmpty(ft *FeatureTree) bool {
 	return true
 }
 
-func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.String, limit int) bool {
+func redistributeUnknowns(slice []*FeatureTree, key string, feature *FeatureTree, s *sets.Set[string], limit int) bool {
 	if limit <= 0 {
 		klog.Errorf("breaking the recursion: limit reached for the redistributeUnknowns func! This might indicate a cyclic tree!")
 		return false
@@ -405,6 +407,7 @@ func addChild(issueKey string, issueDetails releasecontroller.IssueDetails, buil
 		IncludedInBuild: statusOnBuild(buildTimeStamp, issueDetails.ResolutionDate, issueDetails.Transitions),
 		PRs:             issueDetails.PRs,
 		Children:        nil,
+		Demos:           issueDetails.Demos,
 	}
 }
 
@@ -464,6 +467,7 @@ type FeatureTree struct {
 	Feature         string         `json:"-"`
 	Parent          string         `json:"-"`
 	Children        []*FeatureTree `json:"children,omitempty"`
+	Demos           []string       `json:"demos,omitempty"`
 }
 
 func (c *Controller) urlForArtifacts(tagName string) (string, bool) {

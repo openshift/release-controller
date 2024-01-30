@@ -416,7 +416,22 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	t := TransformJiraIssues(issues, issuesToPRMap)
+
+	var listOfAllIssues []string
+	for _, issue := range issues {
+		listOfAllIssues = append(listOfAllIssues, issue.ID)
+	}
+	issuesWithDemoLink, err := r.GetIssuesWithDemoLink(listOfAllIssues)
+	var issuesWithDemoLinkList []string
+	for _, issue := range issuesWithDemoLink {
+		issuesWithDemoLinkList = append(issuesWithDemoLinkList, issue.ID)
+	}
+	if err != nil {
+		return "", err
+	}
+	issuesWithRemoteLinkDetails, err := r.GetRemoteLinksWithConcurrency(issuesWithDemoLinkList)
+
+	t := TransformJiraIssues(issues, issuesToPRMap, issuesWithRemoteLinkDetails)
 	s, err := json.Marshal(t)
 	if err != nil {
 		return "", err
@@ -491,6 +506,7 @@ type IssueDetails struct {
 	Description    string
 	ReleaseNotes   string
 	PRs            []string
+	Demos          []string
 	ResolutionDate time.Time
 	Transitions    []Transition
 }
@@ -508,7 +524,7 @@ func typeCheck(o interface{}) string {
 	}
 }
 
-func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]string) map[string]IssueDetails {
+func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]string, demoURLsMap map[string][]string) map[string]IssueDetails {
 	t := make(map[string]IssueDetails, 0)
 	for _, issue := range issues {
 		var epic, feature, releaseNotes, parent string
@@ -541,6 +557,8 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]strin
 				parent = issue.Fields.Parent.Key
 			}
 		}
+		demoLinks, _ := demoURLsMap[issue.ID]
+
 		t[issue.Key] = IssueDetails{
 			Summary:     checkJiraSecurity(&issue, issue.Fields.Summary),
 			Status:      issue.Fields.Status.Name,
@@ -554,6 +572,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]strin
 			PRs:            prMap[issue.Key],
 			ResolutionDate: time.Time(issue.Fields.Resolutiondate),
 			Transitions:    extractTransitions(issue.Changelog),
+			Demos:          demoLinks,
 		}
 	}
 	return t
@@ -712,6 +731,121 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	}
 
 	return result, err
+}
+
+func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraBaseClient.Issue, err error) {
+	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
+	if r.jiraClient == nil {
+		return result, fmt.Errorf("unable to communicate with Jira")
+	}
+	// Keep the chunk on the small side, it is much faster
+	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
+	chunk := len(issues) / 10
+
+	// Jira can't handle more than 500 IDs at once
+	if chunk > maxChunkSize {
+		chunk = maxChunkSize
+	}
+	if chunk < 50 {
+		chunk = 50
+	}
+	// Divide issues into chunks
+	dividedIssues := divideSlice(issues, chunk)
+
+	// Search for issues in parallel
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var buf bytes.Buffer
+	for _, parts := range dividedIssues {
+		wg.Add(1)
+		jql := fmt.Sprintf("issueFunction in linkedIssuesOfremote(\"demo\") AND id IN (%s)", strings.Join(parts, ","))
+		go func(jql string) {
+			defer wg.Done()
+			issues, _, err := r.jiraClient.SearchWithContext(
+				context.Background(),
+				jql,
+				&jiraBaseClient.SearchOptions{
+					MaxResults: chunk + 1,
+				},
+			)
+			if err != nil {
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					err = fmt.Errorf("search failed: %w", err)
+					buf.WriteString(err.Error() + "\n")
+				}
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			result = append(result, issues...)
+		}(jql)
+	}
+	wg.Wait()
+
+	// Combine any errors
+	if buf.Len() > 0 {
+		err = stdErrors.New(buf.String())
+	}
+
+	return result, err
+}
+
+func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string) (result map[string][]string, err error) {
+	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
+	if r.jiraClient == nil {
+		return result, fmt.Errorf("unable to communicate with Jira")
+	}
+
+	var (
+		mapIssueDemoLink = make(map[string][]string)
+		wg               sync.WaitGroup
+		mu               sync.Mutex
+		maxWorkers       = 10
+		workers          = make(chan struct{}, maxWorkers)
+		buf              bytes.Buffer
+	)
+
+	worker := func(issue string) {
+		defer wg.Done()
+		defer func() { <-workers }()
+
+		links, err := r.jiraClient.GetRemoteLinks(issue)
+		if err != nil {
+			mu.Lock()
+			err = fmt.Errorf("search failed: %w", err)
+			buf.WriteString(err.Error() + "\n")
+			mu.Unlock()
+			return
+		}
+
+		mu.Lock()
+		var linkUrl []string
+		for _, link := range links {
+			if strings.ToLower(link.Object.Title) == "demo" {
+				linkUrl = append(linkUrl, link.Object.URL)
+			}
+		}
+		mapIssueDemoLink[issue] = linkUrl
+		mu.Unlock()
+	}
+
+	for _, issue := range issues {
+		wg.Add(1)
+		workers <- struct{}{}
+		go worker(issue)
+	}
+
+	wg.Wait()
+
+	close(workers)
+
+	if buf.Len() > 0 {
+		err = stdErrors.New(buf.String())
+	}
+
+	return mapIssueDemoLink, err
 }
 
 func divideSlice(issues []string, chunk int) [][]string {
