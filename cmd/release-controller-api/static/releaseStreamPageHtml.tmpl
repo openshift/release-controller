@@ -1,45 +1,28 @@
-<h1>Release Status</h1>
-<p class="small mb-3">
-    Quick links: {{ dashboardsJoin .Dashboards }}
-</p>
-<p>Visualize upgrades in <a href="/graph">Cincinnati</a> | <a href="/graph?format=dot">dot</a> | <a href="/graph?format=svg">SVG</a> | <a href="/graph?format=png">PNG</a> format. Run the following command to make this your update server:</p>
-<pre class="ml-4">
-oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
-</pre>
-<div class="alert alert-primary">This site is part of OpenShift's continuous delivery pipeline. Neither the builds linked here nor the upgrade paths tested here are officially supported. For information about the available builds, please reference the <a href="https://mirror.openshift.com/pub/openshift-v4/OpenShift_Release_Types.pdf" target="_blank">OpenShift Release Types documentation</a>.</br>Please visit the Red Hat Customer Portal for the latest supported product details.</div>
-{{ displayAuthMessage }}
-
-<p class="small mb-3">
-    Jump to: {{ releaseJoin .Streams true }}
-</p>
-
+<a href="/">Back home</a>
 <div class="row">
     <div class="col">
         {{ range .Streams }}
+        {{ $isStable := .Release.Config.As }}
         <h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
         {{ publishDescription . }}
         {{ alerts . }}
-        <a href="/releasestream/{{ .Release.Config.Name }}">Full list with upgrade graph</a>
         {{ $upgrades := .Upgrades }}
-        <table id="{{removeSpecialCharacters .Release.Config.Name}}_table" class="table text-nowrap">
+        <table id="{{.Release.Config.Name}}_table" class="table text-nowrap">
             <thead>
             <tr>
                 <th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
                 <th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
                 <th>Started</th>
                 <th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
-                <th>Version Grouping</th>
+                {{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
             </tr>
             </thead>
             <tbody>
             {{ $release := .Release }}
             {{ if .Delayed }}
             <tr>
-                <td><em>{{ .Delayed.Message }}</em></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td>delayedMessage</td>
+                <td colspan="4"><em>{{ .Delayed.Message }}</em></td>
+                {{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
             </tr>
             {{ end }}
             {{ range $index, $tag := .Tags }}
@@ -49,7 +32,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
                 <td>{{ links . $release }}</td>
-                <td>{{ versionGrouping $tag.Name }}</td>
+                {{ upgradeCells $upgrades $index }}
             </tr>
             {{ end }}
             </tbody>

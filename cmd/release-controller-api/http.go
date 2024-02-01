@@ -165,6 +165,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasetag/{tag}/json", c.httpReleaseInfoJson)
 	mux.HandleFunc("/releasetag/{tag}", c.httpReleaseInfo)
 
+	mux.HandleFunc("/releasestream/{release}", c.httpReleaseStreamTable)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}", c.httpReleaseInfo)
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/inconsistency/{tag}", c.httpInconsistencyInfo)
@@ -1552,7 +1553,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
 						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
 						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
-						return fmt.Sprintf("<td class=\"text-center\"colspan=3>\n<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>\n</td>", r.Release.Config.Message, searchFunctionPrefix, searchFunction)
+						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", r.Release.Config.Message, searchFunctionPrefix, searchFunction)
 					}
 					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
 				}
@@ -1602,17 +1603,18 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"tableLink":       c.tableLink,
-			"versionGrouping": versionGrouping,
-			"stableStream":    stableStream,
-			"phaseCell":       phaseCell,
-			"phaseAlert":      phaseAlert,
-			"alerts":          renderAlerts,
-			"links":           c.links,
-			"releaseJoin":     releaseJoin,
-			"dashboardsJoin":  dashboardsJoin,
-			"inc":             func(i int) int { return i + 1 },
-			"upgradeCells":    upgradeCells,
+			"tableLink":               c.tableLink,
+			"versionGrouping":         versionGrouping,
+			"streamNames":             streamNames,
+			"phaseCell":               phaseCell,
+			"phaseAlert":              phaseAlert,
+			"alerts":                  renderAlerts,
+			"links":                   c.links,
+			"releaseJoin":             releaseJoin,
+			"dashboardsJoin":          dashboardsJoin,
+			"inc":                     func(i int) int { return i + 1 },
+			"upgradeCells":            upgradeCells,
+			"removeSpecialCharacters": removeSpecialCharacters,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1626,7 +1628,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 
 	var pageEnd = template.Must(template.New("htmlPageEndScripts.tmpl").Funcs(
 		template.FuncMap{
-			"stableStream":            stableStream,
+			"streamNames":             streamNames,
 			"removeSpecialCharacters": removeSpecialCharacters,
 		},
 	).ParseFS(resources, "htmlPageEndScripts.tmpl"))
@@ -1671,6 +1673,199 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		}
 		page.Streams = append(page.Streams, s)
 	}
+	sort.Sort(preferredReleases(page.Streams))
+	checkReleasePage(page)
+	pruneEndOfLifeTags(page, endOfLifePrefixes)
+
+	fmt.Fprintf(w, htmlPageStart, "Release Status")
+	if err := releasePage.Execute(w, page); err != nil {
+		klog.Errorf("Unable to render page: %v", err)
+	}
+	if err := pageEnd.Execute(w, page); err != nil {
+		klog.Errorf("Unable to render page: %v", err)
+	}
+}
+
+func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	release := vars["release"]
+
+	start := time.Now()
+	defer func() { klog.V(4).Infof("/%s rendered in %s", release, time.Now().Sub(start)) }()
+
+	// If someone directly goes to this page, then sync images streams if empty
+	if c.imageStreams == nil {
+		imageStreams, _ := c.releaseLister.List(labels.Everything())
+		c.imageStreams = imageStreams
+	}
+
+	var requestedStream *imagev1.ImageStream
+	for _, stream := range c.imageStreams {
+		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		if err != nil || !ok {
+			continue
+		}
+		if r.Config.Name == release {
+			requestedStream = stream
+			break
+		}
+	}
+	if requestedStream == nil {
+		klog.V(2).Infof("COULDN'T FIND RELEASE")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+
+	base := *req.URL
+	base.Scheme = "http"
+	if p := req.Header.Get("X-Forwarded-Proto"); len(p) > 0 {
+		base.Scheme = p
+	}
+	base.Host = req.Host
+	base.Path = "/" + release
+	base.RawQuery = ""
+	base.Fragment = ""
+	page := &ReleasePage{
+		BaseURL:    base.String(),
+		Dashboards: c.dashboards,
+	}
+
+	authMessage := ""
+	if len(c.authenticationMessage) > 0 {
+		authMessage = fmt.Sprintf("<p>%s</p>", c.authenticationMessage)
+	}
+
+	now := time.Now()
+	var releasePage = template.Must(template.New("releaseStreamPageHtml.tmpl").Funcs(
+		template.FuncMap{
+			"publishSpec": func(r *ReleaseStream) string {
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
+						}
+					}
+				}
+				return ""
+			},
+			"publishDescription": func(r *ReleaseStream) string {
+				if len(r.Release.Config.Message) > 0 {
+					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
+						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
+						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", r.Release.Config.Message, searchFunctionPrefix, searchFunction)
+					}
+					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+				}
+				var out []string
+				switch r.Release.Config.As {
+				case releasecontroller.ReleaseConfigModeStable:
+					if len(r.Release.Config.Message) == 0 {
+						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+					}
+				default:
+					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
+				}
+
+				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+					for _, target := range r.Release.Config.Publish {
+						if target.Disabled {
+							continue
+						}
+						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
+						}
+					}
+				}
+				for _, target := range r.Release.Config.Publish {
+					if target.Disabled {
+						continue
+					}
+					if target.ImageStreamRef != nil {
+						ns := target.ImageStreamRef.Namespace
+						if len(ns) > 0 {
+							ns += "/"
+						}
+						if len(target.ImageStreamRef.Tags) == 0 {
+							out = append(out, fmt.Sprintf(`<span>promote to image stream <code>%s%s</code></span>`, ns, target.ImageStreamRef.Name))
+						} else {
+							var tagNames []string
+							for _, tag := range target.ImageStreamRef.Tags {
+								tagNames = append(tagNames, fmt.Sprintf("<code>%s</code>", template.HTMLEscapeString(tag)))
+							}
+							out = append(out, fmt.Sprintf(`<span>promote %s to image stream <code>%s%s</code></span>`, strings.Join(tagNames, "/"), ns, target.ImageStreamRef.Name))
+						}
+					}
+				}
+				if len(out) > 0 {
+					sort.Strings(out)
+					return fmt.Sprintf("<p>%s</p>\n", strings.Join(out, ", "))
+				}
+				return ""
+			},
+			"tableLink":               c.tableLink,
+			"versionGrouping":         versionGrouping,
+			"streamNames":             streamNames,
+			"phaseCell":               phaseCell,
+			"phaseAlert":              phaseAlert,
+			"alerts":                  renderAlerts,
+			"links":                   c.links,
+			"releaseJoin":             releaseJoin,
+			"dashboardsJoin":          dashboardsJoin,
+			"inc":                     func(i int) int { return i + 1 },
+			"upgradeCells":            upgradeCells,
+			"removeSpecialCharacters": removeSpecialCharacters,
+			"since": func(utcDate string) string {
+				t, err := time.Parse(time.RFC3339, utcDate)
+				if err != nil {
+					return ""
+				}
+				return relTime(t, now, "ago", "from now")
+			},
+			"displayAuthMessage": func() string { return authMessage },
+		},
+	).ParseFS(resources, "releaseStreamPageHtml.tmpl"))
+
+	var pageEnd = template.Must(template.New("htmlPageEndScripts.tmpl").Funcs(
+		template.FuncMap{
+			"streamNames":             streamNames,
+			"removeSpecialCharacters": removeSpecialCharacters,
+		},
+	).ParseFS(resources, "htmlPageEndScripts.tmpl"))
+
+	endOfLifePrefixes := sets.NewString()
+
+	r, ok, err := releasecontroller.ReleaseDefinition(requestedStream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+	if err != nil || !ok {
+		return
+	}
+	if r.Config.EndOfLife {
+		if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil {
+			endOfLifePrefixes.Insert(fmt.Sprintf("%d.%d", version.Major, version.Minor))
+		}
+		return
+	}
+	s := ReleaseStream{
+		Release: r,
+		Tags:    releasecontroller.SortedReleaseTags(r),
+	}
+	var delays []string
+	if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
+			delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
+		}
+		if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
+			delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
+		}
+	}
+	if len(delays) > 0 {
+		s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+	}
+	if r.Config.As != releasecontroller.ReleaseConfigModeStable {
+		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
+	}
+	page.Streams = append(page.Streams, s)
 	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
 	pruneEndOfLifeTags(page, endOfLifePrefixes)
@@ -2122,15 +2317,12 @@ func versionGrouping(tag string) string {
 	return fmt.Sprintf("%s.%s", s[0], s[1])
 }
 
-func stableStream(streams []ReleaseStream) []string {
-	var stableList []string
+func streamNames(streams []ReleaseStream) []string {
+	var streamNameList []string
 	for _, stream := range streams {
-		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
-			stableList = append(stableList, stream.Release.Config.Name)
-		}
-
+		streamNameList = append(streamNameList, stream.Release.Config.Name)
 	}
-	return stableList
+	return streamNameList
 }
 
 func removeSpecialCharacters(str string) string {

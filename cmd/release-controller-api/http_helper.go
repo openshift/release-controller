@@ -3,16 +3,17 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
-	"github.com/openshift/release-controller/pkg/releasepayload"
 	"io"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2"
 	"net/url"
 	"sort"
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/releasepayload"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
