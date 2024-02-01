@@ -1,0 +1,40 @@
+<a href="/">Back home</a>
+<div class="row">
+    <div class="col">
+        {{ $isStable := .TargetStream.Release.Config.As }}
+        <h2 title="From image stream {{ .TargetStream.Release.Source.Namespace }}/{{ .TargetStream.Release.Source.Name }}"><a id="{{ .TargetStream.Release.Config.Name }}" href="#{{ .TargetStream.Release.Config.Name }}" class="text-dark">{{ .TargetStream.Release.Config.Name }}</a></h2>
+        {{ publishDescription .TargetStream }}
+        {{ alerts .TargetStream }}
+        {{ $upgrades := .TargetStream.Upgrades }}
+        <table id="{{.TargetStream.Release.Config.Name}}_table" class="table text-nowrap">
+            <thead>
+            <tr>
+                <th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
+                <th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
+                <th>Started</th>
+                <th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
+                {{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
+            </tr>
+            </thead>
+            <tbody>
+            {{ $release := .TargetStream.Release }}
+            {{ if .TargetStream.Delayed }}
+            <tr>
+                <td colspan="4"><em>{{ .TargetStream.Delayed.Message }}</em></td>
+                {{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
+            </tr>
+            {{ end }}
+            {{ range $index, $tag := .TargetStream.Tags }}
+            {{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
+            <tr>
+                {{ tableLink $release.Config $tag }}
+                {{ phaseCell . }}
+                <td title="{{ $created }}">{{ since $created }}</td>
+                <td>{{ links . $release }}</td>
+                {{ upgradeCells $upgrades $index }}
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+    </div>
+</div>
