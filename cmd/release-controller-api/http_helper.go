@@ -25,9 +25,10 @@ import (
 )
 
 type ReleasePage struct {
-	BaseURL    string
-	Streams    []ReleaseStream
-	Dashboards []Dashboard
+	BaseURL      string
+	Streams      []ReleaseStream
+	Dashboards   []Dashboard
+	TargetStream ReleaseStream
 }
 
 type ReleaseStream struct {

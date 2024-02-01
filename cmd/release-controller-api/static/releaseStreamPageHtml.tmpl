@@ -1,13 +1,12 @@
 <a href="/">Back home</a>
 <div class="row">
     <div class="col">
-        {{ range .Streams }}
-        {{ $isStable := .Release.Config.As }}
-        <h2 title="From image stream {{ .Release.Source.Namespace }}/{{ .Release.Source.Name }}"><a id="{{ .Release.Config.Name }}" href="#{{ .Release.Config.Name }}" class="text-dark">{{ .Release.Config.Name }}</a></h2>
-        {{ publishDescription . }}
-        {{ alerts . }}
-        {{ $upgrades := .Upgrades }}
-        <table id="{{.Release.Config.Name}}_table" class="table text-nowrap">
+        {{ $isStable := .TargetStream.Release.Config.As }}
+        <h2 title="From image stream {{ .TargetStream.Release.Source.Namespace }}/{{ .TargetStream.Release.Source.Name }}"><a id="{{ .TargetStream.Release.Config.Name }}" href="#{{ .TargetStream.Release.Config.Name }}" class="text-dark">{{ .TargetStream.Release.Config.Name }}</a></h2>
+        {{ publishDescription .TargetStream }}
+        {{ alerts .TargetStream }}
+        {{ $upgrades := .TargetStream.Upgrades }}
+        <table id="{{.TargetStream.Release.Config.Name}}_table" class="table text-nowrap">
             <thead>
             <tr>
                 <th title="The name and version of the release image (as well as the tag it is published under)">Name</th>
@@ -18,14 +17,14 @@
             </tr>
             </thead>
             <tbody>
-            {{ $release := .Release }}
-            {{ if .Delayed }}
+            {{ $release := .TargetStream.Release }}
+            {{ if .TargetStream.Delayed }}
             <tr>
-                <td colspan="4"><em>{{ .Delayed.Message }}</em></td>
+                <td colspan="4"><em>{{ .TargetStream.Delayed.Message }}</em></td>
                 {{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
             </tr>
             {{ end }}
-            {{ range $index, $tag := .Tags }}
+            {{ range $index, $tag := .TargetStream.Tags }}
             {{ $created := index .Annotations "release.openshift.io/creationTimestamp" }}
             <tr>
                 {{ tableLink $release.Config $tag }}
@@ -37,6 +36,5 @@
             {{ end }}
             </tbody>
         </table>
-        {{ end }}
     </div>
 </div>

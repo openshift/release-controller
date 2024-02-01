@@ -69,7 +69,7 @@
         var input, filter, table, tr, td, i, txtValue;
         input = document.getElementById(element);
         filter = input.value.toUpperCase();
-        table = document.getElementById("{{ $stream  }}_table");
+        table = document.getElementById("{{ removeSpecialCharacters $stream  }}_table");
         tr = table.getElementsByTagName("tr");
         for (i = 0; i < tr.length; i++) {
             td = tr[i].getElementsByTagName("td")[0];

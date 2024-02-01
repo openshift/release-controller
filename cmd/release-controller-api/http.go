@@ -1711,7 +1711,6 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 		}
 	}
 	if requestedStream == nil {
-		klog.V(2).Infof("COULDN'T FIND RELEASE")
 		return
 	}
 
@@ -1865,7 +1864,16 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 	if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 	}
+	page.TargetStream = s
 	page.Streams = append(page.Streams, s)
+	for _, check := range r.Config.Check {
+		if check.ConsistentImages != nil {
+			parent := findReleaseStream(page, check.ConsistentImages.Parent)
+			if parent != nil {
+				page.Streams = append(page.Streams, s)
+			}
+		}
+	}
 	sort.Sort(preferredReleases(page.Streams))
 	checkReleasePage(page)
 	pruneEndOfLifeTags(page, endOfLifePrefixes)
