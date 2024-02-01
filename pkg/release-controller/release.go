@@ -490,7 +490,7 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 	return stable, nil
 }
 
-func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, streamName string, constraint semver.Range, relativeIndex int) (*Release, *imagev1.TagReference, error) {
+func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, streamName string, constraint semver.Range, relativeIndex int, versionPrefix string) (*Release, *imagev1.TagReference, error) {
 	imageStreams, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -507,6 +507,9 @@ func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lis
 		tags := UnsortedSemanticReleaseTags(r, ReleasePhaseAccepted)
 		sort.Sort(tags)
 		for _, ver := range tags {
+			if len(versionPrefix) > 0 && !strings.HasPrefix(ver.Tag.Name, versionPrefix) {
+				continue
+			}
 			if constraint != nil && (ver.Version == nil || !constraint(*ver.Version)) {
 				continue
 			}
