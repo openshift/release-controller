@@ -1174,7 +1174,21 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
 		},
-		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{},
+		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cache",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							"storage": resource.MustParse("500Gi"),
+						},
+					},
+				},
+			},
+		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
@@ -1184,7 +1198,6 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 			},
 			Spec: corev1.PodSpec{
 				Volumes: []corev1.Volume{
-					{Name: "cache", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "files-pull-secret", Optional: &isTrue}}},
 				},
 				TerminationGracePeriodSeconds: &one,
@@ -1192,7 +1205,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 					{
 						Name:       "files",
 						Image:      image,
-						WorkingDir: "/srv/cache",
+						WorkingDir: "/mnt/cache",
 						Env: []corev1.EnvVar{
 							{Name: "HOME", Value: "/tmp"},
 							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
@@ -1200,7 +1213,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 							{Name: "REGISTRY", Value: r.registry},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{Name: "cache", MountPath: "/srv/cache/"},
+							{Name: "cache", MountPath: "/mnt"},
 							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
 						},
 						Resources: corev1.ResourceRequirements{
@@ -1212,8 +1225,7 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 
 						Command: []string{"/bin/bash", "-c"},
 						Args: []string{
-							`
-#!/bin/bash
+							`#!/bin/bash
 
 set -euo pipefail
 trap 'kill $(jobs -p); exit 0' TERM
@@ -1223,18 +1235,17 @@ mkdir -p /tmp/.docker/ "${XDG_RUNTIME_DIR}"
 cp /tmp/pull-secret/* /tmp/.docker/ || true
 oc registry login --to /tmp/.docker/config.json
 
-if which python3 2> /dev/null; then
-  # If python3 is available, use it
-  cat <<END >/tmp/serve.py
-import re, os, subprocess, time, threading, socket, socketserver, http, http.server, glob
+cat <<END >/tmp/serve.py
+import glob, http.server, os, re, socket, socketserver, subprocess, threading, time
 from subprocess import CalledProcessError
 
 handler = http.server.SimpleHTTPRequestHandler
 
+CACHE_DIR = '/mnt/cache'
 RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
 REGISTRY = os.getenv('REGISTRY', 'registry.ci.openshift.org')
 
-files = glob.glob('/srv/cache/**/DOWNLOADING.md', recursive=True)
+files = glob.glob(f'{CACHE_DIR}/**/DOWNLOADING.md', recursive=True)
 for file in files:
     print(f"Removing: {file}")
     os.remove(file)
@@ -1251,6 +1262,13 @@ def check_stale_download(path):
     return True
 
 
+def get_extension(namespace):
+    index = namespace.find('-')
+    if index == -1:
+        return ''
+    return namespace[index::]
+
+
 class FileServer(handler):
     def _present_default_content(self, name):
         content = ("""<!DOCTYPE html>
@@ -1259,7 +1277,7 @@ class FileServer(handler):
                 <meta http-equiv=\"refresh\" content=\"5\">
             </head>
             <body>
-                <p>Extracting tools for %s, may take up to a minute ...</p>
+                <p>Extracting tools for %s, this may take a few minutes...</p>
             </body>
         </html>
         """ % name).encode('UTF-8')
@@ -1271,74 +1289,64 @@ class FileServer(handler):
         self.end_headers()
         self.wfile.write(content)
 
-    def _get_extension(self, namespace):
-        index = namespace.find('-')
-        if index == -1:
-            return ''
-        return namespace[index::]
-
     def do_GET(self):
         path = self.path.strip("/")
         segments = path.split("/")
-        extension = self._get_extension(RELEASE_NAMESPACE)
+        extension = get_extension(RELEASE_NAMESPACE)
 
-        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
-            name = segments[0]
+        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.-]+[a-zA-Z0-9]', segments[0]):
+            release = segments[0]
+            release_cache_dir = os.path.join(CACHE_DIR, release)
 
             release_imagestream_name = 'release'
-            if '-ec.' in name:
+            if '-ec.' in release:
                 release_imagestream_name = '4-dev-preview'
 
-            if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
+            if os.path.isfile(os.path.join(release_cache_dir, "sha256sum.txt")) or os.path.isfile(os.path.join(release_cache_dir, "FAILED.md")):
                 handler.do_GET(self)
                 return
 
-            if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-                if check_stale_download(path):
-                    os.remove(os.path.join(name, "DOWNLOADING.md"))
-                self._present_default_content(name)
+            if os.path.isfile(os.path.join(release_cache_dir, "DOWNLOADING.md")):
+                if check_stale_download(release_cache_dir):
+                    os.remove(os.path.join(release_cache_dir, "DOWNLOADING.md"))
+                self._present_default_content(release)
                 return
 
             try:
-                os.mkdir(name)
+                os.mkdir(release_cache_dir)
             except OSError:
                 pass
 
-            with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
-                outfile.write("Downloading %s" % name)
+            with open(os.path.join(release_cache_dir, "DOWNLOADING.md"), "w") as outfile:
+                outfile.write("Downloading %s" % release)
 
             try:
-                self._present_default_content(name)
+                self._present_default_content(release)
                 self.wfile.flush()
 
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "%s/%s/%s%s:%s" % (REGISTRY, RELEASE_NAMESPACE, release_imagestream_name, extension, name)],
+                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", release_cache_dir, "--command-os", "*",
+                                         "%s/%s/%s%s:%s" % (REGISTRY, RELEASE_NAMESPACE, release_imagestream_name, extension, release)],
                                         stderr=subprocess.STDOUT)
-                os.remove(os.path.join(name, "DOWNLOADING.md"))
 
             except CalledProcessError as e:
-                print("Unable to get release tools for %s: %s" % (name, e.output))
-
-                if e.output and (b"no such image" in e.output or
-                                 b"image does not exist" in e.output or
-                                 (b"error: image" in e.output and b"does not exist" in e.output) or
-                                 b"unauthorized: access to the requested resource is not authorized" in e.output or
-                                 b"some required images are missing" in e.output or
-                                 b"invalid reference format" in e.output):
-                    with open(os.path.join(name, "FAILED.md"), "w") as outfile:
-                        outfile.write("Unable to get release tools: %s" % e.output)
-                    os.remove(os.path.join(name, "DOWNLOADING.md"))
-                    return
-
-                with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
-                    outfile.write("Unable to get release tools: %s" % e.output)
+                print(f'Unable to get release tools for {release}: {e.output}')
+                with open(os.path.join(release_cache_dir, "FAILED.md"), "w") as outfile:
+                    outfile.write(f'Unable to get release tools for {release}: {e.output}')
 
             except Exception as e:
-                print("Unable to get release tools for %s: %s" % (name, e.message))
-                self.log_error('An unexpected error has occurred: {}'.format(e.message))
+                print(f'An unexpected error has occurred: {e}')
+                with open(os.path.join(release_cache_dir, "FAILED.md"), "w") as outfile:
+                    outfile.write(f'An unexpected error has occurred: {e}')
+                self.log_error(f'An unexpected error has occurred: {e}')
+
+            finally:
+                os.remove(os.path.join(release_cache_dir, "DOWNLOADING.md"))
 
             return
 
+        # self._present_welcome_content()
         handler.do_GET(self)
+
 
 # Create socket
 addr = ('', 8080)
@@ -1347,169 +1355,29 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(addr)
 sock.listen(5)
 
-# Launch multiple listeners as threads
-class Thread(threading.Thread):
-  def __init__(self, i):
-    threading.Thread.__init__(self)
-    self.i = i
-    self.daemon = True
-    self.start()
-  def run(self):
-    with socketserver.TCPServer(addr, FileServer, False) as httpd:
-      # Prevent the HTTP server from re-binding every handler.
-      # https://stackoverflow.com/questions/46210672/
-      httpd.socket = sock
-      httpd.server_bind = self.server_close = lambda self: None
-      httpd.serve_forever()
-[Thread(i) for i in range(100)]
-time.sleep(9e9)
-END
-  python3 /tmp/serve.py
-else
-  cat <<END >/tmp/serve.py
-import re, os, subprocess, time, threading, socket, BaseHTTPServer, SimpleHTTPServer, glob
-from subprocess import CalledProcessError
-
-RELEASE_NAMESPACE = os.getenv('RELEASE_NAMESPACE', 'ocp')
-REGISTRY = os.getenv('REGISTRY', 'registry.ci.openshift.org')
-
-handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-
-
-files = glob.glob('/srv/cache/**/DOWNLOADING.md')
-for file in files:
-    print("Removing: %s" % file)
-    os.remove(file)
-
-
-def check_stale_download(path):
-    service_list = subprocess.Popen(['ps', '-ef'], stdout=subprocess.PIPE)
-    grep_command = '[o]c adm release extract --tools --to %s' % path
-    filtered_list = subprocess.Popen(['grep', grep_command],
-                                     stdin=service_list.stdout,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    service_list.stdout.close()
-    out, err = filtered_list.communicate()
-    if out.decode("utf-8") != '' and err.decode("utf-8") == '':
-        return False
-    return True
-
-
-class FileServer(handler):
-    def _present_default_content(self, name):
-        content = ("""<!DOCTYPE html>
-        <html>
-            <head>
-                <meta http-equiv=\"refresh\" content=\"5\">
-            </head>
-            <body>
-                <p>Extracting tools for %s, may take up to a minute ...</p>
-            </body>
-        </html>
-        """ % name).encode('UTF-8')
-
-        self.send_response(200, "OK")
-        self.send_header("Content-Type", "text/html;charset=UTF-8")
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Retry-After", "5")
-        self.end_headers()
-        self.wfile.write(content)
-        self.wfile.close()
-
-    def _get_extension(self, namespace):
-        index = namespace.find('-')
-        if index == -1:
-            return ''
-        return namespace[index::]
-
-    def do_GET(self):
-        path = self.path.strip("/")
-        segments = path.split("/")
-        extension = self._get_extension(RELEASE_NAMESPACE)
-
-        if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.\-]+[a-zA-Z0-9]', segments[0]):
-            name = segments[0]
-
-            if os.path.isfile(os.path.join(name, "sha256sum.txt")) or os.path.isfile(os.path.join(name, "FAILED.md")):
-                handler.do_GET(self)
-                return
-
-            if os.path.isfile(os.path.join(name, "DOWNLOADING.md")):
-                if check_stale_download(path):
-                    os.remove(os.path.join(name, "DOWNLOADING.md"))
-                self._present_default_content(name)
-                return
-
-            try:
-                os.mkdir(name)
-            except OSError:
-                pass
-
-            with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
-                outfile.write("Downloading %s" % name)
-
-            try:
-                self._present_default_content(name)
-
-                subprocess.check_output(["oc", "adm", "release", "extract", "--tools", "--to", name, "--command-os", "*", "%s/%s/release%s:%s" % (REGISTRY, RELEASE_NAMESPACE, extension, name)],
-                                        stderr=subprocess.STDOUT)
-                os.remove(os.path.join(name, "DOWNLOADING.md"))
-
-            except CalledProcessError as e:
-                if e.output and ("no such image" in e.output or
-                                  "image does not exist" in e.output or
-                                  "unauthorized: access to the requested resource is not authorized" in e.output or
-                                  "some required images are missing" in e.output or
-                                  "invalid reference format" in e.output):
-                    with open(os.path.join(name, "FAILED.md"), "w") as outfile:
-                        outfile.write("Unable to get release tools: %s" % e.output)
-                    os.remove(os.path.join(name, "DOWNLOADING.md"))
-                    return
-
-                with open(os.path.join(name, "DOWNLOADING.md"), "w") as outfile:
-                    outfile.write("Unable to get release tools: %s" % e.output)
-
-            except Exception as e:
-                self.log_error('An unexpected error has occurred: {}'.format(e.message))
-
-            return
-
-        handler.do_GET(self)
-
-# Create socket
-addr = ('', 8080)
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(addr)
-sock.listen(5)
 
 # Launch multiple listeners as threads
 class Thread(threading.Thread):
-    def __init__(self, index):
+    def __init__(self, i):
         threading.Thread.__init__(self)
-        self.i = index
+        self.i = i
         self.daemon = True
         self.start()
 
     def run(self):
-        server = FileServer
-        server.extensions_map = {".md": "text/plain", ".asc": "text/plain", ".txt": "text/plain", "": "application/octet-stream"}
-        httpd = BaseHTTPServer.HTTPServer(addr, server, False)
-
-        # Prevent the HTTP server from re-binding every handler.
-        # https://stackoverflow.com/questions/46210672/
-        httpd.socket = sock
-        httpd.server_bind = self.server_close = lambda self: None
-
-        httpd.serve_forever()
+        with socketserver.TCPServer(addr, FileServer, False) as httpd:
+            # Prevent the HTTP server from re-binding every handler.
+            # https://stackoverflow.com/questions/46210672/
+            httpd.socket = sock
+            httpd.server_bind = self.server_close = lambda self: None
+            httpd.serve_forever()
 
 
 [Thread(i) for i in range(100)]
 time.sleep(9e9)
 END
-  python /tmp/serve.py
-fi
-              `,
+python3 /tmp/serve.py
+`,
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 8080,
@@ -1517,6 +1385,42 @@ fi
 						}},
 						ReadinessProbe: probe,
 						LivenessProbe:  probe,
+					},
+				},
+				InitContainers: []corev1.Container{
+					{
+						Name:       "purge",
+						Image:      image,
+						WorkingDir: "/mnt",
+						Env: []corev1.EnvVar{
+							{Name: "HOME", Value: "/tmp"},
+							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "cache", MountPath: "/mnt"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
+
+						Command: []string{"/bin/bash", "-c"},
+						Args: []string{
+							`#!/bin/bash
+set -euo pipefail
+trap 'kill $(jobs -p); exit 0' TERM
+if [ ! -d /mnt/cache ]; then
+  echo "Creating cache..."
+  mkdir /mnt/cache
+else
+  echo "Wiping cache after restart..."
+  rm -rfv /mnt/cache/4.*
+fi
+exit 0
+`,
+						},
 					},
 				},
 			},
