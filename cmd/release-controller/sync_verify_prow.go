@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/openshift/release-controller/pkg/prow"
@@ -38,8 +39,13 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 		} else {
 			jobName = defaultAggregateProwJobName
 		}
+		aggregatorSuffix := "aggregator"
+		if retry, err := strconv.Atoi(verifySuffix); err == nil {
+			klog.V(6).Infof("Aggregator job has failed.  Retry count: %d", retry)
+			aggregatorSuffix = aggregatorSuffix + fmt.Sprintf("-%s", verifySuffix)
+		}
 		// Postfix the name to differentiate it from the analysis jobs
-		prowJobName = prow.GenerateSafeProwJobName(fullProwJobName, "aggregator")
+		prowJobName = prow.GenerateSafeProwJobName(fullProwJobName, aggregatorSuffix)
 	}
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {

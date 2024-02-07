@@ -97,6 +97,18 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 			suffix:   "analysis-1",
 			expected: "4.9.0-0.ci-2021-08-30-133010-this-is-a-reall-gmlwrnb-analysis-1",
 		},
+		{
+			name:     "AggregatorJob",
+			jobName:  "4.16.0-0.nightly-2024-02-07-125310-aggregated-hypershift-ovn-conformance-4.16",
+			suffix:   "aggregator",
+			expected: "4.16.0-0.nightly-2024-02-07-125310-aggregate-44j0w6k-aggregator",
+		},
+		{
+			name:     "AggregatorJobWithRetry",
+			jobName:  "4.16.0-0.nightly-2024-02-07-125310-aggregated-hypershift-ovn-conformance-4.16",
+			suffix:   "aggregator-2",
+			expected: "4.16.0-0.nightly-2024-02-07-125310-aggrega-44j0w6k-aggregator-2",
+		},
 	}
 
 	t.Parallel()
