@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -95,6 +96,17 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	r := regexp.MustCompile(`\b(e2e-agent|metal|telco5g)\b`)
 	if r.FindString(jobName) != "" {
 		spec.Cluster = "build05"
+	}
+
+	// Temporarily pin gcp jobs to gcp build clusters, see TRT-1504
+	r = regexp.MustCompile(`-gcp`)
+	if r.FindString(jobName) != "" {
+		// Randomly set spec.Cluster to either build02 or build04
+		if rand.Intn(2) == 0 {
+			spec.Cluster = "build02"
+		} else {
+			spec.Cluster = "build04"
+		}
 	}
 
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
