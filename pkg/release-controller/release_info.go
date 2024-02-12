@@ -1008,7 +1008,20 @@ func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
 							  echo "Performing git maintenance..."
 							  for repo in $(find /tmp/git -type d -a -name .git | xargs dirname)
 							  do
-								(echo $repo && cd $repo && git gc && git pull)
+								(
+								  echo $repo
+								  cd $repo
+							
+								  # Check for unmerged files
+								  if git status | grep -q "Unmerged paths"; then
+									echo "Repository has unmerged files. Removing the directory and moving to the next repository..."
+									git reset --hard HEAD  # discards all changes 
+								  else
+									# No conflicts, perform maintenance
+									git gc
+									git pull
+								  fi
+								)
 							  done
 							else
 							  FROM=$(curl -s https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestreams/accepted | jq -r '.["4-stable"][0] // empty')
