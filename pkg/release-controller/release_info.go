@@ -253,12 +253,16 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 		Stdin:  nil,
 		Stderr: errOut,
 	}); err != nil {
-		klog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("could not generate a changelog: %v", msg)
+		if strings.Contains(msg, "Could not load commits for") {
+			klog.Warningf("Generated changelog with missing commits:\n$ %s\n%s", strings.Join(cmd, " "), errOut.String())
+		} else {
+			klog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+			return "", fmt.Errorf("could not generate a changelog: %v", msg)
+		}
 	}
 	if isJson {
 		var changeLog ChangeLog
