@@ -1,1 +1,1 @@
-openshift-client
+openshift-client==1.0.16
