@@ -566,7 +566,7 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		return nil, fmt.Errorf("failed to get release definition from stream %s/%s", release.Target.Namespace, isName)
 	}
 	for name, verify := range versionedRelease.Config.Verify {
-		if _, ok := jobs[name]; !ok && !verify.Optional && verify.AggregatedProwJob == nil {
+		if _, ok := jobs[name]; !ok && !verify.Optional && verify.AggregatedProwJob == nil && !verify.MultiJobAnalysis {
 			verify.Optional = true
 			jobs[name] = verify
 		}
