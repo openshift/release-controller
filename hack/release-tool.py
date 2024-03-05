@@ -9,8 +9,8 @@ import tempfile
 
 import time
 
-import openshift as oc
-from openshift import OpenShiftPythonException, Missing
+import openshift_client as oc
+from openshift_client import OpenShiftPythonException, Missing
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 logger = logging.getLogger('releaseTool')
