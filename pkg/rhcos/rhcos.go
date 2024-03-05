@@ -148,10 +148,16 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 		}
 		switch {
 		case ts > changeoverTimestamp && minor >= 9:
+
 			// TODO: This should hopefully only be temporary...
-			if m[4] == "92" {
-				return fmt.Sprintf("prod/streams/%s.%s-9.2", m[2], m[3]), true
+			versionMap := map[string]string{
+				"92": "9.2",
+				"94": "9.4",
 			}
+			if version, ok := versionMap[m[4]]; ok {
+				return fmt.Sprintf("prod/streams/%s.%s-%s", m[2], m[3], version), true
+			}
+
 			return fmt.Sprintf("prod/streams/%s.%s", m[2], m[3]), true
 		default:
 			return fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension), true
