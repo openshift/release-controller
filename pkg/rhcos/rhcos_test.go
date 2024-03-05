@@ -47,6 +47,13 @@ func TestComputeJobState(t *testing.T) {
 			expected:     "prod/streams/4.9",
 		},
 		{
+			name:         "4.9 After Changeover",
+			version:      "49.94.202302111038-0",
+			architecture: "",
+			ok:           true,
+			expected:     "prod/streams/4.9-9.4",
+		},
+		{
 			name:         "4.9 Before Changeover",
 			version:      "49.84.202210201521-0",
 			architecture: "",
