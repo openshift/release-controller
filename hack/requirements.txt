@@ -1,1 +1,1 @@
-openshift-client
+openshift-client~=2.0
