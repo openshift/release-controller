@@ -63,16 +63,16 @@
             {{ end }}
             <a class="btn px-0-5" style="text-align: left;font-size: 1.2rem;"> {{.Summary}}</a>
           </div>
-          {{ if or (.Description) (.ReleaseNotes) (.PRs) }}
+          {{ if .ReleaseNotes }}
+          <div class="col d-flex align-items-start">
+            <a style="padding-left: 13px;"> {{ .ReleaseNotes }} </a>
+          </div>
+          {{ end }}
+          {{ if or (.Description) (.PRs) }}
           <div class="col" >
             {{ if .Description }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="descriptionBtn_{{.IssueKey}}">
               View the Description
-            </a>
-            {{ end }}
-            {{ if .ReleaseNotes }}
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_release_notes_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
-              View Release Notes
             </a>
             {{ end }}
             {{ if .PRs }}
@@ -90,13 +90,6 @@
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
             <div class="card card-body border-light">
               {{ .Description }}
-            </div>
-          </div>
-          {{ end }}
-          {{ if .ReleaseNotes }}
-          <div class="collapse" id="collapse_release_notes_{{.IssueKey}}">
-            <div class="card card-body border-light">
-              {{ .ReleaseNotes }}
             </div>
           </div>
           {{ end }}
@@ -205,16 +198,16 @@
             <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1.1rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1.1rem;"> {{.Summary}}</a>
           </div>
-          {{ if or (.Description) (.ReleaseNotes) (.PRs) }}
+          {{ if .ReleaseNotes }}
+          <div class="col d-flex align-items-start">
+            <a style="padding-left: 13px;"> {{ .ReleaseNotes }} </a>
+          </div>
+          {{ end }}
+          {{ if or (.Description) (.PRs) }}
           <div class="col" >
             {{ if .Description }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="descriptionBtn_{{.IssueKey}}">
               View the Description
-            </a>
-            {{ end }}
-            {{ if .ReleaseNotes }}
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_release_notes_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
-              View Release Notes
             </a>
             {{ end }}
             {{ if .PRs }}
@@ -232,13 +225,6 @@
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
             <div class="card card-body border-light">
               {{ .Description }}
-            </div>
-          </div>
-          {{ end }}
-          {{ if .ReleaseNotes }}
-          <div class="collapse" id="collapse_release_notes_{{.IssueKey}}">
-            <div class="card card-body border-light">
-              {{ .ReleaseNotes }}
             </div>
           </div>
           {{ end }}
@@ -290,16 +276,16 @@
             <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1rem;"> {{.Summary}}</a>
           </div>
-          {{ if or (.Description) (.ReleaseNotes) (.PRs) }}
+          {{ if .ReleaseNotes }}
+          <div class="col d-flex align-items-start">
+            <a style="padding-left: 13px;"> {{ .ReleaseNotes }} </a>
+          </div>
+          {{ end }}
+          {{ if or (.Description) (.PRs) }}
           <div class="col" >
             {{ if .Description }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="descriptionBtn_{{.IssueKey}}">
               View the Description
-            </a>
-            {{ end }}
-            {{ if .ReleaseNotes }}
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_release_notes_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
-              View Release Notes
             </a>
             {{ end }}
             {{ if .PRs }}
@@ -317,13 +303,6 @@
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
             <div class="card card-body border-light">
               {{ .Description }}
-            </div>
-          </div>
-          {{ end }}
-          {{ if .ReleaseNotes }}
-          <div class="collapse" id="collapse_release_notes_{{.IssueKey}}">
-            <div class="card card-body border-light">
-              {{ .ReleaseNotes }}
             </div>
           </div>
           {{ end }}
@@ -373,16 +352,16 @@
             <a class="btn px-0-5 link-primary" target="_blank" style="text-align: left;font-size: 1rem;" href="https://issues.redhat.com/browse/{{.IssueKey}}">{{ .IssueKey }}:</a>
             <a class="btn px-0-5" style="text-align: left;font-size: 1rem;"> {{.Summary}}</a>
           </div>
-          {{ if or (.Description) (.ReleaseNotes) (.PRs) }}
+          {{ if .ReleaseNotes }}
+          <div class="col d-flex align-items-start">
+            <a style="padding-left: 13px;"> {{ .ReleaseNotes }} </a>
+          </div>
+          {{ end }}
+          {{ if or (.Description) (.PRs) }}
           <div class="col" >
             {{ if .Description }}
             <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_description_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="descriptionBtn_{{.IssueKey}}">
               View the Description
-            </a>
-            {{ end }}
-            {{ if .ReleaseNotes }}
-            <a class="btn btn-link" data-bs-toggle="collapse" href="#collapse_release_notes_{{.IssueKey}}" role="button" aria-expanded="false" aria-controls="collapseExample" id="release_notes_btn_{{.IssueKey}}">
-              View Release Notes
             </a>
             {{ end }}
             {{ if .PRs }}
@@ -400,13 +379,6 @@
           <div class="collapse" id="collapse_description_{{.IssueKey}}">
             <div class="card card-body border-light">
               {{ .Description }}
-            </div>
-          </div>
-          {{ end }}
-          {{ if .ReleaseNotes }}
-          <div class="collapse" id="collapse_release_notes_{{.IssueKey}}">
-            <div class="card card-body border-light">
-              {{ .ReleaseNotes }}
             </div>
           </div>
           {{ end }}
