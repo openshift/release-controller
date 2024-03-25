@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	stdErrors "errors"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -23,9 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog"
 	"k8s.io/test-infra/prow/jira"
 )
@@ -192,26 +191,18 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	if _, err := imagereference.Parse(image); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
 	}
-	cmd := []string{"oc", "adm", "release", "info", "-o", "json", image}
 
-	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: "git",
-		Stdout:    true,
-		Stderr:    true,
-		Command:   cmd,
-	}, scheme.ParameterCodec).URL()
-
-	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
-	if err != nil {
-		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
-	}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := e.Stream(remotecommand.StreamOptions{
-		Stdout: out,
-		Stdin:  nil,
-		Stderr: errOut,
-	}); err != nil {
-		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+	oc, err := exec.LookPath("oc")
+	if err != nil {
+		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+	}
+	cmd := exec.Command(oc, "adm", "release", "info", "-o", "json", image)
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, cmd.String(), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -232,36 +223,29 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 		return "", fmt.Errorf("not a valid reference")
 	}
 
-	cmd := []string{"oc", "adm", "release", "info", "--changelog=/tmp/git/", from, to}
-	if isJson {
-		cmd = append(cmd, "--output=json")
-	}
-	klog.V(4).Infof("Running changelog command: %s", strings.Join(cmd, " "))
-	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: "git",
-		Stdout:    true,
-		Stderr:    true,
-		Command:   cmd,
-	}, scheme.ParameterCodec).URL()
-
-	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
-	if err != nil {
-		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
-	}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := e.Stream(remotecommand.StreamOptions{
-		Stdout: out,
-		Stdin:  nil,
-		Stderr: errOut,
-	}); err != nil {
+	oc, err := exec.LookPath("oc")
+	if err != nil {
+		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+	}
+	args := []string{"adm", "release", "info", "--changelog=/tmp/git/", from, to}
+	if isJson {
+		args = append(args, "--output=json")
+	}
+	cmd := exec.Command(oc, args...)
+	klog.V(4).Infof("Running changelog command: %s", cmd.String())
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
 		}
 		if strings.Contains(msg, "Could not load commits for") {
-			klog.Warningf("Generated changelog with missing commits:\n$ %s\n%s", strings.Join(cmd, " "), errOut.String())
+			klog.Warningf("Generated changelog with missing commits:\n$ %s\n%s", cmd.String(), errOut.String())
 		} else {
-			klog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+			klog.V(4).Infof("Failed to generate changelog: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
 			return "", fmt.Errorf("could not generate a changelog: %v", msg)
 		}
 	}
@@ -286,26 +270,17 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return nil, fmt.Errorf("not a valid reference")
 	}
 
-	cmd := []string{"oc", "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", "--skip-bug-check", from, to}
-	klog.V(4).Infof("Running bugs command: %s", strings.Join(cmd, " "))
-	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: "git",
-		Stdout:    true,
-		Stderr:    true,
-		Command:   cmd,
-	}, scheme.ParameterCodec).URL()
-
-	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
-	if err != nil {
-		return nil, fmt.Errorf("could not initialize a new SPDY executor: %v", err)
-	}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := e.Stream(remotecommand.StreamOptions{
-		Stdout: out,
-		Stdin:  nil,
-		Stderr: errOut,
-	}); err != nil {
-		klog.V(4).Infof("Failed to generate bug list: %v\n$ %s\n%s\n%s", err, strings.Join(cmd, " "), errOut.String(), out.String())
+	oc, err := exec.LookPath("oc")
+	if err != nil {
+		return nil, fmt.Errorf("Failed to find `oc` executable: %w", err)
+	}
+	cmd := exec.Command(oc, "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", "--skip-bug-check", from, to)
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed to generate bug list: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -365,26 +340,18 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 	if len(architecture) == 0 || architecture == "multi" {
 		architecture = "amd64"
 	}
-	cmd := []string{"oc", "image", "info", "--filter-by-os", fmt.Sprintf("linux/%s", architecture), "-o", "json", image}
 
-	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Container: "git",
-		Stdout:    true,
-		Stderr:    true,
-		Command:   cmd,
-	}, scheme.ParameterCodec).URL()
-
-	e, err := remotecommand.NewSPDYExecutor(r.restConfig, "POST", u)
-	if err != nil {
-		return "", fmt.Errorf("could not initialize a new SPDY executor: %v", err)
-	}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := e.Stream(remotecommand.StreamOptions{
-		Stdout: out,
-		Stdin:  nil,
-		Stderr: errOut,
-	}); err != nil {
-		klog.V(4).Infof("Failed to get image info for %s: %v\n$ %s\n%s\n%s", image, err, strings.Join(cmd, " "), errOut.String(), out.String())
+	oc, err := exec.LookPath("oc")
+	if err != nil {
+		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+	}
+	cmd := exec.Command(oc, "image", "info", "--filter-by-os", fmt.Sprintf("linux/%s", architecture), "-o", "json", image)
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed to get image info for %s: %v\n$ %s\n%s\n%s", image, err, cmd.String(), errOut.String(), out.String())
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
@@ -886,200 +853,6 @@ func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) map[strin
 	}
 	return issues
 
-}
-
-func (r *ExecReleaseInfo) RefreshPod() error {
-	sts, err := r.client.AppsV1().StatefulSets(r.namespace).Get(context.TODO(), "git-cache", metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-		sts = nil
-	}
-
-	if sts != nil && len(sts.Annotations["release-owner"]) > 0 && sts.Annotations["release-owner"] != r.name {
-		klog.Infof("Another release controller is managing git-cache, ignoring")
-		return nil
-	}
-
-	image, err := r.imageNameFn()
-	if err != nil {
-		return fmt.Errorf("unable to load image for caching git: %v", err)
-	}
-	spec := r.specHash(image)
-
-	if sts == nil {
-		sts = &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "git-cache",
-				Namespace:   r.namespace,
-				Annotations: map[string]string{"release-owner": r.name},
-			},
-			Spec: spec,
-		}
-		if _, err := r.client.AppsV1().StatefulSets(r.namespace).Create(context.TODO(), sts, metav1.CreateOptions{}); err != nil {
-			return fmt.Errorf("can't create stateful set for cache: %v", err)
-		}
-		return nil
-	}
-
-	sts.Spec = spec
-	if _, err := r.client.AppsV1().StatefulSets(r.namespace).Update(context.TODO(), sts, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("can't update stateful set for cache: %v", err)
-	}
-	return nil
-}
-
-func (r *ExecReleaseInfo) specHash(image string) appsv1.StatefulSetSpec {
-	isTrue := true
-	spec := appsv1.StatefulSetSpec{
-		Selector: &metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				"app":     "git-cache",
-				"release": r.name,
-			},
-		},
-		PodManagementPolicy: appsv1.ParallelPodManagement,
-		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
-			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{},
-		},
-		VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "git",
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							"storage": resource.MustParse("200Gi"),
-						},
-					},
-				},
-			},
-		},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					"app":     "git-cache",
-					"release": r.name,
-				},
-			},
-			Spec: corev1.PodSpec{
-				Volumes: []corev1.Volume{
-					{Name: "git-credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-credentials"}}},
-					{Name: "pull-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "git-pull-secret", Optional: &isTrue}}},
-				},
-				InitContainers: []corev1.Container{
-					{
-						Name:  "init-git",
-						Image: image,
-						Env: []corev1.EnvVar{
-							{Name: "HOME", Value: "/tmp"},
-							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
-							{Name: "GIT_COMMITTER_NAME", Value: "test"},
-							{Name: "GIT_COMMITTER_EMAIL", Value: "test@test.com"},
-						},
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: "git", MountPath: "/tmp/git/"},
-							{Name: "git-credentials", MountPath: "/tmp/.git-credentials", SubPath: ".git-credentials"},
-							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU: resource.MustParse("50m"),
-							},
-						},
-						Command: []string{
-							"/bin/bash",
-							"-c",
-							`#!/bin/bash
-							set -euo pipefail
-							trap 'kill $(jobs -p); exit 0' TERM
-
-							SECONDS=0
-
-							# ensure we are logged in to our registry
-							mkdir -p /tmp/.docker/ ${XDG_RUNTIME_DIR}
-							cp /tmp/pull-secret/* /tmp/.docker/ || true
-
-							git config --global credential.helper store
-							git config --global user.name test
-							git config --global user.email test@test.com
-							oc registry login --to /tmp/.docker/config.json
-
-							if [ -x /tmp/git/github.com ]
-							then
-							  echo "Performing git maintenance..."
-							  for repo in $(find /tmp/git -type d -a -name .git | xargs dirname)
-							  do
-								(echo $repo && cd $repo && git gc && git pull)
-							  done
-							else
-							  FROM=$(curl -s https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestreams/accepted | jq -r '.["4-stable"][0] // empty')
-							  TO=$(curl -s https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestreams/accepted | jq -r '.["4-dev-preview"][0] // empty')
-
-							  if [[ -n "$FROM" && -n "$TO" ]]
-							  then
-								echo "Pre-populating the git cache..."
-								oc adm release info --changelog=/tmp/git quay.io/openshift-release-dev/ocp-release:$FROM-x86_64 quay.io/openshift-release-dev/ocp-release:$TO-x86_64
-							  else
-								echo "Unable to Pre-populate the git cache!"
-							  fi
-							fi
-
-							DURATION=$SECONDS
-							echo "Took: $(($DURATION / 60))m $(($DURATION % 60))s"
-							`,
-						},
-					},
-				},
-				Containers: []corev1.Container{
-					{
-						Name:  "git",
-						Image: image,
-						Env: []corev1.EnvVar{
-							{Name: "HOME", Value: "/tmp"},
-							{Name: "XDG_RUNTIME_DIR", Value: "/tmp/run"},
-							{Name: "GIT_COMMITTER_NAME", Value: "test"},
-							{Name: "GIT_COMMITTER_EMAIL", Value: "test@test.com"},
-						},
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: "git", MountPath: "/tmp/git/"},
-							{Name: "git-credentials", MountPath: "/tmp/.git-credentials", SubPath: ".git-credentials"},
-							{Name: "pull-secret", MountPath: "/tmp/pull-secret"},
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU: resource.MustParse("50m"),
-							},
-						},
-						Command: []string{
-							"/bin/bash",
-							"-c",
-							`#!/bin/bash
-							set -euo pipefail
-							trap 'kill $(jobs -p); exit 0' TERM
-
-							# ensure we are logged in to our registry
-							mkdir -p /tmp/.docker/ "${XDG_RUNTIME_DIR}"
-							cp /tmp/pull-secret/* /tmp/.docker/ || true
-
-							git config --global credential.helper store
-							git config --global user.name test
-							git config --global user.email test@test.com
-							oc registry login --to /tmp/.docker/config.json
-							while true; do
-							  sleep 180 & wait
-							done
-							`,
-						},
-					},
-				},
-			},
-		},
-	}
-	return spec
 }
 
 type ExecReleaseFiles struct {
