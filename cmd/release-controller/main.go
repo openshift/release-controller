@@ -582,7 +582,7 @@ func (o *options) Run() error {
 		// keep the graph in a more persistent form
 		go releasecontroller.SyncGraphToSecret(graph, true, releasesClient.CoreV1().Secrets(releaseNamespace), releaseNamespace, "release-upgrade-graph", stopCh)
 		// maintain the release pods
-		go refreshReleaseToolsEvery(2*time.Hour, execReleaseInfo, execReleaseFiles, stopCh)
+		go refreshReleaseToolsEvery(2*time.Hour, execReleaseFiles, stopCh)
 
 		if o.ProcessLegacyResults {
 			go c.processLegacyResults(6*time.Hour, stopCh)
@@ -656,7 +656,7 @@ func loadClusterConfig() (*rest.Config, error) {
 	return clusterConfig, nil
 }
 
-func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *releasecontroller.ExecReleaseInfo, execReleaseFiles *releasecontroller.ExecReleaseFiles, stopCh <-chan struct{}) {
+func refreshReleaseToolsEvery(interval time.Duration, execReleaseFiles *releasecontroller.ExecReleaseFiles, stopCh <-chan struct{}) {
 	wait.Until(func() {
 		err := wait.ExponentialBackoff(wait.Backoff{
 			Steps:    3,
@@ -664,10 +664,6 @@ func refreshReleaseToolsEvery(interval time.Duration, execReleaseInfo *releaseco
 			Factor:   2,
 		}, func() (bool, error) {
 			success := true
-			if err := execReleaseInfo.RefreshPod(); err != nil {
-				klog.Errorf("Unable to refresh git cache, waiting to retry: %v", err)
-				success = false
-			}
 			if err := execReleaseFiles.RefreshPod(); err != nil {
 				klog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
 				success = false
