@@ -1230,6 +1230,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			.mb-custom {
 			  margin-bottom: 0.5rem !important; /* use !important to override other margin-bottom styles */
 			}
+			table, th, td {
+			  border: 1px solid;
+			  padding: 5px;
+			}
 		</style>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.5.0/font/bootstrap-icons.min.css">
 		`)
