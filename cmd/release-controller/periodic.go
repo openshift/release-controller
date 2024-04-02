@@ -173,7 +173,9 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 	if err != nil || !ok {
 		return fmt.Errorf("failed to add release env to periodic %s: %v", periodicWithRelease.Periodic.Name, err)
 	}
-	prowJob := pjutil.NewProwJob(spec, periodicWithRelease.Periodic.Labels, periodicWithRelease.Periodic.Annotations)
+
+	schedulingEnabled := c.prowConfigLoader.Config().Scheduler.Enabled
+	prowJob := pjutil.NewProwJob(spec, periodicWithRelease.Periodic.Labels, periodicWithRelease.Periodic.Annotations, pjutil.RequireScheduling(schedulingEnabled))
 	prowJob.Labels[releasecontroller.ReleaseAnnotationVerify] = "true"
 	prowJob.Annotations[releasecontroller.ReleaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
 	prowJob.Annotations[releasecontroller.ReleaseAnnotationToTag] = latestTag.Name
