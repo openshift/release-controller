@@ -109,9 +109,10 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 		}
 		ok = ok && status
 	}
+	schedulingEnabled := c.prowConfigLoader.Config().Scheduler.Enabled
 	pj := prowutil.NewProwJob(spec, extraLabels, map[string]string{
 		releasecontroller.ReleaseAnnotationSource: fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name),
-	})
+	}, prowutil.RequireScheduling(schedulingEnabled))
 	// Override default UUID naming of prowjob
 	pj.Name = prowJobName
 	if !ok {
