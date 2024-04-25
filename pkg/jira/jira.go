@@ -386,16 +386,24 @@ func (c *Verifier) determineFixVersion(feature *jiraBaseClient.Issue, version st
 	if err != nil {
 		return "", fmt.Errorf("unable to get project versions for jira issue %q: %w", feature.Key, err)
 	}
-	// Give preference to versions without any prefix...
-	for _, v := range versions {
-		if v.Name == version {
-			return v.Name, nil
-		}
+	pieces := strings.Split(version, ".")
+	variants := []string{
+		// Exact match is always preferred
+		version,
+		// Followed by an exact match that has a prefix
+		fmt.Sprintf("openshift-%s", version),
 	}
-	// Then, versions with a prefix...
-	for _, v := range versions {
-		if v.Name == fmt.Sprintf("openshift-%s", version) {
-			return v.Name, nil
+	// The current implementation only sends 1 of 2 types of versions (X.Y.0 or X.Y.z).
+	// For the "Dot Zero" releases only, we'll check for a matching X.Y variants as well...
+	if len(pieces) >= 3 && pieces[2] == "0" {
+		variants = append(variants, fmt.Sprintf("%s.%s", pieces[0], pieces[1]))
+		variants = append(variants, fmt.Sprintf("openshift-%s.%s", pieces[0], pieces[1]))
+	}
+	for _, variant := range variants {
+		for _, v := range versions {
+			if v.Name == variant {
+				return v.Name, nil
+			}
 		}
 	}
 	// If no match is found, return the version we calculated

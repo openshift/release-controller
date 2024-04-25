@@ -88,10 +88,10 @@ func TestGetPRS(t *testing.T) {
 
 	c := &fakejira.FakeClient{Issues: []*jira.Issue{&issue}, RemovedLinks: removeLinkArray, ExistingLinks: remoteLinks}
 
-	extLinks, errors := getPRs([]string{"OCPBUGS-0000"}, c)
+	extLinks, errs := getPRs([]string{"OCPBUGS-0000"}, c)
 
-	if len(errors) != 0 {
-		t.Fatalf("unexpected errors: %s", errors)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %s", errs)
 	}
 
 	for key, value := range extLinks {
@@ -433,6 +433,19 @@ func TestDetermineFixVersion(t *testing.T) {
 			expected: "X.Y.z",
 		},
 		{
+			name:            "NilProjectVersionsWithDotZeroVersion",
+			projectVersions: nil,
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
+		},
+		{
 			name:            "NoProjectVersions",
 			projectVersions: map[string][]*jira.Version{},
 			feature: &jira.Issue{
@@ -444,6 +457,19 @@ func TestDetermineFixVersion(t *testing.T) {
 			},
 			version:  "X.Y.z",
 			expected: "X.Y.z",
+		},
+		{
+			name:            "NoProjectVersionsWithDotZeroVersion",
+			projectVersions: map[string][]*jira.Version{},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
 		},
 		{
 			name: "NoMatchingProject",
@@ -465,6 +491,25 @@ func TestDetermineFixVersion(t *testing.T) {
 			expected: "X.Y.z",
 		},
 		{
+			name: "NoMatchingProjectWithDotZeroVersion",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT2": {
+					{
+						Name: "X.Y.z",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
+		},
+		{
 			name: "MatchingProjectWithMatchingVersion",
 			projectVersions: map[string][]*jira.Version{
 				"PROJECT1": {
@@ -482,6 +527,25 @@ func TestDetermineFixVersion(t *testing.T) {
 			},
 			version:  "X.Y.z",
 			expected: "X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithMatchingDotZeroVersion",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "X.Y.0",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
 		},
 		{
 			name: "MatchingProjectWithMatchingVersionWithPrefix",
@@ -503,6 +567,25 @@ func TestDetermineFixVersion(t *testing.T) {
 			expected: "openshift-X.Y.z",
 		},
 		{
+			name: "MatchingProjectWithMatchingDotZeroVersionWithPrefix",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y.0",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "openshift-X.Y.0",
+		},
+		{
 			name: "MatchingProjectWithNonMatchingVersion",
 			projectVersions: map[string][]*jira.Version{
 				"PROJECT1": {
@@ -522,6 +605,25 @@ func TestDetermineFixVersion(t *testing.T) {
 			expected: "X.Y.z",
 		},
 		{
+			name: "MatchingProjectWithNonMatchingDotZeroVersion",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "A.B.c",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
+		},
+		{
 			name: "MatchingProjectWithNonMatchingVersionWithPrefix",
 			projectVersions: map[string][]*jira.Version{
 				"PROJECT1": {
@@ -539,6 +641,25 @@ func TestDetermineFixVersion(t *testing.T) {
 			},
 			version:  "X.Y.z",
 			expected: "X.Y.z",
+		},
+		{
+			name: "MatchingProjectWithNonMatchingDotZeroVersionWithPrefix",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-A.B.c",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
 		},
 		{
 			name: "MultipleMatchingVersions1",
@@ -583,6 +704,91 @@ func TestDetermineFixVersion(t *testing.T) {
 			},
 			version:  "X.Y.z",
 			expected: "X.Y.z",
+		},
+		{
+			name: "MultipleMatchingDotZeroVersions1",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "X.Y.0",
+					},
+					{
+						Name: "openshift-X.Y.0",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
+		},
+		{
+			name: "MultipleMatchingDotZeroVersions2",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y.0",
+					},
+					{
+						Name: "X.Y.0",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y.0",
+		},
+		{
+			name: "MajorMinorRelease",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y",
+					},
+					{
+						Name: "X.Y",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "X.Y",
+		},
+		{
+			name: "MajorMinorReleaseWithPrefix",
+			projectVersions: map[string][]*jira.Version{
+				"PROJECT1": {
+					{
+						Name: "openshift-X.Y",
+					},
+				},
+			},
+			feature: &jira.Issue{
+				Fields: &jira.IssueFields{
+					Project: jira.Project{
+						Key: "PROJECT1",
+					},
+				},
+			},
+			version:  "X.Y.0",
+			expected: "openshift-X.Y",
 		},
 	}
 
