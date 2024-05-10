@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	stdErrors "errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -827,7 +828,7 @@ func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string) (result
 		mu.Lock()
 		var linkUrl []string
 		for _, link := range links {
-			if strings.ToLower(link.Object.Title) == "demo" {
+			if matched, _ := regexp.MatchString(`\bdemo\b`, strings.ToLower(link.Object.Title)); matched {
 				linkUrl = append(linkUrl, link.Object.URL)
 			}
 		}
