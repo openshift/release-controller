@@ -29,6 +29,7 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 			releasecontroller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 			releasecontroller.ReleaseAnnotationPhase:             releasecontroller.ReleasePhasePending,
 		},
+		ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
 
