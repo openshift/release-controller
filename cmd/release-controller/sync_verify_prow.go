@@ -21,9 +21,9 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 
-	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
-	prowconfig "k8s.io/test-infra/prow/config"
-	prowutil "k8s.io/test-infra/prow/pjutil"
+	prowjobv1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
+	prowconfig "sigs.k8s.io/prow/pkg/config"
+	prowutil "sigs.k8s.io/prow/pkg/pjutil"
 )
 
 func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Release, verifyName, verifySuffix string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string, extraLabels map[string]string) (*unstructured.Unstructured, error) {

@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/andygrunwald/go-jira"
-	"k8s.io/test-infra/prow/github"
-	"k8s.io/test-infra/prow/github/fakegithub"
-	"k8s.io/test-infra/prow/jira/fakejira"
-	"k8s.io/test-infra/prow/plugins"
+	"sigs.k8s.io/prow/pkg/github"
+	"sigs.k8s.io/prow/pkg/github/fakegithub"
+	"sigs.k8s.io/prow/pkg/jira/fakejira"
+	"sigs.k8s.io/prow/pkg/plugins"
 )
 
 type fakeGHClient struct {

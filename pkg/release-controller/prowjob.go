@@ -10,7 +10,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	prowjobsv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	prowjobsv1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 )
 
 func ProwJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationStatus, bool) {

@@ -1,13 +1,12 @@
 package api
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/test-infra/prow/secretutil"
+	"sigs.k8s.io/prow/pkg/secretutil"
 )
 
 // prowArtifactsEnv is the directory Prow wants us to put artifacts into for upload
@@ -39,7 +38,7 @@ func SaveArtifact(censor secretutil.Censorer, relPath string, data []byte) error
 		logrus.WithError(err).Warn("Unable to create artifact directory.")
 		return err
 	}
-	if err := ioutil.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		logrus.WithError(err).Errorf("Failed to write %s", relPath)
 		return err
 	}

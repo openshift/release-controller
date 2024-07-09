@@ -14,8 +14,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	prowjobclientset "k8s.io/test-infra/prow/client/clientset/versioned"
-	prowjobinformers "k8s.io/test-infra/prow/client/informers/externalversions"
+	prowjobclientset "sigs.k8s.io/prow/pkg/client/clientset/versioned"
+	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
 )
 
 type Options struct {

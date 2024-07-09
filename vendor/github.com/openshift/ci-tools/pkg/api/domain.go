@@ -18,12 +18,14 @@ const (
 	ServiceDomainAPPCI = "apps.ci.l2s4.p1.openshiftapps.com"
 	ServiceDomainGCS   = "googleapis.com"
 
-	ServiceDomainAPPCIRegistry   = "registry.ci.openshift.org"
-	ServiceDomainVSphereRegistry = "registry.apps.build01-us-west-2.vmc.ci.openshift.org"
-	ServiceDomainArm01Registry   = "registry.arm-build01.arm-build.devcluster.openshift.com"
-	ServiceDomainMulti01Registry = "registry.multi-build01.arm-build.devcluster.openshift.com"
+	ServiceDomainAPPCIRegistry     = "registry.ci.openshift.org"
+	ServiceDomainVSphere02Registry = "registry.apps.build02.vmc.ci.openshift.org"
+	ServiceDomainArm01Registry     = "registry.arm-build01.arm-build.devcluster.openshift.com"
+	ServiceDomainMulti01Registry   = "registry.multi-build01.arm-build.devcluster.openshift.com"
 
 	QuayOpenShiftCIRepo = "quay.io/openshift/ci"
+
+	QCIAPPCIDomain = "quay-proxy.ci.openshift.org"
 )
 
 type Service string
@@ -67,14 +69,11 @@ func RegistryDomainForClusterName(clusterName string) (string, error) {
 	if clusterName == string(ClusterAPPCI) {
 		return ServiceDomainAPPCIRegistry, nil
 	}
-	if clusterName == string(ClusterVSphere) {
-		return ServiceDomainVSphereRegistry, nil
+	if clusterName == string(ClusterVSphere02) {
+		return ServiceDomainVSphere02Registry, nil
 	}
 	if clusterName == string(ClusterARM01) {
 		return ServiceDomainArm01Registry, nil
-	}
-	if clusterName == string(ClusterMulti01) {
-		return ServiceDomainMulti01Registry, nil
 	}
 	if buildClusterRegEx.MatchString(clusterName) {
 		return fmt.Sprintf("registry.%s.ci.openshift.org", clusterName), nil

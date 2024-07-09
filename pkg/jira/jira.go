@@ -10,9 +10,9 @@ import (
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
-	"k8s.io/test-infra/prow/github"
-	"k8s.io/test-infra/prow/jira"
-	"k8s.io/test-infra/prow/plugins"
+	"sigs.k8s.io/prow/pkg/github"
+	"sigs.k8s.io/prow/pkg/jira"
+	"sigs.k8s.io/prow/pkg/plugins"
 )
 
 type githubClient interface {

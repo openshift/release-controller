@@ -14,11 +14,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	v1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
-	prowfake "k8s.io/test-infra/prow/client/clientset/versioned/fake"
-	prowjobinformers "k8s.io/test-infra/prow/client/informers/externalversions"
-	"k8s.io/test-infra/prow/kube"
 	"reflect"
+	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
+	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
+	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
+	"sigs.k8s.io/prow/pkg/kube"
 	"testing"
 )
 
