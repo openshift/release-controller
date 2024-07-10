@@ -255,6 +255,10 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			klog.Warningf("Permissions error getting issue %s; ignoring", issueID)
 			continue
 		}
+		if jira.JiraErrorStatusCode(err) == 404 {
+			klog.Warningf("Invalid jira issue %s; ignoring", issueID)
+			continue
+		}
 		if err != nil {
 			exists := false
 			for _, tmpErr := range errs {
