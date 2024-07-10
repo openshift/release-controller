@@ -15,10 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
-	config "k8s.io/test-infra/prow/config"
-	"k8s.io/test-infra/prow/cron"
-	"k8s.io/test-infra/prow/pjutil"
+	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
+	config "sigs.k8s.io/prow/pkg/config"
+	"sigs.k8s.io/prow/pkg/cron"
+	"sigs.k8s.io/prow/pkg/pjutil"
 )
 
 type PeriodicWithRelease struct {

@@ -40,7 +40,7 @@ import (
 	imagelisters "github.com/openshift/client-go/image/listers/image/v1"
 
 	"github.com/openshift/release-controller/pkg/signer"
-	prowconfig "k8s.io/test-infra/prow/config"
+	prowconfig "sigs.k8s.io/prow/pkg/config"
 )
 
 // Controller ensures that OpenShift update payload images (also known as

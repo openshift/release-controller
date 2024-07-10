@@ -6,10 +6,10 @@ import (
 	"fmt"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
-	"k8s.io/test-infra/prow/jira"
 	"net/http"
 	"os"
 	goruntime "runtime"
+	"sigs.k8s.io/prow/pkg/jira"
 	"strconv"
 	"strings"
 	"time"
@@ -37,9 +37,9 @@ import (
 
 	"github.com/openshift/library-go/pkg/serviceability"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-	"k8s.io/test-infra/prow/flagutil"
-	"k8s.io/test-infra/prow/interrupts"
-	"k8s.io/test-infra/prow/pjutil"
+	"sigs.k8s.io/prow/pkg/flagutil"
+	"sigs.k8s.io/prow/pkg/interrupts"
+	"sigs.k8s.io/prow/pkg/pjutil"
 )
 
 type options struct {

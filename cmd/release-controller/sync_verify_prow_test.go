@@ -5,7 +5,7 @@ import (
 	"github.com/openshift/release-controller/pkg/prow"
 	"testing"
 
-	prowconfig "k8s.io/test-infra/prow/config"
+	prowconfig "sigs.k8s.io/prow/pkg/config"
 )
 
 func TestValidateProwJob(t *testing.T) {

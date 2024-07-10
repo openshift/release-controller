@@ -12,8 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
-	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"math/rand"
+	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	"sort"
 	"strings"
 )
