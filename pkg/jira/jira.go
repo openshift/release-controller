@@ -344,6 +344,10 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 			klog.Warningf("Permissions error getting issue %s; ignoring", jiraID)
 			continue
 		}
+		if jira.JiraErrorStatusCode(err) == 404 {
+			klog.Warningf("Invalid jira issue %s; ignoring", jiraID)
+			continue
+		}
 		if err != nil {
 			exists := false
 			for _, tmpErr := range errs {
