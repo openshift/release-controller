@@ -655,6 +655,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var buf bytes.Buffer
+	var invalidIDs []string
 	for _, parts := range dividedIssues {
 		wg.Add(1)
 		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
@@ -685,8 +686,40 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 				mu.Lock()
 				defer mu.Unlock()
 				if err != nil {
-					err = fmt.Errorf("search failed: %w", err)
-					buf.WriteString(err.Error() + "\n")
+					if jiraErr, ok := err.(*jira.JiraError); ok {
+						if jiraOriginalErr, ok := jiraErr.OriginalError.(*jiraBaseClient.Error); ok {
+							for _, id := range parts {
+								for _, errorMessage := range jiraOriginalErr.ErrorMessages {
+									if strings.Contains(errorMessage, fmt.Sprintf("'%s'", id)) {
+										invalidIDs = append(invalidIDs, id)
+									}
+								}
+							}
+
+						}
+					}
+					if len(invalidIDs) > 0 {
+						filtered := make([]string, 0)
+						excludeMap := make(map[string]bool)
+						for _, item := range invalidIDs {
+							excludeMap[item] = true
+						}
+						for _, item := range parts {
+							if !excludeMap[item] {
+								filtered = append(filtered, item)
+							}
+						}
+						validResults, validErr := r.GetIssuesWithChunks(filtered)
+						if validErr != nil {
+							buf.WriteString(validErr.Error() + "\n")
+						}
+						result = append(result, validResults...)
+
+					} else {
+						err = fmt.Errorf("search failed: %w", err)
+						buf.WriteString(err.Error() + "\n")
+					}
+
 				}
 				return
 			}
