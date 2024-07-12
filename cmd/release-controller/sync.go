@@ -303,6 +303,16 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				if err != nil {
 					return err
 				}
+				// Handle manifest list based releases...
+				for _, m := range isi.Image.DockerImageManifests {
+					if m.Architecture == "amd64" {
+						isi, err = c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, m.Digest), metav1.GetOptions{})
+						if err != nil {
+							return err
+						}
+						break
+					}
+				}
 				metadata := &docker10.DockerImage{}
 				if len(isi.Image.DockerImageMetadata.Raw) == 0 {
 					return fmt.Errorf("could not fetch Docker image metadata for release %s", tag.Name)
