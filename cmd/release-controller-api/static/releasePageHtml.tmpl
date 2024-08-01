@@ -51,7 +51,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
                 <td>{{ links . $release }}</td>
-                <td>{{ teamApprovals $tag.Name }}</td>
+                <td>{{ teamApprovals $tag.Name false }}</td>
                 <td>{{ versionGrouping $tag.Name }}</td>
             </tr>
             {{ end }}

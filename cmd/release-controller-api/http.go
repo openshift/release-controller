@@ -1287,7 +1287,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	fmt.Fprintf(w, "Team Approvals: ")
-	teamApprovedList := c.renderTeamApprovals(tagInfo.Tag)
+	teamApprovedList := c.renderTeamApprovals(tagInfo.Tag, true)
 	if teamApprovedList == "" {
 		fmt.Fprintf(w, "None<br>")
 	} else {
@@ -1707,12 +1707,11 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) renderTeamApprovals(tag string) string {
+func (c *Controller) renderTeamApprovals(tag string, asList bool) string {
 	payload := c.GetReleasePayload(tag)
 	if payload == nil {
 		return ""
 	}
-	approvals := ""
 	acceptedLabels := []string{}
 	rejectedLabels := []string{}
 	for label, value := range payload.Labels {
@@ -1728,18 +1727,37 @@ func (c *Controller) renderTeamApprovals(tag string) string {
 	teamName := func(fullLabel string) string {
 		return strings.ToUpper(strings.Split(strings.TrimSuffix(fullLabel, "_state"), "/")[1])
 	}
+	var approvals string
+	if asList {
+		approvals += "<ul>"
+	}
 	if len(acceptedLabels) > 0 {
+		if asList {
+			approvals += "<li>"
+		}
 		approvals += "<span class=\"text-success\">Accepted</span><ul>"
 		for _, anno := range acceptedLabels {
 			approvals += "<li>" + teamName(anno) + "</li>"
 		}
 		approvals += "</ul>"
+		if asList {
+			approvals += "</li>"
+		}
 	}
 	if len(rejectedLabels) > 0 {
+		if asList {
+			approvals += "<li>"
+		}
 		approvals += "<span class=\"text-danger\">Rejected</span><ul>"
 		for _, anno := range rejectedLabels {
 			approvals += "<li>" + teamName(anno) + "</li>"
 		}
+		approvals += "</ul>"
+		if asList {
+			approvals += "</li>"
+		}
+	}
+	if asList {
 		approvals += "</ul>"
 	}
 	return approvals
