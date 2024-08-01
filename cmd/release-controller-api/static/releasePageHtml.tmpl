@@ -28,6 +28,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
                 <th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
                 <th>Started</th>
                 <th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
+                <th title="Explicit approvals for teams such as QE and TRT">Team Approvals</th>
                 <th>Version Grouping</th>
             </tr>
             </thead>
@@ -36,6 +37,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
             {{ if .Delayed }}
             <tr>
                 <td><em>{{ .Delayed.Message }}</em></td>
+                <td></td>
                 <td></td>
                 <td></td>
                 <td></td>
@@ -49,6 +51,7 @@ oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}grap
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
                 <td>{{ links . $release }}</td>
+                <td>{{ teamApprovals $tag.Name false }}</td>
                 <td>{{ versionGrouping $tag.Name }}</td>
             </tr>
             {{ end }}
