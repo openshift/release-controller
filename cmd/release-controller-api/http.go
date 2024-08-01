@@ -1286,6 +1286,14 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 	}
 
+	fmt.Fprintf(w, "Team Approvals: ")
+	teamApprovedList := c.renderTeamApprovals(tagInfo.Tag)
+	if teamApprovedList == "" {
+		fmt.Fprintf(w, "None<br>")
+	} else {
+		fmt.Fprintf(w, "<br>"+teamApprovedList+"<br>")
+	}
+
 	c.renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
 
 	upgradesTo := c.graph.UpgradesTo(tagInfo.Tag)
@@ -1627,6 +1635,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"inc":                     func(i int) int { return i + 1 },
 			"upgradeCells":            upgradeCells,
 			"removeSpecialCharacters": removeSpecialCharacters,
+			"teamApprovals":           c.renderTeamApprovals,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1696,6 +1705,44 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	if err := pageEnd.Execute(w, page); err != nil {
 		klog.Errorf("Unable to render page: %v", err)
 	}
+}
+
+func (c *Controller) renderTeamApprovals(tag string) string {
+	payload := c.GetReleasePayload(tag)
+	if payload == nil {
+		return ""
+	}
+	approvals := ""
+	acceptedLabels := []string{}
+	rejectedLabels := []string{}
+	for label, value := range payload.Labels {
+		if strings.HasSuffix(label, "_state") {
+			if value == "Accepted" {
+				acceptedLabels = append(acceptedLabels, label)
+			}
+			if value == "Rejected" {
+				rejectedLabels = append(rejectedLabels, label)
+			}
+		}
+	}
+	teamName := func(fullLabel string) string {
+		return strings.ToUpper(strings.Split(strings.TrimSuffix(fullLabel, "_state"), "/")[1])
+	}
+	if len(acceptedLabels) > 0 {
+		approvals += "<span class=\"text-success\">Accepted</span><ul>"
+		for _, anno := range acceptedLabels {
+			approvals += "<li>" + teamName(anno) + "</li>"
+		}
+		approvals += "</ul>"
+	}
+	if len(rejectedLabels) > 0 {
+		approvals += "<span class=\"text-danger\">Rejected</span><ul>"
+		for _, anno := range rejectedLabels {
+			approvals += "<li>" + teamName(anno) + "</li>"
+		}
+		approvals += "</ul>"
+	}
+	return approvals
 }
 
 func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Request) {

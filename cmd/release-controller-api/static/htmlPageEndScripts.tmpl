@@ -11,7 +11,7 @@
         var table = $('#{{ removeSpecialCharacters $stream  }}_table').DataTable({
             columnDefs: [
                 {
-                    "targets": [ 4 ],
+                    "targets": [ 5 ],
                     "visible": false,
                     "searchable": false
                 }
@@ -21,7 +21,7 @@
             paging: false,
             searching: false,
             rowGroup: {
-                dataSrc: 4,
+                dataSrc: 5,
                 startRender: function (rows, group) {
                     if (group == "delayedMessage") {
                         return $('<tr/>')
