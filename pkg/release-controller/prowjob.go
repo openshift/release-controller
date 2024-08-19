@@ -28,7 +28,7 @@ func ProwJobVerificationStatus(obj *unstructured.Unstructured) (*VerificationSta
 	case prowjobsv1.FailureState, prowjobsv1.ErrorState, prowjobsv1.AbortedState:
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "completionTime")
 		status = &VerificationStatus{State: ReleaseVerificationStateFailed, URL: truncateProwJobResultsURL(url)}
-	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.ProwJobState(""):
+	case prowjobsv1.TriggeredState, prowjobsv1.PendingState, prowjobsv1.SchedulingState, prowjobsv1.ProwJobState(""):
 		transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "pendingTime")
 		if transitionTime == "" {
 			transitionTime, _, _ = unstructured.NestedString(obj.Object, "status", "startTime")

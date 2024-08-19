@@ -678,6 +678,9 @@ func TestInterrogateJobResults(t *testing.T) {
 					State: v1alpha1.JobRunStateSuccess,
 				},
 				{
+					State: v1alpha1.JobRunStateScheduling,
+				},
+				{
 					State: v1alpha1.JobRunStateTriggered,
 				},
 				{
@@ -697,6 +700,9 @@ func TestInterrogateJobResults(t *testing.T) {
 				},
 			},
 			expectedPendingJobs: []v1alpha1.JobRunResult{
+				{
+					State: v1alpha1.JobRunStateScheduling,
+				},
 				{
 					State: v1alpha1.JobRunStateTriggered,
 				},
@@ -760,6 +766,9 @@ func TestProcessJobResults(t *testing.T) {
 					State: v1alpha1.JobRunStateSuccess,
 				},
 				{
+					State: v1alpha1.JobRunStateScheduling,
+				},
+				{
 					State: v1alpha1.JobRunStateTriggered,
 				},
 				{
@@ -783,6 +792,9 @@ func TestProcessJobResults(t *testing.T) {
 		{
 			name: "PendingJobState",
 			results: []v1alpha1.JobRunResult{
+				{
+					State: v1alpha1.JobRunStateScheduling,
+				},
 				{
 					State: v1alpha1.JobRunStateTriggered,
 				},

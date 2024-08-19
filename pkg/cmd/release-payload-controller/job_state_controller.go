@@ -145,7 +145,7 @@ func computeJobState(job v1alpha1.JobStatus) v1alpha1.JobState {
 func interrogateJobResults(results []v1alpha1.JobRunResult) (pendingJobs, successfulJobs, failedJobs, unknownJobs []v1alpha1.JobRunResult) {
 	for _, result := range results {
 		switch result.State {
-		case v1alpha1.JobRunStatePending, v1alpha1.JobRunStateTriggered:
+		case v1alpha1.JobRunStatePending, v1alpha1.JobRunStateTriggered, v1alpha1.JobRunStateScheduling:
 			pendingJobs = append(pendingJobs, result)
 		case v1alpha1.JobRunStateSuccess:
 			successfulJobs = append(successfulJobs, result)

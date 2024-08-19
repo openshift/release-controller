@@ -270,6 +270,8 @@ func getJobRunState(prowState v1.ProwJobState) v1alpha1.JobRunState {
 		return v1alpha1.JobRunStateSuccess
 	case v1.TriggeredState:
 		return v1alpha1.JobRunStateTriggered
+	case v1.SchedulingState:
+		return v1alpha1.JobRunStateScheduling
 	default:
 		return v1alpha1.JobRunStateUnknown
 	}
