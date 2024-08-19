@@ -8,7 +8,6 @@ import (
 	v1alpha1 "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -20,9 +19,9 @@ type FakeReleasePayloads struct {
 	ns   string
 }
 
-var releasepayloadsResource = schema.GroupVersionResource{Group: "release.openshift.io", Version: "v1alpha1", Resource: "releasepayloads"}
+var releasepayloadsResource = v1alpha1.SchemeGroupVersion.WithResource("releasepayloads")
 
-var releasepayloadsKind = schema.GroupVersionKind{Group: "release.openshift.io", Version: "v1alpha1", Kind: "ReleasePayload"}
+var releasepayloadsKind = v1alpha1.SchemeGroupVersion.WithKind("ReleasePayload")
 
 // Get takes name of the releasePayload, and returns the corresponding releasePayload object, and an error if there is any.
 func (c *FakeReleasePayloads) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.ReleasePayload, err error) {
