@@ -378,6 +378,9 @@ const (
 	// JobRunStateTriggered job has been created but not scheduled
 	JobRunStateTriggered JobRunState = "Triggered"
 
+	// JobRunStateScheduling job has been created and is waiting to be scheduled
+	JobRunStateScheduling JobRunState = "Scheduling"
+
 	// JobRunStatePending job is running and awaiting completion
 	JobRunStatePending JobRunState = "Pending"
 
