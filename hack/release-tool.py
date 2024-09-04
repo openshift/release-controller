@@ -502,6 +502,44 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
             logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
+def approval(ctx, namespace, imagestream, release, team, accept, reject, delete, check, execute):
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(namespace):
+                payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+                if not payload:
+                    logger.error(f'Unable to locate imagestreamtag: releasepayload/{release}')
+                    return
+                if execute:
+                    if accept:
+                        logger.info(f'Marking releasepayload/{release} as Accepted by {team}')
+                        payload.label(labels={f'release.openshift.io/{team}_state': 'Accepted'})
+                    if reject:
+                        logger.info(f'Marking releasepayload/{release} as Rejected by {team}')
+                        payload.label(labels={f'release.openshift.io/{team}_state': 'Rejected'})
+                    if delete:
+                        logger.info(f'[dry-run] Removing approval by {team} from releasepayload/{release}')
+                        payload.label(labels={f'release.openshift.io/{team}_state': None})
+                else:
+                    if accept:
+                        logger.info(f'[dry-run] Marking releasepayload/{release} as Accepted by {team}')
+                    if reject:
+                        logger.info(f'[dry-run] Marking releasepayload/{release} as Rejected by {team}')
+                    if delete:
+                        logger.info(f'[dry-run] Removing approval by {team} from releasepayload/{release}')
+                if check:
+                    logger.info(f'Getting {team} label for releasepayload/{release}')
+                    state = payload.get_label(f'release.openshift.io/{team}_state')
+                    if state is None:
+                        logger.info(f'No approval state from {team} found for releasepayload/{release}')
+                    else:
+                        logger.info(f'releasepayload/{release} marked as {state} by {team}')
+
+
+        except (ValueError, OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
+            raise e
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Manually accept or reject release payloads')
@@ -550,6 +588,15 @@ if __name__ == '__main__':
     keep_parser.add_argument('-d', '--delete', help='Remove the keep annotation', action='store_true')
     keep_parser.add_argument('-r', '--release', help='The name of the release (i.e. 4.13.0-0.nightly-2023-10-24-100542)', default=None)
 
+    approval_parser = subparsers.add_parser('approval', help='Mark a release as Accepted or Rejected by a team.')
+    approval_parser.set_defaults(action='approval')
+    approval_parser.add_argument('release', help='The release to modify team approvals of', nargs="+", type=str)
+    approval_parser.add_argument('-a', '--accept_team', help='Add approval from team')
+    approval_parser.add_argument('-r', '--reject_team', help='Add rejection from team')
+    approval_parser.add_argument('-d', '--delete_team', help='Delete accepted/rejected labels from team')
+    approval_parser.add_argument('-c', '--check_team', help='Print team approval for release')
+
+
     args = vars(parser.parse_args())
 
     if args['verbose']:
@@ -592,3 +639,31 @@ if __name__ == '__main__':
         reimport(context, release_namespace, release_image_stream, args['execute'])
     elif args['action'] == 'keep':
         keep(context, release_namespace, release_image_stream, args['release'], args['delete'], args['execute'])
+    elif args['action'] == 'approval':
+        accept = False
+        reject = False
+        delete = False
+        check = False
+        team = ''
+        if args['accept_team'] is not None:
+            team = args['accept_team']
+            accept = True
+        if args['reject_team'] is not None:
+            if team != '':
+                logger.error('Only one of `accept-team`, `reject-team`, `delete-team`, or `check-team` may be used')
+                exit(1)
+            team = args['reject_team']
+            reject = True
+        if args['delete_team'] is not None:
+            if team != '':
+                logger.error('Only one of `accept-team`, `reject-team`, `delete-team`, or `check-team` may be used')
+                exit(1)
+            team = args['delete_team']
+            delete = True
+        if args['check_team'] is not None:
+            if team != '':
+                logger.error('Only one of `accept-team`, `reject-team`, `delete-team`, or `check-team` may be used')
+                exit(1)
+            team = args['check_team']
+            check = True
+        approval(context, release_namespace, release_image_stream, args['release'][0], team, accept, reject, delete, check, args['execute'])
