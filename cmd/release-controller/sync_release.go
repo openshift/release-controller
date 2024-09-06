@@ -370,3 +370,42 @@ func jobIsComplete(job *batchv1.Job) (succeeded bool, complete bool) {
 	}
 	return false, false
 }
+
+// ensureReleaseMirrorJob Runs job to mirror release to the Alternate Image Repository (i.e. quay.io)
+// Command should be like:
+// $ oc image mirror --keep-manifest-list=true registry.ci.openshift.org/ocp/release:4.17.0-0.ci-2024-08-30-110931 quay.io/openshift-release-dev/dev-release:4.17.0-0.ci-2024-08-30-110931
+func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
+		fromImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
+		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, name)
+
+		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
+		if len(release.Config.OverrideCLIImage) > 0 {
+			cliImage = release.Config.OverrideCLIImage
+		}
+
+		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+
+		manifestListMode := "false"
+		if c.manifestListMode {
+			manifestListMode = "true"
+		}
+
+		job.Spec.Template.Spec.Containers[0].Command = []string{
+			"/bin/bash", "-c",
+			prefix + `
+			oc image mirror "--keep-manifest-list=$1 $2 $3"
+			`,
+			"",
+			manifestListMode, fromImage, toImage,
+		}
+
+		job.Annotations[releasecontroller.ReleaseAnnotationSource] = mirror.Annotations[releasecontroller.ReleaseAnnotationSource]
+		job.Annotations[releasecontroller.ReleaseAnnotationTarget] = mirror.Annotations[releasecontroller.ReleaseAnnotationTarget]
+		job.Annotations[releasecontroller.ReleaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
+		job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag] = mirror.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]
+
+		klog.V(2).Infof("Running release mirror job %s/%s for %s to %s", c.jobNamespace, job.Name, name, toImage)
+		return job, nil
+	})
+}
