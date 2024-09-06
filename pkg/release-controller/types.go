@@ -147,6 +147,12 @@ type ReleaseConfig struct {
 	// Upgrade is a map of short names of upgrade tests to launch for releases after they
 	// have been promoted into a "Stable" stream.
 	Upgrade map[string]UpgradeVerification `json:"upgrade"`
+
+	// AlternateImageRepository is the full path to an external Image Repository where we
+	// will mirror Accepted releases to.
+	// For example:
+	//   "alternateImageRepository": "quay.io/openshift-release-dev/dev-release"
+	AlternateImageRepository string `json:"alternateImageRepository"`
 }
 
 type ReleaseCheck struct {
