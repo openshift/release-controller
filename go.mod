@@ -58,7 +58,7 @@ require (
 	k8s.io/component-base v0.30.0
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.120.1
-	sigs.k8s.io/prow v0.0.0-20240709172814-d43b36cf61ae
+	sigs.k8s.io/prow v0.0.0-20240910125013-1e9790f40f9f
 )
 
 require (
@@ -125,9 +125,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.4 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
