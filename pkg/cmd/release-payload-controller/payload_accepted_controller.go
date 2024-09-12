@@ -56,7 +56,7 @@ func NewPayloadAcceptedController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-accepted-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadAcceptedController")),
+			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "PayloadAcceptedController"})),
 	}
 
 	c.syncFn = c.sync
@@ -127,7 +127,7 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 	// If the release creation job failed, then the payload will never be Accepted
 	if payload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobFailed {
 		acceptedCondition.Status = metav1.ConditionFalse
-		acceptedCondition.Reason = ReleasePayloadCreationFailedReason
+		acceptedCondition.Reason = ReleasePayloadCreationJobFailedReason
 		acceptedCondition.Message = payload.Status.ReleaseCreationJobResult.Message
 		return acceptedCondition
 	}

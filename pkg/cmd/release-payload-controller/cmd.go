@@ -151,6 +151,24 @@ func (o *Options) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Payload Mirror Controller
+	payloadMirrorController, err := NewPayloadMirrorController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
+	// Release Mirror Jobs Controller
+	releaseMirrorJobsController, err := NewReleaseMirrorJobController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
+	// Release Mirror Jobs Status Controller
+	releaseMirrorJobStatusController, err := NewReleaseMirrorJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
 	// Start the informers
 	kubeFactory.Start(ctx.Done())
 	releasePayloadInformerFactory.Start(ctx.Done())
@@ -167,6 +185,9 @@ func (o *Options) Run(ctx context.Context) error {
 	go pjController.RunWorkers(ctx, 10)
 	go aggregateStateController.RunWorkers(ctx, 10)
 	go legacyResultsController.RunWorkers(ctx, 10)
+	go payloadMirrorController.RunWorkers(ctx, 10)
+	go releaseMirrorJobsController.RunWorkers(ctx, 10)
+	go releaseMirrorJobStatusController.RunWorkers(ctx, 10)
 
 	<-ctx.Done()
 
