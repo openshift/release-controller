@@ -486,8 +486,16 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
-		err := c.ensureReleaseUpgradeJobs(release, releaseTag)
+		// ensure ready tags are pushed to alternative mirror
+		mirrorName := releasecontroller.MirrorName(release, releaseTag.Name)
+		mirror, err := c.releaseLister.ImageStreams(release.Source.Namespace).Get(mirrorName)
 		if err != nil {
+			klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
+		} else if _, err := c.ensureReleaseMirrorJob(release, releaseTag.Name, mirror); err != nil {
+			klog.Errorf("Failed to create release mirror job: %v", err)
+		}
+
+		if err := c.ensureReleaseUpgradeJobs(release, releaseTag); err != nil {
 			klog.Errorf("unable to launch release upgrade jobs for %q: %v", releaseTag.Name, err)
 		}
 
