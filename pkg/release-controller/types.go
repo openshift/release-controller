@@ -563,6 +563,18 @@ const (
 
 	// ProwJobResultsURLPrefix the URL prefix for ProwJob Results
 	ProwJobResultsURLPrefix = "https://prow.ci.openshift.org/view/gs/test-platform-results/logs"
+
+	// ReleaseStreamAnnotationMode specifies the mode that the stream is currently operating in
+	ReleaseStreamAnnotationMode = "release.openshift.io/mode"
+	// ReleaseStreamModeLocked specifies that the stream is currently locked
+	ReleaseStreamModeLocked = "locked"
+	// ReleaseStreamModeUnlocked specifies that the stream is currently unlocked
+	ReleaseStreamModeUnlocked = "unlocked"
+
+	// ReleaseStreamAnnotationMessagePrefix specifies an HTML string to inject before the ReleaseConfig.Message or ReleaseStreamAnnotationMessageOverride
+	ReleaseStreamAnnotationMessagePrefix = "release.openshift.io/messagePrefix"
+	// ReleaseStreamAnnotationMessageOverride overrides the message specified in ReleaseConfig.Message
+	ReleaseStreamAnnotationMessageOverride = "release.openshift.io/messageOverride"
 )
 
 type Duration time.Duration

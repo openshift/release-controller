@@ -1569,18 +1569,19 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				return ""
 			},
 			"publishDescription": func(r *ReleaseStream) string {
-				if len(r.Release.Config.Message) > 0 {
+				streamMessage := generateStreamMessage(r)
+				if len(streamMessage) > 0 {
 					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
 						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
 						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
-						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", r.Release.Config.Message, searchFunctionPrefix, searchFunction)
+						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", streamMessage, searchFunctionPrefix, searchFunction)
 					}
-					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+					return fmt.Sprintf("<p>%s</p>\n", streamMessage)
 				}
 				var out []string
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
-					if len(r.Release.Config.Message) == 0 {
+					if len(streamMessage) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
 				default:
@@ -1826,18 +1827,19 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 				return ""
 			},
 			"publishDescription": func(r *ReleaseStream) string {
-				if len(r.Release.Config.Message) > 0 {
+				streamMessage := generateStreamMessage(r)
+				if len(streamMessage) > 0 {
 					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
 						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
 						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
-						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", r.Release.Config.Message, searchFunctionPrefix, searchFunction)
+						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", streamMessage, searchFunctionPrefix, searchFunction)
 					}
-					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+					return fmt.Sprintf("<p>%s</p>\n", streamMessage)
 				}
 				var out []string
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
-					if len(r.Release.Config.Message) == 0 {
+					if len(streamMessage) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
 				default:
@@ -1998,13 +2000,14 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				return ""
 			},
 			"publishDescription": func(r *ReleaseStream) string {
-				if len(r.Release.Config.Message) > 0 {
-					return fmt.Sprintf("<p>%s</p>\n", r.Release.Config.Message)
+				streamMessage := generateStreamMessage(r)
+				if len(streamMessage) > 0 {
+					return fmt.Sprintf("<p>%s</p>\n", streamMessage)
 				}
 				var out []string
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
-					if len(r.Release.Config.Message) == 0 {
+					if len(streamMessage) == 0 {
 						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
 					}
 				default:
@@ -2112,6 +2115,20 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		klog.Errorf("Unable to render page: %v", err)
 	}
 	fmt.Fprintln(w, htmlPageEnd)
+}
+
+func generateStreamMessage(r *ReleaseStream) string {
+	var prefix, message string
+	if messagePrefix, ok := r.Release.Source.Annotations[releasecontroller.ReleaseStreamAnnotationMessagePrefix]; ok {
+		prefix = messagePrefix
+	}
+	if len(r.Release.Config.Message) > 0 {
+		message = r.Release.Config.Message
+	}
+	if messageOverride, ok := r.Release.Source.Annotations[releasecontroller.ReleaseStreamAnnotationMessageOverride]; ok {
+		message = messageOverride
+	}
+	return fmt.Sprintf("%s%s", prefix, message)
 }
 
 func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
