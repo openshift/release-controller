@@ -6,7 +6,6 @@ import logging
 import os.path
 import re
 import tempfile
-
 import time
 
 import openshift_client as oc
@@ -502,6 +501,7 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
             logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
+
 def approval(ctx, namespace, imagestream, release, team, accept, reject, delete, check, execute):
     with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
@@ -539,6 +539,39 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
+
+
+def lock(ctx, namespace, imagestream, execute):
+    annotations = {
+        'release.openshift.io/mode': 'locked',
+        'release.openshift.io/messagePrefix': '<span>&#x1F512; Nightly stream has been temporarily locked by TRT -- ART updates will not be recognized.</span><br>'
+    }
+    annotate_imagestream(ctx, namespace, imagestream, annotations, execute)
+
+
+def unlock(ctx, namespace, imagestream, execute):
+    annotations = {
+        'release.openshift.io/mode-': None,
+        'release.openshift.io/messagePrefix-': None
+    }
+    annotate_imagestream(ctx, namespace, imagestream, annotations, execute)
+
+
+def annotate_imagestream(ctx, namespace, name, annotations, execute):
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(namespace):
+                imagestream = oc.selector(f'imagestream/{name}').object()
+
+                if execute:
+                    imagestream.annotate(annotations=annotations, overwrite=True)
+                    logger.info(f'Annotated {imagestream.qname()} with {annotations}')
+                else:
+                    logger.info(f'[dry-run] Annotating imagestream {namespace}/{name} with: {annotations}')
+
+        except (ValueError, OpenShiftPythonException, Exception):
+            logger.error(f'Unable to annotate imagestream: {namespace}/{name}')
+            raise
 
 
 if __name__ == '__main__':
@@ -596,6 +629,13 @@ if __name__ == '__main__':
     approval_parser.add_argument('-d', '--delete_team', help='Delete accepted/rejected labels from team')
     approval_parser.add_argument('-c', '--check_team', help='Print team approval for release')
 
+    lock_parser = subparsers.add_parser('lock', help='Lock a nightly release stream.')
+    lock_parser.set_defaults(action='lock')
+    lock_parser.add_argument('version', help='The version of the nightly release stream to lock (i.e. 4.18)', type=str)
+
+    lock_parser = subparsers.add_parser('unlock', help='Unlock a nightly release stream.')
+    lock_parser.set_defaults(action='unlock')
+    lock_parser.add_argument('version', help='The version of the nightly release stream to unlock (i.e. 4.18)', type=str)
 
     args = vars(parser.parse_args())
 
@@ -667,3 +707,11 @@ if __name__ == '__main__':
             team = args['check_team']
             check = True
         approval(context, release_namespace, release_image_stream, args['release'][0], team, accept, reject, delete, check, args['execute'])
+    elif args['action'] == 'lock':
+        # Generate the nightly imagestream information based on version
+        nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])
+        lock(context, nightly_namespace, nightly_imagestream, args['execute'])
+    elif args['action'] == 'unlock':
+        # Generate the nightly imagestream information based on version
+        nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])
+        unlock(context, nightly_namespace, nightly_imagestream, args['execute'])
