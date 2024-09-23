@@ -734,6 +734,55 @@ func TestProwJobStatusSync(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ProwjobSchedulingState",
+			prowjob: []runtime.Object{
+				newProwJob("install-analysis-all", "ci", "4.18.0-0.nightly-2024-09-23-063227", "periodic-ci-openshift-release-master-nightly-4.18-install-analysis-all", "ocp/4.18-art-latest", "build09", v1.SchedulingState, "https://abc.123.com"),
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.18.0-0.nightly-2024-09-23-063227",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("install-analysis-all", "periodic-ci-openshift-release-master-nightly-4.18-install-analysis-all", 2, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.18.0-0.nightly-2024-09-23-063227",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						newJobStatus("install-analysis-all", "periodic-ci-openshift-release-master-nightly-4.18-install-analysis-all", 2, 0, v1alpha1.JobStateUnknown, nil),
+					},
+				},
+			},
+			expectedErr: nil,
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -182,6 +182,11 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 			continue
 		}
 
+		if prowJob.Status.State == v1.SchedulingState {
+			klog.Infof(fmt.Sprintf("prowjob %q waiting to be scheduled, skipping", prowJob.Name))
+			continue
+		}
+
 		klog.V(4).Infof("Processing prowjob: %s", prowJob.Name)
 		current := &v1alpha1.JobRunResult{
 			Coordinates: v1alpha1.JobRunCoordinates{
