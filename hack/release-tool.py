@@ -539,16 +539,30 @@ def revert(ctx, to_nightly: str, component_name: str, execute):
                     logger.error(f'Unable to find component image {component_name} in {nightly_imagestream.qname()}')
                     return
 
-                logger.info(f'Reverting tag {nightly_components.major_minor} nightly component {component_name} to reference nightly {to_nightly} image: {target_component_pullspec}')
-
                 art_imagestream = oc.selector(f'imagestream/{nightly_components.art_imagestream_name}').object(ignore_not_found=False)
-                cmd_args = ['--import-mode=PreserveOriginal', '--source=docker', target_component_pullspec, f'{art_imagestream.name()}:{component_name}']
+                pullspec_to_revert = None
+                for tag in art_imagestream.model.spec.tags:
+                    if tag.name == component_name:
+                        pullspec_to_revert = tag['from'].name
+                        break
+
+                if not pullspec_to_revert:
+                    logger.error(f'Unable to find component image {component_name} in ART integration stream {art_imagestream.qname()}')
+                    return
+
+                logger.info(f'Reverting tag {nightly_components.major_minor} nightly component {component_name} from {pullspec_to_revert} to reference nightly {to_nightly} image: {target_component_pullspec}')
+
+                art_istag_name = f'{art_imagestream.name()}:{component_name}'
+                tag_args = ['--import-mode=PreserveOriginal', '--source=docker', target_component_pullspec, art_istag_name]
+                annotate_args = ['--overwrite', f'istag/{art_istag_name}', f'reverted-from={pullspec_to_revert}']
 
                 if execute:
-                    oc.invoke('tag', cmd_args=cmd_args)
+                    oc.invoke('tag', cmd_args=tag_args)
+                    oc.invoke('annotate', cmd_args=annotate_args)
                     logger.info('The tag has been reverted. Note that the next ART update will restore the tag. Use "lock", before reverting, to prevent this.')
                 else:
-                    logger.info(f'[dry-run] oc tag with {cmd_args}')
+                    logger.info(f'[dry-run] oc tag with {tag_args}')
+                    logger.info(f'[dry-run] oc annotate with {annotate_args}')
 
         except (ValueError, OpenShiftPythonException, Exception):
             logger.error(f'Unable to process revert of {nightly_components.major_minor} component {component_name}')
@@ -684,6 +698,27 @@ def unlock(ctx, namespace, imagestream, execute):
     annotate_imagestream(ctx, namespace, imagestream, annotations, execute)
 
 
+def poke(ctx, namespace, art_imagestream_name, execute):
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(namespace):
+                art_imagestream_name = oc.selector(f'imagestream/{art_imagestream_name}').object(ignore_not_found=False)
+                tag_cmd_args = ['--import-mode=PreserveOriginal', '--source=docker', 'registry.access.redhat.com/ubi9', f'{art_imagestream_name.name()}:trigger-release-controller']
+                untag_cmd_args = ['-d', f'{art_imagestream_name.name()}:trigger-release-controller']
+
+                if execute:
+                    logger.info('Triggering a release-controller update cycle.')
+                    oc.invoke('tag', cmd_args=tag_cmd_args)
+                    time.sleep(4)
+                    oc.invoke('tag', cmd_args=untag_cmd_args)
+                    logger.info('Triggered a release-controller update cycle.')
+                else:
+                    logger.info(f'[dry-run] oc tag with {tag_cmd_args} then {untag_cmd_args}')
+        except (ValueError, OpenShiftPythonException, Exception):
+            logger.error(f'Unable to poke imagestream: {namespace}/{art_imagestream_name}')
+            raise
+
+
 def annotate_imagestream(ctx, namespace, name, annotations, execute):
     with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
@@ -768,11 +803,15 @@ if __name__ == '__main__':
 
     lock_parser = subparsers.add_parser('lock', help='Lock a nightly release stream.')
     lock_parser.set_defaults(action='lock')
-    lock_parser.add_argument('version', help='The version of the nightly release stream to lock (i.e. 4.18)', type=str)
+    lock_parser.add_argument('version', help='The version of the nightly release stream to lock (e.g. 4.18)', type=str)
 
     lock_parser = subparsers.add_parser('unlock', help='Unlock a nightly release stream.')
     lock_parser.set_defaults(action='unlock')
-    lock_parser.add_argument('version', help='The version of the nightly release stream to unlock (i.e. 4.18)', type=str)
+    lock_parser.add_argument('version', help='The version of the nightly release stream to unlock (e.g. 4.18)', type=str)
+
+    poke_parser = subparsers.add_parser('poke', help='Poke a nightly imagestream to force a new nightly if none is in progress.')
+    poke_parser.set_defaults(action='poke')
+    poke_parser.add_argument('version', help='The version of the nightly release to poke (e.g. 4.18)', type=str)
 
     args = vars(parser.parse_args())
 
@@ -856,3 +895,7 @@ if __name__ == '__main__':
         # Generate the nightly imagestream information based on version
         nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])
         unlock(context, nightly_namespace, nightly_imagestream, args['execute'])
+    elif args['action'] == 'poke':
+        # Generate the nightly imagestream information based on version
+        nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])
+        poke(context, nightly_namespace, nightly_imagestream, args['execute'])
