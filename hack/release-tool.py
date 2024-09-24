@@ -7,6 +7,7 @@ import os.path
 import re
 import tempfile
 import time
+import typing
 
 import openshift_client as oc
 from openshift_client import OpenShiftPythonException, Missing
@@ -463,8 +464,134 @@ def reimport(ctx, namespace, imagestream, execute):
                                     logger.info(f'[dry-run] Importing: {imagestream}:{tag.tag}')
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to to process imagestream: "{namespace}/{imagestream}"')
+            logger.error(f'Unable to process imagestream: "{namespace}/{imagestream}"')
             raise e
+
+
+class NightlyComponents(typing.NamedTuple):
+    major_minor: str
+    arch: str
+    is_private: bool
+    timestamp: str
+
+    def arch_suffix(self):
+        if self.arch != 'amd64':
+            return f'-{self.arch}'
+        return ''
+
+    def priv_suffix(self):
+        if self.is_private:
+            return '-priv'
+        return ''
+
+    def suffix(self):
+        return self.arch_suffix() + self.priv_suffix()
+
+    @property
+    def art_imagestream_name(self):
+        return f'{self.major_minor}-art-latest' + self.suffix()
+
+    @property
+    def art_imagestream_namespace(self):
+        return 'ocp' + self.suffix()
+
+    @property
+    def nightly_imagestream_name(self):
+        return f'{self.art_imagestream_name}-{self.timestamp}'
+
+    @property
+    def release_imagestream_name(self):
+        return 'release' + self.suffix()
+
+
+def parse_nightly_components(nightly_name: str) -> typing.Optional[NightlyComponents]:
+    nightly_pattern = r'^(?P<major_minor>\d+\.\d+).0-0.nightly-(?P<arch>s390x|arm64|ppc64le)?-?(?P<priv>priv)?-?(?P<timestamp>.*)'
+    match = re.match(nightly_pattern, nightly_name)
+    if not match:
+        return None
+
+    major_minor = match.group('major_minor')  # e.g. "4.16"
+    arch = match.group('arch') or 'amd64'
+    is_private = match.group('priv') == 'priv'
+    timestamp = match.group('timestamp')
+
+    return NightlyComponents(major_minor=major_minor, arch=arch, is_private=is_private, timestamp=timestamp)
+
+
+def revert(ctx, to_nightly: str, component_name: str, execute):
+    nightly_components = parse_nightly_components(to_nightly)
+    if not nightly_components:
+        logger.error(f'{to_nightly} does not match expected nightly naming convention')
+        return
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(nightly_components.art_imagestream_namespace):
+                logger.info(f'Finding image in imagestream created for nightly {to_nightly}: {nightly_components.nightly_imagestream_name}')
+                nightly_imagestream = oc.selector(f'imagestream/{nightly_components.nightly_imagestream_name}').object(ignore_not_found=False)
+                target_component_pullspec = None
+                for tag in nightly_imagestream.model.spec.tags:
+                    if tag.name == component_name:
+                        target_component_pullspec = tag['from'].name
+                        break
+
+                if not target_component_pullspec:
+                    logger.error(f'Unable to find component image {component_name} in {nightly_imagestream.qname()}')
+                    return
+
+                logger.info(f'Reverting tag {nightly_components.major_minor} nightly component {component_name} to reference nightly {to_nightly} image: {target_component_pullspec}')
+
+                art_imagestream = oc.selector(f'imagestream/{nightly_components.art_imagestream_name}').object(ignore_not_found=False)
+                cmd_args = ['--import-mode=PreserveOriginal', '--source=docker', target_component_pullspec, f'{art_imagestream.name()}:{component_name}']
+
+                if execute:
+                    oc.invoke('tag', cmd_args=cmd_args)
+                    logger.info('The tag has been reverted. Note that the next ART update will restore the tag. Use "lock", before reverting, to prevent this.')
+                else:
+                    logger.info(f'[dry-run] oc tag with {cmd_args}')
+
+        except (ValueError, OpenShiftPythonException, Exception):
+            logger.error(f'Unable to process revert of {nightly_components.major_minor} component {component_name}')
+            raise
+
+
+def bypass(ctx, nightly: str, trigger: str, execute):
+    nightly_components = parse_nightly_components(nightly_name=nightly)
+    if not nightly_components:
+        logger.error(f'{nightly} does not match expected nightly naming convention')
+        return
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
+        try:
+            with oc.project(nightly_components.art_imagestream_namespace):
+                nightly_istag = oc.selector(f'imagestreamtag/{nightly_components.release_imagestream_name}:{nightly}').object()
+                annotations = {
+                    'release.openshift.io/bypass': 'true'
+                }
+
+                if execute:
+                    nightly_istag.annotate(annotations=annotations, overwrite=True)
+                    logger.info(f'Annotated {nightly_istag.qname()} as bypass')
+                else:
+                    logger.info(f'[dry-run] oc annotate {nightly_istag.qname()} with annotations {annotations}')
+
+                if trigger:
+                    art_imagestream = oc.selector(f'imagestream/{nightly_components.art_imagestream_name}').object(ignore_not_found=False)
+                    tag_cmd_args = ['--import-mode=PreserveOriginal', '--source=docker', 'registry.access.redhat.com/ubi9', f'{art_imagestream.name()}:trigger-release-controller']
+                    untag_cmd_args = ['-d', f'{art_imagestream.name()}:trigger-release-controller']
+
+                    if execute:
+                        logger.info('Triggering a release-controller update cycle.')
+                        oc.invoke('tag', cmd_args=tag_cmd_args)
+                        time.sleep(4)
+                        oc.invoke('tag', cmd_args=untag_cmd_args)
+                        logger.info('Triggered a release-controller update cycle.')
+                    else:
+                        logger.info(f'[dry-run] oc tag with {tag_cmd_args} then {untag_cmd_args}')
+
+        except (ValueError, OpenShiftPythonException, Exception):
+            logger.error(f'Unable to perform bypass of {nightly_components.major_minor} nightly {nightly}')
+            raise
 
 
 def keep(ctx, namespace, imagestream, release, delete, execute):
@@ -498,7 +625,7 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
                             logger.info(f' - {namespace}/{tag.name()}')
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
+            logger.error(f'Unable to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
 
@@ -537,7 +664,7 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
 
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
+            logger.error(f'Unable to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
 
@@ -611,9 +738,19 @@ if __name__ == '__main__':
     archive_parser.add_argument('prefixes', help='The prefixes of the tags to archive (i.e. 4.1)', action="extend", nargs="+", type=str)
     archive_parser.add_argument('-y', '--yes', help='Automatically answer yes to confirm deletion(s)', action='store_true')
 
+    revert_parser = subparsers.add_parser('revert', help='Revert a nightly imagestream tag to a previous release')
+    revert_parser.set_defaults(action='revert')
+    revert_parser.add_argument('--component', help='The release payload component name to revert')
+    revert_parser.add_argument('--to-nightly', help='The name of the nightly to revert to (e.g. 4.18.0-0.nightly-2024-09-20-121311)')
+
+    bypass_parser = subparsers.add_parser('bypass', help='Ignore testing in specified nightly and allow a new nightly to be created')
+    bypass_parser.set_defaults(action='bypass')
+    bypass_parser.add_argument('--nightly', help='The name of the nightly to bypass (e.g. 4.18.0-0.nightly-2024-09-20-121311)')
+    bypass_parser.add_argument('--trigger', help='Ask the release-controller to create a new nightly', action='store_true')
+
     import_parser = subparsers.add_parser('import', help='Manually import all tags defined in the respective imagestream')
     import_parser.set_defaults(action='import')
-    import_parser.add_argument('imagestream', help='The name of the imagestream to process (i.e. 4.13-art-latest)')
+    import_parser.add_argument('imagestream', help='The name of the imagestream to process (e.g. 4.13-art-latest)')
 
     keep_parser = subparsers.add_parser('keep',
                                         help='Add/Delete the keep annotation from the respective release or list all imagestreamtags with keep annotation if no options are specified')
@@ -677,6 +814,10 @@ if __name__ == '__main__':
         archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'import':
         reimport(context, release_namespace, release_image_stream, args['execute'])
+    elif args['action'] == 'revert':
+        revert(context, args['to_nightly'], args['component'], args['execute'])
+    elif args['action'] == 'bypass':
+        bypass(context, args['nightly'], args['trigger'], args['execute'])
     elif args['action'] == 'keep':
         keep(context, release_namespace, release_image_stream, args['release'], args['delete'], args['execute'])
     elif args['action'] == 'approval':
