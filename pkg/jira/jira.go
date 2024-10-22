@@ -169,22 +169,7 @@ func (c *Verifier) commentIssue(errs *[]error, issue *jiraBaseClient.Issue, mess
 	if message == "" {
 		return
 	}
-	comments, err := c.jiraClient.GetIssue(issue.ID)
-	if err != nil {
-		exists := false
-		for _, tmpErr := range *errs {
-			if tmpErr.Error() == "Internal Error on Automation" {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			*errs = append(*errs, fmt.Errorf("Internal Error on Automation"))
-		}
-		klog.Warningf("failed to get comments on issue %s: %v", issue.ID, err)
-		return
-	}
-	for _, comment := range comments.Fields.Comments.Comments {
+	for _, comment := range issue.Fields.Comments.Comments {
 		// if a ticket is on the verified state but does not contain a comment from the bot, it will add one
 		// if a manually verified ticket is already commented, we won't check the message body
 		if (comment.Body == message || strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified)) && (comment.Author.Name == "openshift-crt-jira-release-controller" || comment.Author.EmailAddress == "brawilli+openshift-crt-jira-release-controller@redhat.com") {
