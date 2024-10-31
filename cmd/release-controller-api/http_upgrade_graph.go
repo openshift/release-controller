@@ -80,16 +80,40 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		edges := make([]ReleaseEdge, 0, len(histories))
 		for _, history := range histories {
 			switch {
-			case channel == "", channel == "stable":
+			case channel == "", channel == "stable", channel == "stable-scos", channel == "next", channel == "next-scos":
 				if history.Success == 0 {
 					continue
 				}
 			case channel == "prerelease", channel == "nightly":
+			case strings.HasPrefix(channel, "stable-scos-"):
+				if history.Success == 0 {
+					continue
+				}
+				branch := channel[len("stable-scos-"):] + "."
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
 			case strings.HasPrefix(channel, "stable-"):
 				if history.Success == 0 {
 					continue
 				}
 				branch := channel[len("stable-"):] + "."
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
+			case strings.HasPrefix(channel, "next-scos-"):
+				if history.Success == 0 {
+					continue
+				}
+				branch := channel[len("next-scos-"):] + "."
+				if !strings.HasPrefix(history.To, branch) {
+					continue
+				}
+			case strings.HasPrefix(channel, "next-"):
+				if history.Success == 0 {
+					continue
+				}
+				branch := channel[len("next-"):] + "."
 				if !strings.HasPrefix(history.To, branch) {
 					continue
 				}
