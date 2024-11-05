@@ -3,6 +3,8 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
@@ -13,7 +15,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"reflect"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -48,13 +49,15 @@ func NewReleaseCreationJobController(
 
 	c.syncFn = c.sync
 
-	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc: c.Enqueue,
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			c.Enqueue(newObj)
 		},
 		DeleteFunc: c.Enqueue,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+	}
 
 	return c, nil
 }

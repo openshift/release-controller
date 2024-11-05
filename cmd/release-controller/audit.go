@@ -371,7 +371,7 @@ func (a *AuditTracker) Sync(release *releasecontroller.Release) {
 			klog.Warningf("ID of %s changed from %s to %s", tag.Name, existing.ID, id)
 			changed = true
 		}
-		if time.Now().Sub(existing.At) > 12*time.Hour {
+		if time.Since(existing.At) > 12*time.Hour {
 			existing.At = now
 			existing.Failure = nil
 			changed = true

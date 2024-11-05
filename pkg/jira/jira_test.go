@@ -214,7 +214,7 @@ func TestVerifyIssues(t *testing.T) {
 
 	for _, issue := range issuesToUnmarshall {
 		if err := readJSONIntoObject(issue.issueJSON, issue.object); err != nil {
-			t.Fatalf(err.Error())
+			t.Fatal(err.Error())
 		}
 	}
 

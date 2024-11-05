@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
-	"sigs.k8s.io/prow/pkg/jira"
 )
 
 const (
@@ -275,7 +273,9 @@ func (c *Controller) syncJira(key queueKey) error {
 	}
 
 	var lastErr error
-	err = wait.PollImmediate(15*time.Second, 1*time.Minute, func() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Minute)
+	defer cancel()
+	err = wait.PollUntilContextTimeout(ctx, 15*time.Second, 1*time.Minute, true, func(ctx context.Context) (bool, error) {
 		// Get the latest version of ImageStream before trying to update annotations
 		target, err := c.imageClient.ImageStreams(release.Target.Namespace).Get(context.TODO(), release.Target.Name, meta.GetOptions{})
 		if err != nil {
@@ -301,7 +301,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		return true, nil
 	})
 	if err != nil {
-		if lastErr != nil && errors.Is(err, wait.ErrWaitTimeout) {
+		if lastErr != nil && wait.Interrupted(err) {
 			err = lastErr
 		}
 		c.jiraErrorMetrics.WithLabelValues(jiraFailedAnnotation).Inc()
@@ -326,28 +326,4 @@ func findStableVersionTag(ref *releasecontroller.StableReferences, version semve
 		}
 	}
 	return nil
-}
-
-// from cmd/release-controller-api/http.go
-var statusComplete = sets.NewString(strings.ToLower(jira.StatusOnQA), strings.ToLower(jira.StatusVerified), strings.ToLower(jira.StatusModified), strings.ToLower(jira.StatusClosed))
-
-func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time, transitions []releasecontroller.Transition) bool {
-	if !issueTimestamp.IsZero() && issueTimestamp.Before(*buildTimeStamp) {
-		return true
-	}
-	status := getPastStatus(transitions, buildTimeStamp)
-	if statusComplete.Has(strings.ToLower(status)) {
-		return true
-	}
-	return false
-}
-func getPastStatus(transitions []releasecontroller.Transition, buildTime *time.Time) string {
-	status := "New"
-	for _, t := range transitions {
-		if t.Time.After(*buildTime) {
-			break
-		}
-		status = t.ToStatus
-	}
-	return status
 }

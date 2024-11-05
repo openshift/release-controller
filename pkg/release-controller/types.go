@@ -656,12 +656,10 @@ func (in *ReleaseVerification) DeepCopyInto(out *ReleaseVerification) {
 		*out = new(AggregatedProwJobVerification)
 		(*in).DeepCopyInto(*out)
 	}
-	return
 }
 
 func (in *ProwJobVerification) DeepCopyInto(out *ProwJobVerification) {
 	*out = *in
-	return
 }
 
 func (in *AggregatedProwJobVerification) DeepCopyInto(out *AggregatedProwJobVerification) {
@@ -671,7 +669,6 @@ func (in *AggregatedProwJobVerification) DeepCopyInto(out *AggregatedProwJobVeri
 		*out = new(ProwJobVerification)
 		(*in).DeepCopyInto(*out)
 	}
-	return
 }
 
 type UpgradeResult struct {

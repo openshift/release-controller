@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/release-controller"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"gopkg.in/robfig/cron.v2"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -19,7 +19,7 @@ func validateConfigs(configDir string) error {
 	releaseConfigs := []releasecontroller.ReleaseConfig{}
 	err := filepath.Walk(configDir, func(path string, info os.FileInfo, err error) error {
 		if info != nil && filepath.Ext(info.Name()) == ".json" {
-			raw, err := ioutil.ReadFile(path)
+			raw, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}

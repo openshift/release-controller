@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"k8s.io/klog"
 )
 
@@ -38,7 +38,7 @@ type releaseSigner struct {
 }
 
 func NewFromKeyring(path string) (Interface, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (s *releaseSigner) String() string {
 				fmt.Fprint(&builder, ", ")
 			}
 			if entity.PrimaryKey != nil {
-				fmt.Fprintf(&builder, strings.ToUpper(fmt.Sprintf("%x", entity.PrimaryKey.Fingerprint)))
+				fmt.Fprint(&builder, strings.ToUpper(fmt.Sprintf("%x", entity.PrimaryKey.Fingerprint)))
 				fmt.Fprint(&builder, ": ")
 			}
 			count := 0
@@ -180,7 +180,7 @@ func verifySignatureWithKeyring(r io.Reader, keyring openpgp.EntityList) ([]byte
 	if !md.IsSigned {
 		return nil, "", fmt.Errorf("not signed")
 	}
-	content, err := ioutil.ReadAll(md.UnverifiedBody)
+	content, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		return nil, "", err
 	}
@@ -197,8 +197,8 @@ func verifySignatureWithKeyring(r io.Reader, keyring openpgp.EntityList) ([]byte
 				return nil, "", fmt.Errorf("signature expired on %s", expiry)
 			}
 		}
-	} else if md.SignatureV3 == nil {
-		return nil, "", fmt.Errorf("unexpected openpgp.MessageDetails: neither Signature nor SignatureV3 is set")
+	} else {
+		return nil, "", fmt.Errorf("unexpected openpgp.MessageDetails: Signature is not set")
 	}
 
 	// follow conventions in containers/image

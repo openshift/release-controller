@@ -4,15 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
-	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	"net/http"
 	"os"
 	goruntime "runtime"
-	"sigs.k8s.io/prow/pkg/jira"
 	"strconv"
 	"strings"
 	"time"
+
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	"sigs.k8s.io/prow/pkg/jira"
 
 	_ "net/http/pprof" // until openshift/library-go#309 merges
 
@@ -75,8 +78,12 @@ func main() {
 
 	original := flag.CommandLine
 	klog.InitFlags(original)
-	original.Set("alsologtostderr", "true")
-	original.Set("v", "2")
+	if err := original.Set("alsologtostderr", "true"); err != nil {
+		klog.Fatalf("Failed to set `alsologtostderr`: %v", err)
+	}
+	if err := original.Set("v", "2"); err != nil {
+		klog.Fatalf("Failed to set verbosity to 2: %v", err)
+	}
 
 	opt := &options{
 		ListenAddr:          ":8080",
@@ -212,7 +219,7 @@ func (o *options) Run() error {
 			return fmt.Errorf("failed to create jira client: %v", err)
 		}
 	}
-	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
+	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", cases.Title(language.AmericanEnglish).String(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageCache := releasecontroller.NewLatestImageCache(tagParts[0], tagParts[1])
 	execReleaseInfo := releasecontroller.NewExecReleaseInfo(toolsClient, toolsConfig, o.JobNamespace, releaseNamespace, imageCache.Get, jiraClient)

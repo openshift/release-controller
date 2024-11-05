@@ -104,7 +104,7 @@ td.upgrade-track {
 
 func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -129,7 +129,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		fmt.Fprintf(w, string(data))
+		fmt.Fprint(w, string(data))
 	default:
 		fmt.Fprintf(w, htmlPageStart, "Release Status")
 		page := template.Must(template.New("candidatePage").Funcs(
@@ -152,7 +152,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 
 func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
@@ -177,7 +177,9 @@ func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -222,7 +224,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 
 	for _, stream := range releaseStreams {
 		nextReleaseName := ""
-		var latestPromotedTime int64 = 0
+		var latestPromotedTime int64
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
 		if err != nil || nextVersion == nil {
 			klog.Errorf("Unable to find next candidate for %s: %v", stream, err)

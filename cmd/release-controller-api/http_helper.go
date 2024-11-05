@@ -398,7 +398,7 @@ func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *rele
 func (c *Controller) renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *releasecontroller.Release) {
 	verificationJobs, msg := c.getVerificationJobs(tag, release)
 	if len(msg) > 0 {
-		fmt.Fprintf(w, msg)
+		fmt.Fprint(w, msg)
 		return
 	}
 	buf := &bytes.Buffer{}
@@ -545,7 +545,7 @@ func hasPublishTag(config *releasecontroller.ReleaseConfig) (string, bool) {
 	return "", false
 }
 
-func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReference, release *releasecontroller.Release) *imagev1.TagReference {
+func findPreviousRelease(older []*imagev1.TagReference, release *releasecontroller.Release) *imagev1.TagReference {
 	if len(older) == 0 {
 		return nil
 	}
@@ -573,14 +573,6 @@ func findPreviousRelease(tag *imagev1.TagReference, older []*imagev1.TagReferenc
 type nopFlusher struct{}
 
 func (_ nopFlusher) Flush() {}
-
-func upgradeSummaryToString(history []releasecontroller.UpgradeHistory) string {
-	var out []string
-	for _, h := range history {
-		out = append(out, fmt.Sprintf("%s->%s", h.From, h.To))
-	}
-	return strings.Join(out, ",")
-}
 
 func calculateReleaseUpgrades(release *releasecontroller.Release, tags []*imagev1.TagReference, graph *releasecontroller.UpgradeGraph, fullHistory bool) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))
@@ -781,7 +773,7 @@ func (r preferredReleases) Less(i, j int) bool {
 func (r preferredReleases) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
 func (r preferredReleases) Len() int      { return len(r) }
 
-func renderInstallInstructions(w io.Writer, mirror *imagev1.ImageStream, tag *imagev1.TagReference, tagPull, artifactsHost string) {
+func renderInstallInstructions(w io.Writer, tag *imagev1.TagReference, tagPull, artifactsHost string) {
 	if len(tagPull) == 0 {
 		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
 		return
@@ -849,11 +841,9 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 		statusTags[source.Status.Tags[i].Tag] = &source.Status.Tags[i]
 	}
 	var (
-		errUnableToImport     map[string]string
-		errDoesNotExist       []string
-		errStaleBuild         []string
-		warnOlderThanUpstream []string
-		warnNoDownstream      []string
+		errUnableToImport map[string]string
+		errDoesNotExist   []string
+		errStaleBuild     []string
 	)
 
 	now := time.Now()
@@ -892,23 +882,6 @@ func checkConsistentImages(release, parent *releasecontroller.Release) ReleaseCh
 			}
 			continue
 		}
-		delta := sourceTag.Items[0].Created.Sub(tag.Items[0].Created.Time)
-		if delta > 0 {
-			// source tag is newer than current tag
-			if delta > 5*24*time.Hour {
-				warnOlderThanUpstream = append(warnOlderThanUpstream, tag.Tag)
-				continue
-			}
-		}
-	}
-	for _, tag := range statusTags {
-		if len(tag.Items) == 0 {
-			continue
-		}
-		if now.Sub(tag.Items[0].Created.Time) > 24*time.Hour {
-			warnNoDownstream = append(warnNoDownstream, tag.Tag)
-			continue
-		}
 	}
 
 	if len(errUnableToImport) > 0 {
@@ -939,7 +912,7 @@ func isStaleStatusTag(tag imagev1.NamedTagEventList, target *imagev1.ImageStream
 	return true
 }
 
-func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.String) {
+func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.Set[string]) {
 	for i := range page.Streams {
 		stream := &page.Streams[i]
 		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable {

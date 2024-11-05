@@ -3,6 +3,9 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	imagev1 "github.com/openshift/api/image/v1"
@@ -17,8 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"reflect"
-	"testing"
 )
 
 func newLegacyJobStatus(name string, results []v1alpha1.JobRunResult) v1alpha1.JobStatus {
@@ -941,11 +942,13 @@ func TestLegacyJobStatusSync(t *testing.T) {
 
 			c.cachesToSync = append(c.cachesToSync, imageStreamInformer.Informer().HasSynced, releasePayloadInformer.Informer().HasSynced)
 
-			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 				AddFunc:    c.Enqueue,
 				UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 				DeleteFunc: c.Enqueue,
-			})
+			}); err != nil {
+				t.Errorf("Failed to add release payload event handler: %v", err)
+			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			imageStreamInformerFactory.Start(context.Background().Done())
@@ -964,7 +967,7 @@ func TestLegacyJobStatusSync(t *testing.T) {
 			}
 
 			// Performing a live lookup instead of having to wait for the cache to sink (again)...
-			output, err := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
+			output, _ := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
 			if !cmp.Equal(output, testCase.expected, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, output)
 			}

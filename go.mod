@@ -46,7 +46,7 @@ require (
 	github.com/russross/blackfriday v2.0.0+incompatible
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
-	golang.org/x/crypto v0.24.0
+	golang.org/x/text v0.19.0
 	golang.org/x/time v0.5.0
 	google.golang.org/api v0.181.0
 	gopkg.in/fsnotify.v1 v1.4.7
@@ -62,6 +62,11 @@ require (
 )
 
 require (
+	github.com/cloudflare/circl v1.3.7 // indirect
+	golang.org/x/crypto v0.24.0 // indirect
+)
+
+require (
 	cloud.google.com/go v0.113.0 // indirect
 	cloud.google.com/go/auth v0.4.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
@@ -72,6 +77,7 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/GoogleCloudPlatform/testgrid v0.0.123 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
+	github.com/ProtonMail/go-crypto v1.0.0
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a // indirect
 	github.com/aws/aws-sdk-go v1.44.116 // indirect
@@ -173,10 +179,9 @@ require (
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/term v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect

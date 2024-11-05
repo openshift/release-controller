@@ -3,6 +3,8 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -12,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"testing"
 )
 
 func TestPayloadAcceptedSync(t *testing.T) {
@@ -453,13 +454,15 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadAcceptedController")),
 			}
 
-			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 				AddFunc: c.Enqueue,
 				UpdateFunc: func(oldObj, newObj interface{}) {
 					c.Enqueue(newObj)
 				},
 				DeleteFunc: c.Enqueue,
-			})
+			}); err != nil {
+				t.Errorf("Failed to add release payload event handler: %v", err)
+			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 
@@ -474,7 +477,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 			}
 
 			// Performing a live lookup instead of having to wait for the cache to sink (again)...
-			output, err := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
+			output, _ := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
 			if !cmp.Equal(output, testCase.expected, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, output)
 			}

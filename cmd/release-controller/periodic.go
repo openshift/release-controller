@@ -125,7 +125,7 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 		for _, p := range cronConfig.Periodics {
 			j, previousFound := latestJobs[p.Name]
 			if p.Cron == "" {
-				shouldTrigger := j.Complete() && time.Now().Sub(j.Status.StartTime.Time) > p.GetInterval()
+				shouldTrigger := j.Complete() && time.Since(j.Status.StartTime.Time) > p.GetInterval()
 				if !previousFound || shouldTrigger {
 					err := c.createProwJobFromPeriodicWithRelease(releasePeriodics[p.Name])
 					if err != nil {

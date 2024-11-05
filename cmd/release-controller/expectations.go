@@ -11,14 +11,14 @@ import (
 // responsibility for ensuring expectations do not leak.
 type expectations struct {
 	lock   sync.Mutex
-	expect map[queueKey]sets.String
+	expect map[queueKey]sets.Set[string]
 }
 
 // newExpectations returns a tracking object for upcoming events
 // that the controller may expect to happen.
 func newExpectations() *expectations {
 	return &expectations{
-		expect: make(map[queueKey]sets.String),
+		expect: make(map[queueKey]sets.Set[string]),
 	}
 }
 
@@ -30,7 +30,7 @@ func (e *expectations) Expect(namespace, parentName, name string) {
 	key := queueKey{namespace: namespace, name: parentName}
 	set, ok := e.expect[key]
 	if !ok {
-		set = sets.NewString()
+		set = sets.New[string]()
 		e.expect[key] = set
 	}
 	set.Insert(name)

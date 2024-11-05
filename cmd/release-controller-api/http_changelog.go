@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/rhcos"
-	"github.com/russross/blackfriday"
 	"net/http"
 	"regexp"
 	"time"
+
+	"github.com/openshift/release-controller/pkg/rhcos"
+	"github.com/russross/blackfriday"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
@@ -121,7 +122,9 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 				return
 			}
 			fmt.Fprintf(w, "<pre><code>")
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			fmt.Fprintf(w, "</pre></code>")
 		default:
 			result := blackfriday.Run([]byte(render.out))
@@ -129,7 +132,9 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
 				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
 			})
-			w.Write(result)
+			if _, err := w.Write(result); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		}
 		fmt.Fprintln(w, "<hr>")
 	} else {

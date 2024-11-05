@@ -54,17 +54,19 @@ func issueTargetReleaseCheck(issue *jiraBaseClient.Issue, tagRelease string, tag
 		klog.Warningf("Issue %s does not have a target release", issue.Key)
 		return true, nil
 	}
-	for _, element := range targetVersion {
-		issueSplitVer := strings.Split(element.Name, ".")
-		if len(issueSplitVer) < 2 {
-			return true, fmt.Errorf("issue %s: length of target release `%s` after split by `.` is less than 2", issue.ID, element.Name)
-		}
-		issueRelease := fmt.Sprintf("%s.%s", issueSplitVer[0], issueSplitVer[1])
-		if issueRelease != tagRelease {
-			klog.Infof("Issue %s is in different release (%s) than tag %s", issue.Key, issueRelease, tagName)
-			return true, nil
-		}
-		break
+	if len(targetVersion) > 1 {
+		klog.Warningf("Issue %s has multiple target releases", issue.Key)
+		return true, nil
+	}
+	element := targetVersion[0]
+	issueSplitVer := strings.Split(element.Name, ".")
+	if len(issueSplitVer) < 2 {
+		return true, fmt.Errorf("issue %s: length of target release `%s` after split by `.` is less than 2", issue.ID, element.Name)
+	}
+	issueRelease := fmt.Sprintf("%s.%s", issueSplitVer[0], issueSplitVer[1])
+	if issueRelease != tagRelease {
+		klog.Infof("Issue %s is in different release (%s) than tag %s", issue.Key, issueRelease, tagName)
+		return true, nil
 	}
 	return false, nil
 }
@@ -203,7 +205,7 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			errs = append(errs, err)
 			continue
 		}
-		if feature.Fields.FixVersions == nil || len(feature.Fields.FixVersions) == 0 {
+		if feature.Fields == nil || len(feature.Fields.FixVersions) == 0 {
 			tmpIssue := &jiraBaseClient.Issue{
 				Key: feature.Key,
 				Fields: &jiraBaseClient.IssueFields{

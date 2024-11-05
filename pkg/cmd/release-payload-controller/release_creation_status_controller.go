@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
@@ -21,8 +24,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"reflect"
-	"strings"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -84,14 +85,16 @@ func NewReleaseCreationStatusController(
 		return false
 	}
 
-	batchJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	if _, err := batchJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: batchJobFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.lookupReleasePayload,
 			UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
 			DeleteFunc: c.lookupReleasePayload,
 		},
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add batch job event handler: %v", err)
+	}
 
 	// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
 	releasePayloadFilter := func(obj interface{}) bool {
@@ -108,14 +111,16 @@ func NewReleaseCreationStatusController(
 		return false
 	}
 
-	releasePayloadInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	if _, err := releasePayloadInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: releasePayloadFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.Enqueue,
 			UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 			DeleteFunc: c.Enqueue,
 		},
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+	}
 
 	return c, nil
 }

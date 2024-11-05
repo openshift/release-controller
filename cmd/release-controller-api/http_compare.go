@@ -43,7 +43,7 @@ const comparisonDashboardPageHtml = `
 
 func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 

@@ -33,11 +33,7 @@ type StableReferences struct {
 type StableReleases []StableRelease
 
 func (v StableReleases) Less(i, j int) bool {
-	c := v[i].Version.Compare(v[j].Version)
-	if c > 0 {
-		return true
-	}
-	return false
+	return v[i].Version.Compare(v[j].Version) > 0
 }
 
 func (v StableReleases) Len() int      { return len(v) }
@@ -429,7 +425,7 @@ func IsReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (b
 	if err != nil {
 		return false, "", 0
 	}
-	interval, minInterval := time.Now().Sub(created), time.Duration(release.Config.MinCreationIntervalSeconds)*time.Second
+	interval, minInterval := time.Since(created), time.Duration(release.Config.MinCreationIntervalSeconds)*time.Second
 	if interval < minInterval {
 		return true, fmt.Sprintf("Release %s last tag %s created %s ago (less than minimum interval %s), will not launch new tags", release.Config.Name, tag.Name, interval.Truncate(time.Second), minInterval), minInterval - interval
 	}
