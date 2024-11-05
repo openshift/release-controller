@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/openshift/release-controller/pkg/prow"
 	"testing"
+
+	"github.com/openshift/release-controller/pkg/prow"
 
 	prowconfig "sigs.k8s.io/prow/pkg/config"
 )

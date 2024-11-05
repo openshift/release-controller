@@ -1,9 +1,10 @@
 package releasepayload
 
 import (
+	"testing"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-	"testing"
 )
 
 func Test_getVerificationStatusRetries(t *testing.T) {

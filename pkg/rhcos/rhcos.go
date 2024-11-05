@@ -3,11 +3,12 @@ package rhcos
 import (
 	"encoding/json"
 	"fmt"
-	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
 
 const (

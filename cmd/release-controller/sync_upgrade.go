@@ -5,6 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
+	"sort"
+	"strings"
+
 	"github.com/blang/semver"
 	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -12,10 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
-	"math/rand"
 	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
-	"sort"
-	"strings"
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {

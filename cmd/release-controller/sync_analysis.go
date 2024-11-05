@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	imagev1 "github.com/openshift/api/image/v1"
-	"github.com/openshift/release-controller/pkg/release-controller"
-	prowjobv1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	"time"
+
+	imagev1 "github.com/openshift/api/image/v1"
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	prowjobv1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 )
 
 const (

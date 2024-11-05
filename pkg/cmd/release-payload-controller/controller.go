@@ -3,6 +3,8 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/openshift/library-go/pkg/operator/events"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
@@ -12,7 +14,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"time"
 )
 
 type Controller interface {

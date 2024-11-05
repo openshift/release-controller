@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
+
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
-	"sort"
 )
 
 func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, releaseTag *imagev1.TagReference) (*v1alpha1.ReleasePayload, error) {

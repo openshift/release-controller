@@ -1,9 +1,10 @@
 package jobstatus
 
 import (
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
-	"testing"
 )
 
 func TestComputeJobState(t *testing.T) {

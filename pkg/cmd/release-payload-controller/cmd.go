@@ -3,6 +3,7 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	imageinformers "github.com/openshift/client-go/image/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"

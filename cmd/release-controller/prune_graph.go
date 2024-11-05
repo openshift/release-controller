@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"

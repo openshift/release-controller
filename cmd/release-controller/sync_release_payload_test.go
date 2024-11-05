@@ -1,12 +1,13 @@
 package main
 
 import (
+	"reflect"
+	"testing"
+
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"testing"
 )
 
 var (

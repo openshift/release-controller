@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"testing"
+
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )

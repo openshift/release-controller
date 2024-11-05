@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/openshift/release-controller/pkg/release-controller"
 	"testing"
 	"time"
 
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

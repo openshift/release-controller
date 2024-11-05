@@ -1,10 +1,11 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	v1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-	"testing"
 )
 
 func TestJiraGetNonVerifiedTags(t *testing.T) {

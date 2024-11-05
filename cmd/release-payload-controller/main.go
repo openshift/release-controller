@@ -1,10 +1,11 @@
 package main
 
 import (
+	"os"
+
 	releasepayloadcontroller "github.com/openshift/release-controller/pkg/cmd/release-payload-controller"
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
-	"os"
 )
 
 func main() {
