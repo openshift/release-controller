@@ -154,14 +154,28 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/vnd.redhat.cincinnati.graph+json; version=1.0")
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 
 	case "dot", "svg", "png":
 		g := viz.NewGraph()
-		g.SetDir(true)
-		g.SetName("Upgrades")
-		g.AddAttr("Upgrades", string(viz.RankDir), "BT")
-		g.AddAttr("Upgrades", string(viz.LabelLOC), "t")
+		if err := g.SetDir(true); err != nil {
+			http.Error(w, fmt.Sprintf("Unable to set directionality of graph: %v", err), http.StatusBadRequest)
+			return
+		}
+		if err := g.SetName("Upgrades"); err != nil {
+			http.Error(w, fmt.Sprintf("Unable set graph name: %v", err), http.StatusBadRequest)
+			return
+		}
+		if err := g.AddAttr("Upgrades", string(viz.RankDir), "BT"); err != nil {
+			http.Error(w, fmt.Sprintf("Unable to set graph rank direction: %v", err), http.StatusBadRequest)
+			return
+		}
+		if err := g.AddAttr("Upgrades", string(viz.LabelLOC), "t"); err != nil {
+			http.Error(w, fmt.Sprintf("Unable to set `labelloc` for graph: %v", err), http.StatusBadRequest)
+			return
+		}
 		nodeLabels := make(map[string]int, nodeCount)
 		index := 0
 		for j, s := range streams {
@@ -244,7 +258,9 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		switch format {
 		case "dot":
 			w.Header().Set("Content-Type", "text/plain")
-			w.Write([]byte(g.String()))
+			if _, err := w.Write([]byte(g.String())); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		case "svg", "png":
 			cmd := exec.Command("dot", fmt.Sprintf("-T%s", format))
@@ -267,7 +283,9 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 			case "png":
 				w.Header().Set("Content-Type", "image/png")
 			}
-			w.Write(out)
+			if _, err := w.Write(out); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 

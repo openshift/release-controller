@@ -3,6 +3,9 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -14,12 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"reflect"
 	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
 	"sigs.k8s.io/prow/pkg/kube"
-	"testing"
 )
 
 func newJobStatus(name, jobName string, maxRetries, analysisJobCount int, aggregateState v1alpha1.JobState, results []v1alpha1.JobRunResult) v1alpha1.JobStatus {
@@ -817,20 +818,24 @@ func TestProwJobStatusSync(t *testing.T) {
 				return false
 			}
 
-			prowJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+			if _, err := prowJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 				FilterFunc: prowJobFilter,
 				Handler: cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.lookupReleasePayload,
 					UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
 					DeleteFunc: c.lookupReleasePayload,
 				},
-			})
+			}); err != nil {
+				t.Errorf("Failed to add release payload event handler: %v", err)
+			}
 
-			releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 				AddFunc:    c.Enqueue,
 				UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 				DeleteFunc: c.Enqueue,
-			})
+			}); err != nil {
+				t.Errorf("Failed to add release payload event handler: %v", err)
+			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			prowJobInformerFactory.Start(context.Background().Done())
@@ -849,7 +854,7 @@ func TestProwJobStatusSync(t *testing.T) {
 			}
 
 			// Performing a live lookup instead of having to wait for the cache to sink (again)...
-			output, err := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
+			output, _ := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
 			if !cmp.Equal(output, testCase.expected, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, output)
 			}

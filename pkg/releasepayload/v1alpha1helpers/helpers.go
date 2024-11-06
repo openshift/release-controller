@@ -1,11 +1,12 @@
 package v1alpha1helpers
 
 import (
+	"sort"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload/conditions"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobrunresult"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobstatus"
-	"sort"
 )
 
 func CanonicalizeReleasePayloadStatus(in *v1alpha1.ReleasePayload) {

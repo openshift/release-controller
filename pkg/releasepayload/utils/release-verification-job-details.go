@@ -2,10 +2,11 @@ package utils
 
 import (
 	"fmt"
-	"github.com/blang/semver"
-	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"regexp"
 	"strings"
+
+	"github.com/blang/semver"
+	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
 
 const (

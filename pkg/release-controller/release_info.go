@@ -93,8 +93,7 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 		if err != nil {
 			return err
 		}
-		sink.SetString(s)
-		return nil
+		return sink.SetString(s)
 	}))
 	return &CachingReleaseInfo{
 		cache: cache,
@@ -402,6 +401,9 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 		return "", err
 	}
 	issuesWithRemoteLinkDetails, err := r.GetRemoteLinksWithConcurrency(issuesWithDemoLinkList)
+	if err != nil {
+		return "", err
+	}
 
 	t := TransformJiraIssues(issues, issuesToPRMap, issuesWithRemoteLinkDetails)
 	s, err := json.Marshal(t)
@@ -484,12 +486,11 @@ type IssueDetails struct {
 }
 
 func typeCheck(o interface{}) string {
-	switch o.(type) {
+	switch v := o.(type) {
 	case string:
-		return o.(string)
+		return v
 	case map[string]interface{}:
-		t := o.(map[string]interface{})
-		return typeCheck(t["key"])
+		return typeCheck(v["key"])
 	default:
 		klog.Warningf("unable to parse the Jira unknown field: %v\n", o)
 		return ""
@@ -529,7 +530,7 @@ func TransformJiraIssues(issues []jiraBaseClient.Issue, prMap map[string][]strin
 				parent = issue.Fields.Parent.Key
 			}
 		}
-		demoLinks, _ := demoURLsMap[issue.ID]
+		demoLinks := demoURLsMap[issue.ID]
 
 		t[issue.Key] = IssueDetails{
 			Summary:     checkJiraSecurity(&issue, issue.Fields.Summary),
@@ -685,41 +686,38 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 			if err != nil {
 				mu.Lock()
 				defer mu.Unlock()
-				if err != nil {
-					if jiraErr, ok := err.(*jira.JiraError); ok {
-						if jiraOriginalErr, ok := jiraErr.OriginalError.(*jiraBaseClient.Error); ok {
-							for _, id := range parts {
-								for _, errorMessage := range jiraOriginalErr.ErrorMessages {
-									if strings.Contains(errorMessage, fmt.Sprintf("'%s'", id)) {
-										invalidIDs = append(invalidIDs, id)
-									}
+				if jiraErr, ok := err.(*jira.JiraError); ok {
+					if jiraOriginalErr, ok := jiraErr.OriginalError.(*jiraBaseClient.Error); ok {
+						for _, id := range parts {
+							for _, errorMessage := range jiraOriginalErr.ErrorMessages {
+								if strings.Contains(errorMessage, fmt.Sprintf("'%s'", id)) {
+									invalidIDs = append(invalidIDs, id)
 								}
 							}
+						}
 
+					}
+				}
+				if len(invalidIDs) > 0 {
+					filtered := make([]string, 0)
+					excludeMap := make(map[string]bool)
+					for _, item := range invalidIDs {
+						excludeMap[item] = true
+					}
+					for _, item := range parts {
+						if !excludeMap[item] {
+							filtered = append(filtered, item)
 						}
 					}
-					if len(invalidIDs) > 0 {
-						filtered := make([]string, 0)
-						excludeMap := make(map[string]bool)
-						for _, item := range invalidIDs {
-							excludeMap[item] = true
-						}
-						for _, item := range parts {
-							if !excludeMap[item] {
-								filtered = append(filtered, item)
-							}
-						}
-						validResults, validErr := r.GetIssuesWithChunks(filtered)
-						if validErr != nil {
-							buf.WriteString(validErr.Error() + "\n")
-						}
-						result = append(result, validResults...)
-
-					} else {
-						err = fmt.Errorf("search failed: %w", err)
-						buf.WriteString(err.Error() + "\n")
+					validResults, validErr := r.GetIssuesWithChunks(filtered)
+					if validErr != nil {
+						buf.WriteString(validErr.Error() + "\n")
 					}
+					result = append(result, validResults...)
 
+				} else {
+					err = fmt.Errorf("search failed: %w", err)
+					buf.WriteString(err.Error() + "\n")
 				}
 				return
 			}
@@ -776,10 +774,8 @@ func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraB
 			if err != nil {
 				mu.Lock()
 				defer mu.Unlock()
-				if err != nil {
-					err = fmt.Errorf("search failed: %w", err)
-					buf.WriteString(err.Error() + "\n")
-				}
+				err = fmt.Errorf("search failed: %w", err)
+				buf.WriteString(err.Error() + "\n")
 				return
 			}
 			mu.Lock()
@@ -827,8 +823,9 @@ func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string) (result
 
 		mu.Lock()
 		var linkUrl []string
+		demoRegex := regexp.MustCompile(`\bdemo\b`)
 		for _, link := range links {
-			if matched, _ := regexp.MatchString(`\bdemo\b`, strings.ToLower(link.Object.Title)); matched {
+			if matched := demoRegex.MatchString(strings.ToLower(link.Object.Title)); matched {
 				linkUrl = append(linkUrl, link.Object.URL)
 			}
 		}

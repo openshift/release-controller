@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
+
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -11,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
-	"time"
 )
 
 func (c *Controller) processLegacyResults(interval time.Duration, stopCh <-chan struct{}) {
@@ -75,9 +76,8 @@ func (c *Controller) syncLegacyResults(key queueKey) error {
 		if err == nil {
 			klog.V(4).Infof("found releasepayload: %s/%s", key.namespace, tag.Name)
 			continue
-		}
-		// If there is any error other than NotFound, there is a problem
-		if err != nil && !errors.IsNotFound(err) {
+		} else if !errors.IsNotFound(err) {
+			// If there is any error other than NotFound, there is a problem
 			return err
 		}
 
@@ -114,8 +114,8 @@ func (c *Controller) syncLegacyResults(key queueKey) error {
 func setPayloadOverride(tag *imagev1.TagReference, releasePayload *v1alpha1.ReleasePayload) {
 	var legacyOverride v1alpha1.ReleasePayloadOverrideType
 	phase, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-	reason, _ := tag.Annotations[releasecontroller.ReleaseAnnotationReason]
-	message, _ := tag.Annotations[releasecontroller.ReleaseAnnotationMessage]
+	reason := tag.Annotations[releasecontroller.ReleaseAnnotationReason]
+	message := tag.Annotations[releasecontroller.ReleaseAnnotationMessage]
 	if ok {
 		switch phase {
 		case releasecontroller.ReleasePhaseAccepted:

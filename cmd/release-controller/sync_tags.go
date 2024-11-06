@@ -17,7 +17,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
-func (c *Controller) createReleaseTag(release *releasecontroller.Release, now time.Time, inputImageHash string) (*imagev1.TagReference, error) {
+func (c *Controller) createReleaseTag(release *releasecontroller.Release, now time.Time) (*imagev1.TagReference, error) {
 	target := release.Target.DeepCopy()
 	now = now.UTC().Truncate(time.Second)
 	t := now.Format("2006-01-02-150405")

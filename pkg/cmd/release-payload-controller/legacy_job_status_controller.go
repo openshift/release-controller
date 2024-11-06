@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/google/go-cmp/cmp"
 	v1 "github.com/openshift/api/image/v1"
 	imagev1informer "github.com/openshift/client-go/image/informers/externalversions/image/v1"
@@ -21,8 +24,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"reflect"
-	"strings"
 )
 
 // LegacyJobStatusController is responsible for handling the job results of releases that
@@ -68,11 +69,13 @@ func NewLegacyJobStatusController(
 
 	c.syncFn = c.sync
 
-	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.Enqueue,
 		UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 		DeleteFunc: c.Enqueue,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+	}
 
 	return c, nil
 }

@@ -37,10 +37,7 @@ func GenerateSafeProwJobName(name, suffix string) string {
 	jobName := fmt.Sprintf("%s%s", name, suffix)
 	if len(jobName) > MaxProwJobNameLength {
 		s := fmt.Sprintf("-%s%s", ProwjobSafeHash(name), suffix)
-		truncated := name[0 : MaxProwJobNameLength-len(s)]
-		if strings.HasSuffix(truncated, "-") {
-			truncated = truncated[:len(truncated)-1]
-		}
+		truncated := strings.TrimSuffix(name[0:MaxProwJobNameLength-len(s)], "-")
 		jobName = fmt.Sprintf("%s%s", truncated, s)
 	}
 	return jobName

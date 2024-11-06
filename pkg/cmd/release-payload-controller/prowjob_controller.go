@@ -3,6 +3,9 @@ package release_payload_controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
@@ -20,12 +23,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"reflect"
 	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	prowjobinformer "sigs.k8s.io/prow/pkg/client/informers/externalversions/prowjobs/v1"
 	prowjoblister "sigs.k8s.io/prow/pkg/client/listers/prowjobs/v1"
 	"sigs.k8s.io/prow/pkg/kube"
-	"strings"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
@@ -73,20 +74,24 @@ func NewProwJobStatusController(
 		return false
 	}
 
-	prowJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	if _, err := prowJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: prowJobFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.lookupReleasePayload,
 			UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
 			DeleteFunc: c.lookupReleasePayload,
 		},
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+	}
 
-	releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
+	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.Enqueue,
 		UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 		DeleteFunc: c.Enqueue,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+	}
 
 	return c, nil
 }
@@ -183,7 +188,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 		}
 
 		if prowJob.Status.State == v1.SchedulingState {
-			klog.Infof(fmt.Sprintf("prowjob %q waiting to be scheduled, skipping", prowJob.Name))
+			klog.Infof("prowjob %q waiting to be scheduled, skipping", prowJob.Name)
 			continue
 		}
 

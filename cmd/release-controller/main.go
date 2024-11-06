@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
@@ -130,8 +133,12 @@ func main() {
 
 	original := flag.CommandLine
 	klog.InitFlags(original)
-	original.Set("alsologtostderr", "true")
-	original.Set("v", "2")
+	if err := original.Set("alsologtostderr", "true"); err != nil {
+		klog.Fatalf("Failed to set `alsologtostderr`: %v", err)
+	}
+	if err := original.Set("v", "2"); err != nil {
+		klog.Fatalf("Failed to set verbosity to 2: %v", err)
+	}
 
 	opt := &options{
 		ListenAddr:          ":8080",
@@ -313,7 +320,7 @@ func (o *options) Run() error {
 			return fmt.Errorf("unable to find job namespace: %v", err)
 		}
 	}
-	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", strings.Title(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
+	klog.Infof("%s releases will be sourced from the following namespaces: %s, and jobs will be run in %s", cases.Title(language.AmericanEnglish).String(architecture), strings.Join(o.ReleaseNamespaces, " "), o.JobNamespace)
 
 	imageClient, err := imageclientset.NewForConfig(releasesConfig)
 	if err != nil {
@@ -358,7 +365,9 @@ func (o *options) Run() error {
 	if err != nil {
 		return fmt.Errorf("Failed to create github client: %v", err)
 	}
-	ghClient.Throttle(o.githubThrottle, 0)
+	if err := ghClient.Throttle(o.githubThrottle, 0); err != nil {
+		return fmt.Errorf("Failed to set github throttle: %v", err)
+	}
 
 	if o.VerifyJira {
 		jiraClient, err = o.jira.Client()

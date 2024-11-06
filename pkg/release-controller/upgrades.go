@@ -24,21 +24,16 @@ import (
 type UpgradeGraph struct {
 	lock         sync.Mutex
 	To           map[string]map[string]*UpgradeHistory
-	From         map[string]sets.String
+	From         map[string]sets.Set[string]
 	Architecture string
 }
 
 func NewUpgradeGraph(architecture string) *UpgradeGraph {
 	return &UpgradeGraph{
 		To:           make(map[string]map[string]*UpgradeHistory),
-		From:         make(map[string]sets.String),
+		From:         make(map[string]sets.Set[string]),
 		Architecture: architecture,
 	}
-}
-
-type upgradeEdge struct {
-	From string
-	To   string
 }
 
 func (g *UpgradeGraph) SummarizeUpgradesTo(toNames ...string) []UpgradeHistory {
@@ -170,7 +165,7 @@ func (g *UpgradeGraph) addWithLock(fromTag, toTag string, results ...UpgradeResu
 		to[fromTag] = from
 		set, ok := g.From[fromTag]
 		if !ok {
-			set = sets.NewString()
+			set = sets.New[string]()
 			g.From[fromTag] = set
 		}
 		set.Insert(toTag)
@@ -281,7 +276,8 @@ func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 
 func LoadUpgradeGraph(graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
 	// read initial state
-	wait.PollImmediateUntil(5*time.Second, func() (bool, error) {
+	ctx := wait.ContextForChannel(stopCh)
+	if err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(context.Context) (bool, error) {
 		secret, err := secretClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -301,7 +297,9 @@ func LoadUpgradeGraph(graph *UpgradeGraph, secretClient kv1core.SecretInterface,
 			}
 		}
 		return true, nil
-	}, stopCh)
+	}); err != nil {
+		klog.Errorf("Failed to poll for upgrade graph loading: %v", err)
+	}
 }
 
 func SaveUpgradeGraph(buf *bytes.Buffer, graph *UpgradeGraph, secretClient kv1core.SecretInterface, ns, name string) error {

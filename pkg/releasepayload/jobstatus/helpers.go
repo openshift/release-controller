@@ -61,7 +61,7 @@ func FindJobStatus(results []v1alpha1.JobStatus, ciConfigurationName, ciConfigur
 
 func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 	totalJobs := len(jobs)
-	var pendingJobs, successfulJobs, failedJobs, unknownJobs []v1alpha1.JobStatus
+	var pendingJobs, successfulJobs, failedJobs []v1alpha1.JobStatus
 
 	for _, job := range jobs {
 		switch job.AggregateState {
@@ -71,8 +71,6 @@ func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 			successfulJobs = append(successfulJobs, job)
 		case v1alpha1.JobStateFailure:
 			failedJobs = append(failedJobs, job)
-		default:
-			unknownJobs = append(unknownJobs, job)
 		}
 	}
 

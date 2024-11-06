@@ -90,7 +90,7 @@ func (c *Controller) sync(key queueKey) error {
 
 	// ensure that changes to the input image stream turn into a new release (if no current release is being processed)
 	if len(pendingTags) == 0 && hasNewImages {
-		releaseTag, err := c.createReleaseTag(release, now, inputImageHash)
+		releaseTag, err := c.createReleaseTag(release, now)
 		if err != nil {
 			c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToCreateRelease", "%v", err)
 			return err
@@ -497,6 +497,9 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 		}
 
 		verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
+		if err != nil {
+			return err
+		}
 		if names, ok := status.Incomplete(verificationJobs); ok {
 			klog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
 			if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {

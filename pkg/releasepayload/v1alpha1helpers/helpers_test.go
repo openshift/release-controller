@@ -1,10 +1,11 @@
 package v1alpha1helpers
 
 import (
-	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"testing"
+
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestCanonicalize(t *testing.T) {

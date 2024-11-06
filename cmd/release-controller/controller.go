@@ -122,7 +122,7 @@ type Controller struct {
 	prowLister       cache.Indexer
 
 	// onlySources if set controls which image stream names can be synced
-	onlySources sets.String
+	onlySources sets.Set[string]
 
 	releaseInfo releasecontroller.ReleaseInfo
 
@@ -237,11 +237,13 @@ func NewController(
 	c.auditTracker = NewAuditTracker(c.auditQueue)
 
 	// handle job changes
-	jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processJobIfComplete,
 		DeleteFunc: c.processJob,
 		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
-	})
+	}); err != nil {
+		klog.Fatalf("Failed to add event handler for jobs: %v", err)
+	}
 
 	for _, memberList := range clusterGroups {
 		members := strings.Split(memberList, ",")
@@ -255,7 +257,7 @@ func NewController(
 }
 
 func (c *Controller) LimitSources(names ...string) {
-	c.onlySources = sets.NewString(names...)
+	c.onlySources = sets.New[string](names...)
 }
 
 type ProwConfigLoader interface {
@@ -268,13 +270,15 @@ func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.
 	c.releaseLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
 	c.publishLister.Listers[ns] = imagestreams.Lister().ImageStreams(ns)
 
-	imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processImageStream,
 		DeleteFunc: c.processImageStream,
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			c.processImageStream(newObj)
 		},
-	})
+	}); err != nil {
+		klog.Fatalf("Failed to add imagestream event handler: %v", err)
+	}
 }
 
 // AddPublishNamespace adds a new namespace scoped informer to the controller which is used to look up
@@ -292,13 +296,15 @@ func (c *Controller) AddReleasePayloadNamespace(ns string, releasePayloads relea
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the
 // controller.
 func (c *Controller) AddProwInformer(ns string, informer cache.SharedIndexInformer) {
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processProwJob,
 		DeleteFunc: c.processProwJob,
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			c.processProwJob(newObj)
 		},
-	})
+	}); err != nil {
+		klog.Fatalf("Failed to add event handler for prowjobs: %v", err)
+	}
 	c.prowNamespace = ns
 	c.prowLister = informer.GetIndexer()
 }

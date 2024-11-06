@@ -116,7 +116,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 				needed[tag.Name] = &ReleaseStreamTag{
 					Release:         r,
 					Tag:             tag,
-					Previous:        findPreviousRelease(tag, releaseTags[i+1:], r),
+					Previous:        findPreviousRelease(releaseTags[i+1:], r),
 					PreviousRelease: r,
 					Older:           releaseTags[i+1:],
 					Stable:          stable,
@@ -134,12 +134,12 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	return needed, remaining == 0
 }
 
-func (c *Controller) endOfLifePrefixes() sets.String {
+func (c *Controller) endOfLifePrefixes() sets.Set[string] {
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return nil
 	}
-	endOfLifePrefixes := sets.NewString()
+	endOfLifePrefixes := sets.New[string]()
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
 		if err != nil || !ok {
@@ -430,7 +430,9 @@ func (c *Controller) apiFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time, transitions []releasecontroller.Transition) bool {
@@ -438,10 +440,7 @@ func statusOnBuild(buildTimeStamp *time.Time, issueTimestamp time.Time, transiti
 		return true
 	}
 	status := getPastStatus(transitions, buildTimeStamp)
-	if statusComplete.Has(strings.ToLower(status)) {
-		return true
-	}
-	return false
+	return statusComplete.Has(strings.ToLower(status))
 }
 
 func getPastStatus(transitions []releasecontroller.Transition, buildTime *time.Time) string {
@@ -522,7 +521,7 @@ func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*re
 
 func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	r, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -555,10 +554,12 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL"), http.StatusBadRequest)
+		http.Error(w, "error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL", http.StatusBadRequest)
 	}
 }
 
@@ -589,7 +590,7 @@ func (c *Controller) locateStream(streamName string, phases ...string) (*Release
 
 func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
@@ -635,16 +636,18 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		fmt.Fprintln(w)
 	default:
-		http.Error(w, fmt.Sprintf("error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL"), http.StatusBadRequest)
+		http.Error(w, "error: Must specify one of '', 'json', 'pullSpec', 'name', or 'downloadURL", http.StatusBadRequest)
 	}
 }
 
 func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
@@ -713,7 +716,9 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -736,7 +741,7 @@ func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagIn
 
 func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Encoding", "gzip")
@@ -747,7 +752,7 @@ func (c *Controller) httpGraphSave(w http.ResponseWriter, req *http.Request) {
 
 func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	var isHtml, isJson bool
 	switch req.URL.Query().Get("format") {
@@ -757,18 +762,18 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		isJson = true
 	case "markdown", "":
 	default:
-		http.Error(w, fmt.Sprintf("unrecognized format= string: html, json, markdown, empty accepted"), http.StatusBadRequest)
+		http.Error(w, "unrecognized format= string: html, json, markdown, empty accepted", http.StatusBadRequest)
 		return
 	}
 
 	from := req.URL.Query().Get("from")
 	if len(from) == 0 {
-		http.Error(w, fmt.Sprintf("from must be set to a valid tag"), http.StatusBadRequest)
+		http.Error(w, "from must be set to a valid tag", http.StatusBadRequest)
 		return
 	}
 	to := req.URL.Query().Get("to")
 	if len(to) == 0 {
-		http.Error(w, fmt.Sprintf("to must be set to a valid tag"), http.StatusBadRequest)
+		http.Error(w, "to must be set to a valid tag", http.StatusBadRequest)
 		return
 	}
 
@@ -806,7 +811,9 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		result := blackfriday.Run([]byte(out))
 		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 		fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Change log for %s", to)))
-		w.Write(result)
+		if _, err := w.Write(result); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		fmt.Fprintln(w, htmlPageEnd)
 		return
 	}
@@ -843,12 +850,12 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 
 func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	vars := mux.Vars(req)
 	tag := vars["tag"]
 	if len(tag) == 0 {
-		http.Error(w, fmt.Sprintf("tag must be specified"), http.StatusBadRequest)
+		http.Error(w, "tag must be specified", http.StatusBadRequest)
 		return
 	}
 
@@ -882,7 +889,7 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 
 func (c *Controller) httpReleaseInfoDownload(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	vars := mux.Vars(req)
 	release := vars["release"]
@@ -1122,43 +1129,13 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
-	w.Write(buf.Bytes())
-}
-
-// TODO - check for a better way to do this, without the arbitrary limit
-// the tree is acyclic, the code should not result in an infinite loop. The limit is only included as a fail-safe
-func sortByPRs(tree []*FeatureTree, limit int) {
-	if len(tree) == 0 {
-		return
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	// Divide the tree into two groups, those with PRs and those without
-	var withPRs []*FeatureTree
-	var withoutPRs []*FeatureTree
-	for _, node := range tree {
-		if node.PRs != nil {
-			withPRs = append(withPRs, node)
-		} else {
-			withoutPRs = append(withoutPRs, node)
-		}
-
-		// Recursively sort the children of this node, limiting to the given iteration limit
-		if limit > 1 {
-			sortByPRs(node.Children, limit-1)
-		} else {
-			klog.Errorf("breaking the recursion: limit reached for the sortByPrs func! This might indicate a cyclic tree!")
-		}
-	}
-
-	// Concatenate the two groups, withPRs first
-	copy(tree, append(withPRs, withoutPRs...))
 }
 
 func includeKey(key string) bool {
-	if unlinkedIssuesSections.Has(key) {
-		return false
-	}
-	return true
+	return !unlinkedIssuesSections.Has(key)
 }
 
 func jumpLinks(data httpFeatureData) string {
@@ -1212,8 +1189,6 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-
-	mirror, _ := releasecontroller.GetMirror(tagInfo.Info.Release, tagInfo.Info.Tag.Name, c.releaseLister)
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Release %s", tagInfo.Tag)))
@@ -1283,7 +1258,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	case "multi":
 		renderMultiArchPullSpec(w, tagInfo.TagPullSpec)
 	default:
-		renderInstallInstructions(w, mirror, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+		renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 	}
 
 	fmt.Fprintf(w, "Team Approvals: ")
@@ -1291,7 +1266,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if teamApprovedList == "" {
 		fmt.Fprintf(w, "None<br>")
 	} else {
-		fmt.Fprintf(w, "<br>"+teamApprovedList+"<br>")
+		fmt.Fprint(w, "<br>"+teamApprovedList+"<br>")
 	}
 
 	c.renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
@@ -1468,7 +1443,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	r, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -1480,7 +1455,7 @@ func (c *Controller) httpReleaseLatest(w http.ResponseWriter, req *http.Request)
 
 func (c *Controller) httpReleaseLatestDownload(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	_, latest, ok := c.locateLatest(w, req)
 	if !ok {
@@ -1532,7 +1507,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	c.imageStreams = imageStreams
 
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
@@ -1582,7 +1557,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
-						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+						out = append(out, `<span>stable tags</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -1661,7 +1636,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	endOfLifePrefixes := sets.NewString()
+	endOfLifePrefixes := sets.New[string]()
 
 	for _, stream := range imageStreams {
 		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
@@ -1769,7 +1744,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 	release := vars["release"]
 
 	start := time.Now()
-	defer func() { klog.V(4).Infof("/%s rendered in %s", release, time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("/%s rendered in %s", release, time.Since(start)) }()
 
 	// If someone directly goes to this page, then sync images streams if empty
 	if c.imageStreams == nil {
@@ -1840,7 +1815,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
-						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+						out = append(out, `<span>stable tags</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -1912,7 +1887,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 		},
 	).ParseFS(resources, "htmlPageEndScripts.tmpl"))
 
-	endOfLifePrefixes := sets.NewString()
+	endOfLifePrefixes := sets.New[string]()
 
 	r, ok, err := releasecontroller.ReleaseDefinition(requestedStream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
 	if err != nil || !ok {
@@ -1968,7 +1943,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 
 func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 
@@ -2008,7 +1983,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				switch r.Release.Config.As {
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
-						out = append(out, fmt.Sprintf(`<span>stable tags</span>`))
+						out = append(out, `<span>stable tags</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -2147,14 +2122,14 @@ func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
 }
 
 var extendedRelTime = []humanize.RelTimeMagnitude{
-	{time.Second, "now", time.Second},
-	{2 * time.Minute, "%d seconds %s", time.Second},
-	{2 * time.Hour, "%d minutes %s", time.Minute},
-	{2 * humanize.Day, "%d hours %s", time.Hour},
-	{3 * humanize.Week, "%d days %s", humanize.Day},
-	{3 * humanize.Month, "%d weeks %s", humanize.Week},
-	{3 * humanize.Year, "%d months %s", humanize.Month},
-	{math.MaxInt64, "a long while %s", 1},
+	{D: time.Second, Format: "now", DivBy: time.Second},
+	{D: 2 * time.Minute, Format: "%d seconds %s", DivBy: time.Second},
+	{D: 2 * time.Hour, Format: "%d minutes %s", DivBy: time.Minute},
+	{D: 2 * humanize.Day, Format: "%d hours %s", DivBy: time.Hour},
+	{D: 3 * humanize.Week, Format: "%d days %s", DivBy: humanize.Day},
+	{D: 3 * humanize.Month, Format: "%d weeks %s", DivBy: humanize.Week},
+	{D: 3 * humanize.Year, Format: "%d months %s", DivBy: humanize.Month},
+	{D: math.MaxInt64, Format: "a long while %s", DivBy: 1},
 }
 
 func relTime(a, b time.Time, albl, blbl string) string {
@@ -2179,7 +2154,7 @@ func (c *Controller) getSupportedUpgrades(tagPull string) ([]string, error) {
 
 func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	vars := mux.Vars(req)
 	streamName := vars["release"]
@@ -2242,7 +2217,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 				displayConfig = true
 				break Loop
 			default:
-				http.Error(w, fmt.Sprintf("error: jobType must be one of '', 'informing', 'blocking', 'disabled' or 'periodic'"), http.StatusBadRequest)
+				http.Error(w, "error: jobType must be one of '', 'informing', 'blocking', 'disabled' or 'periodic'", http.StatusBadRequest)
 				return
 			}
 		}
@@ -2265,7 +2240,9 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -2276,7 +2253,9 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -2287,7 +2266,9 @@ func (c *Controller) apiRejectedStreams(w http.ResponseWriter, req *http.Request
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -2298,7 +2279,9 @@ func (c *Controller) apiAllStreams(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -2365,7 +2348,7 @@ func jsonArrayToString(messageArray string) (string, error) {
 
 func (c *Controller) httpInconsistencyInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	defer func() { klog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
 	// If someone directly goes to this page, then sync images streams if empty
 	if c.imageStreams == nil {

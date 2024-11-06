@@ -1,8 +1,9 @@
 package rhcos
 
 import (
-	"github.com/google/go-cmp/cmp"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestComputeJobState(t *testing.T) {

@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"github.com/blang/semver"
 	"reflect"
 	"testing"
+
+	"github.com/blang/semver"
 )
 
 func TestParseReleaseVerificationJobName(t *testing.T) {

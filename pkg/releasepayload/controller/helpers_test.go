@@ -2,12 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"testing"
 )
 
 func TestGetNamespaceAndName(t *testing.T) {
