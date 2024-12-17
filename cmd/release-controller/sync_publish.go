@@ -42,7 +42,7 @@ func (c *Controller) ensureTagPointsToRelease(release *releasecontroller.Release
 		toTag = &target.Spec.Tags[len(target.Spec.Tags)-1]
 	}
 	toTag.From = &corev1.ObjectReference{Kind: "ImageStreamTag", Name: from}
-	toTag.ImportPolicy = imagev1.TagImportPolicy{}
+	toTag.ImportPolicy = imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal}
 
 	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
 	if errors.IsNotFound(err) {
