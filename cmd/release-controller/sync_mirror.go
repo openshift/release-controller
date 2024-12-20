@@ -158,10 +158,8 @@ func calculateMirrorImageStream(release *releasecontroller.Release, is *imagev1.
 				Name: source,
 			}
 		}
-		ref.ImportPolicy = imagev1.TagImportPolicy{
-			ImportMode: imagev1.ImportModePreserveOriginal,
-			Scheduled:  false,
-		}
+		ref.ImportPolicy.Scheduled = false
+		ref.ImportPolicy.ImportMode = imagev1.ImportModePreserveOriginal
 		is.Spec.Tags = append(is.Spec.Tags, *ref)
 	}
 	return nil
