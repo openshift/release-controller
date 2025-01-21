@@ -20,7 +20,7 @@ var (
 	changeoverTimestamp = 202212000000
 
 	serviceScheme = "https"
-	serviceUrl    = "releases-rhcos-art.apps.ocp-virt.prod.psi.redhat.com"
+	serviceUrl    = "releases-rhcos--prod-pipeline.apps.int.prod-stable-spoke1-dc-iad2.itup.redhat.com"
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
