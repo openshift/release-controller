@@ -154,6 +154,7 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 			versionMap := map[string]string{
 				"92": "9.2",
 				"94": "9.4",
+				"96": "9.6",
 			}
 			if version, ok := versionMap[m[4]]; ok {
 				return fmt.Sprintf("prod/streams/%s.%s-%s", m[2], m[3], version), true
