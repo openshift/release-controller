@@ -31,7 +31,11 @@ var (
 	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
 	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 
-	reCoreOsVersion = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
+	// regex for RHCOS in < 4.19, where the version string was e.g. 418.94.202410090804-0
+	reOcpCoreOsVersion = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
+
+	// regex for RHCOS in >= 4.19, where the version string was e.g. 9.6.20250121-0
+	reRhelCoreOsVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)-(\d+)`)
 )
 
 func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
@@ -139,31 +143,37 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 }
 
 func getRHCoSReleaseStream(version, architectureExtension string) (string, bool) {
-	if m := reCoreOsVersion.FindStringSubmatch(version); m != nil {
-		ts, err := strconv.Atoi(m[5])
-		if err != nil {
-			return "", false
-		}
-		minor, err := strconv.Atoi(m[3])
-		if err != nil {
-			return "", false
-		}
-		switch {
-		case ts > changeoverTimestamp && minor >= 9:
-
-			// TODO: This should hopefully only be temporary...
-			versionMap := map[string]string{
-				"92": "9.2",
-				"94": "9.4",
-				"96": "9.6",
+	if strings.HasPrefix(version, "4") {
+		if m := reOcpCoreOsVersion.FindStringSubmatch(version); m != nil {
+			ts, err := strconv.Atoi(m[5])
+			if err != nil {
+				return "", false
 			}
-			if version, ok := versionMap[m[4]]; ok {
-				return fmt.Sprintf("prod/streams/%s.%s-%s", m[2], m[3], version), true
+			minor, err := strconv.Atoi(m[3])
+			if err != nil {
+				return "", false
 			}
+			switch {
+			case ts > changeoverTimestamp && minor >= 9:
 
-			return fmt.Sprintf("prod/streams/%s.%s", m[2], m[3]), true
-		default:
-			return fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension), true
+				// TODO: This should hopefully only be temporary...
+				versionMap := map[string]string{
+					"92": "9.2",
+					"94": "9.4",
+					"96": "9.6",
+				}
+				if version, ok := versionMap[m[4]]; ok {
+					return fmt.Sprintf("prod/streams/%s.%s-%s", m[2], m[3], version), true
+				}
+
+				return fmt.Sprintf("prod/streams/%s.%s", m[2], m[3]), true
+			default:
+				return fmt.Sprintf("releases/rhcos-%s.%s%s", m[2], m[3], architectureExtension), true
+			}
+		}
+	} else {
+		if m := reRhelCoreOsVersion.FindStringSubmatch(version); m != nil {
+			return fmt.Sprintf("prod/streams/rhel-%s.%s", m[1], m[2]), true
 		}
 	}
 	return "", false
