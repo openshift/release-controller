@@ -38,7 +38,7 @@ var (
 	reRhelCoreOsVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)-(\d+)`)
 )
 
-func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
+func TransformMarkDownOutput(markdown, fromPull, fromTag, toPull, toTag, architecture, architectureExtension string) (string, error) {
 	// replace references to the previous version with links
 	rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(fromTag)))
 	if err != nil {
@@ -58,9 +58,9 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
 	//       For now, this will have to do.
 	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
 	} else if m = reMdCentOSCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
 	}
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
 		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
@@ -179,7 +179,7 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 	return "", false
 }
 
-func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, input string, matches []string) string {
+func transformCoreOSUpgradeLinks(name, fromPull, toPull, architecture, architectureExtension, input string, matches []string) string {
 	var ok bool
 	var fromURL, toURL url.URL
 	var fromStream, toStream string
@@ -213,6 +213,22 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 			}).Encode(),
 		}
 	}
+
+	// if either from or to release is of the new style, add an infobox
+	alertInfo := ""
+	if !strings.HasPrefix(fromRelease, "4") || !strings.HasPrefix(toRelease, "4") {
+		alertInfo = fmt.Sprintf(`
+<div class="alert alert-info">
+	<p>The RHCOS diff above only contains RHEL packages (e.g. kernel, systemd, ignition, coreos-installer).
+	For a full diff which includes OCP packages (e.g. openshift-clients, openshift-kubelet), run the
+	following command:</p>
+
+<code style="white-space: pre-wrap">img_from=$(oc adm release info --image-for=rhel-coreos %s)
+img_to=$(oc adm release info --image-for=rhel-coreos %s)
+git diff --no-index <(podman run --rm $img_from rpm -qa | sort) <(podman run --rm $img_to rpm -qa | sort)</code>
+</div>`, fromPull, toPull)
+	}
+
 	diffURL := url.URL{
 		Scheme: serviceScheme,
 		Host:   serviceUrl,
@@ -226,7 +242,7 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 		}).Encode(),
 	}
 	replace := fmt.Sprintf(
-		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n",
+		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n"+alertInfo,
 		name,
 		fromRelease,
 		fromURL.String(),
