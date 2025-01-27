@@ -72,7 +72,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		ch <- renderResult{out: out}
 	}
 
-	out, err = rhcos.TransformMarkDownOutput(out, fromTag, toTag, architecture, archExtension)
+	out, err = rhcos.TransformMarkDownOutput(out, fromPull, fromTag, toPull, toTag, architecture, archExtension)
 	if err != nil {
 		ch <- renderResult{err: err}
 		return

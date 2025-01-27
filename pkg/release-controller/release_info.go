@@ -248,6 +248,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 			return "", fmt.Errorf("could not generate a changelog: %v", msg)
 		}
 	}
+	klog.V(4).Infof("Finished running changelog command: %s", cmd.String())
 	if isJson {
 		var changeLog ChangeLog
 		if err := json.Unmarshal(out.Bytes(), &changeLog); err != nil {
