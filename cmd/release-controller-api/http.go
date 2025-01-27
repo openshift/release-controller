@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"io/fs"
 	"math"
 	"net/http"
@@ -185,6 +186,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
+	mux.HandleFunc("/api/v1/releasestreams/approvals", c.apiReleaseApprovals)
 
 	mux.HandleFunc("/api/v1/features/{tag}", c.apiFeatureInfo)
 	mux.HandleFunc("/features/{tag}", c.httpFeatureInfo)
@@ -510,7 +512,7 @@ func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*re
 	r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, streamName, constraint, relativeIndex, releasePrefix)
 	if err != nil {
 		code := http.StatusInternalServerError
-		if err == releasecontroller.ErrStreamNotFound || err == releasecontroller.ErrStreamTagNotFound {
+		if errors.Is(err, releasecontroller.ErrStreamNotFound) || errors.Is(err, releasecontroller.ErrStreamTagNotFound) {
 			code = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), code)
@@ -599,7 +601,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 
 	r, err := c.locateStream(streamName)
 	if err != nil {
-		if err == releasecontroller.ErrStreamNotFound {
+		if errors.Is(err, releasecontroller.ErrStreamNotFound) {
 			http.Error(w, fmt.Sprintf("Unable to find release %s", streamName), http.StatusNotFound)
 		} else {
 			http.Error(w, fmt.Sprintf("Unable to find release %s: %v", streamName, err), http.StatusInternalServerError)
@@ -2421,4 +2423,108 @@ func loadStaticHTML(file string) string {
 		return ""
 	}
 	return string(readFile)
+}
+
+func (c *Controller) apiReleaseApprovals(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	var err error
+	var payloads []*v1alpha1.ReleasePayload
+
+	var team string
+	if inString := req.URL.Query().Get("team"); len(inString) > 0 {
+		team = inString
+	}
+	if len(team) > 0 {
+		payloads, err = releasecontroller.ApprovedReleasesByTeam(c.releasePayloadLister, team)
+		if err != nil {
+			code := http.StatusInternalServerError
+			http.Error(w, err.Error(), code)
+			return
+		}
+	} else {
+		payloads, err = releasecontroller.ApprovedReleases(c.releasePayloadLister)
+		if err != nil {
+			code := http.StatusInternalServerError
+			http.Error(w, err.Error(), code)
+			return
+		}
+	}
+
+	var releasePrefix string
+	if inString := req.URL.Query().Get("prefix"); len(inString) > 0 {
+		releasePrefix = inString
+	}
+
+	var results []*v1alpha1.ReleasePayload
+	for _, payload := range payloads {
+		if len(releasePrefix) > 0 && !strings.HasPrefix(payload.Name, releasePrefix) {
+			continue
+		}
+		results = append(results, payload)
+	}
+
+	var tags []releasecontroller.APITag
+	for _, payload := range results {
+		imageStream, err := c.releaseLister.ImageStreams(payload.Spec.PayloadCoordinates.Namespace).Get(payload.Spec.PayloadCoordinates.ImagestreamName)
+		if err != nil {
+			klog.Errorf("Unable to locate imagestream \"%s/%s\": %v", payload.Spec.PayloadCoordinates.Namespace, payload.Spec.PayloadCoordinates.ImagestreamName, err)
+			continue
+		}
+		downloadURL, _ := c.urlForArtifacts(payload.Name)
+		tag := releasecontroller.APITag{
+			Name:        payload.Name,
+			PullSpec:    releasecontroller.FindPublicImagePullSpec(imageStream, payload.Name),
+			DownloadURL: downloadURL,
+			Phase:       releasecontroller.GetReleasePhase(payload),
+		}
+		tags = append(tags, tag)
+	}
+
+	sort.Sort(releasecontroller.APITagsBySemVerName(tags))
+
+	index := -1
+	if indexString := req.URL.Query().Get("index"); len(indexString) > 0 {
+		i, err := strconv.Atoi(indexString)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error: ?index must be non-negative integer: %v", err), http.StatusBadRequest)
+			return
+		}
+		if i < 0 {
+			http.Error(w, "error: ?index must be non-negative integer", http.StatusBadRequest)
+			return
+		}
+		if i >= len(tags) {
+			http.Error(w, fmt.Sprintf("error: ?index value must be between 0-%d", len(tags)-1), http.StatusBadRequest)
+			return
+		}
+		index = i
+	}
+
+	var data []byte
+
+	if len(tags) > 0 && (index >= 0 && index < len(tags)) {
+		data, err = json.MarshalIndent(&tags[index], "", " ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		data, err = json.MarshalIndent(&tags, "", " ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if len(data) == 0 || string(data) == "null" {
+		data = []byte("[]")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	fmt.Fprintln(w)
 }
