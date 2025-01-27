@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/labels"
 	"net/url"
 	"sort"
 	"strings"
@@ -252,6 +253,28 @@ func (c *Controller) GetReleasePayload(name string) *v1alpha1.ReleasePayload {
 		return nil
 	}
 	return payload
+}
+
+func (c *Controller) GetReleasePayloads() []*v1alpha1.ReleasePayload {
+	payloads, err := c.releasePayloadLister.ReleasePayloads(c.releasePayloadNamespace).List(labels.Everything())
+	if err != nil {
+		klog.Warningf("Unable to fetch releasepayloads: %v", err)
+		return nil
+	}
+	return payloads
+}
+
+func (c *Controller) GetAcceptedReleasePayloads() []*v1alpha1.ReleasePayload {
+	payloads := c.GetReleasePayloads()
+	var results []*v1alpha1.ReleasePayload
+	for _, payload := range payloads {
+		for _, condition := range payload.Status.Conditions {
+			if condition.Type == v1alpha1.ConditionPayloadAccepted && condition.Status == metav1.ConditionTrue {
+				results = append(results, payload)
+			}
+		}
+	}
+	return results
 }
 
 func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.Release) string {
