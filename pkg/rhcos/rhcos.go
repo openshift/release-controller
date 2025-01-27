@@ -17,6 +17,7 @@ const (
 )
 
 var (
+	// when CoreOS switched to a new bucket prefix
 	changeoverTimestamp = 202212000000
 
 	serviceScheme = "https"
