@@ -659,7 +659,7 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
                         logger.info(f'Marking releasepayload/{release} as Rejected by {team}')
                         payload.label(labels={f'release.openshift.io/{team}_state': 'Rejected'})
                     if delete:
-                        logger.info(f'[dry-run] Removing approval by {team} from releasepayload/{release}')
+                        logger.info(f'Removing approval by {team} from releasepayload/{release}')
                         payload.label(labels={f'release.openshift.io/{team}_state': None})
                 else:
                     if accept:
@@ -675,7 +675,6 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
                         logger.info(f'No approval state from {team} found for releasepayload/{release}')
                     else:
                         logger.info(f'releasepayload/{release} marked as {state} by {team}')
-
 
         except (ValueError, OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
