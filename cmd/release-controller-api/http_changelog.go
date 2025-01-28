@@ -23,7 +23,7 @@ type renderResult struct {
 	err error
 }
 
-func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
+func (c *Controller) getChangeLog(ch chan renderResult, chRpmDiff chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
 	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
@@ -78,6 +78,18 @@ func (c *Controller) getChangeLog(ch chan renderResult, fromPull string, fromTag
 		return
 	}
 	ch <- renderResult{out: out}
+
+	// We returned a result already, so we're no longer blocking rendering. So now also fetch the CoreOS RPM diff if requested.
+	if chRpmDiff == nil {
+		return
+	}
+
+	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec())
+	if err != nil {
+		chRpmDiff <- renderResult{err: err}
+	}
+
+	chRpmDiff <- renderResult{out: rhcos.RenderRpmDiff(rpmdiff)}
 }
 
 func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {
@@ -89,9 +101,10 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	flusher.Flush()
 
 	ch := make(chan renderResult)
+	chRpmDiff := make(chan renderResult)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(ch, fromPull, fromTag, toPull, toTag, format)
+	go c.getChangeLog(ch, chRpmDiff, fromPull, fromTag, toPull, toTag, format)
 
 	var render renderResult
 	select {
@@ -140,5 +153,19 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	} else {
 		// if we don't get a valid result within limits, just show the simpler informational view
 		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
+	}
+
+	fmt.Fprintf(w, "<h3 id=\"coreos-package-diff\">CoreOS Package Diff</h3>")
+
+	// only render the RPM diff if it's cached; judged by it taking less than 500ms
+	select {
+	case <-time.After(500 * time.Millisecond):
+		fmt.Fprintf(w, `<p class="alert alert-danger">Package diff still loading; check again later...</p>`)
+	case render = <-chRpmDiff:
+		if render.err != nil {
+			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show package diff: %s", render.err))
+		} else {
+			fmt.Fprintf(w, render.out)
+		}
 	}
 }
