@@ -644,6 +644,7 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
 
 
 def approval(ctx, namespace, imagestream, release, team, accept, reject, delete, check, execute):
+    team_label = team.lower()
     with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
             with oc.project(namespace):
@@ -654,13 +655,13 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
                 if execute:
                     if accept:
                         logger.info(f'Marking releasepayload/{release} as Accepted by {team}')
-                        payload.label(labels={f'release.openshift.io/{team}_state': 'Accepted'})
+                        payload.label(labels={f'release.openshift.io/{team_label}_state': 'Accepted'})
                     if reject:
                         logger.info(f'Marking releasepayload/{release} as Rejected by {team}')
-                        payload.label(labels={f'release.openshift.io/{team}_state': 'Rejected'})
+                        payload.label(labels={f'release.openshift.io/{team_label}_state': 'Rejected'})
                     if delete:
                         logger.info(f'Removing approval by {team} from releasepayload/{release}')
-                        payload.label(labels={f'release.openshift.io/{team}_state': None})
+                        payload.label(labels={f'release.openshift.io/{team_label}_state': None})
                 else:
                     if accept:
                         logger.info(f'[dry-run] Marking releasepayload/{release} as Accepted by {team}')
@@ -670,7 +671,7 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
                         logger.info(f'[dry-run] Removing approval by {team} from releasepayload/{release}')
                 if check:
                     logger.info(f'Getting {team} label for releasepayload/{release}')
-                    state = payload.get_label(f'release.openshift.io/{team}_state')
+                    state = payload.get_label(f'release.openshift.io/{team_label}_state')
                     if state is None:
                         logger.info(f'No approval state from {team} found for releasepayload/{release}')
                     else:
