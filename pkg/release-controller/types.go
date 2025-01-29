@@ -741,3 +741,26 @@ type CommitInfo struct {
 	CommitID  string            `json:"commitID,omitempty"`
 	CommitURL string            `json:"commitURL,omitempty"`
 }
+
+type APITagsBySemVerName []APITag
+
+func (t APITagsBySemVerName) Less(i, j int) bool {
+	iVer, err := SemverParseTolerant(t[i].Name)
+	if err != nil {
+		return t[i].Name > t[j].Name
+	}
+	jVer, err := SemverParseTolerant(t[j].Name)
+	if err != nil {
+		return t[i].Name > t[j].Name
+	}
+	if iVer.GT(jVer) {
+		return true
+	}
+	if iVer.LT(jVer) {
+		return false
+	}
+	return t[i].Name > t[j].Name
+}
+
+func (t APITagsBySemVerName) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+func (t APITagsBySemVerName) Len() int      { return len(t) }
