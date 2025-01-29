@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -214,41 +215,34 @@ func transformCoreOSUpgradeLinks(name, fromPull, toPull, architecture, architect
 		}
 	}
 
-	// if either from or to release is of the new style, add an infobox
-	alertInfo := ""
+	// if either from or to release is of the new style, link to the package diff
+	// since the release browser diff isn't going to be accurate anyway
+	var diffURL string
 	if !strings.HasPrefix(fromRelease, "4") || !strings.HasPrefix(toRelease, "4") {
-		alertInfo = fmt.Sprintf(`
-<div class="alert alert-info">
-	<p>The RHCOS diff above only contains RHEL packages (e.g. kernel, systemd, ignition, coreos-installer).
-	For a full diff which includes OCP packages (e.g. openshift-clients, openshift-kubelet), run the
-	following command:</p>
-
-<code style="white-space: pre-wrap">img_from=$(oc adm release info --image-for=rhel-coreos %s)
-img_to=$(oc adm release info --image-for=rhel-coreos %s)
-git diff --no-index <(podman run --rm $img_from rpm -qa | sort) <(podman run --rm $img_to rpm -qa | sort)</code>
-</div>`, fromPull, toPull)
+		diffURL = "#coreos-package-diff"
+	} else {
+		diffURL = (&url.URL{
+			Scheme: serviceScheme,
+			Host:   serviceUrl,
+			Path:   "/diff.html",
+			RawQuery: (url.Values{
+				"first_stream":   []string{fromStream},
+				"first_release":  []string{fromRelease},
+				"second_stream":  []string{toStream},
+				"second_release": []string{toRelease},
+				"arch":           []string{architecture},
+			}).Encode(),
+		}).String()
 	}
 
-	diffURL := url.URL{
-		Scheme: serviceScheme,
-		Host:   serviceUrl,
-		Path:   "/diff.html",
-		RawQuery: (url.Values{
-			"first_stream":   []string{fromStream},
-			"first_release":  []string{fromRelease},
-			"second_stream":  []string{toStream},
-			"second_release": []string{toRelease},
-			"arch":           []string{architecture},
-		}).Encode(),
-	}
 	replace := fmt.Sprintf(
-		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n"+alertInfo,
+		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`,
 		name,
 		fromRelease,
 		fromURL.String(),
 		toRelease,
 		toURL.String(),
-		diffURL.String(),
+		diffURL,
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
 }
@@ -279,4 +273,45 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 		fromURL.String(),
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
+}
+
+func RenderRpmDiff(rpmDiff releasecontroller.RpmDiff) string {
+	output := new(strings.Builder)
+
+	writeList := func(header string, elements []string) {
+		fmt.Fprintf(output, "<h4>%s:</h4>\n<ul>", header)
+		sort.Strings(elements)
+		for _, elem := range elements {
+			fmt.Fprintf(output, "<li>%s</li>\n", elem)
+		}
+		fmt.Fprintf(output, "</ul>\n")
+	}
+
+	if len(rpmDiff.Changed) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Changed {
+			elements = append(elements, fmt.Sprintf("%s %s → %s", pkg, v.Old, v.New))
+		}
+		writeList("Changed", elements)
+	}
+	if len(rpmDiff.Removed) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Removed {
+			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
+		}
+		writeList("Removed", elements)
+	}
+	if len(rpmDiff.Added) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Added {
+			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
+		}
+		writeList("Added", elements)
+	}
+
+	if output.Len() == 0 {
+		return "No package diff"
+	}
+
+	return output.String()
 }
