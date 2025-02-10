@@ -1,6 +1,6 @@
 module github.com/openshift/release-controller
 
-go 1.22.4
+go 1.23.2
 
 replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible

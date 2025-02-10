@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/4.16:tools
+FROM registry.ci.openshift.org/ocp/4.19:tools
 LABEL maintainer="apavel@redhat.com"
 
 RUN yum install -y graphviz
