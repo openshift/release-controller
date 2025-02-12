@@ -639,17 +639,9 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	if r.jiraClient == nil {
 		return result, fmt.Errorf("unable to communicate with Jira")
 	}
-	// Keep the chunk on the small side, it is much faster
-	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
-	chunk := len(issues) / 10
 
-	// Jira can't handle more than 500 IDs at once
-	if chunk > maxChunkSize {
-		chunk = maxChunkSize
-	}
-	if chunk < 50 {
-		chunk = 50
-	}
+	chunk := maxChunkSize
+
 	// Divide issues into chunks
 	dividedIssues := divideSlice(issues, chunk)
 
@@ -658,9 +650,16 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	var mu sync.Mutex
 	var buf bytes.Buffer
 	var invalidIDs []string
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for _, parts := range dividedIssues {
 		wg.Add(1)
 		jql := fmt.Sprintf("id IN (%s)", strings.Join(parts, ","))
+
+		<-ticker.C
+
 		go func(jql string) {
 			defer wg.Done()
 			issues, _, err := r.jiraClient.SearchWithContext(
