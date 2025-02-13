@@ -30,7 +30,7 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		manifestListMode := "false"
-		if c.manifestListMode {
+		if c.manifestListMode && !release.Config.DisableManifestListMode {
 			manifestListMode = "true"
 		}
 
@@ -69,7 +69,7 @@ func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name s
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		manifestListMode := "false"
-		if c.manifestListMode {
+		if c.manifestListMode && !release.Config.DisableManifestListMode {
 			manifestListMode = "true"
 		}
 
@@ -143,7 +143,7 @@ func (c *Controller) ensureImportJob(release *releasecontroller.Release, name st
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		manifestListMode := "false"
-		if c.manifestListMode {
+		if c.manifestListMode && !release.Config.DisableManifestListMode {
 			manifestListMode = "true"
 		}
 
@@ -387,7 +387,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		manifestListMode := "false"
-		if c.manifestListMode {
+		if c.manifestListMode && !release.Config.DisableManifestListMode {
 			manifestListMode = "true"
 		}
 

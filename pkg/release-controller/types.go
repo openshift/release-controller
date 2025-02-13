@@ -153,6 +153,12 @@ type ReleaseConfig struct {
 	// For example:
 	//   "alternateImageRepository": "quay.io/openshift-release-dev/dev-release"
 	AlternateImageRepository string `json:"alternateImageRepository"`
+
+	// DisableManifestListMode indicates this release stream should not utilize the --keep-manifest-list for release
+	// creation.  This flag should NOT be used unless absolutely necessary...
+	// Currently, it's being added to work around a limitation with `oc` and images from konflux:
+	// https://issues.redhat.com/browse/OCPBUGS-50660
+	DisableManifestListMode bool `json:"disableManifestListMode"`
 }
 
 type ReleaseCheck struct {
