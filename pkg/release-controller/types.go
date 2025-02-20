@@ -570,6 +570,9 @@ const (
 	// ProwJobResultsURLPrefix the URL prefix for ProwJob Results
 	ProwJobResultsURLPrefix = "https://prow.ci.openshift.org/view/gs/test-platform-results/logs"
 
+	// ProwJobLabelCapability adds a label to determine cluster for dispatcher/scheduler
+	ProwJobLabelCapability = "capability/rce"
+
 	// ReleaseStreamAnnotationMode specifies the mode that the stream is currently operating in
 	ReleaseStreamAnnotationMode = "release.openshift.io/mode"
 	// ReleaseStreamModeLocked specifies that the stream is currently locked

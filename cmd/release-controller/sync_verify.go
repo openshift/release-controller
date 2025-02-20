@@ -85,8 +85,9 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				jobNameSuffix = fmt.Sprintf("%d", jobRetries)
 			}
 			jobLabels := map[string]string{
-				releasecontroller.ReleaseLabelVerify:  "true",
-				releasecontroller.ReleaseLabelPayload: releaseTag.Name,
+				releasecontroller.ProwJobLabelCapability: "rce",
+				releasecontroller.ReleaseLabelVerify:     "true",
+				releasecontroller.ReleaseLabelPayload:    releaseTag.Name,
 			}
 			if verifyType.AggregatedProwJob != nil {
 				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
