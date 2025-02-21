@@ -38,7 +38,7 @@ var (
 	reRhelCoreOsVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)-(\d+)`)
 )
 
-func TransformMarkDownOutput(markdown, fromPull, fromTag, toPull, toTag, architecture, architectureExtension string) (string, error) {
+func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
 	// replace references to the previous version with links
 	rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(fromTag)))
 	if err != nil {
@@ -58,9 +58,9 @@ func TransformMarkDownOutput(markdown, fromPull, fromTag, toPull, toTag, archite
 	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
 	//       For now, this will have to do.
 	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
 	} else if m = reMdCentOSCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
 	}
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
 		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
@@ -179,7 +179,7 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 	return "", false
 }
 
-func transformCoreOSUpgradeLinks(name, fromPull, toPull, architecture, architectureExtension, input string, matches []string) string {
+func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, input string, matches []string) string {
 	var ok bool
 	var fromURL, toURL url.URL
 	var fromStream, toStream string
