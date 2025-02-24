@@ -68,8 +68,9 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 		previousReleasePullSpec := generatePullSpec(previousTag, c.architecture)
 		klog.V(4).Infof("Testing upgrade from %q to %q on %q", previousReleasePullSpec, pullSpec, platform)
 		jobLabels := map[string]string{
-			releasecontroller.ReleaseLabelVerify:  "true",
-			releasecontroller.ReleaseLabelPayload: releaseTag.Name,
+			releasecontroller.ProwJobLabelCapability: "rce",
+			releasecontroller.ReleaseLabelVerify:     "true",
+			releasecontroller.ReleaseLabelPayload:    releaseTag.Name,
 		}
 		verifyType := releasecontroller.ReleaseVerification{
 			Upgrade: true,
