@@ -1010,7 +1010,7 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	if from == "" {
 		from = "the last version"
 	}
-
+	klog.V(4).Infof("running feature anaysis: Tag %s from %s at %s\n:", tagInfo.Tag, from, time.Now())
 	featureTrees, err := c.releaseFeatureInfo(tagInfo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1134,6 +1134,7 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	klog.V(4).Infof("finished running feature anaysis: Tag %s from %s at %s\n:", tagInfo.Tag, from, time.Now())
 }
 
 func includeKey(key string) bool {
