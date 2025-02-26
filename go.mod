@@ -42,6 +42,7 @@ require (
 	github.com/openshift/ci-tools v0.0.0-20240710031808-de122ac79fa9
 	github.com/openshift/client-go v3.9.0+incompatible
 	github.com/openshift/library-go v0.0.0-20231017173800-126f85ed0cc7
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.19.1
 	github.com/russross/blackfriday v2.0.0+incompatible
 	github.com/spf13/cobra v1.8.0

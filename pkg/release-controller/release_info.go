@@ -17,6 +17,7 @@ import (
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/golang/groupcache"
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
+	"github.com/patrickmn/go-cache"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -42,7 +43,7 @@ const (
 	JiraTypeMarketProblem            = "Market Problem"
 )
 
-const maxChunkSize = 500
+const maxChunkSize = 450 // this seems to be the maximum Jira can handle, currently
 
 type CachingReleaseInfo struct {
 	cache *groupcache.Group
@@ -170,6 +171,7 @@ type ExecReleaseInfo struct {
 	name        string
 	imageNameFn func() (string, error)
 	jiraClient  jira.Client
+	jiraCache   *cache.Cache
 }
 
 // NewExecReleaseInfo creates a stateful set, in the specified namespace, that provides git changelogs to the
@@ -183,6 +185,7 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 		name:        name,
 		imageNameFn: imageNameFn,
 		jiraClient:  jiraClient,
+		jiraCache:   cache.New(24*time.Hour, 1*time.Hour),
 	}
 }
 
@@ -401,7 +404,7 @@ func (r *ExecReleaseInfo) IssuesInfo(changelog string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	issuesWithRemoteLinkDetails, err := r.GetRemoteLinksWithConcurrency(issuesWithDemoLinkList)
+	issuesWithRemoteLinkDetails, err := r.GetRemoteLinksWithConcurrency(issuesWithDemoLinkList, 1*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -600,10 +603,16 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 	if r.jiraClient == nil {
 		return "", fmt.Errorf("unable to communicate with Jira")
 	}
-	// loop to start goroutines
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for _, feature := range featuresList {
 		wg.Add(1)
 		limit <- struct{}{}
+
+		<-ticker.C
+
 		go func(id string) {
 			defer func() { <-limit }()
 			defer wg.Done()
@@ -634,6 +643,35 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 	return string(a), err
 }
 
+func (r *ExecReleaseInfo) divideSlice(issues []string, chunk int, skipCache bool) ([][]string, []jiraBaseClient.Issue) {
+
+	var result []jiraBaseClient.Issue
+	uncashedIssues := make([]string, 0)
+
+	if !skipCache {
+		for _, issue := range issues {
+			cashedIssue, found := r.jiraCache.Get(issue)
+			if found {
+				result = append(result, cashedIssue.(jiraBaseClient.Issue))
+			} else {
+				uncashedIssues = append(uncashedIssues, issue)
+			}
+		}
+	} else {
+		uncashedIssues = issues
+	}
+
+	var divided [][]string
+	for index := 0; index < len(uncashedIssues); index += chunk {
+		end := index + chunk
+		if end > len(issues) {
+			end = len(issues)
+		}
+		divided = append(divided, issues[index:end])
+	}
+	return divided, result
+}
+
 func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBaseClient.Issue, err error) {
 	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
 	if r.jiraClient == nil {
@@ -643,7 +681,8 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	chunk := maxChunkSize
 
 	// Divide issues into chunks
-	dividedIssues := divideSlice(issues, chunk)
+	dividedIssues, cashedIssues := r.divideSlice(issues, chunk, false)
+	result = append(result, cashedIssues...)
 
 	// Search for issues in parallel
 	var wg sync.WaitGroup
@@ -723,6 +762,9 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 			}
 			mu.Lock()
 			defer mu.Unlock()
+			for _, issue := range issues {
+				r.jiraCache.Set(issue.Key, issue, cache.DefaultExpiration)
+			}
 			result = append(result, issues...)
 		}(jql)
 	}
@@ -741,27 +783,24 @@ func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraB
 	if r.jiraClient == nil {
 		return result, fmt.Errorf("unable to communicate with Jira")
 	}
-	// Keep the chunk on the small side, it is much faster
-	// There is a limit for API calls per second in Akamai for Jira, don't chunk too much
-	chunk := len(issues) / 10
 
-	// Jira can't handle more than 500 IDs at once
-	if chunk > maxChunkSize {
-		chunk = maxChunkSize
-	}
-	if chunk < 50 {
-		chunk = 50
-	}
-	// Divide issues into chunks
-	dividedIssues := divideSlice(issues, chunk)
+	chunk := maxChunkSize
 
-	// Search for issues in parallel
+	dividedIssues, _ := r.divideSlice(issues, chunk, true)
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var buf bytes.Buffer
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for _, parts := range dividedIssues {
 		wg.Add(1)
 		jql := fmt.Sprintf("issueFunction in linkedIssuesOfremote(\"demo\") AND id IN (%s)", strings.Join(parts, ","))
+
+		<-ticker.C
+
 		go func(jql string) {
 			defer wg.Done()
 			issues, _, err := r.jiraClient.SearchWithContext(
@@ -793,73 +832,77 @@ func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraB
 	return result, err
 }
 
-func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string) (result map[string][]string, err error) {
-	// This will prevent a Panic if/when the release-controller's are run without the necessary jira flags
+func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string, requestInterval time.Duration) (map[string][]string, error) {
+	// Prevent Panic if Jira client is not set
 	if r.jiraClient == nil {
-		return result, fmt.Errorf("unable to communicate with Jira")
+		return nil, fmt.Errorf("unable to communicate with Jira")
 	}
 
 	var (
 		mapIssueDemoLink = make(map[string][]string)
 		wg               sync.WaitGroup
 		mu               sync.Mutex
-		maxWorkers       = 10
-		workers          = make(chan struct{}, maxWorkers)
-		buf              bytes.Buffer
+		workers          = make(chan struct{}, 5) // it does not make sense to have more workers since the API rate is limited
+		ticker           = time.NewTicker(requestInterval)
+		errorBuilder     strings.Builder
+		demoRegex        = regexp.MustCompile(`\bdemo\b`) // Precompile regex
 	)
+
+	defer ticker.Stop()
 
 	worker := func(issue string) {
 		defer wg.Done()
-		defer func() { <-workers }()
+		<-ticker.C // Wait for API call slot
 
-		links, err := r.jiraClient.GetRemoteLinks(issue)
-		if err != nil {
-			mu.Lock()
-			err = fmt.Errorf("search failed: %w", err)
-			buf.WriteString(err.Error() + "\n")
-			mu.Unlock()
-			return
+		var links []jiraBaseClient.RemoteLink
+		issueRemoteLinkKey := fmt.Sprintf("%s_remote_link", issue)
+
+		if cachedLinks, found := r.jiraCache.Get(issueRemoteLinkKey); found {
+			links = cachedLinks.([]jiraBaseClient.RemoteLink)
+		} else {
+			var err error
+			links, err = r.jiraClient.GetRemoteLinks(issue)
+			if err != nil {
+				mu.Lock()
+				errorBuilder.WriteString(fmt.Sprintf("search failed for issue %s: %v\n", issue, err))
+				mu.Unlock()
+				return
+			}
+			r.jiraCache.Set(issueRemoteLinkKey, links, cache.DefaultExpiration)
 		}
 
-		mu.Lock()
-		var linkUrl []string
-		demoRegex := regexp.MustCompile(`\bdemo\b`)
+		// Process links
+		var linkUrls []string
 		for _, link := range links {
-			if matched := demoRegex.MatchString(strings.ToLower(link.Object.Title)); matched {
-				linkUrl = append(linkUrl, link.Object.URL)
+			if demoRegex.MatchString(strings.ToLower(link.Object.Title)) {
+				linkUrls = append(linkUrls, link.Object.URL)
 			}
 		}
-		mapIssueDemoLink[issue] = linkUrl
+
+		// Store results
+		mu.Lock()
+		mapIssueDemoLink[issue] = linkUrls
 		mu.Unlock()
 	}
 
 	for _, issue := range issues {
 		wg.Add(1)
-		workers <- struct{}{}
-		go worker(issue)
+		workers <- struct{}{} // Acquire worker slot
+
+		go func(issue string) {
+			<-workers // Release worker slot immediately
+			worker(issue)
+		}(issue)
 	}
 
 	wg.Wait()
-
 	close(workers)
 
-	if buf.Len() > 0 {
-		err = stdErrors.New(buf.String())
+	if errorBuilder.Len() > 0 {
+		return mapIssueDemoLink, stdErrors.New(errorBuilder.String())
 	}
 
-	return mapIssueDemoLink, err
-}
-
-func divideSlice(issues []string, chunk int) [][]string {
-	var divided [][]string
-	for index := 0; index < len(issues); index += chunk {
-		end := index + chunk
-		if end > len(issues) {
-			end = len(issues)
-		}
-		divided = append(divided, issues[index:end])
-	}
-	return divided
+	return mapIssueDemoLink, nil
 }
 
 func extractIssuesFromChangeLog(changelog ChangeLog, bugSource string) map[string][]string {
