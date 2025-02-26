@@ -750,7 +750,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 					CIConfigurationName: "alpha.aws-sdn-upgrade-4.10-micro",
 				},
 			},
-			wantErr:     false,
+			wantErr: false,
 		},
 		{
 			name:        "InvalidSemanticVersion",
@@ -1429,20 +1429,20 @@ func Test_parse(t *testing.T) {
 			name: "UpgradeFrom",
 			line: "upgrade-from-4.11.13-aws",
 			want: map[string]string{
-				"upgrade_from":     "4.11.13",
-				"job": "aws",
-				"count":            "",
-				"prerelease":       "",
+				"upgrade_from": "4.11.13",
+				"job":          "aws",
+				"count":        "",
+				"prerelease":   "",
 			},
 		},
 		{
 			name: "UpgradeFromWithRetries",
 			line: "upgrade-from-4.11.13-gcp-1",
 			want: map[string]string{
-				"upgrade_from":     "4.11.13",
-				"job": "gcp",
-				"count":            "1",
-				"prerelease":       "",
+				"upgrade_from": "4.11.13",
+				"job":          "gcp",
+				"count":        "1",
+				"prerelease":   "",
 			},
 		},
 		{

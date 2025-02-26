@@ -11,13 +11,11 @@ import (
 	"strings"
 	"time"
 
+	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
+	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	"github.com/openshift/release-controller/pkg/jira"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-
-	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
-
-	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
-	"github.com/openshift/release-controller/pkg/jira"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
@@ -112,6 +110,8 @@ type options struct {
 
 	ProcessLegacyResults bool
 	ManifestListMode     bool
+
+	ReleaseQualifiersConfigPath string
 }
 
 // Add metrics for jira verifier errors
@@ -221,6 +221,8 @@ func main() {
 	flagset.BoolVar(&opt.ProcessLegacyResults, "process-legacy-results", opt.ProcessLegacyResults, "enable the migration of imagestream based results to ReleasePayloads")
 	flagset.BoolVar(&opt.ManifestListMode, "manifest-list-mode", opt.ManifestListMode, "enable manifest list support for oc operations")
 
+	flagset.StringVar(&opt.ReleaseQualifiersConfigPath, "release-qualifiers-config-path", "", "Path to release qualifiers config file")
+
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.github.AddFlags(goFlagSet)
 	opt.jira.AddFlags(goFlagSet)
@@ -241,7 +243,7 @@ func (o *options) Run() error {
 	// report liveness on default prow health port 8081
 	health := pjutil.NewHealthOnPort(flagutil.DefaultHealthPort)
 	if o.validateConfigs != "" {
-		return validateConfigs(o.validateConfigs)
+		return validateConfigs(o)
 	}
 	tagParts := strings.Split(o.ToolsImageStreamTag, ":")
 	if len(tagParts) != 2 || len(tagParts[1]) == 0 {
