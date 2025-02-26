@@ -763,7 +763,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 			mu.Lock()
 			defer mu.Unlock()
 			for _, issue := range issues {
-				r.jiraCache.Set(issue.Key, issue, 0)
+				r.jiraCache.Set(issue.Key, issue, cache.DefaultExpiration)
 			}
 			result = append(result, issues...)
 		}(jql)
@@ -855,7 +855,9 @@ func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string, request
 		<-ticker.C // Wait for API call slot
 
 		var links []jiraBaseClient.RemoteLink
-		if cachedLinks, found := r.jiraCache.Get(fmt.Sprintf("%s_remote_link", issue)); found {
+		issueRemoteLinkKey := fmt.Sprintf("%s_remote_link", issue)
+
+		if cachedLinks, found := r.jiraCache.Get(issueRemoteLinkKey); found {
 			links = cachedLinks.([]jiraBaseClient.RemoteLink)
 		} else {
 			var err error
@@ -866,7 +868,7 @@ func (r *ExecReleaseInfo) GetRemoteLinksWithConcurrency(issues []string, request
 				mu.Unlock()
 				return
 			}
-			r.jiraCache.Set(fmt.Sprintf("%s_remote_link", issue), links, 0)
+			r.jiraCache.Set(issueRemoteLinkKey, links, cache.DefaultExpiration)
 		}
 
 		// Process links
