@@ -54,3 +54,4 @@ func (rq ReleaseQualifier) PrettyPrint() (string, error) {
 	}
 	return string(jsonData), nil
 }
+
