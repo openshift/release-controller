@@ -252,6 +252,15 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
 			}
 		}
+
+		if strings.Contains(spec.Job, "openshift-tests-private") && isUpgrade {
+			// configure prow job env var for QE upgrade job
+			// set RELEASE_IMAGE_PPC64LE_LATEST with source image
+			// set RELEASE_IMAGE_PPC64LE_TARGET with target image
+			latestReleasePullSpec := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, releaseTag.Name)
+			setReleaseEnvVars(c, architecture, "latest", previousReleasePullSpec)
+			setReleaseEnvVars(c, architecture, "target", latestReleasePullSpec)
+		}
 	}
 	return true, nil
 }
@@ -273,4 +282,17 @@ func validateProwJob(pj *prowconfig.Periodic) error {
 		return fmt.Errorf("the jobs cluster must be set to a value that is not %s, was %q", prowjobv1.DefaultClusterAlias, pj.Cluster)
 	}
 	return nil
+}
+
+// setReleaseEnvVars sets the environment variables for the release image based on the architecture and suffix.
+func setReleaseEnvVars(c *corev1.Container, architecture, envVarSuffix, pullSpec string) {
+	archList := "arm64,s390x,ppc64le,multi"
+	name := ""
+	if strings.Contains(archList, architecture) {
+		name = fmt.Sprintf("RELEASE_IMAGE_%s_%s", strings.ToUpper(architecture), strings.ToUpper(envVarSuffix))
+	} else {
+		name = fmt.Sprintf("RELEASE_IMAGE_%s", strings.ToUpper(envVarSuffix))
+	}
+
+	c.Env = append(c.Env, corev1.EnvVar{Name: name, Value: pullSpec})
 }
