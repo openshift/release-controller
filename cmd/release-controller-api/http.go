@@ -1010,131 +1010,164 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 	if from == "" {
 		from = "the last version"
 	}
-	klog.V(4).Infof("running feature anaysis: Tag %s from %s at %s\n:", tagInfo.Tag, from, time.Now())
-	featureTrees, err := c.releaseFeatureInfo(tagInfo)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	klog.V(4).Infof("running feature anaysis: Tag %s from %s at %s\n", tagInfo.Tag, from, time.Now())
 
-	var (
-		buf                           bytes.Buffer
-		completedFeatures             []*FeatureTree
-		unCompletedFeatures           []*FeatureTree
-		completedEpicWithoutFeature   []*FeatureTree
-		unCompletedEpicWithoutFeature []*FeatureTree
-		completedNoEpicNoFeature      []*FeatureTree
-		unCompletedNoEpicNoFeature    []*FeatureTree
-	)
+	// Channels to receive the rendered HTML or an error.
+	resultChan := make(chan []byte, 1)
+	errChan := make(chan error, 1)
 
-	for _, feature := range featureTrees {
-		if !unlinkedIssuesSections.Has(feature.NotLinkedType) {
-			if feature.IncludedInBuild {
-				completedFeatures = append(completedFeatures, feature)
-			} else {
-				unCompletedFeatures = append(unCompletedFeatures, feature)
+	go func() {
+		var buf bytes.Buffer
+
+		featureTrees, err := c.releaseFeatureInfo(tagInfo)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		var (
+			completedFeatures             []*FeatureTree
+			unCompletedFeatures           []*FeatureTree
+			completedEpicWithoutFeature   []*FeatureTree
+			unCompletedEpicWithoutFeature []*FeatureTree
+			completedNoEpicNoFeature      []*FeatureTree
+			unCompletedNoEpicNoFeature    []*FeatureTree
+		)
+
+		for _, feature := range featureTrees {
+			if !unlinkedIssuesSections.Has(feature.NotLinkedType) {
+				if feature.IncludedInBuild {
+					completedFeatures = append(completedFeatures, feature)
+				} else {
+					unCompletedFeatures = append(unCompletedFeatures, feature)
+				}
+			}
+			if feature.NotLinkedType == sectionTypeNoFeatureWithEpic {
+				if feature.IncludedInBuild {
+					completedEpicWithoutFeature = append(completedEpicWithoutFeature, feature)
+				} else {
+					unCompletedEpicWithoutFeature = append(unCompletedEpicWithoutFeature, feature)
+				}
+			}
+			if feature.NotLinkedType == sectionTypeNoEpicNoFeature {
+				if feature.IncludedInBuild {
+					completedNoEpicNoFeature = append(completedNoEpicNoFeature, feature)
+				} else {
+					unCompletedNoEpicNoFeature = append(unCompletedNoEpicNoFeature, feature)
+				}
 			}
 		}
-		if feature.NotLinkedType == sectionTypeNoFeatureWithEpic {
-			if feature.IncludedInBuild {
-				completedEpicWithoutFeature = append(completedEpicWithoutFeature, feature)
-			} else {
-				unCompletedEpicWithoutFeature = append(unCompletedEpicWithoutFeature, feature)
+
+		for _, s := range [][]*FeatureTree{
+			completedFeatures,
+			unCompletedFeatures,
+			completedEpicWithoutFeature,
+			unCompletedEpicWithoutFeature,
+		} {
+			sortByTitle(s)
+			// sortByPRs(s, 1000)
+		}
+
+		var sections []SectionInfo
+
+		completed := Sections{
+			Tickets: completedFeatures,
+			Title:   "Lists of features that were completed when this image was built",
+			Header:  "Complete Features",
+			Note:    "These features were completed when this image was assembled",
+		}
+		unCompleted := Sections{
+			Tickets: unCompletedFeatures,
+			Title:   "Lists of features that were not completed when this image was built",
+			Header:  "Incomplete Features",
+			Note:    "When this image was assembled, these features were not yet completed. Therefore, only the Jira Cards included here are part of this release",
+		}
+		completedEpicWithoutFeatureSection := Sections{
+			Tickets: completedEpicWithoutFeature,
+			Title:   "",
+			Header:  "Complete Epics",
+			Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were completed when this image was assembled",
+		}
+		unCompletedEpicWithoutFeatureSection := Sections{
+			Tickets: unCompletedEpicWithoutFeature,
+			Title:   "",
+			Header:  "Incomplete Epics",
+			Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were not completed when this image was assembled",
+		}
+		completedNoEpicNoFeatureSection := Sections{
+			Tickets: completedNoEpicNoFeature,
+			Title:   "",
+			Header:  "Other Complete",
+			Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were completed when this image was assembled",
+		}
+		unCompletedNoEpicNoFeatureSection := Sections{
+			Tickets: unCompletedNoEpicNoFeature,
+			Title:   "",
+			Header:  "Other Incomplete",
+			Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were not completed when this image was assembled",
+		}
+
+		// the key needs to be a unique value per section
+		for _, section := range []SectionInfo{
+			{"completed_features", completed},
+			{"uncompleted_features", unCompleted},
+			{"completed_epic_without_feature", completedEpicWithoutFeatureSection},
+			{"uncompleted_epic_without_feature", unCompletedEpicWithoutFeatureSection},
+			{"completed_no_epic_no_feature", completedNoEpicNoFeatureSection},
+			{"uncompleted_no_epic_no_feature", unCompletedNoEpicNoFeatureSection},
+		} {
+			if len(section.Section.Tickets) > 0 {
+				sections = append(sections, section)
 			}
-
 		}
-		if feature.NotLinkedType == sectionTypeNoEpicNoFeature {
-			if feature.IncludedInBuild {
-				completedNoEpicNoFeature = append(completedNoEpicNoFeature, feature)
-			} else {
-				unCompletedNoEpicNoFeature = append(unCompletedNoEpicNoFeature, feature)
-			}
+
+		data := template.Must(template.New("featureRelease.html").Funcs(
+			template.FuncMap{
+				"jumpLinks":  jumpLinks,
+				"includeKey": includeKey,
+			},
+		).ParseFS(resources, "featureRelease.html"))
+
+		err = data.Execute(&buf, httpFeatureData{
+			DisplaySections: sections,
+			To:              tagInfo.Tag,
+			From:            from,
+		})
+		if err != nil {
+			errChan <- err
+			return
 		}
-	}
-	for _, s := range [][]*FeatureTree{completedFeatures, unCompletedFeatures, completedEpicWithoutFeature, unCompletedEpicWithoutFeature} {
-		sortByTitle(s)
-		// TODO - check this, should be moot, since every leaf has a PR linked to it
-		//sortByPRs(s, 1000)
-	}
 
-	var sections []SectionInfo
+		klog.V(4).Infof("finished running feature anaysis: Tag %s from %s at %s\n", tagInfo.Tag, from, time.Now())
+		resultChan <- buf.Bytes()
+	}()
 
-	// define the UI sections
-	completed := Sections{
-		Tickets: completedFeatures,
-		Title:   "Lists of features that were completed when this image was built",
-		Header:  "Complete Features",
-		Note:    "These features were completed when this image was assembled",
-	}
-	unCompleted := Sections{
-		Tickets: unCompletedFeatures,
-		Title:   "Lists of features that were not completed when this image was built",
-		Header:  "Incomplete Features",
-		Note:    "When this image was assembled, these features were not yet completed. Therefore, only the Jira Cards included here are part of this release",
-	}
-	completedEpicWithoutFeatureSection := Sections{
-		Tickets: completedEpicWithoutFeature,
-		Title:   "",
-		Header:  "Complete Epics",
-		Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were completed when this image was assembled",
-	}
-	unCompletedEpicWithoutFeatureSection := Sections{
-		Tickets: unCompletedEpicWithoutFeature,
-		Title:   "",
-		Header:  "Incomplete Epics",
-		Note:    "This section includes Jira cards that are linked to an Epic, but the Epic itself is not linked to any Feature. These epics were not completed when this image was assembled",
-	}
-	completedNoEpicNoFeatureSection := Sections{
-		Tickets: completedNoEpicNoFeature,
-		Title:   "",
-		Header:  "Other Complete",
-		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were completed when this image was assembled",
-	}
-	unCompletedNoEpicNoFeatureSection := Sections{
-		Tickets: unCompletedNoEpicNoFeature,
-		Title:   "",
-		Header:  "Other Incomplete",
-		Note:    "This section includes Jira cards that are not linked to either an Epic or a Feature. These tickets were not completed when this image was assembled",
-	}
-
-	// the key needs to be a unique value per section
-	for _, section := range []SectionInfo{
-		{"completed_features", completed},
-		{"uncompleted_features", unCompleted},
-		{"completed_epic_without_feature", completedEpicWithoutFeatureSection},
-		{"uncompleted_epic_without_feature", unCompletedEpicWithoutFeatureSection},
-		{"completed_no_epic_no_feature", completedNoEpicNoFeatureSection},
-		{"uncompleted_no_epic_no_feature", unCompletedNoEpicNoFeatureSection},
-	} {
-		if len(section.Section.Tickets) > 0 {
-			sections = append(sections, section)
+	select {
+	case res := <-resultChan:
+		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+		if _, err := w.Write(res); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	}
-
-	data := template.Must(template.New("featureRelease.html").Funcs(
-		template.FuncMap{
-			"jumpLinks":  jumpLinks,
-			"includeKey": includeKey,
-		},
-	).ParseFS(resources, "featureRelease.html"))
-
-	err = data.Execute(&buf, httpFeatureData{
-		DisplaySections: sections,
-		To:              tagInfo.Tag,
-		From:            from,
-	})
-
-	if err != nil {
+	case err := <-errChan:
 		klog.Errorf("Unable to render page: %v", err)
 		http.Error(w, "Unable to render page", http.StatusInternalServerError)
-		return
+	case <-time.After(15 * time.Second):
+		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+		w.WriteHeader(http.StatusGatewayTimeout)
+		// Return HTML with a meta refresh so the page reloads automatically.
+		w.Write([]byte(`
+<html>
+  <head>
+    <meta http-equiv="refresh" content="20">
+    <title>Processing...</title>
+  </head>
+  <body>
+    <p>The request is taking longer than expected. This page will automatically reload once processing is complete. Please wait...</p>
+  </body>
+</html>
+		`))
+		klog.Warningf("Feature analysis taking too long: Tag %s from %s", tagInfo.Tag, from)
 	}
-
-	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
-	if _, err := w.Write(buf.Bytes()); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-	klog.V(4).Infof("finished running feature anaysis: Tag %s from %s at %s\n:", tagInfo.Tag, from, time.Now())
 }
 
 func includeKey(key string) bool {
