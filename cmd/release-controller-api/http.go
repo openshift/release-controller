@@ -1155,54 +1155,57 @@ func (c *Controller) httpFeatureInfo(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "text/html;charset=UTF-8")
 		w.WriteHeader(http.StatusGatewayTimeout)
 		// Return HTML with a meta refresh so the page reloads automatically.
-		w.Write([]byte(`
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="20">
-    <title>Processing...</title>
-    <style>
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: #f0f4f8;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-      }
-      .container {
-        background: #ffffff;
-        padding: 30px 40px;
-        border-radius: 10px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        text-align: center;
-        max-width: 600px;
-      }
-      h1 {
-        margin-top: 0;
-        color: #333;
-      }
-      p {
-        font-size: 1.1em;
-        line-height: 1.6;
-        color: #555;
-        margin: 20px 0;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Processing...</h1>
-      <p>The request is taking longer than expected.</p>
-      <p>If this is the first time loading, it might take multiple minutes to gather all data.</p>
-      <p>This page will automatically reload once processing is complete. Please wait...</p>
-    </div>
-  </body>
-</html>
-
-		`))
+		_, err = w.Write([]byte(`
+		<!DOCTYPE html>
+		<html>
+		  <head>
+		    <meta charset="UTF-8">
+		    <meta http-equiv="refresh" content="20">
+		    <title>Processing...</title>
+		    <style>
+		      body {
+		        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		        background: #f0f4f8;
+		        margin: 0;
+		        display: flex;
+		        align-items: center;
+		        justify-content: center;
+		        height: 100vh;
+		      }
+		      .container {
+		        background: #ffffff;
+		        padding: 30px 40px;
+		        border-radius: 10px;
+		        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		        text-align: center;
+		        max-width: 600px;
+		      }
+		      h1 {
+		        margin-top: 0;
+		        color: #333;
+		      }
+		      p {
+		        font-size: 1.1em;
+		        line-height: 1.6;
+		        color: #555;
+		        margin: 20px 0;
+		      }
+		    </style>
+		  </head>
+		  <body>
+		    <div class="container">
+		      <h1>Processing...</h1>
+		      <p>The request is taking longer than expected.</p>
+		      <p>If this is the first time loading, it might take multiple minutes to gather all data.</p>
+		      <p>This page will automatically reload once processing is complete. Please wait...</p>
+		    </div>
+		  </body>
+		</html>
+		
+				`))
+		if err != nil {
+			return
+		}
 		klog.Warningf("Feature analysis taking too long: Tag %s from %s", tagInfo.Tag, from)
 	}
 }
