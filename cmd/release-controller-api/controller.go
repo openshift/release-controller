@@ -121,7 +121,7 @@ func NewController(
 		{"Index", "/"},
 		{"Overview", "/dashboards/overview"},
 		{"Compare", "/dashboards/compare"},
-		{"Telco KPI Results (VPN Required)", "http://ocp-far-edge-vran-deployment-kpi.hosts.prod.psi.rdu2.redhat.com/"},
+		{"Telco KPI Results (VPN Required)", "https://kpi-reports.telco5g.corp.redhat.com"},
 	}
 
 	return c
