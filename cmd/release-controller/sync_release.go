@@ -384,7 +384,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 			cliImage = release.Config.OverrideCLIImage
 		}
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
+		job, prefix := newReleaseJobBase(name, cliImage, release.Config.AlternateImageRepositorySecretName)
 
 		manifestListMode := "false"
 		if c.manifestListMode && !release.Config.DisableManifestListMode {
