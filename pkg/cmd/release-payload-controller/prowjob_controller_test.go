@@ -16,7 +16,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
@@ -78,6 +77,7 @@ func newProwJob(name, namespace, release, jobName, source, cluster string, state
 }
 
 func TestSetJobStatus(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name      string
 		input     *v1alpha1.ReleasePayloadStatus
@@ -143,6 +143,7 @@ func TestSetJobStatus(t *testing.T) {
 }
 
 func TestFindJobStatus(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name                   string
 		payloadName            string
@@ -247,6 +248,7 @@ func TestFindJobStatus(t *testing.T) {
 }
 
 func TestProwJobStatusSync(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name        string
 		prowjob     []runtime.Object
@@ -797,46 +799,12 @@ func TestProwJobStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c := &ProwJobStatusController{
-				ReleasePayloadController: NewReleasePayloadController("ProwJob Status Controller",
-					releasePayloadInformer,
-					releasePayloadClient.ReleaseV1alpha1(),
-					events.NewInMemoryRecorder("prowjob-status-controller-test"),
-					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ProwJobStatusController")),
-				prowJobLister: prowJobInformer.Lister(),
+			c, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, events.NewInMemoryRecorder("prowjob-status-controller-test"))
+			if err != nil {
+				t.Fatalf("Failed to create ProwJob Status Controller: %v", err)
 			}
+
 			c.cachesToSync = append(c.cachesToSync, prowJobInformer.Informer().HasSynced)
-
-			prowJobFilter := func(obj interface{}) bool {
-				if prowJob, ok := obj.(*v1.ProwJob); ok {
-					if _, ok := prowJob.Labels[releasecontroller.ReleaseLabelVerify]; ok {
-						if _, ok := prowJob.Labels[releasecontroller.ReleaseLabelPayload]; ok {
-							return true
-						}
-					}
-				}
-				return false
-			}
-
-			if _, err := prowJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-				FilterFunc: prowJobFilter,
-				Handler: cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.lookupReleasePayload,
-					UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
-					DeleteFunc: c.lookupReleasePayload,
-				},
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
-			}
-
-			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
-				AddFunc:    c.Enqueue,
-				UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
-				DeleteFunc: c.Enqueue,
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
-			}
-
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			prowJobInformerFactory.Start(context.Background().Done())
 
@@ -845,12 +813,13 @@ func TestProwJobStatusSync(t *testing.T) {
 				return
 			}
 
-			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil && testCase.expectedErr == nil {
-				t.Fatalf("%s - encountered unexpected error: %v", testCase.name, err)
-			}
-			if err != nil && !cmp.Equal(err.Error(), testCase.expectedErr.Error()) {
-				t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil {
+				if testCase.expectedErr == nil {
+					t.Fatalf("%s - encountered unexpected error: %v", testCase.name, err)
+				}
+				if !cmp.Equal(err.Error(), testCase.expectedErr.Error()) {
+					t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
+				}
 			}
 
 			// Performing a live lookup instead of having to wait for the cache to sink (again)...

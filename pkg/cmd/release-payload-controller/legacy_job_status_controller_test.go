@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 )
 
 func newLegacyJobStatus(name string, results []v1alpha1.JobRunResult) v1alpha1.JobStatus {
@@ -57,6 +56,7 @@ func newImageStream(name, namespace string, tags []imagev1.TagReference) *imagev
 }
 
 func TestSetLegacyJobStatus(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name      string
 		input     *v1alpha1.ReleasePayloadStatus
@@ -138,6 +138,7 @@ func TestSetLegacyJobStatus(t *testing.T) {
 }
 
 func TestFindLegacyJobStatus(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name                string
 		payloadName         string
@@ -233,6 +234,7 @@ func TestFindLegacyJobStatus(t *testing.T) {
 }
 
 func TestLegacyJobStatusSync(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name        string
 		imagestream []runtime.Object
@@ -931,24 +933,12 @@ func TestLegacyJobStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c := &LegacyJobStatusController{
-				ReleasePayloadController: NewReleasePayloadController("Legacy Job Status Controller",
-					releasePayloadInformer,
-					releasePayloadClient.ReleaseV1alpha1(),
-					events.NewInMemoryRecorder("legacy-job-status-controller"),
-					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "LegacyJobStatusController")),
-				imageStreamLister: imageStreamInformer.Lister(),
+			c, err := NewLegacyJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), imageStreamInformer, events.NewInMemoryRecorder("legacy-job-status-controller"))
+			if err != nil {
+				t.Fatalf("Failed to create Legacy Job Status Controller: %v", err)
 			}
 
 			c.cachesToSync = append(c.cachesToSync, imageStreamInformer.Informer().HasSynced, releasePayloadInformer.Informer().HasSynced)
-
-			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
-				AddFunc:    c.Enqueue,
-				UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
-				DeleteFunc: c.Enqueue,
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
-			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			imageStreamInformerFactory.Start(context.Background().Done())
@@ -958,12 +948,13 @@ func TestLegacyJobStatusSync(t *testing.T) {
 				return
 			}
 
-			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil && testCase.expectedErr == nil {
-				t.Fatalf("%s - encountered unexpected error: %v", testCase.name, err)
-			}
-			if err != nil && !cmp.Equal(err.Error(), testCase.expectedErr.Error()) {
-				t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil {
+				if testCase.expectedErr == nil {
+					t.Fatalf("%s - encountered unexpected error: %v", testCase.name, err)
+				}
+				if !cmp.Equal(err.Error(), testCase.expectedErr.Error()) {
+					t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
+				}
 			}
 
 			// Performing a live lookup instead of having to wait for the cache to sink (again)...
