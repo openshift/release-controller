@@ -126,6 +126,8 @@ type ReleasePayloadSpec struct {
 	PayloadOverride ReleasePayloadOverride `json:"payloadOverride,omitempty"`
 	// PayloadVerificationConfig the configuration that will be used to verify this ReleasePayload
 	PayloadVerificationConfig PayloadVerificationConfig `json:"payloadVerificationConfig,omitempty"`
+	// ReleaseCoordinates list of ReleaseCoordinates where this ReleasePayload has been, or will be, published
+	ReleaseCoordinates []ReleaseCoordinates `json:"releaseCoordinates,omitempty"`
 }
 
 // PayloadCoordinates houses the information pointing to the location of the imagesteamtag that this ReleasePayload
@@ -161,6 +163,9 @@ type PayloadCreationConfig struct {
 
 	// ProwCoordinates houses the configuration for Prow
 	ProwCoordinates ProwCoordinates `json:"prowCoordinates,omitempty"`
+
+	// ReleaseMirrorCoordinates houses the configuration of the release mirror job
+	ReleaseMirrorCoordinates ReleaseMirrorCoordinates `json:"releaseMirrorCoordinates,omitempty"`
 }
 
 // ReleaseCreationCoordinates houses the information pointing to the location of the release creation job
@@ -178,6 +183,16 @@ type ReleaseCreationCoordinates struct {
 type ProwCoordinates struct {
 	// Namespace the namespace where Prow is configured to run prowv1.ProwJobs
 	Namespace string `json:"namespace"`
+}
+
+// ReleaseMirrorCoordinates houses the information pointing to the location of the release mirror job
+// responsible for mirroring this ReleasePayload to an external repository.
+type ReleaseMirrorCoordinates struct {
+	// Namespace the namespace where the release mirror batchv1.Jobs are created
+	Namespace string `json:"namespace"`
+
+	// ReleaseCreationJobName the name the release mirror batchv1.Job
+	ReleaseMirrorJobName string `json:"releaseMirrorJobName"`
 }
 
 type ReleasePayloadOverrideType string
@@ -233,6 +248,13 @@ type PayloadVerificationConfig struct {
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="PayloadVerificationDataSource is immutable"
 type PayloadVerificationDataSource string
 
+// ReleaseCoordinates specifies the location where this ReleasePayload has been, or will be, published to.
+type ReleaseCoordinates struct {
+	Repository string `json:"repository"`
+	Tag        string `json:"tag,omitempty"`
+	Digest     string `json:"digest,omitempty"`
+}
+
 const (
 	// PayloadVerificationDataSourceBuildFarm payload verification results will be collected from the ProwJobs running
 	// on the various build farms
@@ -269,6 +291,14 @@ type ReleasePayloadStatus struct {
 	// the release-controller will then begin the validation process.
 	ReleaseCreationJobResult ReleaseCreationJobResult `json:"releaseCreationJobResult,omitempty"`
 
+	// ReleaseMirrorJobResult stores the coordinates and status of the release mirror job that is
+	// created, by the release-controller, to mirror the release, defined by the PayloadCoordinates
+	// in the ReleasePayloadSpec, to an external registry.  If the release mirror job fails to get
+	// created or completes unsuccessfully, the ReleasePayload may still be processed and verified
+	// accordingly.  If the release mirror job is successful, then this ReleasePayload will be
+	// available in the external registry.
+	ReleaseMirrorJobResult ReleaseMirrorJobResult `json:"releaseMirrorJobResult,omitempty"`
+
 	// BlockingJobResults stores the results of all blocking jobs
 	BlockingJobResults []JobStatus `json:"blockingJobResults,omitempty"`
 
@@ -289,6 +319,14 @@ const (
 	// ConditionPayloadFailed is true if a ReleasePayload image cannot be created for the given set of image mirrors
 	// This condition is terminal
 	ConditionPayloadFailed string = "PayloadFailed"
+
+	// ConditionPayloadMirrored if false, the ReleasePayload is waiting for the release image to be mirrored to an
+	// external image repository.  If PayloadMirrored is true, the release image has been mirrored to an external image
+	// registry.
+	ConditionPayloadMirrored string = "PayloadMirrored"
+
+	// ConditionPayloadMirrorFailed is true if a ReleasePayload image cannot be mirrored to an external image registry.
+	ConditionPayloadMirrorFailed string = "PayloadMirrorFailed"
 
 	// ConditionPayloadAccepted is true if the ReleasePayload has passed its verification criteria and can safely
 	// be promoted to an external location
@@ -328,6 +366,36 @@ const (
 	ReleaseCreationJobSuccess ReleaseCreationJobStatus = "Success"
 	// ReleaseCreationJobFailed means the job has failed its execution
 	ReleaseCreationJobFailed ReleaseCreationJobStatus = "Failed"
+)
+
+// ReleaseMirrorJobResult houses the information about the Release mirror batch/v1 Job.  The release
+// mirror Job mirrors the release, via an `oc image mirror` command to an external registry.  The
+// release-controller is responsible for launching the Job, in the --job-namespace, on the same
+// cluster that the release-controller is running on.
+type ReleaseMirrorJobResult struct {
+	// Coordinates the location of the batch/v1 Job
+	Coordinates ReleaseMirrorJobCoordinates `json:"coordinates,omitempty"`
+	// Status is the current status of the release mirror job
+	Status ReleaseMirrorJobStatus `json:"status,omitempty"`
+	// Message is a human-readable message indicating details about the result of the release mirror job
+	Message string `json:"message,omitempty"`
+}
+
+// ReleaseMirrorJobCoordinates houses the information necessary to locate the job execution
+type ReleaseMirrorJobCoordinates struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+type ReleaseMirrorJobStatus string
+
+const (
+	// ReleaseMirrorJobUnknown means the job's current state is not known
+	ReleaseMirrorJobUnknown ReleaseMirrorJobStatus = "Unknown"
+	// ReleaseMirrorJobSuccess means the job has completed its execution successfully
+	ReleaseMirrorJobSuccess ReleaseMirrorJobStatus = "Success"
+	// ReleaseMirrorJobFailed means the job has failed its execution
+	ReleaseMirrorJobFailed ReleaseMirrorJobStatus = "Failed"
 )
 
 // JobState the aggregate state of the job
