@@ -46,6 +46,10 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 					Namespace:              jobNamespace,
 					ReleaseCreationJobName: name,
 				},
+				ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+					Namespace:            jobNamespace,
+					ReleaseMirrorJobName: releaseMirrorJobName(name),
+				},
 				ProwCoordinates: v1alpha1.ProwCoordinates{Namespace: prowNamespace},
 			},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{

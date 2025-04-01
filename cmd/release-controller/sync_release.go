@@ -409,3 +409,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		return job, nil
 	})
 }
+
+func releaseMirrorJobName(tagName string) string {
+	return fmt.Sprintf("%s-alternate-mirror", tagName)
+}
