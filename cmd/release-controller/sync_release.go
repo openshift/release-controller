@@ -394,7 +394,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc image mirror "--keep-manifest-list=$1 $2 $3"
+			oc image mirror --keep-manifest-list=$1 $2 $3
 			`,
 			"",
 			manifestListMode, fromImage, toImage,
