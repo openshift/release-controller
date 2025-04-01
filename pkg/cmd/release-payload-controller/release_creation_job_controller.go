@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	// ReleasePayloadCreationFailedReason programmatic identifier indicating that the ReleasePayload was not created successfully
-	ReleasePayloadCreationFailedReason string = "ReleasePayloadCreationFailed"
+	// ReleasePayloadCreationJobFailedReason programmatic identifier indicating that the ReleasePayload was not created successfully
+	ReleasePayloadCreationJobFailedReason string = "ReleasePayloadCreationJobFailed"
 )
 
 // ReleaseCreationJobController is responsible for writing the coordinates of the release creation job.
@@ -44,7 +44,7 @@ func NewReleaseCreationJobController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("release-creation-job-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ReleaseCreationJobController")),
+			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ReleaseCreationJobController"})),
 	}
 
 	c.syncFn = c.sync

@@ -29,54 +29,54 @@ import (
 )
 
 const (
-	// ReleaseCreationJobUnknownMessage release creation job unknown message
-	ReleaseCreationJobUnknownMessage = "Release creation job unknown"
+	// ReleaseMirrorJobUnknownMessage release mirror job unknown message
+	ReleaseMirrorJobUnknownMessage = "Release mirror job unknown"
 
-	// ReleaseCreationJobPendingMessage release creation job pending message
-	ReleaseCreationJobPendingMessage = "Release creation job pending"
+	// ReleaseMirrorJobPendingMessage release mirror job pending message
+	ReleaseMirrorJobPendingMessage = "Release mirror job pending"
 
-	// ReleaseCreationJobFailureMessage release creation job failure message
-	ReleaseCreationJobFailureMessage = "Release creation Job failed"
+	// ReleaseMirrorJobFailureMessage release mirror job failure message
+	ReleaseMirrorJobFailureMessage = "Release mirror Job failed"
 
-	// ReleaseCreationJobSuccessMessage release creation job success message
-	ReleaseCreationJobSuccessMessage = "Release creation Job completed"
+	// ReleaseMirrorJobSuccessMessage release mirror job success message
+	ReleaseMirrorJobSuccessMessage = "Release mirror Job completed"
 )
 
-var ErrCreationCoordinatesNotSet = errors.New("unable to lookup release creation job: coordinates not set")
+var ErrMirrorCoordinatesNotSet = errors.New("unable to lookup release mirror job: coordinates not set")
 
-// ReleaseCreationStatusController is responsible for watching batchv1.Jobs, in the job-namespace, and
+// ReleaseMirrorJobStatusController is responsible for watching batchv1.Jobs, in the job-namespace, and
 // updating the respective ReleasePayload with the status, of the job, when it completes.
-// The ReleaseCreationStatusController watches for changes to the following resources:
+// The ReleaseMirrorJobStatusController watches for changes to the following resources:
 //   - batchv1.Jobs
 //
 // and write the following information:
-//   - .status.releaseCreationJobResult.status
-//   - .status.releaseCreationJobResult.message
-type ReleaseCreationStatusController struct {
+//   - .status.releaseMirrorJobResult.status
+//   - .status.releaseMirrorJobResult.message
+type ReleaseMirrorJobStatusController struct {
 	*ReleasePayloadController
 
 	batchJobLister batchv1listers.JobLister
 }
 
-func NewReleaseCreationStatusController(
+func NewReleaseMirrorJobStatusController(
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	batchJobInformer batchv1informers.JobInformer,
 	eventRecorder events.Recorder,
-) (*ReleaseCreationStatusController, error) {
-	c := &ReleaseCreationStatusController{
-		ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
+) (*ReleaseMirrorJobStatusController, error) {
+	c := &ReleaseMirrorJobStatusController{
+		ReleasePayloadController: NewReleasePayloadController("Release Mirror Job Status Controller",
 			releasePayloadInformer,
 			releasePayloadClient,
-			eventRecorder.WithComponentSuffix("release-creation-status-controller"),
-			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ReleaseCreationStatusController"})),
+			eventRecorder.WithComponentSuffix("release-mirror-job-status-controller"),
+			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ReleaseMirrorJobStatusController"})),
 		batchJobLister: batchJobInformer.Lister(),
 	}
 
 	c.syncFn = c.sync
 	c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
 
-	batchJobFilter := func(obj interface{}) bool {
+	batchJobFilter := func(obj any) bool {
 		if batchJob, ok := obj.(*batchv1.Job); ok {
 			if _, ok := batchJob.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]; ok {
 				return true
@@ -89,22 +89,22 @@ func NewReleaseCreationStatusController(
 		FilterFunc: batchJobFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.lookupReleasePayload,
-			UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
+			UpdateFunc: func(old, new any) { c.lookupReleasePayload(new) },
 			DeleteFunc: c.lookupReleasePayload,
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("Failed to add batch job event handler: %v", err)
 	}
 
-	// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
-	releasePayloadFilter := func(obj interface{}) bool {
+	// In case someone/something deletes the ReleaseMirrorJobResult.Status, try and rectify it...
+	releasePayloadFilter := func(obj any) bool {
 		if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
 			switch {
 			// Check that we have the necessary information to proceed
-			case len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) == 0:
+			case len(releasePayload.Status.ReleaseMirrorJobResult.Coordinates.Namespace) == 0 || len(releasePayload.Status.ReleaseMirrorJobResult.Coordinates.Name) == 0:
 				return false
 			// Check if we need to process this ReleasePayload at all
-			case len(releasePayload.Status.ReleaseCreationJobResult.Status) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Message) == 0:
+			case len(releasePayload.Status.ReleaseMirrorJobResult.Status) == 0 || len(releasePayload.Status.ReleaseMirrorJobResult.Message) == 0:
 				return true
 			}
 		}
@@ -115,7 +115,7 @@ func NewReleaseCreationStatusController(
 		FilterFunc: releasePayloadFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.Enqueue,
-			UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+			UpdateFunc: func(old, new any) { c.Enqueue(new) },
 			DeleteFunc: c.Enqueue,
 		},
 	}); err != nil {
@@ -125,7 +125,7 @@ func NewReleaseCreationStatusController(
 	return c, nil
 }
 
-func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) {
+func (c *ReleaseMirrorJobStatusController) lookupReleasePayload(obj any) {
 	object, ok := obj.(runtime.Object)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("unable to cast obj: %v", obj))
@@ -151,9 +151,9 @@ func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) 
 	c.queue.Add(releasePayloadKey)
 }
 
-func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) error {
-	klog.V(4).Infof("Starting ReleaseCreationStatusController sync")
-	defer klog.V(4).Infof("ReleaseCreationStatusController sync done")
+func (c *ReleaseMirrorJobStatusController) sync(ctx context.Context, key string) error {
+	klog.V(4).Infof("Starting ReleaseMirrorJobStatusController sync")
+	defer klog.V(4).Infof("ReleaseMirrorJobStatusController sync done")
 
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -174,21 +174,22 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 		return err
 	}
 
-	// If the release creation job status is terminal (Success), then we have noting else to do
-	if originalReleasePayload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobSuccess {
+	// If the release mirror job status is terminal (Success or Failure) and message is set, then we have nothing else to do
+	if (originalReleasePayload.Status.ReleaseMirrorJobResult.Status == v1alpha1.ReleaseMirrorJobSuccess || originalReleasePayload.Status.ReleaseMirrorJobResult.Status == v1alpha1.ReleaseMirrorJobFailed) &&
+		originalReleasePayload.Status.ReleaseMirrorJobResult.Message != "" {
 		return nil
 	}
 
-	if len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) == 0 || len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) == 0 {
-		return ErrCreationCoordinatesNotSet
+	if len(originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Namespace) == 0 || len(originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Name) == 0 {
+		return ErrMirrorCoordinatesNotSet
 	}
 
 	// Lookup the job. If not found, then the status should be unknown...
 	// TODO: consider a timeout...
 	jobNotFound := false
-	job, err := c.batchJobLister.Jobs(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace).Get(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name)
+	job, err := c.batchJobLister.Jobs(originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Namespace).Get(originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Name)
 	if k8serrors.IsNotFound(err) {
-		klog.V(4).Infof("Unable to locate release creation job: %s/%s", originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace, originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name)
+		klog.V(4).Infof("Unable to locate release mirror job: %s/%s", originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Namespace, originalReleasePayload.Status.ReleaseMirrorJobResult.Coordinates.Name)
 		// Reset the error to allow for further processing
 		err = nil
 		// Set flag to force the logic to set status to "Unknown"
@@ -200,14 +201,14 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 
 	releasePayload := originalReleasePayload.DeepCopy()
 
-	// Update the Status and Message of the ReleaseCreationJobResult
+	// Update the Status and Message of the ReleaseMirrorJobResult
 	switch {
 	case jobNotFound:
-		releasePayload.Status.ReleaseCreationJobResult.Status = v1alpha1.ReleaseCreationJobUnknown
-		releasePayload.Status.ReleaseCreationJobResult.Message = ReleaseCreationJobUnknownMessage
+		releasePayload.Status.ReleaseMirrorJobResult.Status = v1alpha1.ReleaseMirrorJobUnknown
+		releasePayload.Status.ReleaseMirrorJobResult.Message = ReleaseMirrorJobUnknownMessage
 	default:
-		releasePayload.Status.ReleaseCreationJobResult.Status = computeReleaseCreationJobStatus(job)
-		releasePayload.Status.ReleaseCreationJobResult.Message = computeReleaseCreationJobMessage(job)
+		releasePayload.Status.ReleaseMirrorJobResult.Status = computeReleaseMirrorJobStatus(job)
+		releasePayload.Status.ReleaseMirrorJobResult.Message = computeReleaseMirrorJobMessage(job)
 	}
 
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
@@ -216,7 +217,7 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 		return nil
 	}
 
-	klog.V(4).Infof("Syncing release creation job status for ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)
+	klog.V(4).Infof("Syncing release mirror job status for ReleasePayload: %s/%s", releasePayload.Namespace, releasePayload.Name)
 	_, err = c.releasePayloadClient.ReleasePayloads(releasePayload.Namespace).UpdateStatus(ctx, releasePayload, metav1.UpdateOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil
@@ -228,21 +229,21 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 	return nil
 }
 
-func computeReleaseCreationJobStatus(job *batchv1.Job) v1alpha1.ReleaseCreationJobStatus {
+func computeReleaseMirrorJobStatus(job *batchv1.Job) v1alpha1.ReleaseMirrorJobStatus {
 	if job.Status.CompletionTime != nil {
-		return v1alpha1.ReleaseCreationJobSuccess
+		return v1alpha1.ReleaseMirrorJobSuccess
 	}
 	for _, condition := range job.Status.Conditions {
 		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-			return v1alpha1.ReleaseCreationJobFailed
+			return v1alpha1.ReleaseMirrorJobFailed
 		}
 	}
-	return v1alpha1.ReleaseCreationJobUnknown
+	return v1alpha1.ReleaseMirrorJobUnknown
 }
 
-func computeReleaseCreationJobMessage(job *batchv1.Job) string {
+func computeReleaseMirrorJobMessage(job *batchv1.Job) string {
 	if job.Status.CompletionTime != nil {
-		return ReleaseCreationJobSuccessMessage
+		return ReleaseMirrorJobSuccessMessage
 	}
 	for _, condition := range job.Status.Conditions {
 		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
@@ -250,12 +251,12 @@ func computeReleaseCreationJobMessage(job *batchv1.Job) string {
 			case len(condition.Reason) > 0 && len(condition.Message) > 0:
 				return fmt.Sprintf("%s: %s", condition.Reason, condition.Message)
 			default:
-				return ReleaseCreationJobFailureMessage
+				return ReleaseMirrorJobFailureMessage
 			}
 		}
 	}
 	if (job.Status.Ready != nil && *job.Status.Ready >= 1) || job.Status.Active >= 1 {
-		return ReleaseCreationJobPendingMessage
+		return ReleaseMirrorJobPendingMessage
 	}
-	return ReleaseCreationJobUnknownMessage
+	return ReleaseMirrorJobUnknownMessage
 }
