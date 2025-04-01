@@ -62,6 +62,10 @@ func TestNewReleasePayload(t *testing.T) {
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
 						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
@@ -105,6 +109,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -155,6 +163,10 @@ func TestNewReleasePayload(t *testing.T) {
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
 						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
@@ -204,6 +216,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -256,6 +272,10 @@ func TestNewReleasePayload(t *testing.T) {
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
 						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
@@ -306,6 +326,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -366,6 +390,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.12.11",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.12.11-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -435,6 +463,10 @@ func TestNewReleasePayload(t *testing.T) {
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.12.11",
 						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.12.11-alternate-mirror",
+						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
 						},
@@ -491,6 +523,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -553,6 +589,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
@@ -677,6 +717,10 @@ func TestNewReleasePayload(t *testing.T) {
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
 							Namespace:              "ci-release",
 							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
 						},
 						ProwCoordinates: v1alpha1.ProwCoordinates{
 							Namespace: "ci",
