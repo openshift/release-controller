@@ -154,6 +154,13 @@ type ReleaseConfig struct {
 	//   "alternateImageRepository": "quay.io/openshift-release-dev/dev-release"
 	AlternateImageRepository string `json:"alternateImageRepository"`
 
+	// AlternateImageRepositorySecret is the name of the secret containing credentials to the
+	// alternate image repository. Secret must exist in job namespace. The secret must contain
+	// a single file config.json with a valid Docker auths array.
+	// For example:
+	//   "alternateImageRepositorySecretName": "quay-openshift-release-dev-pull-secret"
+	AlternateImageRepositorySecretName string `json:"alternateImageRepositorySecretName"`
+
 	// DisableManifestListMode indicates this release stream should not utilize the --keep-manifest-list for release
 	// creation.  This flag should NOT be used unless absolutely necessary...
 	// Currently, it's being added to work around a limitation with `oc` and images from konflux:
