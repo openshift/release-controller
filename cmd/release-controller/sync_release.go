@@ -375,7 +375,8 @@ func jobIsComplete(job *batchv1.Job) (succeeded bool, complete bool) {
 // Command should be like:
 // $ oc image mirror --keep-manifest-list=true registry.ci.openshift.org/ocp/release:4.17.0-0.ci-2024-08-30-110931 quay.io/openshift-release-dev/dev-release:4.17.0-0.ci-2024-08-30-110931
 func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) { //nolint:unused
-	return c.ensureJob(releaseMirrorJobName(name), nil, func() (*batchv1.Job, error) {
+	mirrorJobName := releaseMirrorJobName(name)
+	return c.ensureJob(mirrorJobName, nil, func() (*batchv1.Job, error) {
 		fromImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
 		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, name)
 
@@ -384,7 +385,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 			cliImage = release.Config.OverrideCLIImage
 		}
 
-		job, prefix := newReleaseJobBase(name, cliImage, release.Config.AlternateImageRepositorySecretName)
+		job, prefix := newReleaseJobBase(mirrorJobName, cliImage, release.Config.AlternateImageRepositorySecretName)
 
 		manifestListMode := "false"
 		if c.manifestListMode && !release.Config.DisableManifestListMode {
