@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,9 @@ var (
 	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
 	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
 
+	// the postprocessed markdown diff line
+	reMdCoSDiffPost = regexp.MustCompile(`\* (.*? CoreOS upgraded from .*?) \(\[diff\]\(.*?\)\)`)
+
 	// regex for RHCOS in < 4.19, where the version string was e.g. 418.94.202410090804-0
 	reOcpCoreOsVersion = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
 
@@ -38,7 +42,7 @@ var (
 	reRhelCoreOsVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)-(\d+)`)
 )
 
-func TransformMarkDownOutput(markdown, fromPull, fromTag, toPull, toTag, architecture, architectureExtension string) (string, error) {
+func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
 	// replace references to the previous version with links
 	rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(fromTag)))
 	if err != nil {
@@ -58,9 +62,9 @@ func TransformMarkDownOutput(markdown, fromPull, fromTag, toPull, toTag, archite
 	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
 	//       For now, this will have to do.
 	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
 	} else if m = reMdCentOSCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, fromPull, toPull, architecture, architectureExtension, markdown, m)
+		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
 	}
 	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
 		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
@@ -179,7 +183,7 @@ func getRHCoSReleaseStream(version, architectureExtension string) (string, bool)
 	return "", false
 }
 
-func transformCoreOSUpgradeLinks(name, fromPull, toPull, architecture, architectureExtension, input string, matches []string) string {
+func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, input string, matches []string) string {
 	var ok bool
 	var fromURL, toURL url.URL
 	var fromStream, toStream string
@@ -214,41 +218,40 @@ func transformCoreOSUpgradeLinks(name, fromPull, toPull, architecture, architect
 		}
 	}
 
-	// if either from or to release is of the new style, add an infobox
-	alertInfo := ""
-	if !strings.HasPrefix(fromRelease, "4") || !strings.HasPrefix(toRelease, "4") {
-		alertInfo = fmt.Sprintf(`
-<div class="alert alert-info">
-	<p>The RHCOS diff above only contains RHEL packages (e.g. kernel, systemd, ignition, coreos-installer).
-	For a full diff which includes OCP packages (e.g. openshift-clients, openshift-kubelet), run the
-	following command:</p>
+	// anything not starting with "4" means it's the new node images so we will
+	// render a package diff ourselves, see also:
+	// https://github.com/openshift/enhancements/blob/master/enhancements/rhcos/split-rhcos-into-layers.md#etcos-release
+	hasCoreosLayered := !strings.HasPrefix(fromRelease, "4") || !strings.HasPrefix(toRelease, "4")
 
-<code style="white-space: pre-wrap">img_from=$(oc adm release info --image-for=rhel-coreos %s)
-img_to=$(oc adm release info --image-for=rhel-coreos %s)
-git diff --no-index <(podman run --rm $img_from rpm -qa | sort) <(podman run --rm $img_to rpm -qa | sort)</code>
-</div>`, fromPull, toPull)
+	// even for the few 4.19 releases we've had, we render the package diff so that we can test it out
+	hasCoreos419 := strings.HasPrefix(fromRelease, "419") || strings.HasPrefix(toRelease, "419")
+
+	var diffURL string
+	if hasCoreos419 || hasCoreosLayered {
+		diffURL = "#coreos-package-diff"
+	} else {
+		diffURL = (&url.URL{
+			Scheme: serviceScheme,
+			Host:   serviceUrl,
+			Path:   "/diff.html",
+			RawQuery: (url.Values{
+				"first_stream":   []string{fromStream},
+				"first_release":  []string{fromRelease},
+				"second_stream":  []string{toStream},
+				"second_release": []string{toRelease},
+				"arch":           []string{architecture},
+			}).Encode(),
+		}).String()
 	}
 
-	diffURL := url.URL{
-		Scheme: serviceScheme,
-		Host:   serviceUrl,
-		Path:   "/diff.html",
-		RawQuery: (url.Values{
-			"first_stream":   []string{fromStream},
-			"first_release":  []string{fromRelease},
-			"second_stream":  []string{toStream},
-			"second_release": []string{toRelease},
-			"arch":           []string{architecture},
-		}).Encode(),
-	}
 	replace := fmt.Sprintf(
-		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`+"\n"+alertInfo,
+		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`,
 		name,
 		fromRelease,
 		fromURL.String(),
 		toRelease,
 		toURL.String(),
-		diffURL.String(),
+		diffURL,
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
 }
@@ -279,4 +282,49 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 		fromURL.String(),
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
+}
+
+func RenderRpmDiff(markdown string, rpmDiff releasecontroller.RpmDiff) string {
+	output := new(strings.Builder)
+
+	// Reprint the upgrade line, with the browser links for the build itself.
+	if m := reMdCoSDiffPost.FindStringSubmatch(markdown); m != nil {
+		fmt.Fprintf(output, "%s\n\n", m[1])
+	}
+
+	writeList := func(header string, elements []string) {
+		fmt.Fprintf(output, "#### %s:\n\n", header)
+		sort.Strings(elements)
+		for _, elem := range elements {
+			fmt.Fprintf(output, "* %s\n", elem)
+		}
+	}
+
+	if len(rpmDiff.Changed) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Changed {
+			elements = append(elements, fmt.Sprintf("%s %s → %s", pkg, v.Old, v.New))
+		}
+		writeList("Changed", elements)
+	}
+	if len(rpmDiff.Removed) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Removed {
+			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
+		}
+		writeList("Removed", elements)
+	}
+	if len(rpmDiff.Added) > 0 {
+		elements := []string{}
+		for pkg, v := range rpmDiff.Added {
+			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
+		}
+		writeList("Added", elements)
+	}
+
+	if output.Len() == 0 {
+		return "No package diff"
+	}
+
+	return output.String()
 }

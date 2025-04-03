@@ -71,6 +71,22 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					}
 				}
 			}
+		case "rpmdiff":
+			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
+				s, err = "", fmt.Errorf("invalid from/to")
+			} else {
+				var rpmdiff RpmDiff
+				rpmdiff, err = info.RpmDiff(parts[1], parts[2])
+				if err == nil {
+					var rpmdiffByte []byte
+					rpmdiffByte, err = json.Marshal(rpmdiff)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal Rpm Diff; from: %s to: %s; %s", parts[1], parts[2], err)
+					} else {
+						s = string(rpmdiffByte)
+					}
+				}
+			}
 		case "changelog":
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
@@ -108,6 +124,22 @@ func (c *CachingReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return []BugDetails{}, err
 	}
 	return bugList(s)
+}
+
+func (c *CachingReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmdiff", from, to}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return RpmDiff{}, err
+	}
+	if s == "" {
+		return RpmDiff{}, nil
+	}
+	var rpmdiff RpmDiff
+	if err = json.Unmarshal([]byte(s), &rpmdiff); err != nil {
+		return RpmDiff{}, err
+	}
+	return rpmdiff, nil
 }
 
 func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
@@ -157,6 +189,7 @@ type ReleaseInfo interface {
 	// Bugs returns a list of jira bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
 	ChangeLog(from, to string, json bool) (string, error)
+	RpmDiff(from, to string) (RpmDiff, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
@@ -309,6 +342,56 @@ func bugList(s string) ([]BugDetails, error) {
 type BugDetails struct {
 	ID     string `json:"id"`
 	Source int    `json:"source"`
+}
+
+func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
+	if _, err := imagereference.Parse(from); err != nil {
+		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", from, err)
+	}
+	if _, err := imagereference.Parse(to); err != nil {
+		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", to, err)
+	}
+	if strings.HasPrefix(from, "-") || strings.HasPrefix(to, "-") {
+		return RpmDiff{}, fmt.Errorf("not a valid reference")
+	}
+
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	oc, err := exec.LookPath("oc")
+	if err != nil {
+		return RpmDiff{}, fmt.Errorf("Failed to find `oc` executable: %w", err)
+	}
+	cmd := exec.Command(oc, "adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
+	klog.V(4).Infof("Running RPM diff command: %s", cmd.String())
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed to generate RPM diff: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff: %v", msg)
+	}
+	klog.V(4).Infof("Finished running RPM diff command: %s", cmd.String())
+
+	var rpmdiff RpmDiff
+	if err = json.Unmarshal(out.Bytes(), &rpmdiff); err != nil {
+		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
+	}
+
+	return rpmdiff, nil
+}
+
+type RpmDiff struct {
+	Changed map[string]RpmChangedDiff `json:"changed,omitempty"`
+	Added   map[string]string         `json:"added,omitempty"`
+	Removed map[string]string         `json:"removed,omitempty"`
+}
+
+type RpmChangedDiff struct {
+	Old string `json:"old,omitempty"`
+	New string `json:"new,omitempty"`
 }
 
 type ReleaseUpgradeInfo struct {
