@@ -12,10 +12,10 @@ import (
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 )
 
 func TestPayloadVerificationSync(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		input    *v1alpha1.ReleasePayload
@@ -407,22 +407,9 @@ func TestPayloadVerificationSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c := &PayloadVerificationController{
-				ReleasePayloadController: NewReleasePayloadController("Payload Verification Controller",
-					releasePayloadInformer,
-					releasePayloadClient.ReleaseV1alpha1(),
-					events.NewInMemoryRecorder("payload-verification-controller-test"),
-					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController")),
-			}
-
-			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
-				AddFunc: c.Enqueue,
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					c.Enqueue(newObj)
-				},
-				DeleteFunc: c.Enqueue,
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
+			c, err := NewPayloadVerificationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("payload-verification-controller-test"))
+			if err != nil {
+				t.Fatalf("Failed to create Payload Verification Controller: %v", err)
 			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
@@ -432,8 +419,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 				return
 			}
 
-			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil {
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil {
 				t.Errorf("%s: unexpected err: %v", testCase.name, err)
 			}
 

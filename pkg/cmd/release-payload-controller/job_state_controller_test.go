@@ -13,10 +13,10 @@ import (
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 )
 
 func TestJobStateSync(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		input    *v1alpha1.ReleasePayload
@@ -367,22 +367,9 @@ func TestJobStateSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c := &JobStateController{
-				ReleasePayloadController: NewReleasePayloadController("Job State Controller",
-					releasePayloadInformer,
-					releasePayloadClient.ReleaseV1alpha1(),
-					events.NewInMemoryRecorder("job-state-controller-test"),
-					workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "JobStateController")),
-			}
-
-			if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
-				AddFunc: c.Enqueue,
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					c.Enqueue(newObj)
-				},
-				DeleteFunc: c.Enqueue,
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
+			c, err := NewJobStateController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("job-state-controller-test"))
+			if err != nil {
+				t.Fatalf("Failed to create Job State Controller: %v", err)
 			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
@@ -392,8 +379,7 @@ func TestJobStateSync(t *testing.T) {
 				return
 			}
 
-			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil {
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil {
 				t.Errorf("%s: unexpected err: %v", testCase.name, err)
 			}
 
@@ -407,6 +393,7 @@ func TestJobStateSync(t *testing.T) {
 }
 
 func TestComputeJobState(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		input    v1alpha1.JobStatus
@@ -666,6 +653,7 @@ func TestComputeJobState(t *testing.T) {
 }
 
 func TestInterrogateJobResults(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name                      string
 		results                   []v1alpha1.JobRunResult
@@ -757,6 +745,7 @@ func TestInterrogateJobResults(t *testing.T) {
 }
 
 func TestProcessJobResults(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name          string
 		results       []v1alpha1.JobRunResult
@@ -864,6 +853,7 @@ func TestProcessJobResults(t *testing.T) {
 }
 
 func TestProcessAnalysisJobResults(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name          string
 		results       []v1alpha1.JobRunResult
@@ -944,6 +934,7 @@ func TestProcessAnalysisJobResults(t *testing.T) {
 }
 
 func TestProcessRetryJobResults(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name          string
 		results       []v1alpha1.JobRunResult
