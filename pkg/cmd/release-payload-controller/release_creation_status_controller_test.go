@@ -12,7 +12,6 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
-	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,10 +19,10 @@ import (
 	"k8s.io/client-go/informers"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 )
 
 func TestComputeReleaseCreationJobStatus(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		job      *batchv1.Job
@@ -106,6 +105,7 @@ func TestComputeReleaseCreationJobStatus(t *testing.T) {
 }
 
 func TestReleaseCreationStatusSync(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name        string
 		job         runtime.Object
@@ -445,61 +445,11 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c := &ReleaseCreationStatusController{
-				ReleasePayloadController: NewReleasePayloadController("Release Creation Status Controller",
-					releasePayloadInformer,
-					releasePayloadClient.ReleaseV1alpha1(),
-					events.NewInMemoryRecorder("release-creation-status-controller-test"),
-					workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ReleaseCreationStatusController"})),
-				batchJobLister: batchJobInformer.Lister(),
+			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-creation-status-controller-test"))
+			if err != nil {
+				t.Fatalf("Failed to create Release Creation Status Controller: %v", err)
 			}
 			c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
-
-			batchJobFilter := func(obj interface{}) bool {
-				if batchJob, ok := obj.(*batchv1.Job); ok {
-					if _, ok := batchJob.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]; ok {
-						return true
-					}
-				}
-				return false
-			}
-
-			if _, err := batchJobInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-				FilterFunc: batchJobFilter,
-				Handler: cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.lookupReleasePayload,
-					UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
-					DeleteFunc: c.lookupReleasePayload,
-				},
-			}); err != nil {
-				t.Errorf("Failed to add batch job event handler: %v", err)
-			}
-
-			// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
-			releasePayloadFilter := func(obj interface{}) bool {
-				if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
-					switch {
-					// Check that we have the necessary information to proceed
-					case len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) == 0:
-						return false
-					// Check if we need to process this ReleasePayload at all
-					case len(releasePayload.Status.ReleaseCreationJobResult.Status) == 0 || len(releasePayload.Status.ReleaseCreationJobResult.Message) == 0:
-						return true
-					}
-				}
-				return false
-			}
-
-			if _, err := releasePayloadInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-				FilterFunc: releasePayloadFilter,
-				Handler: cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.Enqueue,
-					UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
-					DeleteFunc: c.Enqueue,
-				},
-			}); err != nil {
-				t.Errorf("Failed to add release payload event handler: %v", err)
-			}
 
 			releasePayloadInformerFactory.Start(context.Background().Done())
 			kubeFactory.Start(context.Background().Done())
@@ -509,8 +459,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 				return
 			}
 
-			err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name))
-			if err != nil && err != testCase.expectedErr {
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil && err != testCase.expectedErr {
 				t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
 			}
 
@@ -524,6 +473,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 }
 
 func TestComputeReleaseCreationJobMessage(t *testing.T) {
+	t.Parallel()
 	var value int32 = 1
 	testCases := []struct {
 		name     string
