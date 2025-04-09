@@ -71,7 +71,7 @@ func NewLegacyJobStatusController(
 
 	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.Enqueue,
-		UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+		UpdateFunc: func(old, new any) { c.Enqueue(new) },
 		DeleteFunc: c.Enqueue,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)

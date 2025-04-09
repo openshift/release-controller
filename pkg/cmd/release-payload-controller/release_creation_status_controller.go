@@ -76,7 +76,7 @@ func NewReleaseCreationStatusController(
 	c.syncFn = c.sync
 	c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
 
-	batchJobFilter := func(obj interface{}) bool {
+	batchJobFilter := func(obj any) bool {
 		if batchJob, ok := obj.(*batchv1.Job); ok {
 			if _, ok := batchJob.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]; ok {
 				return true
@@ -89,7 +89,7 @@ func NewReleaseCreationStatusController(
 		FilterFunc: batchJobFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.lookupReleasePayload,
-			UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
+			UpdateFunc: func(old, new any) { c.lookupReleasePayload(new) },
 			DeleteFunc: c.lookupReleasePayload,
 		},
 	}); err != nil {
@@ -97,7 +97,7 @@ func NewReleaseCreationStatusController(
 	}
 
 	// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
-	releasePayloadFilter := func(obj interface{}) bool {
+	releasePayloadFilter := func(obj any) bool {
 		if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
 			switch {
 			// Check that we have the necessary information to proceed
@@ -115,7 +115,7 @@ func NewReleaseCreationStatusController(
 		FilterFunc: releasePayloadFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.Enqueue,
-			UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+			UpdateFunc: func(old, new any) { c.Enqueue(new) },
 			DeleteFunc: c.Enqueue,
 		},
 	}); err != nil {
@@ -125,7 +125,7 @@ func NewReleaseCreationStatusController(
 	return c, nil
 }
 
-func (c *ReleaseCreationStatusController) lookupReleasePayload(obj interface{}) {
+func (c *ReleaseCreationStatusController) lookupReleasePayload(obj any) {
 	object, ok := obj.(runtime.Object)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("unable to cast obj: %v", obj))

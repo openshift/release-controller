@@ -532,7 +532,7 @@ func (r *ExecReleaseInfo) JiraRecursiveGet(issues []jiraBaseClient.Issue, allIss
 							parents = append(parents, typeCheck(f))
 
 						}
-					case map[string]interface{}:
+					case map[string]any:
 						if key == JiraCustomFieldFeatureLink {
 							parents = append(parents, typeCheck(f))
 						}
@@ -572,11 +572,11 @@ type IssueDetails struct {
 	Transitions    []Transition
 }
 
-func typeCheck(o interface{}) string {
+func typeCheck(o any) string {
 	switch v := o.(type) {
 	case string:
 		return v
-	case map[string]interface{}:
+	case map[string]any:
 		return typeCheck(v["key"])
 	default:
 		klog.Warningf("unable to parse the Jira unknown field: %v\n", o)
@@ -746,10 +746,7 @@ func (r *ExecReleaseInfo) divideSlice(issues []string, chunk int, skipCache bool
 
 	var divided [][]string
 	for index := 0; index < len(uncashedIssues); index += chunk {
-		end := index + chunk
-		if end > len(issues) {
-			end = len(issues)
-		}
+		end := min(index+chunk, len(issues))
 		divided = append(divided, issues[index:end])
 	}
 	return divided, result

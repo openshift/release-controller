@@ -63,7 +63,7 @@ func NewPayloadAcceptedController(
 
 	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc: c.Enqueue,
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			c.Enqueue(newObj)
 		},
 		DeleteFunc: c.Enqueue,

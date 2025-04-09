@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+	"maps"
 	"sigs.k8s.io/prow/pkg/jira"
 )
 
@@ -2272,9 +2273,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	verificationJobs := make(map[string]releasecontroller.ReleaseVerification)
 
 	if jobType == "periodic" {
-		for name, periodic := range release.Config.Periodic {
-			periodicJobs[name] = periodic
-		}
+		maps.Copy(periodicJobs, release.Config.Periodic)
 	} else {
 	Loop:
 		for name, verify := range release.Config.Verify {

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
+	"slices"
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {
@@ -237,10 +238,5 @@ func supportedUpgradesSeed(upgrades []string) uint64 {
 }
 
 func contains(slice []string, value string) bool {
-	for _, a := range slice {
-		if a == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, value)
 }

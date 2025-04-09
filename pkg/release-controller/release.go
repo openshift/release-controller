@@ -19,6 +19,7 @@ import (
 	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	"maps"
 )
 
 var (
@@ -538,9 +539,7 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		return release.Config.Verify, nil
 	}
 	jobs := make(map[string]ReleaseVerification)
-	for k, v := range release.Config.Verify {
-		jobs[k] = v
-	}
+	maps.Copy(jobs, release.Config.Verify)
 	version, err := SemverParseTolerant(releaseTag.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full stable verification jobs: %w", err)

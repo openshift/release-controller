@@ -72,7 +72,7 @@ func TestRoundRobinDistribution(t *testing.T) {
 		}
 
 		results := make([]string, 0, len(tc.wants))
-		for j := 0; j < len(tc.wants); j++ {
+		for range tc.wants {
 			results = append(results, distribution.Get())
 		}
 
@@ -146,7 +146,7 @@ func TestRandomDistribution(t *testing.T) {
 		}
 
 		results := make([]string, 0, tc.wants)
-		for j := 0; j < tc.wants; j++ {
+		for range tc.wants {
 			results = append(results, distribution.Get())
 		}
 

@@ -25,7 +25,7 @@ func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, veri
 	copied := verifyType.DeepCopy()
 	copied.AggregatedProwJob.AnalysisJobCount = 0
 
-	for i := 0; i < verifyType.AggregatedProwJob.AnalysisJobCount; i++ {
+	for i := range verifyType.AggregatedProwJob.AnalysisJobCount {
 		// Postfix the name to differentiate it from the aggregator job
 		jobNameSuffix := fmt.Sprintf("analysis-%d", i)
 		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
