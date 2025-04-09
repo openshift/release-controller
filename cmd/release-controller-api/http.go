@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,10 +31,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/russross/blackfriday"
 
+	"maps"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
-	"maps"
 	"sigs.k8s.io/prow/pkg/jira"
 )
 
@@ -615,7 +617,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 	for _, tag := range r.Tags {
 		downloadURL, _ := c.urlForArtifacts(tag.Name)
 		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-		if len(filterPhase) > 0 && !releasecontroller.ContainsString(filterPhase, phase) {
+		if len(filterPhase) > 0 && !slices.Contains(filterPhase, phase) {
 			continue
 		}
 		tags = append(tags, releasecontroller.APITag{

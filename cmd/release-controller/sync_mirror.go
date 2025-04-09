@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -47,7 +48,7 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 		releasecontroller.ReleaseAnnotationRuntimeBrewEvent,
 	}
 	for key, value := range release.Source.Annotations {
-		if strings.HasPrefix(key, "release.openshift.io/") && contains(validInboundAnnotations, key) {
+		if strings.HasPrefix(key, "release.openshift.io/") && slices.Contains(validInboundAnnotations, key) {
 			src, ok := is.Annotations[key]
 			if !ok {
 				is.Annotations[key] = value

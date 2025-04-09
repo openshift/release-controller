@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -214,7 +215,7 @@ func (c *Controller) ensureReleaseTagPhase(release *releasecontroller.Release, p
 			return fmt.Errorf("release %s no longer exists, cannot be put into %s", name, phase)
 		}
 
-		if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !releasecontroller.ContainsString(preconditionPhases, current) {
+		if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !slices.Contains(preconditionPhases, current) {
 			return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 		}
 		if tag.Annotations == nil {
@@ -258,7 +259,7 @@ func (c *Controller) transitionReleasePhaseFailure(release *releasecontroller.Re
 	changed := 0
 	for _, name := range names {
 		if tag := releasecontroller.FindTagReference(target, name); tag != nil {
-			if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !releasecontroller.ContainsString(preconditionPhases, current) {
+			if current := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; !slices.Contains(preconditionPhases, current) {
 				return fmt.Errorf("release %s is not in phase %v (%s), unable to mark %s", name, preconditionPhases, current, phase)
 			}
 			if tag.Annotations == nil {

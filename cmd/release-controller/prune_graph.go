@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"slices"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/labels"
@@ -38,7 +39,7 @@ func (c *Controller) PruneGraph(secretClient kv1core.SecretInterface, ns, name s
 	// To tags that are not present in the stable tags
 	toMissingList := make([]string, 0, len(c.graph.To))
 	for tag := range c.graph.To {
-		if !releasecontroller.StringSliceContains(stableTagList, tag) {
+		if !slices.Contains(stableTagList, tag) {
 			toMissingList = append(toMissingList, tag)
 		}
 	}
@@ -46,7 +47,7 @@ func (c *Controller) PruneGraph(secretClient kv1core.SecretInterface, ns, name s
 	// From tags that are not present in the stable tags
 	fromMissingList := make([]string, 0, len(c.graph.From))
 	for tag := range c.graph.From {
-		if !releasecontroller.StringSliceContains(stableTagList, tag) {
+		if !slices.Contains(stableTagList, tag) {
 			fromMissingList = append(fromMissingList, tag)
 		}
 	}

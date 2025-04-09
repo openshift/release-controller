@@ -3,6 +3,7 @@ package releasecontroller
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/opencontainers/go-digest"
@@ -430,7 +431,7 @@ func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerificatio
 		if definition.Disabled {
 			continue
 		}
-		if s, ok := m[name]; !ok || !StringSliceContains([]string{ReleaseVerificationStateSucceeded, ReleaseVerificationStateFailed}, s.State) {
+		if s, ok := m[name]; !ok || !slices.Contains([]string{ReleaseVerificationStateSucceeded, ReleaseVerificationStateFailed}, s.State) {
 			names = append(names, name)
 		}
 	}
@@ -449,7 +450,7 @@ func VerificationJobsWithRetries(jobs map[string]ReleaseVerification, result Ver
 			names = append(names, name)
 			continue
 		}
-		if !StringSliceContains([]string{ReleaseVerificationStateFailed}, s.State) {
+		if !slices.Contains([]string{ReleaseVerificationStateFailed}, s.State) {
 			continue
 		}
 		if s.Retries >= definition.MaxRetries {

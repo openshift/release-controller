@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
-	"slices"
 )
 
 func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) error {
@@ -194,7 +194,7 @@ func (s SortedVersionsMap) Sample(seed int64, size int) []string {
 		for len(randomVersions) < size {
 			index := random.Intn(len(remaining))
 			v := remaining[index].String()
-			if !contains(randomVersions, v) {
+			if !slices.Contains(randomVersions, v) {
 				randomVersions = append(randomVersions, v)
 			}
 		}
@@ -235,8 +235,4 @@ func supportedUpgradesSeed(upgrades []string) uint64 {
 		h.Write([]byte(version))
 	}
 	return binary.BigEndian.Uint64(h.Sum(nil))
-}
-
-func contains(slice []string, value string) bool {
-	return slices.Contains(slice, value)
 }

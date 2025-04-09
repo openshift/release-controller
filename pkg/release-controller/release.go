@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,8 +19,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
-	imagev1 "github.com/openshift/api/image/v1"
 	"maps"
+
+	imagev1 "github.com/openshift/api/image/v1"
 )
 
 var (
@@ -343,7 +345,7 @@ func UnsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVer
 		if tag.Annotations[ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if len(phases) > 0 && !StringSliceContains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if len(phases) > 0 && !slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
 			continue
 		}
 
@@ -397,7 +399,7 @@ func SortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 		if tag.Annotations[ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
-		if StringSliceContains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
 			tags = append(tags, tag)
 		}
 	}
