@@ -50,8 +50,8 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	}
 
 	// do a best effort replacement to change out the headers
-	markdown = strings.Replace(markdown, fmt.Sprintf(`# %s`, toTag), "", -1)
-	if changed := strings.Replace(markdown, fmt.Sprintf(`## Changes from %s`, fromTag), "", -1); len(changed) != len(markdown) {
+	markdown = strings.ReplaceAll(markdown, fmt.Sprintf(`# %s`, toTag), "")
+	if changed := strings.ReplaceAll(markdown, fmt.Sprintf(`## Changes from %s`, fromTag), ""); len(changed) != len(markdown) {
 		markdown = fmt.Sprintf("## Changes from %s\n%s", fromTag, changed)
 	}
 	markdown = rePrevious.ReplaceAllString(markdown, fmt.Sprintf("$1[%s](/releasetag/%s)$2", fromTag, fromTag))

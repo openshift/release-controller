@@ -201,7 +201,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				if mirror == nil {
 					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
 				}
-				suffix = strings.ToLower(strings.Replace(suffix, "_", "-", -1))
+				suffix = strings.ToLower(strings.ReplaceAll(suffix, "_", "-"))
 				c.Env[j].Value = mirror.Status.PublicDockerImageRepository + ":" + suffix
 			}
 		}

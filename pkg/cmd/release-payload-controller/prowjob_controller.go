@@ -82,7 +82,7 @@ func NewProwJobStatusController(
 			DeleteFunc: c.lookupReleasePayload,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
@@ -90,7 +90,7 @@ func NewProwJobStatusController(
 		UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
 		DeleteFunc: c.Enqueue,
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	return c, nil
@@ -180,7 +180,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 			klog.Warning(fmt.Sprintf("unable to parse prowjob name %q for releasepayload %q: %v", prowJob.Name, originalReleasePayload.Name, err))
 			continue
 		}
-		ciConfigurationName := details.PreReleaseDetails.CIConfigurationName
+		ciConfigurationName := details.CIConfigurationName
 		ciConfigurationJobName, ok := prowJob.Annotations[kube.ProwJobAnnotation]
 		if !ok {
 			klog.Warning(fmt.Sprintf("unable to process prowjob %q for releasepayload %q", prowJob.Name, originalReleasePayload.Name))

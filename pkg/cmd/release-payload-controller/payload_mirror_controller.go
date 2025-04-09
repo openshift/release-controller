@@ -78,7 +78,7 @@ func NewPayloadMirrorController(
 			DeleteFunc: c.Enqueue,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	return c, nil

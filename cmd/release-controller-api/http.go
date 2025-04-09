@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"io/fs"
 	"math"
 	"net/http"
@@ -18,6 +17,8 @@ import (
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/rhcos"
@@ -825,12 +826,13 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		// needs to be passed into the RHCOS diff engine (x86_64).
 		var architecture, archExtension string
 
-		if c.architecture == "amd64" {
+		switch c.architecture {
+		case "amd64":
 			architecture = "x86_64"
-		} else if c.architecture == "arm64" {
+		case "arm64":
 			architecture = "aarch64"
 			archExtension = fmt.Sprintf("-%s", architecture)
-		} else {
+		default:
 			architecture = c.architecture
 			archExtension = fmt.Sprintf("-%s", architecture)
 		}

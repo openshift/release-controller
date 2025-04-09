@@ -93,7 +93,7 @@ func NewReleaseCreationStatusController(
 			DeleteFunc: c.lookupReleasePayload,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add batch job event handler: %v", err)
+		return nil, fmt.Errorf("failed to add batch job event handler: %v", err)
 	}
 
 	// In case someone/something deletes the ReleaseCreationJobResult.Status, try and rectify it...
@@ -119,7 +119,7 @@ func NewReleaseCreationStatusController(
 			DeleteFunc: c.Enqueue,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	return c, nil

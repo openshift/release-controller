@@ -44,12 +44,12 @@ func addAnalysisEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, payloadTag, verifi
 	for i := range spec.PodSpec.Containers {
 		c := &spec.PodSpec.Containers[i]
 		for j := range c.Env {
-			switch name := c.Env[j].Name; {
-			case name == "PAYLOAD_TAG":
+			switch name := c.Env[j].Name; name {
+			case "PAYLOAD_TAG":
 				c.Env[j].Value = payloadTag
-			case name == "VERIFICATION_JOB_NAME":
+			case "VERIFICATION_JOB_NAME":
 				c.Env[j].Value = verificationJobName
-			case name == "JOB_START_TIME":
+			case "JOB_START_TIME":
 				c.Env[j].Value = time.Now().Format(time.RFC3339)
 			}
 		}

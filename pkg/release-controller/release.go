@@ -69,7 +69,7 @@ func (r *Release) HasInconsistencies() bool {
 			return true
 		}
 	}
-	if _, ok := r.Source.ObjectMeta.Annotations[ReleaseAnnotationInconsistency]; ok {
+	if _, ok := r.Source.Annotations[ReleaseAnnotationInconsistency]; ok {
 		return true
 	}
 	return false

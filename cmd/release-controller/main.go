@@ -358,21 +358,21 @@ func (o *options) Run() error {
 		tokens = append(tokens, o.github.AppPrivateKeyPath)
 	}
 	if err := secret.Add(tokens...); err != nil {
-		return fmt.Errorf("Error starting secrets agent: %w", err)
+		return fmt.Errorf("error starting secrets agent: %w", err)
 	}
 
 	ghClient, err := o.github.GitHubClient(false)
 	if err != nil {
-		return fmt.Errorf("Failed to create github client: %v", err)
+		return fmt.Errorf("failed to create github client: %v", err)
 	}
 	if err := ghClient.Throttle(o.githubThrottle, 0); err != nil {
-		return fmt.Errorf("Failed to set github throttle: %v", err)
+		return fmt.Errorf("failed to set github throttle: %v", err)
 	}
 
 	if o.VerifyJira {
 		jiraClient, err = o.jira.Client()
 		if err != nil {
-			return fmt.Errorf("Failed to create jira client: %v", err)
+			return fmt.Errorf("failed to create jira client: %v", err)
 		}
 	}
 
@@ -412,7 +412,7 @@ func (o *options) Run() error {
 	if o.VerifyJira {
 		pluginAgent, err := o.PluginConfig.PluginAgent()
 		if err != nil {
-			return fmt.Errorf("Failed to create plugin agent: %v", err)
+			return fmt.Errorf("failed to create plugin agent: %v", err)
 		}
 		c.jiraVerifier = jira.NewVerifier(jiraClient, ghClient, pluginAgent.Config())
 		initializeJiraMetrics(jiraErrorMetrics)
@@ -674,13 +674,13 @@ func refreshReleaseToolsEvery(interval time.Duration, execReleaseFiles *releasec
 		}, func() (bool, error) {
 			success := true
 			if err := execReleaseFiles.RefreshPod(); err != nil {
-				klog.Errorf("Unable to refresh files cache, waiting to retry: %v", err)
+				klog.Errorf("unable to refresh files cache, waiting to retry: %v", err)
 				success = false
 			}
 			return success, nil
 		})
 		if err != nil {
-			klog.Errorf("Unable to refresh git cache, waiting until next sync time")
+			klog.Errorf("unable to refresh git cache, waiting until next sync time")
 		}
 	}, interval, stopCh)
 }

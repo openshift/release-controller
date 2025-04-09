@@ -224,7 +224,7 @@ func (c *Controller) syncJira(key queueKey) error {
 			continue
 		}
 		fixVersionUpdateList = fixVersionUpdateList.Insert(issue)
-		if mapIssueDetails[issue].Epic != "" && !(strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-")) {
+		if mapIssueDetails[issue].Epic != "" && !strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") && !strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-") {
 			fixVersionUpdateList = fixVersionUpdateList.Insert(mapIssueDetails[issue].Epic)
 		}
 	}

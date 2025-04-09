@@ -71,8 +71,8 @@ func (b *GCSAuditStore) Refresh(ctx context.Context) error {
 
 		path := strings.Trim(strings.TrimPrefix(item.Name, b.prefix), "/")
 		parts := strings.SplitN(path, "/", 6)
-		switch {
-		case parts[0] == "signatures":
+		switch parts[0] {
+		case "signatures":
 			if len(parts) != 5 {
 				klog.Warningf("Invalid signature in GCS at path gs://%s/%s", b.bucketName, item.Name)
 				continue

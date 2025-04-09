@@ -130,7 +130,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 					}
 				}
 				if !exists {
-					*errs = append(*errs, fmt.Errorf("Internal Error on Automation"))
+					*errs = append(*errs, fmt.Errorf("Internal Error on Automation")) //nolint:staticcheck
 				}
 				klog.Warning(newErr)
 				return "", false
@@ -255,7 +255,7 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 				}
 			}
 			if !exists {
-				errs = append(errs, fmt.Errorf("Internal Error on Automation"))
+				errs = append(errs, fmt.Errorf("Internal Error on Automation")) //nolint:staticcheck
 			}
 			klog.Warningf("unable to get jira ID %s: %v", issueID, err)
 			continue
@@ -309,7 +309,7 @@ func PullFromIdentifier(identifier string) (org, repo string, num int, err error
 	if len(parts) >= 3 && parts[2] != "pull" {
 		return "", "", 0, &identifierNotForPull{identifier: identifier}
 	}
-	if len(parts) != 4 && !(len(parts) == 5 && (parts[4] == "" || parts[4] == "files")) && !(len(parts) == 6 && (parts[4] == "files" && parts[5] == "")) {
+	if len(parts) != 4 && (len(parts) != 5 || (parts[4] != "" && parts[4] != "files")) && (len(parts) != 6 || parts[4] != "files" || parts[5] != "") {
 		return "", "", 0, fmt.Errorf("invalid pull identifier with %d parts: %q", len(parts), identifier)
 	}
 	number, err := strconv.Atoi(parts[3])
@@ -344,7 +344,7 @@ func getPRs(input []string, jiraClient jira.Client) (map[string][]pr, []error) {
 				}
 			}
 			if !exists {
-				errs = append(errs, fmt.Errorf("Internal Error on Automation"))
+				errs = append(errs, fmt.Errorf("Internal Error on Automation")) //nolint:staticcheck
 			}
 			klog.Warningf("failed to get external bugs for jira issue %s: %v", jiraID, err)
 			continue
