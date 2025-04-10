@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+
+	"maps"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -69,7 +72,7 @@ func (r *Release) HasInconsistencies() bool {
 			return true
 		}
 	}
-	if _, ok := r.Source.ObjectMeta.Annotations[ReleaseAnnotationInconsistency]; ok {
+	if _, ok := r.Source.Annotations[ReleaseAnnotationInconsistency]; ok {
 		return true
 	}
 	return false
@@ -342,7 +345,7 @@ func UnsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVer
 		if tag.Annotations[ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if len(phases) > 0 && !StringSliceContains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if len(phases) > 0 && !slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
 			continue
 		}
 
@@ -396,7 +399,7 @@ func SortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 		if tag.Annotations[ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
-		if StringSliceContains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
 			tags = append(tags, tag)
 		}
 	}
@@ -538,9 +541,7 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		return release.Config.Verify, nil
 	}
 	jobs := make(map[string]ReleaseVerification)
-	for k, v := range release.Config.Verify {
-		jobs[k] = v
-	}
+	maps.Copy(jobs, release.Config.Verify)
 	version, err := SemverParseTolerant(releaseTag.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full stable verification jobs: %w", err)

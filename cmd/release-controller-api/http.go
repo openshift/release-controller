@@ -6,18 +6,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/rhcos"
@@ -28,6 +30,8 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/gorilla/mux"
 	"github.com/russross/blackfriday"
+
+	"maps"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -613,7 +617,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 	for _, tag := range r.Tags {
 		downloadURL, _ := c.urlForArtifacts(tag.Name)
 		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-		if len(filterPhase) > 0 && !releasecontroller.ContainsString(filterPhase, phase) {
+		if len(filterPhase) > 0 && !slices.Contains(filterPhase, phase) {
 			continue
 		}
 		tags = append(tags, releasecontroller.APITag{
@@ -825,12 +829,13 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		// needs to be passed into the RHCOS diff engine (x86_64).
 		var architecture, archExtension string
 
-		if c.architecture == "amd64" {
+		switch c.architecture {
+		case "amd64":
 			architecture = "x86_64"
-		} else if c.architecture == "arm64" {
+		case "arm64":
 			architecture = "aarch64"
 			archExtension = fmt.Sprintf("-%s", architecture)
-		} else {
+		default:
 			architecture = c.architecture
 			archExtension = fmt.Sprintf("-%s", architecture)
 		}
@@ -2270,9 +2275,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	verificationJobs := make(map[string]releasecontroller.ReleaseVerification)
 
 	if jobType == "periodic" {
-		for name, periodic := range release.Config.Periodic {
-			periodicJobs[name] = periodic
-		}
+		maps.Copy(periodicJobs, release.Config.Periodic)
 	} else {
 	Loop:
 		for name, verify := range release.Config.Verify {

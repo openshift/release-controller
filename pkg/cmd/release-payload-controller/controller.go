@@ -54,7 +54,7 @@ func NewReleasePayloadController(
 	return c
 }
 
-func (c *ReleasePayloadController) Enqueue(obj interface{}) {
+func (c *ReleasePayloadController) Enqueue(obj any) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid queue key '%v': %v", obj, err))
@@ -77,7 +77,7 @@ func (c *ReleasePayloadController) RunWorkers(ctx context.Context, workers int) 
 		return
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.UntilWithContext(ctx, c.runWorker, time.Second)
 	}
 

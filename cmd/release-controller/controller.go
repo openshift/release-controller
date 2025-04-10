@@ -240,7 +240,7 @@ func NewController(
 	if _, err := jobs.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processJobIfComplete,
 		DeleteFunc: c.processJob,
-		UpdateFunc: func(oldObj, newObj interface{}) { c.processJobIfComplete(newObj) },
+		UpdateFunc: func(oldObj, newObj any) { c.processJobIfComplete(newObj) },
 	}); err != nil {
 		klog.Fatalf("Failed to add event handler for jobs: %v", err)
 	}
@@ -273,7 +273,7 @@ func (c *Controller) AddReleaseNamespace(ns string, imagestreams imageinformers.
 	if _, err := imagestreams.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processImageStream,
 		DeleteFunc: c.processImageStream,
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			c.processImageStream(newObj)
 		},
 	}); err != nil {
@@ -299,7 +299,7 @@ func (c *Controller) AddProwInformer(ns string, informer cache.SharedIndexInform
 	if _, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.processProwJob,
 		DeleteFunc: c.processProwJob,
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			c.processProwJob(newObj)
 		},
 	}); err != nil {
@@ -326,7 +326,7 @@ func (c *Controller) addLegacyResultsQueueKey(key queueKey) {
 	c.legacyResultsQueue.Add(key)
 }
 
-func (c *Controller) processJob(obj interface{}) {
+func (c *Controller) processJob(obj any) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
 		// this job should wake the audit queue
@@ -351,7 +351,7 @@ func (c *Controller) processJob(obj interface{}) {
 	}
 }
 
-func (c *Controller) processJobIfComplete(obj interface{}) {
+func (c *Controller) processJobIfComplete(obj any) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
 		if _, complete := jobIsComplete(t); !complete {
@@ -363,7 +363,7 @@ func (c *Controller) processJobIfComplete(obj interface{}) {
 	}
 }
 
-func (c *Controller) processProwJob(obj interface{}) {
+func (c *Controller) processProwJob(obj any) {
 	switch t := obj.(type) {
 	case *unstructured.Unstructured:
 		key, ok := queueKeyFor(t.GetAnnotations()[releasecontroller.ReleaseAnnotationSource])
@@ -376,7 +376,7 @@ func (c *Controller) processProwJob(obj interface{}) {
 	}
 }
 
-func (c *Controller) processImageStream(obj interface{}) {
+func (c *Controller) processImageStream(obj any) {
 	switch t := obj.(type) {
 	case *imagev1.ImageStream:
 		// when we see a change to an image stream, reset our expectations
@@ -435,21 +435,21 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
 
 	go wait.Until(c.gcWorker, time.Second, stopCh)
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.Until(c.auditWorker, time.Second, stopCh)
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.Until(c.jiraWorker, time.Second, stopCh)
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.Until(c.legacyResultsWorker, time.Second, stopCh)
 	}
 
@@ -598,7 +598,7 @@ func (c *Controller) processNextLegacyResult() bool {
 	return true
 }
 
-func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, err error, key interface{}) {
+func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, err error, key any) {
 	if err == nil {
 		queue.Forget(key)
 		return

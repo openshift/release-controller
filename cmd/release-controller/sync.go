@@ -615,7 +615,7 @@ func (c *Controller) loadReleaseForSync(namespace, name string) (*releasecontrol
 	return release, nil
 }
 
-func toJSONString(data interface{}) string {
+func toJSONString(data any) string {
 	out, err := json.Marshal(data)
 	if err != nil {
 		panic(err)

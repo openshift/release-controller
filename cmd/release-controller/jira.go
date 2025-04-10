@@ -55,7 +55,7 @@ func initializeJiraMetrics(*prometheus.CounterVec) {
 func getNonVerifiedTagsJira(acceptedTags []*v1.TagReference) (current, previous *v1.TagReference) {
 	// get oldest non-verified tag to make sure none are missed
 	// accepted tags are returned sorted with the latest release first; reverse, so we can get oldest non-verified release
-	for i := 0; i < len(acceptedTags)/2; i++ {
+	for i := range len(acceptedTags) / 2 {
 		j := len(acceptedTags) - i - 1
 		acceptedTags[i], acceptedTags[j] = acceptedTags[j], acceptedTags[i]
 	}
@@ -224,7 +224,7 @@ func (c *Controller) syncJira(key queueKey) error {
 			continue
 		}
 		fixVersionUpdateList = fixVersionUpdateList.Insert(issue)
-		if mapIssueDetails[issue].Epic != "" && !(strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") || strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-")) {
+		if mapIssueDetails[issue].Epic != "" && !strings.HasPrefix(mapIssueDetails[issue].Epic, "OSDOCS-") && !strings.HasPrefix(mapIssueDetails[issue].Epic, "PLMCORE-") {
 			fixVersionUpdateList = fixVersionUpdateList.Insert(mapIssueDetails[issue].Epic)
 		}
 	}

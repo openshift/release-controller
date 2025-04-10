@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"k8s.io/apimachinery/pkg/labels"
 	"net/url"
 	"sort"
 	"strings"
 	"text/template"
 	"time"
+
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload"
@@ -164,17 +165,17 @@ func upgradeCells(upgrades *ReleaseUpgrades, index int) string {
 	}
 	remaining := upgrades.Width - len(upgrades.Tags[index].Visual)
 	if remaining > 0 {
-		buf.WriteString(fmt.Sprintf(`<td colspan="%d"></td>`, remaining))
+		fmt.Fprintf(buf, `<td colspan="%d"></td>`, remaining)
 	}
 	buf.WriteString(`<td>`)
 	for _, external := range upgrades.Tags[index].External {
 		switch {
 		case external.Success > 0:
-			buf.WriteString(fmt.Sprintf(`<span class="text-success">%s</span> `, external.From))
+			fmt.Fprintf(buf, `<span class="text-success">%s</span> `, external.From)
 		case external.Failure > 0:
-			buf.WriteString(fmt.Sprintf(`<span class="text-danger">%s</span> `, external.From))
+			fmt.Fprintf(buf, `<span class="text-danger">%s</span> `, external.From)
 		default:
-			buf.WriteString(fmt.Sprintf(`<span>%s</span> `, external.From))
+			fmt.Fprintf(buf, `<span>%s</span> `, external.From)
 		}
 	}
 	buf.WriteString(`</td>`)
@@ -210,7 +211,7 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 			case releasecontroller.ReleaseVerificationStateSucceeded:
 				successCount++
 			case releasecontroller.ReleaseVerificationStateFailed:
-				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, visual.Begin.From))
+				fmt.Fprintf(buf, `<a class="text-danger" href=%s>%s</a><br>`, url, visual.Begin.From)
 			default:
 				otherCount++
 			}
@@ -223,7 +224,7 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 			case releasecontroller.ReleaseVerificationStateSucceeded:
 				successCount++
 			case releasecontroller.ReleaseVerificationStateFailed:
-				buf.WriteString(fmt.Sprintf(`<a class="text-danger" href=%s>%s</a><br>`, url, external.From))
+				fmt.Fprintf(buf, `<a class="text-danger" href=%s>%s</a><br>`, url, external.From)
 			default:
 				otherCount++
 			}
@@ -232,7 +233,7 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 	buf.WriteString(`</td>`)
 
 	buf2 := &bytes.Buffer{}
-	buf2.WriteString(fmt.Sprintf(`<td>%d</td><td>%d</td>`, successCount, otherCount))
+	fmt.Fprintf(buf2, `<td>%d</td><td>%d</td>`, successCount, otherCount)
 	buf2.WriteString(buf.String())
 
 	return buf2.String()
@@ -491,7 +492,7 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			}
 			buf.WriteString("</a>")
 			if value.Retries > 0 {
-				buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", value.Retries))
+				fmt.Fprintf(buf, " <span class=\"text-warning\">(%d retries)</span>", value.Retries)
 			}
 			if pj := verificationJobs[key].ProwJob; pj != nil {
 				buf.WriteString(" ")
@@ -595,7 +596,7 @@ func findPreviousRelease(older []*imagev1.TagReference, release *releasecontroll
 
 type nopFlusher struct{}
 
-func (_ nopFlusher) Flush() {}
+func (nopFlusher) Flush() {}
 
 func calculateReleaseUpgrades(release *releasecontroller.Release, tags []*imagev1.TagReference, graph *releasecontroller.UpgradeGraph, fullHistory bool) *ReleaseUpgrades {
 	tagNames := make([]string, 0, len(tags))

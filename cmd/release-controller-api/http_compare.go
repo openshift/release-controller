@@ -104,10 +104,11 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		for _, tag := range stream.Tags {
 			if len(fromRelease) > 0 && len(toRelease) > 0 {
 				pullSpec := releasecontroller.FindPublicImagePullSpec(stream.Release.Target, tag.Name)
-				if tag.Name == fromRelease {
+				switch tag.Name {
+				case fromRelease:
 					fromComparison.PullSpec = pullSpec
 					fromComparison.Tag = tag
-				} else if tag.Name == toRelease {
+				case toRelease:
 					toComparison.PullSpec = pullSpec
 					toComparison.Tag = tag
 				}

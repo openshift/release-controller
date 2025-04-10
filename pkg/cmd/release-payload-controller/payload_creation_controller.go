@@ -56,7 +56,7 @@ func NewPayloadCreationController(
 
 	c.syncFn = c.sync
 
-	releasePayloadFilter := func(obj interface{}) bool {
+	releasePayloadFilter := func(obj any) bool {
 		if releasePayload, ok := obj.(*v1alpha1.ReleasePayload); ok {
 			// If the conditions are both in their respective terminal states, then there is nothing else to do...
 			if (v1helpers.IsConditionTrue(releasePayload.Status.Conditions, v1alpha1.ConditionPayloadCreated) ||
@@ -74,11 +74,11 @@ func NewPayloadCreationController(
 		FilterFunc: releasePayloadFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.Enqueue,
-			UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+			UpdateFunc: func(old, new any) { c.Enqueue(new) },
 			DeleteFunc: c.Enqueue,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	return c, nil

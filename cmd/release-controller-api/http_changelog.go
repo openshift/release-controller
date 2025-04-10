@@ -54,12 +54,13 @@ func (c *Controller) getChangeLog(ch chan renderResult, chRpmDiff chan renderRes
 	// needs to be passed into the RHCOS diff engine (x86_64).
 	var architecture, archExtension string
 
-	if toImage.Config.Architecture == "amd64" {
+	switch toImage.Config.Architecture {
+	case "amd64":
 		architecture = "x86_64"
-	} else if toImage.Config.Architecture == "arm64" {
+	case "arm64":
 		architecture = "aarch64"
 		archExtension = fmt.Sprintf("-%s", architecture)
-	} else {
+	default:
 		architecture = toImage.Config.Architecture
 		archExtension = fmt.Sprintf("-%s", architecture)
 	}

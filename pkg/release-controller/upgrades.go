@@ -19,6 +19,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"maps"
 )
 
 type UpgradeGraph struct {
@@ -124,9 +125,7 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 			ref.Success += history.Success
 			ref.Failure += history.Failure
 			ref.Total += len(history.History)
-			for k, v := range history.History {
-				ref.History[k] = v
-			}
+			maps.Copy(ref.History, history.History)
 		}
 	}
 	return summaries
@@ -134,9 +133,7 @@ func (g *UpgradeGraph) UpgradesFrom(fromNames ...string) []UpgradeHistory {
 
 func copyHistory(h map[string]UpgradeResult) map[string]UpgradeResult {
 	copied := make(map[string]UpgradeResult, len(h))
-	for k, v := range h {
-		copied[k] = v
-	}
+	maps.Copy(copied, h)
 	return copied
 }
 

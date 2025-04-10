@@ -318,7 +318,9 @@ func (o *options) Run() error {
 	health.ServeReady(func() bool {
 		resp, err := http.DefaultClient.Get("http://127.0.0.1:" + strconv.Itoa(o.ListenPort) + "/readyz")
 		if resp != nil {
-			resp.Body.Close()
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				klog.Errorf("failed to close response body: %v", closeErr)
+			}
 		}
 		return err == nil && resp.StatusCode == 200
 	})

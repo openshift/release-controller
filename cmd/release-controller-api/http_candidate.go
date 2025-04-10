@@ -18,6 +18,7 @@ import (
 	"k8s.io/klog"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	"slices"
 )
 
 const candidatePageHtml = `
@@ -312,13 +313,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 			continue
 		}
 
-		matched := false
-		for _, name := range names {
-			if r.Config.Name == name {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(names, r.Config.Name)
 		if !matched {
 			continue
 		}

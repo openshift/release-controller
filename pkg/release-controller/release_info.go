@@ -230,7 +230,7 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
-		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+		return "", fmt.Errorf("failed to find `oc` executable: %w", err)
 	}
 	cmd := exec.Command(oc, "adm", "release", "info", "-o", "json", image)
 	cmd.Stdout = out
@@ -261,7 +261,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
-		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+		return "", fmt.Errorf("failed to find `oc` executable: %w", err)
 	}
 	args := []string{"adm", "release", "info", "--changelog=/tmp/git/", from, to}
 	if isJson {
@@ -309,7 +309,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
-		return nil, fmt.Errorf("Failed to find `oc` executable: %w", err)
+		return nil, fmt.Errorf("failed to find `oc` executable: %w", err)
 	}
 	cmd := exec.Command(oc, "adm", "release", "info", "--bugs=/tmp/git/", "--output=json", "--skip-bug-check", from, to)
 	cmd.Stdout = out
@@ -358,7 +358,7 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("Failed to find `oc` executable: %w", err)
+		return RpmDiff{}, fmt.Errorf("failed to find `oc` executable: %w", err)
 	}
 	cmd := exec.Command(oc, "adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	klog.V(4).Infof("Running RPM diff command: %s", cmd.String())
@@ -430,7 +430,7 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
-		return "", fmt.Errorf("Failed to find `oc` executable: %w", err)
+		return "", fmt.Errorf("failed to find `oc` executable: %w", err)
 	}
 	cmd := exec.Command(oc, "image", "info", "--filter-by-os", fmt.Sprintf("linux/%s", architecture), "-o", "json", image)
 	cmd.Stdout = out
@@ -532,7 +532,7 @@ func (r *ExecReleaseInfo) JiraRecursiveGet(issues []jiraBaseClient.Issue, allIss
 							parents = append(parents, typeCheck(f))
 
 						}
-					case map[string]interface{}:
+					case map[string]any:
 						if key == JiraCustomFieldFeatureLink {
 							parents = append(parents, typeCheck(f))
 						}
@@ -572,11 +572,11 @@ type IssueDetails struct {
 	Transitions    []Transition
 }
 
-func typeCheck(o interface{}) string {
+func typeCheck(o any) string {
 	switch v := o.(type) {
 	case string:
 		return v
-	case map[string]interface{}:
+	case map[string]any:
 		return typeCheck(v["key"])
 	default:
 		klog.Warningf("unable to parse the Jira unknown field: %v\n", o)
@@ -746,10 +746,7 @@ func (r *ExecReleaseInfo) divideSlice(issues []string, chunk int, skipCache bool
 
 	var divided [][]string
 	for index := 0; index < len(uncashedIssues); index += chunk {
-		end := index + chunk
-		if end > len(issues) {
-			end = len(issues)
-		}
+		end := min(index+chunk, len(issues))
 		divided = append(divided, issues[index:end])
 	}
 	return divided, result

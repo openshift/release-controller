@@ -40,8 +40,8 @@ func (b *FileAuditStore) Refresh(ctx context.Context) error {
 		}
 		path := strings.TrimPrefix(item, b.path)
 		parts := strings.SplitN(path, "/", 6)
-		switch {
-		case parts[0] == "signatures":
+		switch parts[0] {
+		case "signatures":
 			if len(parts) != 5 {
 				klog.Warningf("Invalid signature at path %s", item)
 				return nil
@@ -107,7 +107,9 @@ func (b *FileAuditStore) PutSignature(ctx context.Context, dgst string, signatur
 		return err
 	}
 	if _, err := f.Write(signature); err != nil {
-		f.Close()
+		if closeErr := f.Close(); closeErr != nil {
+			klog.Errorf("failed to close file: %v", closeErr)
+		}
 		return err
 	}
 	if err := f.Close(); err != nil {

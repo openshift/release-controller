@@ -125,8 +125,8 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		}
 	}
 
-	switch {
-	case c.signer == nil:
+	switch c.signer {
+	case nil:
 		klog.V(4).Infof("Completed audit of %s at %s without signing", releaseName, release.Source.ResourceVersion)
 		return nil
 
@@ -183,7 +183,7 @@ func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, re
 	if len(parts) == 2 {
 		name = fmt.Sprintf("verify-%s", parts[1])
 	}
-	name = strings.Replace(name, ":", "-", -1)
+	name = strings.ReplaceAll(name, ":", "-")
 	if len(name) > 63 {
 		name = name[:63]
 	}

@@ -25,7 +25,7 @@ func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, veri
 	copied := verifyType.DeepCopy()
 	copied.AggregatedProwJob.AnalysisJobCount = 0
 
-	for i := 0; i < verifyType.AggregatedProwJob.AnalysisJobCount; i++ {
+	for i := range verifyType.AggregatedProwJob.AnalysisJobCount {
 		// Postfix the name to differentiate it from the aggregator job
 		jobNameSuffix := fmt.Sprintf("analysis-%d", i)
 		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
@@ -44,12 +44,12 @@ func addAnalysisEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, payloadTag, verifi
 	for i := range spec.PodSpec.Containers {
 		c := &spec.PodSpec.Containers[i]
 		for j := range c.Env {
-			switch name := c.Env[j].Name; {
-			case name == "PAYLOAD_TAG":
+			switch name := c.Env[j].Name; name {
+			case "PAYLOAD_TAG":
 				c.Env[j].Value = payloadTag
-			case name == "VERIFICATION_JOB_NAME":
+			case "VERIFICATION_JOB_NAME":
 				c.Env[j].Value = verificationJobName
-			case name == "JOB_START_TIME":
+			case "JOB_START_TIME":
 				c.Env[j].Value = time.Now().Format(time.RFC3339)
 			}
 		}

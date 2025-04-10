@@ -63,7 +63,7 @@ func NewProwJobStatusController(
 	c.syncFn = c.sync
 	c.cachesToSync = append(c.cachesToSync, prowJobInformer.Informer().HasSynced)
 
-	prowJobFilter := func(obj interface{}) bool {
+	prowJobFilter := func(obj any) bool {
 		if prowJob, ok := obj.(*v1.ProwJob); ok {
 			if _, ok := prowJob.Labels[releasecontroller.ReleaseLabelVerify]; ok {
 				if _, ok := prowJob.Labels[releasecontroller.ReleaseLabelPayload]; ok {
@@ -78,25 +78,25 @@ func NewProwJobStatusController(
 		FilterFunc: prowJobFilter,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.lookupReleasePayload,
-			UpdateFunc: func(old, new interface{}) { c.lookupReleasePayload(new) },
+			UpdateFunc: func(old, new any) { c.lookupReleasePayload(new) },
 			DeleteFunc: c.lookupReleasePayload,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	if _, err := releasePayloadInformer.Informer().AddEventHandler(&cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.Enqueue,
-		UpdateFunc: func(old, new interface{}) { c.Enqueue(new) },
+		UpdateFunc: func(old, new any) { c.Enqueue(new) },
 		DeleteFunc: c.Enqueue,
 	}); err != nil {
-		return nil, fmt.Errorf("Failed to add release payload event handler: %v", err)
+		return nil, fmt.Errorf("failed to add release payload event handler: %v", err)
 	}
 
 	return c, nil
 }
 
-func (c *ProwJobStatusController) lookupReleasePayload(obj interface{}) {
+func (c *ProwJobStatusController) lookupReleasePayload(obj any) {
 	object, ok := obj.(runtime.Object)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("unable to cast obj: %v", obj))
@@ -180,7 +180,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 			klog.Warning(fmt.Sprintf("unable to parse prowjob name %q for releasepayload %q: %v", prowJob.Name, originalReleasePayload.Name, err))
 			continue
 		}
-		ciConfigurationName := details.PreReleaseDetails.CIConfigurationName
+		ciConfigurationName := details.CIConfigurationName
 		ciConfigurationJobName, ok := prowJob.Annotations[kube.ProwJobAnnotation]
 		if !ok {
 			klog.Warning(fmt.Sprintf("unable to process prowjob %q for releasepayload %q", prowJob.Name, originalReleasePayload.Name))

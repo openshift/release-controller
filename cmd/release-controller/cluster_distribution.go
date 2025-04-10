@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 )
@@ -35,12 +36,7 @@ func (r *RandomClusterDistribution) Get() string {
 }
 
 func (r *RandomClusterDistribution) Contains(str string) bool {
-	for _, v := range r.pool {
-		if v == str {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.pool, str)
 }
 
 type RoundRobinClusterDistribution struct {
@@ -73,10 +69,5 @@ func (r *RoundRobinClusterDistribution) Get() string {
 }
 
 func (r *RoundRobinClusterDistribution) Contains(str string) bool {
-	for _, v := range r.pool {
-		if v == str {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.pool, str)
 }
