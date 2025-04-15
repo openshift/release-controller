@@ -687,7 +687,7 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 		return "", fmt.Errorf("unable to communicate with Jira")
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	for _, feature := range featuresList {
@@ -770,7 +770,7 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 	var buf bytes.Buffer
 	var invalidIDs []string
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	for _, parts := range dividedIssues {
@@ -872,7 +872,7 @@ func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraB
 	var mu sync.Mutex
 	var buf bytes.Buffer
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	for _, parts := range dividedIssues {
