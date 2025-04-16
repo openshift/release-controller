@@ -445,9 +445,9 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(c.auditWorker, time.Second, stopCh)
 	}
 
-	for range workers {
-		go wait.Until(c.jiraWorker, time.Second, stopCh)
-	}
+	//for range workers {
+	go wait.Until(c.jiraWorker, time.Second, stopCh)
+	//}
 
 	for range workers {
 		go wait.Until(c.legacyResultsWorker, time.Second, stopCh)
