@@ -349,6 +349,9 @@ github.com/denormal/go-gitignore
 # github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 ## explicit; go 1.12
 github.com/dgrijalva/jwt-go/v4
+# github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7
+## explicit
+github.com/docker/libtrust
 # github.com/dustin/go-humanize v1.0.1
 ## explicit; go 1.16
 github.com/dustin/go-humanize
@@ -559,6 +562,16 @@ github.com/josharian/intern
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
 github.com/json-iterator/go
+# github.com/klauspost/compress v1.18.0
+## explicit; go 1.22
+github.com/klauspost/compress
+github.com/klauspost/compress/fse
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/internal/cpuinfo
+github.com/klauspost/compress/internal/le
+github.com/klauspost/compress/internal/snapref
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
@@ -682,6 +695,45 @@ github.com/prometheus/procfs/internal/util
 github.com/prometheus/statsd_exporter/pkg/level
 github.com/prometheus/statsd_exporter/pkg/mapper
 github.com/prometheus/statsd_exporter/pkg/mapper/fsm
+# github.com/regclient/regclient v0.8.3
+## explicit; go 1.22
+github.com/regclient/regclient
+github.com/regclient/regclient/config
+github.com/regclient/regclient/internal/auth
+github.com/regclient/regclient/internal/cache
+github.com/regclient/regclient/internal/conffile
+github.com/regclient/regclient/internal/httplink
+github.com/regclient/regclient/internal/limitread
+github.com/regclient/regclient/internal/pqueue
+github.com/regclient/regclient/internal/reghttp
+github.com/regclient/regclient/internal/reqmeta
+github.com/regclient/regclient/internal/sloghandle
+github.com/regclient/regclient/internal/strparse
+github.com/regclient/regclient/internal/timejson
+github.com/regclient/regclient/internal/units
+github.com/regclient/regclient/internal/version
+github.com/regclient/regclient/pkg/archive
+github.com/regclient/regclient/scheme
+github.com/regclient/regclient/scheme/ocidir
+github.com/regclient/regclient/scheme/reg
+github.com/regclient/regclient/types
+github.com/regclient/regclient/types/blob
+github.com/regclient/regclient/types/descriptor
+github.com/regclient/regclient/types/docker
+github.com/regclient/regclient/types/docker/schema1
+github.com/regclient/regclient/types/docker/schema2
+github.com/regclient/regclient/types/errs
+github.com/regclient/regclient/types/manifest
+github.com/regclient/regclient/types/mediatype
+github.com/regclient/regclient/types/oci
+github.com/regclient/regclient/types/oci/v1
+github.com/regclient/regclient/types/ping
+github.com/regclient/regclient/types/platform
+github.com/regclient/regclient/types/ref
+github.com/regclient/regclient/types/referrer
+github.com/regclient/regclient/types/repo
+github.com/regclient/regclient/types/tag
+github.com/regclient/regclient/types/warning
 # github.com/russross/blackfriday v2.0.0+incompatible
 ## explicit
 github.com/russross/blackfriday
@@ -699,10 +751,10 @@ github.com/shurcooL/sanitized_anchor_name
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/spf13/cobra v1.8.0
+# github.com/spf13/cobra v1.9.1
 ## explicit; go 1.15
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.5
+# github.com/spf13/pflag v1.0.6
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/stoewer/go-strcase v1.2.0
@@ -729,6 +781,12 @@ github.com/tektoncd/pipeline/pkg/substitution
 ## explicit
 github.com/trivago/tgo/tcontainer
 github.com/trivago/tgo/treflect
+# github.com/ulikunitz/xz v0.5.12
+## explicit; go 1.12
+github.com/ulikunitz/xz
+github.com/ulikunitz/xz/internal/hash
+github.com/ulikunitz/xz/internal/xlog
+github.com/ulikunitz/xz/lzma
 # go.etcd.io/etcd/api/v3 v3.5.10
 ## explicit; go 1.20
 go.etcd.io/etcd/api/v3/authpb
@@ -916,14 +974,14 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.24.0
+# golang.org/x/sys v0.30.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.23.0
+# golang.org/x/term v0.29.0
 ## explicit; go 1.18
 golang.org/x/term
 # golang.org/x/text v0.19.0
