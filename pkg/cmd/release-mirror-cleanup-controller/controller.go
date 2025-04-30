@@ -87,6 +87,9 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 			klog.V(4).Infof("%s/%s does not have an alternate mirror; skipping", stream.Namespace, stream.Name)
 			continue
 		}
+		if len(stream.Status.Tags) > 0 && validTags[releaseDefinition.AlternateImageRepository] == nil {
+			validTags[releaseDefinition.AlternateImageRepository] = sets.New[string]()
+		}
 		for _, tag := range stream.Status.Tags {
 			validTags[releaseDefinition.AlternateImageRepository].Insert(tag.Tag)
 		}
