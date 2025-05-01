@@ -370,6 +370,8 @@ func (o *options) Run() error {
 	}
 
 	if o.VerifyJira {
+		rateLimitInfo := &jira.RateLimitInfo{Data: map[string]int{}}
+		o.jira.CustomBackoff(rateLimitInfo.JiraBackoff)
 		jiraClient, err = o.jira.Client()
 		if err != nil {
 			return fmt.Errorf("failed to create jira client: %v", err)
