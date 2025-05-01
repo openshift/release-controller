@@ -24,10 +24,11 @@ type MirrorCleanupController struct {
 	releaseLister  *releasecontroller.MultiImageStreamLister
 	lruCache       *lru.Cache
 	registryClient *regclient.RegClient
+	minimumAge     time.Duration
 	dryRun         bool
 }
 
-func NewMirrorCleanupController(imageClient *imageclientset.Clientset, credFile string, namespaces []string, dryRun bool) *MirrorCleanupController {
+func NewMirrorCleanupController(imageClient *imageclientset.Clientset, credFile string, namespaces []string, dryRun bool, minimumAge time.Duration) *MirrorCleanupController {
 	parsedReleaseConfigCache, err := lru.New(50)
 	if err != nil {
 		// this shouldn't ever happen
@@ -38,6 +39,7 @@ func NewMirrorCleanupController(imageClient *imageclientset.Clientset, credFile 
 		dryRun:         dryRun,
 		lruCache:       parsedReleaseConfigCache,
 		registryClient: regclient.New(regclient.WithDockerCredsFile(credFile)),
+		minimumAge:     minimumAge,
 	}
 	var hasSynced []cache.InformerSynced
 	stopCh := wait.NeverStop
@@ -96,6 +98,8 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 			alternateRepos.Insert(releaseDefinition.AlternateImageRepository)
 		}
 	}
+	// calculate cutoff date by adding the negative minimum age duration to the current time
+	cutoffDate := time.Now().Add(-c.minimumAge)
 	klog.V(3).Infof("Trimming alternate mirror tags")
 	for repo := range alternateRepos {
 		reference, err := ref.New(repo)
@@ -110,6 +114,15 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 		}
 		for _, tagName := range tagList.Tags {
 			if !validTags.Has(tagName) {
+				imageConfig, err := c.registryClient.ImageConfig(ctx, reference.SetTag(tagName))
+				if err != nil {
+					klog.Errorf("failed to get image config for tag %s: %v", tagName, err)
+					continue
+				}
+				if imageConfig.GetConfig().Created.After(cutoffDate) {
+					klog.V(4).Infof("Tag %s is newer (%s) than cutoff age; skipping", tagName, imageConfig.GetConfig().Created.String())
+					continue
+				}
 				klog.V(3).Infof("Will remove tag %s from remote registry %s", tagName, repo)
 				if c.dryRun {
 					klog.V(3).Infof("Dry run enabled, not deleting tag %s from remote registry %s", tagName, repo)
