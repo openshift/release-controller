@@ -85,16 +85,16 @@ func (o *Options) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve secret %s/%s: %v", o.credentialsNamespace, o.credentialsName, err)
 	}
-	data, ok := credsSecret.Data["auth.json"]
+	data, ok := credsSecret.Data["config.json"]
 	if !ok {
-		return fmt.Errorf("secret %s/%s does not contain auth.json", o.credentialsNamespace, o.credentialsName)
+		return fmt.Errorf("secret %s/%s does not contain config.json", o.credentialsNamespace, o.credentialsName)
 	}
 	// regclient can only read a file for credentials, so we need to write the credentials to a file for it
-	if err := os.WriteFile("/tmp/auth.json", data, 0644); err != nil {
-		return fmt.Errorf("failed to write secret to /tmp/auth.json: %v", err)
+	if err := os.WriteFile("/tmp/config.json", data, 0644); err != nil {
+		return fmt.Errorf("failed to write secret to /tmp/config.json: %v", err)
 	}
 
-	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, "/tmp/auth.json", o.namespaces, o.dryRun)
+	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, "/tmp/config.json", o.namespaces, o.dryRun)
 
 	go mirrorCleanupController.Run(ctx, 6*time.Hour)
 
