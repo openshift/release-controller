@@ -27,7 +27,7 @@ type MirrorCleanupController struct {
 	dryRun         bool
 }
 
-func NewMirrorCleanupController(imageClient *imageclientset.Clientset, namespaces []string, dryRun bool) *MirrorCleanupController {
+func NewMirrorCleanupController(imageClient *imageclientset.Clientset, credFile string, namespaces []string, dryRun bool) *MirrorCleanupController {
 	parsedReleaseConfigCache, err := lru.New(50)
 	if err != nil {
 		// this shouldn't ever happen
@@ -37,7 +37,7 @@ func NewMirrorCleanupController(imageClient *imageclientset.Clientset, namespace
 		releaseLister:  &releasecontroller.MultiImageStreamLister{Listers: make(map[string]imagelisters.ImageStreamNamespaceLister)},
 		dryRun:         dryRun,
 		lruCache:       parsedReleaseConfigCache,
-		registryClient: regclient.New(),
+		registryClient: regclient.New(regclient.WithDockerCredsFile(credFile)),
 	}
 	var hasSynced []cache.InformerSynced
 	stopCh := wait.NeverStop

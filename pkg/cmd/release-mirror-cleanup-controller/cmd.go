@@ -3,6 +3,8 @@ package release_mirror_cleanup_controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"time"
 
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
@@ -10,13 +12,16 @@ import (
 	"github.com/openshift/release-controller/pkg/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 type Options struct {
-	controllerContext *controllercmd.ControllerContext
-	namespaces        []string
-	dryRun            bool
+	controllerContext    *controllercmd.ControllerContext
+	namespaces           []string
+	credentialsNamespace string
+	credentialsName      string
+	dryRun               bool
 }
 
 func NewReleaseMirrorCleanupControllerCommand(name string) *cobra.Command {
@@ -50,6 +55,9 @@ func NewReleaseMirrorCleanupControllerCommand(name string) *cobra.Command {
 
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&o.namespaces, "namespaces", []string{}, "Namespaces where releases exist")
+	// the same secret is distributed across all job namespaces, so we can just use the one in ci-release for everything
+	fs.StringVar(&o.credentialsNamespace, "credentials-namespace", "ci-release", "Namespace where repo credentials secret is located")
+	fs.StringVar(&o.credentialsName, "credentials-secret", "release-controller-quay-mirror-secret", "Namespace where repo credentials secret is located")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "Print tags to be deleted without actually committing the changes.")
 }
 
@@ -66,10 +74,27 @@ func (o *Options) Run(ctx context.Context) error {
 	// ImageStream Informers
 	imageStreamClient, err := imageclientset.NewForConfig(inClusterConfig)
 	if err != nil {
-		klog.Fatalf("Error building imagestream clientset: %s", err.Error())
+		return fmt.Errorf("error building imagestream clientset: %s", err.Error())
 	}
 
-	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, o.namespaces, o.dryRun)
+	kubeClient, err := clientset.NewForConfig(inClusterConfig)
+	if err != nil {
+		return fmt.Errorf("error building generic clientset: %s", err.Error())
+	}
+	credsSecret, err := kubeClient.CoreV1().Secrets(o.credentialsNamespace).Get(context.TODO(), o.credentialsName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to retrieve secret %s/%s: %v", o.credentialsNamespace, o.credentialsName, err)
+	}
+	data, ok := credsSecret.Data["auth.json"]
+	if !ok {
+		return fmt.Errorf("secret %s/%s does not contain auth.json", o.credentialsNamespace, o.credentialsName)
+	}
+	// regclient can only read a file for credentials, so we need to write the credentials to a file for it
+	if err := os.WriteFile("/tmp/auth.json", data, 0644); err != nil {
+		return fmt.Errorf("failed to write secret to /tmp/auth.json: %v", err)
+	}
+
+	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, "/tmp/auth.json", o.namespaces, o.dryRun)
 
 	go mirrorCleanupController.Run(ctx, 6*time.Hour)
 
