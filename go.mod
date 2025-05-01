@@ -60,7 +60,7 @@ require (
 	k8s.io/component-base v0.30.1
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.120.1
-	sigs.k8s.io/prow v0.0.0-20250430112356-e4f2577d57ca
+	sigs.k8s.io/prow v0.0.0-20250430215755-f422de9611c4
 )
 
 require (
