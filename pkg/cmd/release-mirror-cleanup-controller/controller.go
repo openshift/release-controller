@@ -69,8 +69,9 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 		isNames += stream.Name + ", "
 	}
 	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames, ", "))
-	klog.V(3).Infof("Identifying tags that exist in CI")
-	validTags := make(map[string]sets.Set[string])
+	klog.V(3).Infof("Identifying release tags and alternate repos")
+	alternateRepos := sets.New[string]()
+	validTags := sets.New[string]()
 	for _, stream := range streams {
 		// only handle release imagestreams
 		if _, ok := stream.Annotations[releasecontroller.ReleaseAnnotationConfig]; !ok {
@@ -82,20 +83,21 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 			klog.Errorf("failed to parse release definition for imagestream %s: %v", stream.Name, err)
 			continue
 		}
-		// only handle releases with an alternate mirror
-		if releaseDefinition.AlternateImageRepository == "" {
-			klog.V(4).Infof("%s/%s does not have an alternate mirror; skipping", stream.Namespace, stream.Name)
-			continue
+		// "Stable" streams contain release tags
+		if releaseDefinition.As == "Stable" {
+			klog.V(4).Infof("Adding tags from %s/%s to valid tags list", stream.Namespace, stream.Name)
+			for _, tags := range stream.Status.Tags {
+				validTags.Insert(tags.Tag)
+			}
 		}
-		if len(stream.Status.Tags) > 0 && validTags[releaseDefinition.AlternateImageRepository] == nil {
-			validTags[releaseDefinition.AlternateImageRepository] = sets.New[string]()
-		}
-		for _, tag := range stream.Status.Tags {
-			validTags[releaseDefinition.AlternateImageRepository].Insert(tag.Tag)
+		// Keep set of alternate repos to look at
+		if releaseDefinition.AlternateImageRepository != "" {
+			klog.V(4).Infof("%s/%s has alternate mirror %s", stream.Namespace, stream.Name, releaseDefinition.AlternateImageRepository)
+			alternateRepos.Insert(releaseDefinition.AlternateImageRepository)
 		}
 	}
 	klog.V(3).Infof("Trimming alternate mirror tags")
-	for repo, ciTags := range validTags {
+	for repo := range alternateRepos {
 		reference, err := ref.New(repo)
 		if err != nil {
 			klog.Errorf("failed to parse remote registry reference for %s: %v", repo, err)
@@ -107,7 +109,7 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 			continue
 		}
 		for _, tagName := range tagList.Tags {
-			if !ciTags.Has(tagName) {
+			if !validTags.Has(tagName) {
 				klog.V(3).Infof("Will remove tag %s from remote registry %s", tagName, repo)
 				if c.dryRun {
 					klog.V(3).Infof("Dry run enabled, not deleting tag %s from remote registry %s", tagName, repo)
