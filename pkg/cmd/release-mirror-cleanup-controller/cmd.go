@@ -21,6 +21,7 @@ type Options struct {
 	namespaces           []string
 	credentialsNamespace string
 	credentialsName      string
+	minimumAge           time.Duration
 	dryRun               bool
 }
 
@@ -58,6 +59,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	// the same secret is distributed across all job namespaces, so we can just use the one in ci-release for everything
 	fs.StringVar(&o.credentialsNamespace, "credentials-namespace", "ci-release", "Namespace where repo credentials secret is located")
 	fs.StringVar(&o.credentialsName, "credentials-secret", "release-controller-quay-mirror-secret", "Namespace where repo credentials secret is located")
+	// default to 30 days minimum age
+	fs.DurationVar(&o.minimumAge, "minimum-age", 720*time.Hour, "Only delete tags older than this duration")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "Print tags to be deleted without actually committing the changes.")
 }
 
@@ -94,7 +97,7 @@ func (o *Options) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to write secret to /tmp/config.json: %v", err)
 	}
 
-	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, "/tmp/config.json", o.namespaces, o.dryRun)
+	mirrorCleanupController := NewMirrorCleanupController(imageStreamClient, "/tmp/config.json", o.namespaces, o.dryRun, o.minimumAge)
 
 	go mirrorCleanupController.Run(ctx, 6*time.Hour)
 
