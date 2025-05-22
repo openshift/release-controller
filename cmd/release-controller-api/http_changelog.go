@@ -93,12 +93,18 @@ func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderRe
 		return
 	}
 
-	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec())
+	toImagePullspec := toImage.GenerateDigestPullSpec()
+	rpmlist, err := c.releaseInfo.RpmList(toImagePullspec)
 	if err != nil {
 		chNodeInfo <- renderResult{err: err}
 	}
 
-	chNodeInfo <- renderResult{out: rhcos.RenderNodeImageInfo(out, rpmdiff)}
+	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImagePullspec)
+	if err != nil {
+		chNodeInfo <- renderResult{err: err}
+	}
+
+	chNodeInfo <- renderResult{out: rhcos.RenderNodeImageInfo(out, rpmlist, rpmdiff)}
 }
 
 func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {

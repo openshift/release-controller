@@ -92,6 +92,18 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					}
 				}
 			}
+		case "rpmlist":
+			var rpmlist RpmList
+			rpmlist, err = info.RpmList(parts[1])
+			if err == nil {
+				var rpmlistByte []byte
+				rpmlistByte, err = json.Marshal(rpmlist)
+				if err != nil {
+					klog.V(4).Infof("Failed to Marshal Rpm List for %s; %s", parts[1], err)
+				} else {
+					s = string(rpmlistByte)
+				}
+			}
 		case "changelog":
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
@@ -147,6 +159,22 @@ func (c *CachingReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	return rpmdiff, nil
 }
 
+func (c *CachingReleaseInfo) RpmList(image string) (RpmList, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmlist", image}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return RpmList{}, err
+	}
+	if s == "" {
+		return RpmList{}, nil
+	}
+	var rpmlist RpmList
+	if err = json.Unmarshal([]byte(s), &rpmlist); err != nil {
+		return RpmList{}, err
+	}
+	return rpmlist, nil
+}
+
 func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to, strconv.FormatBool(json)}, "\x00"), groupcache.StringSink(&s))
@@ -194,6 +222,7 @@ type ReleaseInfo interface {
 	// Bugs returns a list of jira bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
 	ChangeLog(from, to string, json bool) (string, error)
+	RpmList(image string) (RpmList, error)
 	RpmDiff(from, to string) (RpmDiff, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
@@ -377,6 +406,27 @@ type BugDetails struct {
 	Source int    `json:"source"`
 }
 
+func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
+	if _, err := imagereference.Parse(image); err != nil {
+		return RpmList{}, fmt.Errorf("%s is not an image reference: %v", image, err)
+	}
+	if strings.HasPrefix(image, "-") {
+		return RpmList{}, fmt.Errorf("not a valid reference")
+	}
+
+	var rpmlist RpmList
+
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s", image)
+	}
+	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
+	}
+
+	return rpmlist, nil
+}
+
 func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", from, err)
@@ -399,6 +449,10 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	}
 
 	return rpmdiff, nil
+}
+
+type RpmList struct {
+	Packages   map[string]string `json:"packages"`
 }
 
 type RpmDiff struct {

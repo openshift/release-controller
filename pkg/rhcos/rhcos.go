@@ -3,8 +3,10 @@ package rhcos
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -303,11 +305,25 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 	return strings.ReplaceAll(input, matches[0], replace)
 }
 
-func RenderNodeImageInfo(markdown string, rpmDiff releasecontroller.RpmDiff) string {
+func RenderNodeImageInfo(markdown string, rpmList releasecontroller.RpmList, rpmDiff releasecontroller.RpmDiff) string {
 	output := new(strings.Builder)
 
+	fmt.Fprintf(output, "### Package List\n\n")
+
+	importantPkgs := []string{"cri-o", "kernel", "openshift-kubelet", "systemd"}
+	for _, pkg := range importantPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
+	}
+
+	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Packages))
+	sortedPkgs := slices.Sorted(maps.Keys(rpmList.Packages))
+	for _, pkg := range sortedPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
+	}
+	fmt.Fprintf(output, "</details>\n\n")
+
 	writeList := func(header string, elements []string) {
-		fmt.Fprintf(output, "#### %s:\n\n", header)
+		fmt.Fprintf(output, "### %s:\n\n", header)
 		sort.Strings(elements)
 		for _, elem := range elements {
 			fmt.Fprintf(output, "* %s\n", elem)
@@ -335,10 +351,6 @@ func RenderNodeImageInfo(markdown string, rpmDiff releasecontroller.RpmDiff) str
 			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
 		}
 		writeList("Added", elements)
-	}
-
-	if output.Len() == 0 {
-		return "No package diff"
 	}
 
 	// Reprint the version/diff line, with the browser links for the build itself.
