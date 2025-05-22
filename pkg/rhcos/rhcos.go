@@ -353,6 +353,15 @@ func RenderNodeImageInfo(markdown string, rpmList releasecontroller.RpmList, rpm
 		writeList("Added", elements)
 	}
 
+	fmt.Fprintf(output, "\n\n### Extensions\n\n")
+
+	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Extensions))
+	sortedPkgs = slices.Sorted(maps.Keys(rpmList.Extensions))
+	for _, pkg := range sortedPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Extensions[pkg])
+	}
+	fmt.Fprintf(output, "</details>\n\n")
+
 	// Reprint the version/diff line, with the browser links for the build itself.
 	// But put it last to de-emphasize it. Most people don't need to click on this.
 	if m := reMdCoSPost.FindStringSubmatch(markdown); m != nil {

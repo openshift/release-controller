@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -45,6 +46,8 @@ const (
 )
 
 const maxChunkSize = 450 // this seems to be the maximum Jira can handle, currently
+
+const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
 var (
 	ocPath = ""
@@ -424,6 +427,43 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
 	}
 
+	// XXX: This is hacky... honestly we should just have consistent tag names
+	// across OCP and OKD. But for this specific case, we should probably have e.g.
+	// an explicit component version string instead on the extensions container that
+	// identifies it as such so we don't have to hardcode any tag names here
+	extensionsTagName := "rhel-coreos-extensions"
+	if _, ok := rpmlist.Packages["centos-stream-release"]; ok {
+		extensionsTagName = "stream-coreos-extensions"
+	}
+
+	out, _, err = ocCmd("adm", "release", "info", "--image-for", extensionsTagName, image)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM extensions image for %s", image)
+	}
+	extensionsImage := strings.TrimSpace(string(out))
+
+	tmpdir, err := os.MkdirTemp("", "extensions")
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to create tmpdir for RPM extensions list for %s", image)
+	}
+
+	defer os.RemoveAll(tmpdir)
+	// see https://github.com/openshift/os/commit/31816acb1ae377c9c48f1e4bc70fbf63cf4adc2d
+	_, _, err = ocCmdExt(tmpdir, "image", "extract", extensionsImage+"[-1]", "--file", coreosExtensionsMetadataPath)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM extensions list for %s", image)
+	}
+	extensions, err := os.ReadFile(filepath.Join(tmpdir, "extensions.json"))
+	if err != nil {
+		// Let's not break package lists/diffs if we fail to get extensions.
+		// Early 4.19 builds didn't have the required metadata yet.
+		klog.Warningf("Continuing without extensions information: %v\n", err)
+		return rpmlist, nil
+	}
+	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
+	}
+
 	return rpmlist, nil
 }
 
@@ -453,6 +493,7 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 
 type RpmList struct {
 	Packages   map[string]string `json:"packages"`
+	Extensions map[string]string `json:"extensions"`
 }
 
 type RpmDiff struct {
