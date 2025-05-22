@@ -298,6 +298,7 @@ func RenderRpmDiff(markdown string, rpmDiff releasecontroller.RpmDiff) string {
 		for _, elem := range elements {
 			fmt.Fprintf(output, "* %s\n", elem)
 		}
+		fmt.Fprint(output, "\n")
 	}
 
 	if len(rpmDiff.Changed) > 0 {
