@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	stdErrors "errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -44,6 +45,10 @@ const (
 )
 
 const maxChunkSize = 450 // this seems to be the maximum Jira can handle, currently
+
+var (
+	ocPath = ""
+)
 
 type CachingReleaseInfo struct {
 	cache *groupcache.Group
@@ -222,29 +227,55 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 	}
 }
 
+func ocCmd(args ...string) ([]byte, []byte, error) {
+	return ocCmdExt("", args...)
+}
+
+func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
+	var err error
+
+	if ocPath == "" {
+		ocPath, err = exec.LookPath("oc")
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to find `oc` executable: %w", err)
+		}
+	}
+
+	cmd := exec.Command(ocPath, args...)
+	klog.V(4).Infof("Running oc command: %s", cmd.String())
+
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+
+	if dir != "" {
+		cmd.Dir = dir
+	}
+
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed oc command: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return nil, nil, fmt.Errorf("could not run oc command: %v", msg)
+	}
+	klog.V(4).Infof("Finished oc command: %s", cmd.String())
+
+	return out.Bytes(), errOut.Bytes(), nil
+}
+
 func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	if _, err := imagereference.Parse(image); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
 	}
 
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	oc, err := exec.LookPath("oc")
+	info, _, err := ocCmd("adm", "release", "info", "-o", "json", image)
 	if err != nil {
-		return "", fmt.Errorf("failed to find `oc` executable: %w", err)
+		return "", fmt.Errorf("could not get release info for %s: %v", image, err)
 	}
-	cmd := exec.Command(oc, "adm", "release", "info", "-o", "json", image)
-	cmd.Stdout = out
-	cmd.Stdin = nil
-	cmd.Stderr = errOut
-	if err := cmd.Run(); err != nil {
-		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, cmd.String(), errOut.String(), out.String())
-		msg := errOut.String()
-		if len(msg) == 0 {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("could not get release info for %s: %v", image, msg)
-	}
-	return out.String(), nil
+	return string(info), nil
 }
 
 func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error) {
@@ -258,6 +289,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 		return "", fmt.Errorf("not a valid reference")
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
@@ -306,6 +338,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return nil, fmt.Errorf("not a valid reference")
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
@@ -355,28 +388,13 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 		return RpmDiff{}, fmt.Errorf("not a valid reference")
 	}
 
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	oc, err := exec.LookPath("oc")
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("failed to find `oc` executable: %w", err)
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %v", from, to, err)
 	}
-	cmd := exec.Command(oc, "adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
-	klog.V(4).Infof("Running RPM diff command: %s", cmd.String())
-	cmd.Stdout = out
-	cmd.Stdin = nil
-	cmd.Stderr = errOut
-	if err := cmd.Run(); err != nil {
-		klog.V(4).Infof("Failed to generate RPM diff: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
-		msg := errOut.String()
-		if len(msg) == 0 {
-			msg = err.Error()
-		}
-		return RpmDiff{}, fmt.Errorf("could not generate RPM diff: %v", msg)
-	}
-	klog.V(4).Infof("Finished running RPM diff command: %s", cmd.String())
 
 	var rpmdiff RpmDiff
-	if err = json.Unmarshal(out.Bytes(), &rpmdiff); err != nil {
+	if err = json.Unmarshal(out, &rpmdiff); err != nil {
 		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
 	}
 
@@ -427,6 +445,7 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 		architecture = "amd64"
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
