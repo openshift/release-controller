@@ -24,7 +24,7 @@ type renderResult struct {
 	err error
 }
 
-func (c *Controller) getChangeLog(ch chan renderResult, chRpmDiff chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
+func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
 	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
@@ -82,23 +82,29 @@ func (c *Controller) getChangeLog(ch chan renderResult, chRpmDiff chan renderRes
 	ch <- renderResult{out: out}
 
 	// We returned a result already, so we're no longer blocking rendering. So now also fetch the CoreOS RPM diff if requested.
-	if chRpmDiff == nil {
+	if chNodeInfo == nil {
 		return
 	}
 
-	// Only request a CoreOS diff if it'll be rendered. Use the exact
-	// check that renderChangelog does to know if to consume from us.
-	if !strings.Contains(out, "#coreos-package-diff") {
-		chRpmDiff <- renderResult{}
+	// Only request node image info if it'll be rendered. Use the exact
+	// check that renderChangeLog does to know if to consume from us.
+	if !strings.Contains(out, "#node-image-info") {
+		chNodeInfo <- renderResult{}
 		return
 	}
 
-	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec())
+	toImagePullspec := toImage.GenerateDigestPullSpec()
+	rpmlist, err := c.releaseInfo.RpmList(toImagePullspec)
 	if err != nil {
-		chRpmDiff <- renderResult{err: err}
+		chNodeInfo <- renderResult{err: err}
 	}
 
-	chRpmDiff <- renderResult{out: rhcos.RenderRpmDiff(out, rpmdiff)}
+	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImagePullspec)
+	if err != nil {
+		chNodeInfo <- renderResult{err: err}
+	}
+
+	chNodeInfo <- renderResult{out: rhcos.RenderNodeImageInfo(out, rpmlist, rpmdiff)}
 }
 
 func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {
@@ -110,10 +116,10 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	flusher.Flush()
 
 	ch := make(chan renderResult)
-	chRpmDiff := make(chan renderResult)
+	chNodeInfo := make(chan renderResult)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(ch, chRpmDiff, fromPull, fromTag, toPull, toTag, format)
+	go c.getChangeLog(ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format)
 
 	var render renderResult
 	select {
@@ -150,8 +156,11 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 			fmt.Fprintf(w, "</pre></code>")
 		default:
 			result := blackfriday.Run([]byte(render.out))
-			// make our links targets
+			// make our links to other pages targets
 			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				if bytes.HasPrefix(s, []byte(`<a href="#`)) {
+					return s
+				}
 				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
 			})
 			if _, err := w.Write(result); err != nil {
@@ -166,19 +175,19 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 
 	// only render a CoreOS diff if we need to; we can know this by
 	// checking if it links to the diff section we create here
-	if !strings.Contains(render.out, "#coreos-package-diff") {
+	if !strings.Contains(render.out, "#node-image-info") {
 		return
 	}
 
-	fmt.Fprintf(w, "<h3 id=\"coreos-package-diff\">CoreOS Package Diff</h3>")
+	fmt.Fprintf(w, "<h2 id=\"node-image-info\">Node Image Info</h2>")
 
 	// only render the RPM diff if it's cached; judged by it taking less than 500ms
 	select {
 	case <-time.After(500 * time.Millisecond):
-		fmt.Fprintf(w, `<p class="alert alert-danger">Package diff still loading; check again later...</p>`)
-	case render = <-chRpmDiff:
+		fmt.Fprintf(w, `<p class="alert alert-danger">Node image info still loading; check again later...</p>`)
+	case render = <-chNodeInfo:
 		if render.err != nil {
-			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show package diff: %s", render.err))
+			fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show node image info: %s", render.err))
 		} else {
 			result := blackfriday.Run([]byte(render.out))
 			if _, err := w.Write(result); err != nil {
