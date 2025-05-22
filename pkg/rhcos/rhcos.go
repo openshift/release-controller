@@ -26,11 +26,11 @@ var (
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
-	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
-	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d+)\.[\w\.\-]+)\n`)
 
-	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
-	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d+)\.[\w\.\-]+)\n`)
 
 	// the postprocessed markdown diff line
 	reMdCoSDiffPost = regexp.MustCompile(`\* (.*? CoreOS upgraded from .*?) \(\[diff\]\(.*?\)\)`)
@@ -203,7 +203,7 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 		}
 	}
 
-	toRelease := matches[4]
+	toRelease := matches[3]
 	if toStream, ok = getRHCoSReleaseStream(toRelease, architectureExtension); ok {
 		toURL = url.URL{
 			Scheme:   serviceScheme,
