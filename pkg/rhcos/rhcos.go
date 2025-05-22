@@ -228,7 +228,7 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 
 	var diffURL string
 	if hasCoreos419 || hasCoreosLayered {
-		diffURL = "#coreos-package-diff"
+		diffInfo = "#node-image-info"
 	} else {
 		diffURL = (&url.URL{
 			Scheme: serviceScheme,
@@ -284,7 +284,7 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 	return strings.ReplaceAll(input, matches[0], replace)
 }
 
-func RenderRpmDiff(markdown string, rpmDiff releasecontroller.RpmDiff) string {
+func RenderNodeImageInfo(markdown string, rpmDiff releasecontroller.RpmDiff) string {
 	output := new(strings.Builder)
 
 	// Reprint the upgrade line, with the browser links for the build itself.
