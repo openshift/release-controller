@@ -150,8 +150,11 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 			fmt.Fprintf(w, "</pre></code>")
 		default:
 			result := blackfriday.Run([]byte(render.out))
-			// make our links targets
+			// make our links to other pages targets
 			result = reInternalLink.ReplaceAllFunc(result, func(s []byte) []byte {
+				if bytes.HasPrefix(s, []byte(`<a href="#`)) {
+					return s
+				}
 				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
 			})
 			if _, err := w.Write(result); err != nil {
