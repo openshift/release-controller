@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"io"
 	"sort"
 	"sync"
@@ -251,6 +253,9 @@ func (g *UpgradeGraph) Load(r io.Reader) error {
 }
 
 func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.SecretInterface, ns, name string, stopCh <-chan struct{}) {
+	// Initialize the release-upgrade-graph metric to Zero
+	releaseUpgradeGraphSaveMetric.WithLabelValues(ns, name).Set(0)
+
 	LoadUpgradeGraph(graph, secretClient, ns, name, stopCh)
 
 	if !update {
@@ -267,7 +272,10 @@ func SyncGraphToSecret(graph *UpgradeGraph, update bool, secretClient kv1core.Se
 		err := SaveUpgradeGraph(buf, graph, secretClient, ns, name)
 		if err != nil {
 			klog.Errorf("Unable to save upgrade graph: %v", err)
+			releaseUpgradeGraphSaveMetric.WithLabelValues(ns, name).Set(1)
+			return
 		}
+		releaseUpgradeGraphSaveMetric.WithLabelValues(ns, name).Set(0)
 	}, 5*time.Minute, stopCh)
 }
 
@@ -380,3 +388,13 @@ func (g *UpgradeGraph) PrintSecretPayload() {
 	str := base64.StdEncoding.EncodeToString(buf.Bytes())
 	fmt.Println(str)
 }
+
+var (
+	releaseUpgradeGraphSaveMetric = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "release_controller_release_upgrade_graph_save_error",
+			Help: "The release-controller's release-upgrade-graph could not be saved",
+		},
+		[]string{"namespace", "name"},
+	)
+)
