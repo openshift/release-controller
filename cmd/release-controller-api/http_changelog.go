@@ -180,20 +180,15 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	}
 
 	fmt.Fprintf(w, "<h2 id=\"node-image-info\">Node Image Info</h2>")
+	fmt.Fprintf(w, `<p id="node_loading" class="alert alert-info">Loading node image info, this may take a while ...</p>`)
+	flusher.Flush()
 
 	select {
 	case render = <-chNodeInfo:
-	case <-time.After(1 * time.Second):
-		fmt.Fprintf(w, `<p id="node_loading" class="alert alert-danger">Loading node image info, this may take a while ...</p>`)
-		flusher.Flush()
-		select {
-		case render = <-chNodeInfo:
-		case <-time.After(15 * time.Second):
-			render.err = fmt.Errorf("node image info is still loading, check back later...")
-		}
-		fmt.Fprintf(w, `<style>#node_loading{display: none;}</style>`)
-		flusher.Flush()
+	case <-time.After(15 * time.Second):
+		render.err = fmt.Errorf("node image info is still loading, check back later...")
 	}
+	fmt.Fprintf(w, `<style>#node_loading{display: none;}</style>`)
 	if render.err != nil {
 		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show node image info: %s", render.err))
 	} else {
