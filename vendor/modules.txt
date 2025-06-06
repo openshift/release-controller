@@ -953,7 +953,7 @@ golang.org/x/exp/slices
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.37.0
+# golang.org/x/net v0.38.0
 ## explicit; go 1.23.0
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -1992,7 +1992,7 @@ sigs.k8s.io/controller-runtime/pkg/reconcile
 ## explicit; go 1.18
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/prow v0.0.0-20250430215755-f422de9611c4
+# sigs.k8s.io/prow v0.0.0-20250606085439-e2a3dbcc96af
 ## explicit; go 1.23.0
 sigs.k8s.io/prow/pkg/apis/prowjobs
 sigs.k8s.io/prow/pkg/apis/prowjobs/v1
