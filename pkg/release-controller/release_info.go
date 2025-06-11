@@ -1323,6 +1323,22 @@ class FileServer(handler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _present_blocked_content(self, name):
+        content = ("""<!DOCTYPE html>
+        <html>
+            <head>
+            <body>
+                <p>You are attempting to download an Openshift release (%s) that has past it's end of life and is no longer available via this utility!</br>Please contact us in: <a href="https://redhat.enterprise.slack.com/archives/CNHC2DK2M">#forum-ocp-crt</a> if this is a problem.</br>Thank you!</p>
+            </body>
+        </html>
+        """ % name).encode('UTF-8')
+
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def list_directory(self, path):
         try:
             list = os.listdir(path)
@@ -1381,6 +1397,12 @@ class FileServer(handler):
 
         if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.-]+[a-zA-Z0-9]', segments[0]):
             release = segments[0]
+
+            parts = release.split('.')
+            if len(parts) < 2 or int(parts[1]) < 11:
+                self._present_blocked_content(release)
+                return
+            
             release_cache_dir = os.path.join(CACHE_DIR, release)
 
             release_imagestream_name = 'release'
