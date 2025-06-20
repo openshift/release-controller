@@ -232,6 +232,70 @@ func TestFindJobStatus(t *testing.T) {
 				newJobRunResult("4.11.22-upgrade-from-4.10.18-aws", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
 			}),
 		},
+		{
+			name:        "OKD-SCOSNextBlockingJob",
+			payloadName: "4.20.0-okd-scos.ec.5",
+			input: &v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					newJobStatus("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-next", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+						newJobRunResult("4.19.0-okd-scos.ec.5-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+					}),
+				},
+			},
+			ciConfigurationName:    "upgrade",
+			ciConfigurationJobName: "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-next",
+			expected: newJobStatusPointer("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-next", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+				newJobRunResult("4.19.0-okd-scos.ec.5-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+			}),
+		},
+		{
+			name:        "OKD-SCOS-StableBlockingJob",
+			payloadName: "4.19.0-okd-scos.5",
+			input: &v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					newJobStatus("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-stable", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+						newJobRunResult("4.19.0-okd-scos.5-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+					}),
+				},
+			},
+			ciConfigurationName:    "upgrade",
+			ciConfigurationJobName: "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-stable",
+			expected: newJobStatusPointer("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade-from-scos-stable", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+				newJobRunResult("4.19.0-okd-scos.5-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+			}),
+		},
+		{
+			name:        "OKD-4-StableBlockingJob",
+			payloadName: "4.15.0-0.okd-2024-03-10-010116",
+			input: &v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					newJobStatus("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+						newJobRunResult("4.15.0-0.okd-2024-03-10-010116-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+					}),
+				},
+			},
+			ciConfigurationName:    "upgrade",
+			ciConfigurationJobName: "release-openshift-okd-scos-installer-e2e-aws-upgrade",
+			expected: newJobStatusPointer("upgrade", "release-openshift-okd-scos-installer-e2e-aws-upgrade", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+				newJobRunResult("4.15.0-0.okd-2024-03-10-010116-upgrade", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+			}),
+		},
+		{
+			name:        "OKD-SCOSBlockingJob",
+			payloadName: "4.20.0-0.okd-scos-2025-06-30-052314",
+			input: &v1alpha1.ReleasePayloadStatus{
+				BlockingJobResults: []v1alpha1.JobStatus{
+					newJobStatus("aws", "periodic-ci-openshift-release-master-okd-scos-4.20-e2e-aws-ovn", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+						newJobRunResult("4.20.0-0.okd-scos-2025-06-30-052314-aws", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+					}),
+				},
+			},
+			ciConfigurationName:    "aws",
+			ciConfigurationJobName: "periodic-ci-openshift-release-master-okd-scos-4.20-e2e-aws-ovn",
+			expected: newJobStatusPointer("aws", "periodic-ci-openshift-release-master-okd-scos-4.20-e2e-aws-ovn", 2, 0, v1alpha1.JobStateUnknown, []v1alpha1.JobRunResult{
+				newJobRunResult("4.20.0-0.okd-scos-2025-06-30-052314-aws", "ci", "build02", v1alpha1.JobRunStatePending, "https://abc.123.com", ""),
+			}),
+		},
 	}
 
 	for _, testCase := range testCases {

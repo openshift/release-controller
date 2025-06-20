@@ -56,7 +56,7 @@ func NewProwJobStatusController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("prowjob-status-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ProwJobStatusController")),
+			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ProwJobStatusController"})),
 		prowJobLister: prowJobInformer.Lister(),
 	}
 
@@ -175,7 +175,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 	var updates []*jobRunResultUpdate
 
 	for _, prowJob := range prowjobs {
-		details, err := utils.ParseReleaseVerificationJobName(prowJob.Name)
+		details, err := utils.NewReleaseVerificationJobDetails(prowJob.Name)
 		if err != nil {
 			klog.Warning(fmt.Sprintf("unable to parse prowjob name %q for releasepayload %q: %v", prowJob.Name, originalReleasePayload.Name, err))
 			continue
