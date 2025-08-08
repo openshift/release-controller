@@ -74,23 +74,13 @@ func issueTargetReleaseCheck(issue *jiraBaseClient.Issue, tagRelease string, tag
 	return false, nil
 }
 
-func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
-	var unlabeledPRs []pr
-	labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
-	if err != nil {
-		return unlabeledPRs, fmt.Errorf("unable to get labels for github pull %s/%s#%d: %w", extPR.org, extPR.repo, extPR.prNum, err)
-	}
-	var hasLabel bool
+func hasLabel(labels []github.Label, name string) bool {
 	for _, label := range labels {
-		if label.Name == "qe-approved" {
-			hasLabel = true
-			break
+		if label.Name == name {
+			return true
 		}
 	}
-	if !hasLabel {
-		unlabeledPRs = append(unlabeledPRs, extPR)
-	}
-	return unlabeledPRs, nil
+	return false
 }
 
 func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
@@ -116,15 +106,14 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
 	var success bool
 	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
-	var unlabeledPRs []pr
+	var unApprovedPRs []pr
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
 		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
 		return message, false
 	} else {
 		for _, extPR := range extPRs {
-			var newErr error
-			unlabeledPRs, newErr = c.ghUnlabeledPRs(extPR)
-			if newErr != nil {
+			labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
+			if err != nil {
 				exists := false
 				for _, tmpErr := range *errs {
 					if tmpErr.Error() == "Internal Error on Automation" {
@@ -133,11 +122,35 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 					}
 				}
 				if !exists {
-					*errs = append(*errs, fmt.Errorf("Internal Error on Automation")) //nolint:staticcheck
+					*errs = append(*errs, fmt.Errorf("internal Error on Automation")) //nolint:staticcheck
 				}
-				klog.Warning(newErr)
+				klog.Warning(err)
 				return "", false
 			}
+			qeApproved := hasLabel(labels, "qe-approved")
+			verified := hasLabel(labels, "verified")
+			verifiedLater := hasLabel(labels, "verified-later")
+
+			// For some time we'll need to support both the "old" and "new" methods...
+			// When a PR is labeled with "qe-approved", check for the pre-merge verification labels, which will take precedence,
+			// When we encounter the "verified" or "verified-later" labels, we need to react accordingly...
+			// Any PR's labeled with "verified-later" must also have the "verified" label, by definition, in order for the PR to have merged.
+			// In this situation, we will not move the Jira issue to "VERIFIED".
+			// PR's that have the "verified" follow the same behavior as "qe-approved" and move the Jira issue to "VERIFIED".
+			if qeApproved {
+				if verifiedLater && verified {
+					unApprovedPRs = append(unApprovedPRs, extPR)
+				}
+			} else if verified {
+				// The "new" method will deal with the pre-merge verification labels instead...
+				if verifiedLater {
+					unApprovedPRs = append(unApprovedPRs, extPR)
+				}
+			} else {
+				// This is the "old" method which will eventually be going away...
+				unApprovedPRs = append(unApprovedPRs, extPR)
+			}
+
 			// Comment on the PR saying that this PR is included in the release
 			prError, prSuccess := c.commentOnPR(extPR, message)
 			if !prSuccess {
@@ -145,9 +158,9 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 			}
 		}
 	}
-	if len(unlabeledPRs) > 0 || len(*errs) > 0 {
+	if len(unApprovedPRs) > 0 || len(*errs) > 0 {
 		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", message, jira.StatusVerified)
-		for _, extPR := range unlabeledPRs {
+		for _, extPR := range unApprovedPRs {
 			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by the QA Contact", message, extPR.org, extPR.repo, extPR.prNum)
 		}
 		for _, err := range *errs {

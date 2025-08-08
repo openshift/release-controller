@@ -176,6 +176,9 @@ func TestVerifyIssues(t *testing.T) {
 	var onQAIssue jira.Issue
 	var onQAIssue2 jira.Issue
 	var onQAIssue3 jira.Issue
+	var onQAIssue4 jira.Issue
+	var onQAIssue5 jira.Issue
+	var onQAIssue6 jira.Issue
 	var verifiedIssue jira.Issue
 	var verifiedAndCommentedIssue jira.Issue
 	var inProgressIssue jira.Issue
@@ -196,6 +199,18 @@ func TestVerifyIssues(t *testing.T) {
 		{
 			issueJSON: onQAIssueJSON,
 			object:    &onQAIssue3,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue4,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue5,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue6,
 		},
 		{
 			issueJSON: verifiedIssueJSON,
@@ -355,11 +370,68 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{errors.New("Internal Error on Automation")},
+				errors:  []error{errors.New("internal Error on Automation")},
 				status:  "ON_QA",
 				message: "",
 			},
 			labelsError: errors.New("injected error"),
+		},
+		{
+			name: "Move qe-approved and pre-merge verified to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue4},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:qe-approved",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Move pre-merge verified to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue5},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{"openshift/vmware-vsphere-csi-driver-operator#105:verified"}},
+			issueToVerify:        "OCPBUGS-123",
+			tagName:              "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Dont move pre-merge verified-later to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue6},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified-later",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "ON_QA",
+				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+			},
 		},
 	}
 
@@ -1094,11 +1166,11 @@ func TestJiraBackoff(t *testing.T) {
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
-				Header: http.Header{},
+			response: &http.Response{
+				Header:     http.Header{},
 				StatusCode: 429,
 			},
-			expect:       1 * time.Second,
+			expect: 1 * time.Second,
 		},
 		{
 			name:         "429ResponseMissingIntervalHeader",
@@ -1106,7 +1178,7 @@ func TestJiraBackoff(t *testing.T) {
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1114,7 +1186,7 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       1 * time.Second,
+			expect: 1 * time.Second,
 		},
 		{
 			name:         "429ResponseMissingFillRateHeader",
@@ -1122,7 +1194,7 @@ func TestJiraBackoff(t *testing.T) {
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1133,7 +1205,7 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       1 * time.Second,
+			expect: 1 * time.Second,
 		},
 		{
 			name:         "429ResponseMissingRetryAfterHeader",
@@ -1141,7 +1213,7 @@ func TestJiraBackoff(t *testing.T) {
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1155,15 +1227,15 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       1 * time.Second,
+			expect: 1 * time.Second,
 		},
 		{
 			name:         "429ResponseWithRateLimitHeadersRetryAfter",
-			data: 		  map[string]int{},
+			data:         map[string]int{},
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1180,15 +1252,15 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       1 * time.Second,
+			expect: 1 * time.Second,
 		},
 		{
 			name:         "429ResponseWithRateLimitHeadersRetryAfterFirstAttempt",
-			data: 		  map[string]int{},
+			data:         map[string]int{},
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      1,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1205,15 +1277,15 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       2 * time.Second,
+			expect: 2 * time.Second,
 		},
 		{
 			name:         "429ResponseWithRateLimitHeadersRetryAfterSecondAttempt",
-			data: 		  map[string]int{},
+			data:         map[string]int{},
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      2,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1230,15 +1302,15 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       4 * time.Second,
+			expect: 4 * time.Second,
 		},
 		{
 			name:         "429ResponseWithRateLimitHeadersRetryAfterThirdAttempt",
-			data: 		  map[string]int{},
+			data:         map[string]int{},
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      3,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1255,15 +1327,15 @@ func TestJiraBackoff(t *testing.T) {
 				},
 				StatusCode: 429,
 			},
-			expect:       8 * time.Second,
+			expect: 8 * time.Second,
 		},
 		{
 			name:         "429ResponseWithRateLimitHeaders",
-			data: 		  map[string]int{},
+			data:         map[string]int{},
 			retryWaitMin: 1 * time.Second,
 			retryWaitMax: 30 * time.Second,
 			attempt:      0,
-			response:     &http.Response{
+			response: &http.Response{
 				Header: http.Header{
 					"X-Anodeid": []string{
 						"node-1",
@@ -1281,7 +1353,7 @@ func TestJiraBackoff(t *testing.T) {
 				StatusCode: 429,
 			},
 			// This value is equal to X-Ratelimit-Interval-Seconds / X-Ratelimit-Fillrate
-			expect:       4 * time.Second,
+			expect: 4 * time.Second,
 		},
 	}
 
