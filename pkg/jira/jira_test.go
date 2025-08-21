@@ -179,6 +179,8 @@ func TestVerifyIssues(t *testing.T) {
 	var onQAIssue4 jira.Issue
 	var onQAIssue5 jira.Issue
 	var onQAIssue6 jira.Issue
+	var modifiedIssue1 jira.Issue
+	var modifiedIssue2 jira.Issue
 	var verifiedIssue jira.Issue
 	var verifiedAndCommentedIssue jira.Issue
 	var inProgressIssue jira.Issue
@@ -228,6 +230,14 @@ func TestVerifyIssues(t *testing.T) {
 			issueJSON: inProgressIssueJSON,
 			object:    &inProgressIssue2,
 		},
+		{
+			issueJSON: modifiedIssueJSON,
+			object:    &modifiedIssue1,
+		},
+		{
+			issueJSON: modifiedIssueJSON,
+			object:    &modifiedIssue2,
+		},
 	}
 
 	for _, issue := range issuesToUnmarshall {
@@ -248,6 +258,11 @@ func TestVerifyIssues(t *testing.T) {
 			Name: "Verified",
 			ID:   "123",
 			To:   jira.Status{Name: "Verified", Description: "The issues has been verified"},
+		},
+		{
+			Name: "ON_QA",
+			ID:   "456",
+			To:   jira.Status{Name: "ON_QA", Description: "Status ON_QA"},
 		},
 	}
 
@@ -397,7 +412,26 @@ func TestVerifyIssues(t *testing.T) {
 			},
 		},
 		{
-			name: "Move pre-merge verified to verified",
+			name: "Move MODIFIED pre-merge verified issue to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&modifiedIssue1},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Move ON_QA pre-merge verified to verified",
 			jiraFakeClientData: jiraFakeClientData{
 				issues:        []*jira.Issue{&onQAIssue5},
 				remoteLinks:   remoteLink,
@@ -414,7 +448,27 @@ func TestVerifyIssues(t *testing.T) {
 			},
 		},
 		{
-			name: "Dont move pre-merge verified-later to verified",
+			name: "Move MODIFIED pre-merge verified-later to ON_QA",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&modifiedIssue2},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified-later",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  []error{},
+				status:  "ON_QA",
+				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+			},
+		},
+		{
+			name: "Dont move ON_QA pre-merge verified-later to verified",
 			jiraFakeClientData: jiraFakeClientData{
 				issues:        []*jira.Issue{&onQAIssue6},
 				remoteLinks:   remoteLink,
@@ -428,7 +482,7 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  nil,
+				errors:  []error{},
 				status:  "ON_QA",
 				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
 			},
@@ -450,7 +504,7 @@ func TestVerifyIssues(t *testing.T) {
 			v := NewVerifier(jc, gh, &plugins.Configuration{})
 			err := v.VerifyIssues([]string{tc.issueToVerify}, tc.tagName)
 			if len(err) != len(tc.expected.errors) {
-				t.Errorf("number of errors (%d) does not match expected number of errors (%d)", len(err), len(tc.expected.errors))
+				t.Fatalf("number of errors (%d) does not match expected number of errors (%d)", len(err), len(tc.expected.errors))
 			}
 			for index, actualError := range err {
 				if index > len(tc.expected.errors)+1 {
@@ -884,7 +938,8 @@ func TestDetermineFixVersion(t *testing.T) {
 	}
 }
 
-const onQAIssueJSON = `
+const (
+	onQAIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -913,7 +968,7 @@ const onQAIssueJSON = `
 }
 `
 
-const verifiedIssueJSON = `
+	verifiedIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -942,7 +997,7 @@ const verifiedIssueJSON = `
 }
 `
 
-const verifiedAndCommentedIssueJSON = `
+	verifiedAndCommentedIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -1000,7 +1055,7 @@ const verifiedAndCommentedIssueJSON = `
 }
 `
 
-const inProgressIssueJSON = `
+	inProgressIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -1029,7 +1084,36 @@ const inProgressIssueJSON = `
 }
 `
 
-const remoteLinksJSON = `
+	modifiedIssueJSON = `
+{
+  "key": "OCPBUGS-123",
+  "fields": {
+    "status": {
+      "description": "Status MODIFIED",
+      "name": "MODIFIED"
+    },
+    "customfield_12315948": {
+      "name": "qa_contact@redhat.com",
+      "key": "qa_contact",
+      "emailAddress": "qa_contact@redhat.com",
+      "displayName": "Jack Smith"
+    },
+    "customfield_12319940": [
+      {
+        "self": "https://issues.redhat.com/rest/api/2/version/12390168",
+        "id": "12390168",
+        "description": "Release Version",
+        "name": "4.10.z"
+      }
+    ],
+    "comment": {
+      "comments": []
+    }
+  }
+}
+`
+
+	remoteLinksJSON = `
 [
   {
     "object": {
@@ -1038,6 +1122,7 @@ const remoteLinksJSON = `
   }
 ]
 `
+)
 
 func TestSumMapValues(t *testing.T) {
 	var testCases = []struct {

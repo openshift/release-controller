@@ -103,13 +103,13 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 	return nil, true
 }
 
-func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
+func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess, verifiedLater bool) {
 	var success bool
 	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
 	var unApprovedPRs []pr
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) && !strings.EqualFold(issue.Fields.Status.Name, jira.StatusModified) {
 		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
-		return message, false
+		return message, false, false
 	} else {
 		for _, extPR := range extPRs {
 			labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
@@ -125,11 +125,11 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 					*errs = append(*errs, fmt.Errorf("internal Error on Automation")) //nolint:staticcheck
 				}
 				klog.Warning(err)
-				return "", false
+				return "", false, false
 			}
 			qeApproved := hasLabel(labels, "qe-approved")
 			verified := hasLabel(labels, "verified")
-			verifiedLater := hasLabel(labels, "verified-later")
+			verifiedLater = hasLabel(labels, "verified-later")
 
 			// For some time we'll need to support both the "old" and "new" methods...
 			// When a PR is labeled with "qe-approved", check for the pre-merge verification labels, which will take precedence,
@@ -177,7 +177,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 	if success {
 		message = fmt.Sprintf("%s\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED", message)
 	}
-	return message, success
+	return message, success, verifiedLater
 }
 
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
@@ -286,8 +286,8 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			errs = append(errs, tagError)
 			continue
 		}
-		message, success := c.verifyExtPRs(issue, extPRs, &errs, tagName)
-		if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
+		message, success, verifyLater := c.verifyExtPRs(issue, extPRs, &errs, tagName)
+		if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) && !strings.EqualFold(issue.Fields.Status.Name, jira.StatusModified) {
 			if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
 				c.commentIssue(&errs, issue, message)
 			}
@@ -303,6 +303,12 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			}
 		} else {
 			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.Key, issue.Fields.Status.Name)
+			if verifyLater {
+				klog.V(4).Infof("Updating issue %s (current status %s) to ON_QA status", issue.ID, issue.Fields.Status.Name)
+				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusOnQA); err != nil {
+					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				}
+			}
 		}
 	}
 	return errs
