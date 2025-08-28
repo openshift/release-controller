@@ -13,6 +13,7 @@ import (
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/jira"
 	"sigs.k8s.io/prow/pkg/plugins"
@@ -22,6 +23,7 @@ type githubClient interface {
 	GetIssueLabels(org, repo string, number int) ([]github.Label, error)
 	CreateComment(org, repo string, number int, comment string) error
 	ListIssueComments(org, repo string, number int) ([]github.IssueComment, error)
+	GetPullRequest(org, repo string, number int) (*github.PullRequest, error)
 }
 type Verifier struct {
 	// jiraClient is used to retrieve external issue links and mark QA reviewed issues as VERIFIED
@@ -216,6 +218,43 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			errs = append(errs, fmt.Errorf("unable to get jira ID %s: %w", featureID, err))
 			continue
 		}
+		links, err := c.jiraClient.GetRemoteLinks(feature.ID)
+		if err != nil {
+			klog.Warningf("[%s] Unexpected error listing external links: %v", featureID, err)
+			errs = append(errs, fmt.Errorf("searching for external tracker links for issue %s: %w", featureID, err))
+			continue
+		}
+		// Should this feature have it's FeatureVersion set, default to true unless we prove otherwise...
+		fullyMerged := true
+		for _, link := range links {
+			identifier := strings.TrimPrefix(link.Object.URL, "https://github.com/")
+			parts := strings.Split(identifier, "/")
+			if len(parts) >= 3 && parts[2] != "pull" {
+				// this is not a github link
+				continue
+			}
+			if len(parts) != 4 && (len(parts) != 5 || parts[4] != "" && parts[4] != "files") && (len(parts) != 6 || ((parts[4] != "files" || parts[5] != "") && parts[4] != "commits")) {
+				klog.Warningf("[%s] Unexpected error splitting github URL for external link: %q.", featureID, identifier)
+				continue
+			}
+			org, repo := parts[0], parts[1]
+			number, err := strconv.Atoi(parts[3])
+			if err != nil {
+				klog.Warningf("Unexpected error splitting github URL for Jira (%s) external link: could not parse %s as number: %v", featureID, parts[3], err)
+				continue
+			}
+			// Allows processing of openshift specific repos, as needed...
+			if !slices.Contains([]string{"openshift"}, org) {
+				klog.Warningf("[%s] Not processing PR from repo: %q", featureID, fmt.Sprintf("%s/%s#%d", org, repo, number))
+				continue
+			}
+			pullRequest, err := c.ghClient.GetPullRequest(org, repo, number)
+			if err != nil {
+				klog.Warningf("[%s] Unexpected error checking merge state of related pull request (https://github.com/%s/%s/pull/%d): %v", featureID, org, repo, number, err)
+				continue
+			}
+			fullyMerged = fullyMerged && pullRequest.Merged
+		}
 		fixVersion, err := c.determineFixVersion(feature, version)
 		if err != nil {
 			errs = append(errs, err)
@@ -228,12 +267,17 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 					FixVersions: []*jiraBaseClient.FixVersion{{Name: fixVersion}},
 				},
 			}
-			if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
-				errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
-				continue
+			if fullyMerged {
+				if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
+					errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
+					continue
+				}
+				c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
+				klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, fixVersion)
+			} else {
+				c.commentIssue(&errs, feature, fmt.Sprintf("Feature partially included in release %s", tagName))
+				klog.V(4).Infof("Jira feature issue %s partially included in release: %s", feature.Key, tagName)
 			}
-			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
-			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, fixVersion)
 		} else {
 			versions := []string{}
 			for _, v := range feature.Fields.FixVersions {
