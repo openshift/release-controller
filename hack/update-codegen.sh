@@ -29,14 +29,13 @@ source ${CODEGEN_PKG}/kube_codegen.sh
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 
 kube::codegen::gen_helpers \
-    --input-pkg-root github.com/openshift/release-controller/pkg/apis \
-    --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/pkg/apis"
 
 kube::codegen::gen_client \
     --with-watch \
-    --input-pkg-root github.com/openshift/release-controller/pkg/apis \
-    --output-pkg-root github.com/openshift/release-controller/pkg/client \
-    --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-    --boilerplate ${SCRIPT_ROOT}/hack/boilerplate.go.txt
+    --output-dir "${SCRIPT_ROOT}/pkg/client" \
+    --output-pkg github.com/openshift/release-controller/pkg/client \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/pkg/apis"
 
