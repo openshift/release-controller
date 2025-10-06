@@ -70,6 +70,77 @@ func getNonVerifiedTagsJira(acceptedTags []*v1.TagReference) (current, previous 
 	return nil, nil
 }
 
+// calculatePreviousReleaseTagForNightly attempts to find the oldest accepted fc or rc release
+// from the previous minor version to use as the previousReleaseTag for nightly releases.
+// For example, for "4.20.0-0.nightly", it would look for "4.19.0-rc.0" or "4.19.0-fc.0"
+//
+// Special test case: The 5.0 -> 4.22 mapping serves as a test case for hardcoding a previous release
+// when the normal calculation logic would not work. Used 5.0 as it is not a planned OpenShift release.
+// If a major version transition requires a specific previous release mapping, follow this pattern.
+func (c *Controller) calculatePreviousReleaseTagForNightly(currentVersion semver.Version) (*releasecontroller.VerifyIssuesTagInfo, error) {
+	// Get all stable releases (includes both 4-stable and 4-dev-preview streams)
+	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get stable releases: %w", err)
+	}
+
+	// Calculate the target minor version (previous minor)
+	var targetMajor, targetMinor uint64
+
+	// Special case: 5.0 uses 4.22 as a test case for hardcoded previous release logic.
+	// This demonstrates how to handle major version transitions that require a specific
+	// previous release rather than calculated previous minor. Using 5.0 as this is not
+	// a planned release.
+	if currentVersion.Major == 5 && currentVersion.Minor == 0 {
+		targetMajor = 4
+		targetMinor = 22
+		klog.V(4).Infof("jira: special case for version 5.0, using hardcoded previous version 4.22 (test case)")
+	} else if currentVersion.Minor == 0 {
+		return nil, fmt.Errorf("cannot calculate previous minor version for %d.%d", currentVersion.Major, currentVersion.Minor)
+	} else {
+		// Normal case: use previous minor version
+		targetMajor = currentVersion.Major
+		targetMinor = currentVersion.Minor - 1
+	}
+
+	// Collect all tags from stable releases that match the target minor version
+	var candidateTags []releasecontroller.SemanticVersion
+	for _, stableRelease := range stableReleases.Releases {
+		// Get all accepted tags from this stable release
+		versions := releasecontroller.UnsortedSemanticReleaseTags(stableRelease.Release, releasecontroller.ReleasePhaseAccepted)
+		for _, ver := range versions {
+			if ver.Version == nil {
+				continue
+			}
+			// Check if this version matches our target major.minor
+			if ver.Version.Major == targetMajor && ver.Version.Minor == targetMinor {
+				// Only consider fc or rc releases
+				if len(ver.Version.Pre) > 0 {
+					prerelease := ver.Version.Pre[0].VersionStr
+					if prerelease == "fc" || prerelease == "rc" {
+						candidateTags = append(candidateTags, ver)
+					}
+				}
+			}
+		}
+	}
+
+	if len(candidateTags) == 0 {
+		return nil, fmt.Errorf("no fc or rc releases found for version %d.%d", targetMajor, targetMinor)
+	}
+
+	// Sort the candidates to find the oldest (smallest) version
+	sort.Sort(releasecontroller.SemanticVersions(candidateTags))
+	// After sorting, the last element is the oldest (smallest) version
+	oldestTag := candidateTags[len(candidateTags)-1]
+
+	return &releasecontroller.VerifyIssuesTagInfo{
+		Namespace: "ocp",
+		Name:      "release",
+		Tag:       oldestTag.Tag.Name,
+	}, nil
+}
+
 // syncJira checks whether fixed bugs in a release had their
 // PR reviewed and approved by the QA contact for the bug
 func (c *Controller) syncJira(key queueKey) error {
@@ -101,6 +172,28 @@ func (c *Controller) syncJira(key queueKey) error {
 			break
 		}
 	}
+
+	// Auto-populate verifyIssues for -nightly releases if not already set
+	if verifyIssues == nil && strings.HasSuffix(release.Config.Name, "-nightly") {
+		// Parse the release version
+		version, err := semver.ParseTolerant(release.Config.Name)
+		if err != nil {
+			klog.Fatalf("jira: FATAL - cannot parse version from nightly release name %s: %v", release.Config.Name, err)
+			panic(fmt.Sprintf("jira: FATAL - cannot parse version from nightly release name %s: %v", release.Config.Name, err))
+		}
+		// Try to calculate the previous release tag
+		calculatedTag, err := c.calculatePreviousReleaseTagForNightly(version)
+		if err != nil {
+			klog.Fatalf("jira: FATAL - unable to auto-calculate previousReleaseTag for nightly release %s: %v", release.Config.Name, err)
+			panic(fmt.Sprintf("jira: FATAL - unable to auto-calculate previousReleaseTag for nightly release %s: %v", release.Config.Name, err))
+		}
+		klog.Infof("jira: auto-configuring verifyIssues for %s with previousReleaseTag: %s/%s:%s",
+			release.Config.Name, calculatedTag.Namespace, calculatedTag.Name, calculatedTag.Tag)
+		verifyIssues = &releasecontroller.PublishVerifyIssues{
+			PreviousReleaseTag: calculatedTag,
+		}
+	}
+
 	if verifyIssues == nil {
 		klog.V(6).Infof("%v (%s) does not have verifyIssues set", key, release.Config.Name)
 		return nil
