@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"sort"
 	"strings"
-	"text/template"
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -17,8 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	imagev1 "github.com/openshift/api/image/v1"
 	"slices"
+
+	imagev1 "github.com/openshift/api/image/v1"
 )
 
 const candidatePageHtml = `

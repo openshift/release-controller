@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
 	v1 "github.com/openshift/api/image/v1"
