@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -276,6 +277,10 @@ type CIConfiguration struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
 	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
+	// Qualifiers holds the releasequalifiers.ReleaseQualifiers definitions that enable,
+	// and override (if specified), any settings defined in:
+	// https://github.com/openshift/release/blob/master/core-services/release-controller/release-qualifiers.yaml
+	Qualifiers releasequalifiers.ReleaseQualifiers `json:"qualifiers,omitempty"`
 }
 
 // ReleasePayloadStatus the status of all the promotion test jobs
@@ -437,6 +442,9 @@ type JobStatus struct {
 
 	// JobRunResults contains the links for individual jobs
 	JobRunResults []JobRunResult `json:"results,omitempty"`
+
+	// ReleaseQualifiers
+	ReleaseQualifiers releasequalifiers.ReleaseQualifiers `json:"releaseQualifiers,omitempty"`
 }
 
 // JobRunState the status of a job

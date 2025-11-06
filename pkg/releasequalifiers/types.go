@@ -1,3 +1,6 @@
+// +k8s:deepcopy-gen=package
+// +k8s:defaulter-gen=TypeMeta
+
 package releasequalifiers
 
 import (
@@ -23,6 +26,7 @@ type ReleaseQualifiers map[QualifierId]ReleaseQualifier
 
 // ReleaseQualifier defines the configuration for a single release qualifier
 // It contains metadata about the qualifier and its notification settings
+// +k8s:deepcopy-gen=true
 type ReleaseQualifier struct {
 	// Enabled indicates whether this qualifier is currently active
 	// Using a pointer to distinguish between "not set" and "set to false"

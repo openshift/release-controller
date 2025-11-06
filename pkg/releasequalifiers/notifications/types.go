@@ -1,3 +1,5 @@
+// +k8s:deepcopy-gen=package
+
 package notifications
 
 import (
@@ -7,6 +9,7 @@ import (
 
 // Notifications defines the notification settings for a ReleaseQualifier
 // It supports multiple notification channels like Slack and Jira
+// +k8s:deepcopy-gen=true
 type Notifications struct {
 	// Slack contains Slack-specific notification configuration
 	Slack *slack.Notification `json:"slack,omitempty"`

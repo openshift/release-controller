@@ -1,7 +1,10 @@
+// +k8s:deepcopy-gen=package
+
 package jira
 
 // Notification defines how notifications are sent via Jira
 // It includes project configuration and escalation rules
+// +k8s:deepcopy-gen=true
 type Notification struct {
 	// Project is the Jira project key where tickets will be created
 	Project string `json:"project" yaml:"project"`
@@ -25,6 +28,7 @@ type Notification struct {
 
 // Escalation defines a single escalation rule for Jira notifications
 // It specifies the conditions and actions for creating Jira tickets
+// +k8s:deepcopy-gen=true
 type Escalation struct {
 	// Name is the unique identifier for this escalation level
 	Name string `json:"name" yaml:"name"`
