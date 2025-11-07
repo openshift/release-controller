@@ -1504,7 +1504,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1540,7 +1540,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			version: "4.11",
 			expected: expectedResult{
 				message: "Feature partially included in release 4.11.0-0.nightly-2025-08-26-203916",
-				status: "POST",
+				status:  "POST",
 			},
 		},
 		{
@@ -1575,7 +1575,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1615,7 +1615,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			version: "4.11",
 			expected: expectedResult{
 				message: "Feature partially included in release 4.11.0-0.nightly-2025-08-26-203916",
-				status: "POST",
+				status:  "POST",
 			},
 		},
 		{
@@ -1650,7 +1650,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1685,7 +1685,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1720,7 +1720,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1755,7 +1755,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1788,7 +1788,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			expected: expectedResult{
 				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 		{
@@ -1827,7 +1827,7 @@ func TestSetFeatureFixedVersions(t *testing.T) {
 			version: "4.11",
 			expected: expectedResult{
 				fixVersion: "4.11",
-				status: "POST",
+				status:     "POST",
 			},
 		},
 	}

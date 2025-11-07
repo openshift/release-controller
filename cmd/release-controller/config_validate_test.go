@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
@@ -348,6 +348,85 @@ func TestValidateUpgradeJobs(t *testing.T) {
 	}}
 	for _, testCase := range testCases {
 		errs := validateUpgradeJobs(testCase.configs)
+		if len(errs) > 0 && !testCase.expectedErr {
+			t.Errorf("%s: got error when error was not expected: %v", testCase.name, errs)
+		}
+		if len(errs) == 0 && testCase.expectedErr {
+			t.Errorf("%s: did not get error when error was expected", testCase.name)
+		}
+	}
+}
+
+func TestValidateQualifiersConfiguration(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configs     []releasecontroller.ReleaseConfig
+		expectedErr bool
+	}{
+		{
+			name: "Good config with no qualifiers",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"osd-aws": {
+						Optional:   true,
+						MaxRetries: 2,
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
+						},
+					},
+				},
+			},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "Good config with empty qualifier",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"osd-aws": {
+						Optional:   true,
+						MaxRetries: 2,
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
+						},
+						Qualifiers: releasequalifiers.ReleaseQualifiers{
+							"rosa": {},
+						},
+					},
+				},
+			},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "Good config with simple overrides",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"osd-aws": {
+						Optional:   true,
+						MaxRetries: 2,
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
+						},
+						Qualifiers: releasequalifiers.ReleaseQualifiers{
+							"hcm": {
+								Enabled:      releasequalifiers.BoolPtr(false),
+								BadgeName:    "HCM Updated",
+								Description:  "An updated description when displaying badge details",
+								PayloadBadge: releasequalifiers.PayloadBadgeNo,
+							},
+						},
+					},
+				},
+			}},
+			expectedErr: false,
+		},
+	}
+	for _, testCase := range testCases {
+		errs := validateQualifiers(testCase.configs)
 		if len(errs) > 0 && !testCase.expectedErr {
 			t.Errorf("%s: got error when error was not expected: %v", testCase.name, errs)
 		}
