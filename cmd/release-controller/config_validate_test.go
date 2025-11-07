@@ -381,26 +381,6 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 			expectedErr: false,
 		},
 		{
-			name: "Good config with nil qualifier",
-			configs: []releasecontroller.ReleaseConfig{{
-				Name: "4.19.0-0.nightly",
-				Verify: map[string]releasecontroller.ReleaseVerification{
-					"osd-aws": {
-						Optional:   true,
-						MaxRetries: 2,
-						ProwJob: &releasecontroller.ProwJobVerification{
-							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
-						},
-						Qualifiers: releasequalifiers.ReleaseQualifiers{
-							"rosa": {},
-						},
-					},
-				},
-			},
-			},
-			expectedErr: false,
-		},
-		{
 			name: "Good config with empty qualifier",
 			configs: []releasecontroller.ReleaseConfig{{
 				Name: "4.19.0-0.nightly",

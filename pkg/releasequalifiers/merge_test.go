@@ -1264,7 +1264,7 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 			},
 		},
 		{
-			name: "nil base with notifications",
+			name: "empty base with notifications",
 			base: ReleaseQualifier{},
 			override: ReleaseQualifier{
 				Notifications: &notifications.Notifications{
