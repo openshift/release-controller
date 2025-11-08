@@ -186,7 +186,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	select {
 	case render = <-chNodeInfo:
 	case <-time.After(15 * time.Second):
-		render.err = fmt.Errorf("node image info is still loading, check back later...")
+		render.err = fmt.Errorf("node image info is still loading, check back later")
 	}
 	fmt.Fprintf(w, `<style>#node_loading{display: none;}</style>`)
 	if render.err != nil {
