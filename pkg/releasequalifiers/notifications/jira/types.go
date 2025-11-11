@@ -53,8 +53,3 @@ func (in ByJiraEscalationName) Len() int {
 func (in ByJiraEscalationName) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
-
-func (j Notification) Send() {
-	//TODO implement me
-	panic("implement me")
-}
