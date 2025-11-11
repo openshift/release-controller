@@ -41,8 +41,3 @@ func (in BySlackEscalationName) Len() int {
 func (in BySlackEscalationName) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
-
-func (s Notification) Send() {
-	//TODO implement me
-	panic("implement me")
-}

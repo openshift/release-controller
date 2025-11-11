@@ -47,55 +47,8 @@ type ReleaseQualifier struct {
 	Notifications *notifications.Notifications `json:"notifications,omitempty" yaml:"notifications,omitempty"`
 }
 
-// Validate enforces any rules that all ReleaseQualifier objects must adhere to
-func (rq ReleaseQualifier) Validate() error {
-	return nil
-}
-
 // BoolPtr returns a pointer to the given bool value
 // This is a utility function for creating pointers to bool values
 func BoolPtr(b bool) *bool {
 	return &b
-}
-
-// SortableQualifier represents a qualifier with its ID for sorting purposes
-type SortableQualifier struct {
-	ID        QualifierId
-	Qualifier ReleaseQualifier
-}
-
-// SortableQualifiers is a slice of SortableQualifier for sorting
-type SortableQualifiers []SortableQualifier
-
-func (sq SortableQualifiers) Len() int {
-	return len(sq)
-}
-
-func (sq SortableQualifiers) Less(i, j int) bool {
-	return string(sq[i].ID) < string(sq[j].ID)
-}
-
-func (sq SortableQualifiers) Swap(i, j int) {
-	sq[i], sq[j] = sq[j], sq[i]
-}
-
-// ToSortableSlice converts ReleaseQualifiers map to a sortable slice
-func (rqs ReleaseQualifiers) ToSortableSlice() SortableQualifiers {
-	slice := make(SortableQualifiers, 0, len(rqs))
-	for id, qualifier := range rqs {
-		slice = append(slice, SortableQualifier{
-			ID:        id,
-			Qualifier: qualifier,
-		})
-	}
-	return slice
-}
-
-// ToMap converts a sorted slice back to a ReleaseQualifiers map
-func (sq SortableQualifiers) ToMap() ReleaseQualifiers {
-	result := make(ReleaseQualifiers)
-	for _, item := range sq {
-		result[item.ID] = item.Qualifier
-	}
-	return result
 }
