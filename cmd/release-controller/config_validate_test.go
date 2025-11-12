@@ -392,7 +392,7 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
-							"rosa": {},
+							"test": {},
 						},
 					},
 				},
@@ -412,11 +412,11 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
-							"hcm": {
-								Enabled:      releasequalifiers.BoolPtr(false),
-								BadgeName:    "HCM Updated",
-								Description:  "An updated description when displaying badge details",
-								PayloadBadge: releasequalifiers.PayloadBadgeNo,
+							"test": {
+								Enabled:     releasequalifiers.BoolPtr(false),
+								Name:        "TEST",
+								Description: "An updated description when displaying badge details",
+								Badge:       releasequalifiers.BadgeStatusNo,
 							},
 						},
 					},
