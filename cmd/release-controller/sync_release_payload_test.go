@@ -23,15 +23,15 @@ var (
 
 func TestNewReleasePayload(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		release                *releasecontroller.Release
-		payloadName            string
-		jobNamespace           string
-		prowNamespace          string
-		verificationJobs       map[string]releasecontroller.ReleaseVerification
-		upgradeJobs            map[string]releasecontroller.UpgradeVerification
-		dataSource             v1alpha1.PayloadVerificationDataSource
-		expected               *v1alpha1.ReleasePayload
+		name             string
+		release          *releasecontroller.Release
+		payloadName      string
+		jobNamespace     string
+		prowNamespace    string
+		verificationJobs map[string]releasecontroller.ReleaseVerification
+		upgradeJobs      map[string]releasecontroller.UpgradeVerification
+		dataSource       v1alpha1.PayloadVerificationDataSource
+		expected         *v1alpha1.ReleasePayload
 	}{
 		{
 			name:          "DisabledJob",

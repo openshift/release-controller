@@ -1,7 +1,10 @@
+// +k8s:deepcopy-gen=package
+
 package slack
 
 // Notification defines how notifications are sent via Slack
 // It includes escalation rules and channel configuration
+// +k8s:deepcopy-gen=true
 type Notification struct {
 	// Escalations defines the escalation rules for Slack notifications
 	// Each escalation specifies when and how to notify based on failure patterns
@@ -10,6 +13,7 @@ type Notification struct {
 
 // Escalation defines a single escalation rule for Slack notifications
 // It specifies the conditions and actions for escalating failures
+// +k8s:deepcopy-gen=true
 type Escalation struct {
 	// Name is the unique identifier for this escalation level
 	Name string `json:"name" yaml:"name"`

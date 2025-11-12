@@ -20,15 +20,15 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "pretty print with sorted keys and escalations",
 			qualifiers: ReleaseQualifiers{
 				"zebra": {
-					Enabled:      BoolPtr(true),
-					BadgeName:    "ZEB",
-					Summary:      "Zebra Component",
-					Description:  "Detailed zebra description",
-					PayloadBadge: PayloadBadgeOnSuccess,
+					Enabled:     BoolPtr(true),
+					Name:        "ZEB",
+					Summary:     "Zebra Component",
+					Description: "Detailed zebra description",
+					Badge:       BadgeStatusOnSuccess,
 				},
 				"alpha": {
 					Enabled:     BoolPtr(false),
-					BadgeName:   "ALP",
+					Name:        "ALP",
 					Summary:     "Alpha Component",
 					Description: "Detailed alpha description",
 					Notifications: &notifications.Notifications{
@@ -52,9 +52,9 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 					},
 				},
 				"beta": {
-					Enabled:   BoolPtr(true),
-					BadgeName: "BET",
-					Summary:   "Beta Component",
+					Enabled: BoolPtr(true),
+					Name:    "BET",
+					Summary: "Beta Component",
 				},
 			},
 			expectedKeys: []string{"alpha", "beta", "zebra"},
@@ -68,12 +68,12 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "single qualifier with all fields",
 			qualifiers: ReleaseQualifiers{
 				"comprehensive": {
-					Enabled:      BoolPtr(true),
-					BadgeName:    "COMP",
-					Summary:      "Comprehensive test",
-					Description:  "Full description",
-					PayloadBadge: PayloadBadgeNo,
-					Labels:       []string{"label1", "label2"},
+					Enabled:     BoolPtr(true),
+					Name:        "COMP",
+					Summary:     "Comprehensive test",
+					Description: "Full description",
+					Badge:       BadgeStatusNo,
+					Labels:      []string{"label1", "label2"},
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project:     "PROJ",
@@ -101,18 +101,18 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "multiple qualifiers with varying complexity",
 			qualifiers: ReleaseQualifiers{
 				"simple": {
-					Enabled:   BoolPtr(false),
-					BadgeName: "SIM",
+					Enabled: BoolPtr(false),
+					Name:    "SIM",
 				},
 				"with-labels": {
-					Enabled:   BoolPtr(true),
-					BadgeName: "LAB",
-					Labels:    []string{"critical", "urgent"},
+					Enabled: BoolPtr(true),
+					Name:    "LAB",
+					Labels:  []string{"critical", "urgent"},
 				},
 				"with-payload": {
-					Enabled:      BoolPtr(true),
-					BadgeName:    "PAY",
-					PayloadBadge: PayloadBadgeOnFailure,
+					Enabled: BoolPtr(true),
+					Name:    "PAY",
+					Badge:   BadgeStatusOnFailure,
 				},
 			},
 			expectedKeys: []string{"simple", "with-labels", "with-payload"},
@@ -257,14 +257,14 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 					}
 				}
 
-				// Verify zebra has payloadBadge and description
+				// Verify zebra has badge and description
 				zebraQualifier, ok := parsed["zebra"].(map[string]interface{})
 				if !ok {
 					t.Error("Expected zebra qualifier to be a map")
 					return
 				}
-				if badge, ok := zebraQualifier["payloadBadge"].(string); !ok || badge != string(PayloadBadgeOnSuccess) {
-					t.Error("Expected zebra to have payloadBadge field")
+				if badge, ok := zebraQualifier["badge"].(string); !ok || badge != string(BadgeStatusOnSuccess) {
+					t.Error("Expected zebra to have badge field")
 				}
 				if desc, ok := zebraQualifier["description"].(string); !ok || desc == "" {
 					t.Error("Expected zebra to have description field")
@@ -280,8 +280,8 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				if _, ok := comp["enabled"]; !ok {
 					t.Error("Expected enabled field")
 				}
-				if _, ok := comp["badgeName"]; !ok {
-					t.Error("Expected badgeName field")
+				if _, ok := comp["name"]; !ok {
+					t.Error("Expected name field")
 				}
 				if _, ok := comp["summary"]; !ok {
 					t.Error("Expected summary field")
@@ -289,8 +289,8 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				if _, ok := comp["description"]; !ok {
 					t.Error("Expected description field")
 				}
-				if badge, ok := comp["payloadBadge"].(string); !ok || badge != string(PayloadBadgeNo) {
-					t.Error("Expected payloadBadge field with 'No' value")
+				if badge, ok := comp["badge"].(string); !ok || badge != string(BadgeStatusNo) {
+					t.Error("Expected badge field with 'No' value")
 				}
 				// Note: labels field is not included in formatQualifierForJSON output
 
@@ -320,10 +320,10 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 					t.Error("Expected with-labels qualifier to be present")
 				}
 
-				// Verify with-payload qualifier has payloadBadge
+				// Verify with-payload qualifier has badge
 				if withPayload, ok := parsed["with-payload"].(map[string]interface{}); ok {
-					if badge, ok := withPayload["payloadBadge"].(string); !ok || badge != string(PayloadBadgeOnFailure) {
-						t.Error("Expected with-payload qualifier to have payloadBadge=OnFailure")
+					if badge, ok := withPayload["badge"].(string); !ok || badge != string(BadgeStatusOnFailure) {
+						t.Error("Expected with-payload qualifier to have badge=OnFailure")
 					}
 				}
 
@@ -398,11 +398,11 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "full qualifier with all fields",
 			qualifier: ReleaseQualifier{
-				Enabled:      BoolPtr(true),
-				BadgeName:    "TEST",
-				Summary:      "Test Summary",
-				Description:  "Test Description",
-				PayloadBadge: "payload-test",
+				Enabled:     BoolPtr(true),
+				Name:        "TEST",
+				Summary:     "Test Summary",
+				Description: "Test Description",
+				Badge:       "payload-test",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
 						Project:     "PROJ",
@@ -443,8 +443,8 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 				if _, ok := parsed["enabled"]; !ok {
 					t.Error("Expected enabled field")
 				}
-				if _, ok := parsed["badgeName"]; !ok {
-					t.Error("Expected badgeName field")
+				if _, ok := parsed["name"]; !ok {
+					t.Error("Expected name field")
 				}
 				if _, ok := parsed["summary"]; !ok {
 					t.Error("Expected summary field")
@@ -452,8 +452,8 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 				if _, ok := parsed["description"]; !ok {
 					t.Error("Expected description field")
 				}
-				if _, ok := parsed["payloadBadge"]; !ok {
-					t.Error("Expected payloadBadge field")
+				if _, ok := parsed["badge"]; !ok {
+					t.Error("Expected badge field")
 				}
 				if _, ok := parsed["notifications"]; !ok {
 					t.Error("Expected notifications field")
@@ -468,9 +468,9 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with jira notifications only",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(false),
-				BadgeName: "JIRA-ONLY",
-				Summary:   "Jira Only Test",
+				Enabled: BoolPtr(false),
+				Name:    "JIRA-ONLY",
+				Summary: "Jira Only Test",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
 						Project:   "TEST",
@@ -506,9 +506,9 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with slack notifications only",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
-				BadgeName: "SLACK-ONLY",
-				Summary:   "Slack Only Test",
+				Enabled: BoolPtr(true),
+				Name:    "SLACK-ONLY",
+				Summary: "Slack Only Test",
 				Notifications: &notifications.Notifications{
 					Slack: &slack.Notification{
 						Escalations: []slack.Escalation{
@@ -542,7 +542,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			name: "qualifier with empty notifications",
 			qualifier: ReleaseQualifier{
 				Enabled:       BoolPtr(true),
-				BadgeName:     "EMPTY",
+				Name:          "EMPTY",
 				Notifications: &notifications.Notifications{},
 			},
 			wantErr: false,
@@ -561,8 +561,8 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with escalations with mentions",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
-				BadgeName: "MENTIONS",
+				Enabled: BoolPtr(true),
+				Name:    "MENTIONS",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
 						Project: "TEST",
@@ -625,7 +625,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			name: "qualifier with description field",
 			qualifier: ReleaseQualifier{
 				Enabled:     BoolPtr(true),
-				BadgeName:   "DESC-TEST",
+				Name:        "DESC-TEST",
 				Summary:     "Summary text",
 				Description: "This is a detailed description for the qualifier",
 			},
@@ -644,9 +644,9 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with payload badge",
 			qualifier: ReleaseQualifier{
-				Enabled:      BoolPtr(true),
-				BadgeName:    "BADGE-TEST",
-				PayloadBadge: PayloadBadgeYes,
+				Enabled: BoolPtr(true),
+				Name:    "BADGE-TEST",
+				Badge:   BadgeStatusYes,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
@@ -655,16 +655,16 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				if badge, ok := parsed["payloadBadge"].(string); !ok || badge != string(PayloadBadgeYes) {
-					t.Errorf("Expected payloadBadge field with value 'Yes', got: %v", parsed["payloadBadge"])
+				if badge, ok := parsed["badge"].(string); !ok || badge != string(BadgeStatusYes) {
+					t.Errorf("Expected badge field with value 'Yes', got: %v", parsed["badge"])
 				}
 			},
 		},
 		{
 			name: "qualifier with all jira fields",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
-				BadgeName: "FULL-JIRA",
+				Enabled: BoolPtr(true),
+				Name:    "FULL-JIRA",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
 						Project:     "MYPROJ",
@@ -731,9 +731,9 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with labels",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
-				BadgeName: "LABELS-TEST",
-				Labels:    []string{"bug", "priority-high", "team-a"},
+				Enabled: BoolPtr(true),
+				Name:    "LABELS-TEST",
+				Labels:  []string{"bug", "priority-high", "team-a"},
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
@@ -750,8 +750,8 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with slack escalations without mentions",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
-				BadgeName: "SLACK-NO-MENTIONS",
+				Enabled: BoolPtr(true),
+				Name:    "SLACK-NO-MENTIONS",
 				Notifications: &notifications.Notifications{
 					Slack: &slack.Notification{
 						Escalations: []slack.Escalation{

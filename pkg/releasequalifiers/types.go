@@ -1,3 +1,6 @@
+// +k8s:deepcopy-gen=package
+// +k8s:defaulter-gen=TypeMeta
+
 package releasequalifiers
 
 import (
@@ -7,14 +10,14 @@ import (
 // QualifierId is a unique name that corresponds to a specific ReleaseQualifier definition
 type QualifierId string
 
-// PayloadBadgeStatus payload badge status
-type PayloadBadgeStatus string
+// BadgeStatus badge status
+type BadgeStatus string
 
 const (
-	PayloadBadgeYes       PayloadBadgeStatus = "Yes"
-	PayloadBadgeNo        PayloadBadgeStatus = "No"
-	PayloadBadgeOnSuccess PayloadBadgeStatus = "OnSuccess"
-	PayloadBadgeOnFailure PayloadBadgeStatus = "OnFailure"
+	BadgeStatusYes       BadgeStatus = "Yes"
+	BadgeStatusNo        BadgeStatus = "No"
+	BadgeStatusOnSuccess BadgeStatus = "OnSuccess"
+	BadgeStatusOnFailure BadgeStatus = "OnFailure"
 )
 
 // ReleaseQualifiers represents a collection of release qualifiers indexed by their unique names
@@ -23,13 +26,14 @@ type ReleaseQualifiers map[QualifierId]ReleaseQualifier
 
 // ReleaseQualifier defines the configuration for a single release qualifier
 // It contains metadata about the qualifier and its notification settings
+// +k8s:deepcopy-gen=true
 type ReleaseQualifier struct {
 	// Enabled indicates whether this qualifier is currently active
 	// Using a pointer to distinguish between "not set" and "set to false"
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
-	// BadgeName is the short display name used for this qualifier in UI badges
-	BadgeName string `json:"badgeName,omitempty" yaml:"badgeName,omitempty"`
+	// Name is the short display name used for this qualifier in UI badges
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	// Summary provides a brief description of what this qualifier represents
 	Summary string `json:"summary,omitempty" yaml:"summary,omitempty"`
@@ -37,8 +41,8 @@ type ReleaseQualifier struct {
 	// Description contains detailed information about the qualifier for display in tooltips or detailed views
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// PayloadBadge indicates whether this qualifier should be included in payload badges
-	PayloadBadge PayloadBadgeStatus `json:"payloadBadge,omitempty" yaml:"payloadBadge,omitempty"`
+	// Badge indicates if/when the qualifier's badge should be displayed
+	Badge BadgeStatus `json:"badge,omitempty" yaml:"badge,omitempty"`
 
 	// Labels the labels to apply when qualifying jobs fail
 	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
