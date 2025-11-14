@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -89,12 +88,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 		if buildClusterDistribution.Contains(periodicConfig.Cluster) {
 			spec.Cluster = buildClusterDistribution.Get()
 		}
-	}
-
-	// Currently, there is a set of jobs that must be run on the `build05` cluster
-	r := regexp.MustCompile(`\b(e2e-agent|metal|telco5g)\b`)
-	if r.FindString(jobName) != "" {
-		spec.Cluster = "build05"
 	}
 
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
