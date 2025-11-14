@@ -32,8 +32,8 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			base: ReleaseQualifiers{},
 			override: ReleaseQualifiers{
 				"test": {
-					Enabled: TRUE,
-					Name:    "TEST",
+					Enabled:   TRUE,
+					BadgeName: "TEST",
 				},
 			},
 			expected: ReleaseQualifiers{},
@@ -42,8 +42,8 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			name: "base with empty override",
 			base: ReleaseQualifiers{
 				"test": {
-					Enabled: TRUE,
-					Name:    "TEST",
+					Enabled:   TRUE,
+					BadgeName: "TEST",
 				},
 			},
 			override: ReleaseQualifiers{},
@@ -53,22 +53,22 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			name: "simple field override",
 			base: ReleaseQualifiers{
 				"test": {
-					Enabled: FALSE,
-					Name:    "OLD",
-					Summary: "Old Summary",
+					Enabled:   FALSE,
+					BadgeName: "OLD",
+					Summary:   "Old Summary",
 				},
 			},
 			override: ReleaseQualifiers{
 				"test": {
 					Enabled:     TRUE,
-					Name:        "NEW",
+					BadgeName:   "NEW",
 					Description: "New Description",
 				},
 			},
 			expected: ReleaseQualifiers{
 				"test": {
 					Enabled:     TRUE,
-					Name:        "NEW",
+					BadgeName:   "NEW",
 					Summary:     "Old Summary", // Not overridden
 					Description: "New Description",
 				},
@@ -78,14 +78,14 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			name: "add new qualifier",
 			base: ReleaseQualifiers{
 				"existing": {
-					Enabled: TRUE,
-					Name:    "EXIST",
+					Enabled:   TRUE,
+					BadgeName: "EXIST",
 				},
 			},
 			override: ReleaseQualifiers{
 				"new": {
-					Enabled: TRUE,
-					Name:    "NEW",
+					Enabled:   TRUE,
+					BadgeName: "NEW",
 				},
 			},
 			expected: ReleaseQualifiers{},
@@ -342,17 +342,17 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			name: "string field override with empty string",
 			base: ReleaseQualifiers{
 				"test": {
-					Name: "ORIGINAL",
+					BadgeName: "ORIGINAL",
 				},
 			},
 			override: ReleaseQualifiers{
 				"test": {
-					Name: "", // Empty string should not override
+					BadgeName: "", // Empty string should not override
 				},
 			},
 			expected: ReleaseQualifiers{
 				"test": {
-					Name: "ORIGINAL", // Should keep original
+					BadgeName: "ORIGINAL", // Should keep original
 				},
 			},
 		},
@@ -360,17 +360,17 @@ func TestReleaseQualifiers_Merge(t *testing.T) {
 			name: "string field override with non-empty string",
 			base: ReleaseQualifiers{
 				"test": {
-					Name: "ORIGINAL",
+					BadgeName: "ORIGINAL",
 				},
 			},
 			override: ReleaseQualifiers{
 				"test": {
-					Name: "NEW",
+					BadgeName: "NEW",
 				},
 			},
 			expected: ReleaseQualifiers{
 				"test": {
-					Name: "NEW",
+					BadgeName: "NEW",
 				},
 			},
 		},
@@ -405,8 +405,8 @@ func TestReleaseQualifiers_Merge_EdgeCases(t *testing.T) {
 			name: "complex nested merge",
 			base: ReleaseQualifiers{
 				"complex": {
-					Enabled: FALSE,
-					Name:    "COMPLEX",
+					Enabled:   FALSE,
+					BadgeName: "COMPLEX",
 					Notifications: &notifications.Notifications{
 						Slack: &slack.Notification{
 							Escalations: []slack.Escalation{
@@ -448,8 +448,8 @@ func TestReleaseQualifiers_Merge_EdgeCases(t *testing.T) {
 			},
 			expected: ReleaseQualifiers{
 				"complex": {
-					Enabled: TRUE,
-					Name:    "COMPLEX",
+					Enabled:   TRUE,
+					BadgeName: "COMPLEX",
 					Notifications: &notifications.Notifications{
 						Slack: &slack.Notification{
 							Escalations: []slack.Escalation{
@@ -557,21 +557,21 @@ func TestReleaseQualifiers_Merge_EmptyStringHandling(t *testing.T) {
 			name: "empty strings should not override existing values",
 			base: ReleaseQualifiers{
 				"test": {
-					Name:        "ORIGINAL",
+					BadgeName:   "ORIGINAL",
 					Summary:     "Original Summary",
 					Description: "Original Description",
 				},
 			},
 			override: ReleaseQualifiers{
 				"test": {
-					Name:        "", // Empty string should not override
+					BadgeName:   "", // Empty string should not override
 					Summary:     "New Summary",
 					Description: "", // Empty string should not override
 				},
 			},
 			expected: ReleaseQualifiers{
 				"test": {
-					Name:        "ORIGINAL",             // Empty string should not override
+					BadgeName:   "ORIGINAL",             // Empty string should not override
 					Summary:     "New Summary",          // Non-empty string should override
 					Description: "Original Description", // Empty string should not override
 				},
@@ -601,8 +601,8 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			base: nil,
 			override: ReleaseQualifiers{
 				"test": {
-					Enabled: TRUE,
-					Name:    "TEST",
+					Enabled:   TRUE,
+					BadgeName: "TEST",
 				},
 			},
 			expected: ReleaseQualifiers{},
@@ -611,8 +611,8 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			name: "non-nil base with nil override",
 			base: ReleaseQualifiers{
 				"test": {
-					Enabled: TRUE,
-					Name:    "TEST",
+					Enabled:   TRUE,
+					BadgeName: "TEST",
 				},
 			},
 			override: nil,
@@ -622,7 +622,7 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			name: "override enabled from nil to false",
 			base: ReleaseQualifiers{
 				"test": {
-					Name: "TEST",
+					BadgeName: "TEST",
 				},
 			},
 			override: ReleaseQualifiers{
@@ -632,8 +632,8 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			},
 			expected: ReleaseQualifiers{
 				"test": {
-					Enabled: FALSE,
-					Name:    "TEST",
+					Enabled:   FALSE,
+					BadgeName: "TEST",
 				},
 			},
 		},
@@ -641,8 +641,8 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			name: "override enabled from false to true",
 			base: ReleaseQualifiers{
 				"test": {
-					Enabled: FALSE,
-					Name:    "TEST",
+					Enabled:   FALSE,
+					BadgeName: "TEST",
 				},
 			},
 			override: ReleaseQualifiers{
@@ -652,8 +652,8 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			},
 			expected: ReleaseQualifiers{
 				"test": {
-					Enabled: TRUE,
-					Name:    "TEST",
+					Enabled:   TRUE,
+					BadgeName: "TEST",
 				},
 			},
 		},
@@ -697,26 +697,26 @@ func TestReleaseQualifiers_Merge_ComprehensiveEdgeCases(t *testing.T) {
 			name: "all payload badge status combinations",
 			base: ReleaseQualifiers{
 				"test1": {
-					Badge: BadgeStatusYes,
+					PayloadBadgeStatus: BadgeStatusYes,
 				},
 				"test2": {
-					Badge: BadgeStatusNo,
+					PayloadBadgeStatus: BadgeStatusNo,
 				},
 			},
 			override: ReleaseQualifiers{
 				"test1": {
-					Badge: BadgeStatusOnSuccess,
+					PayloadBadgeStatus: BadgeStatusOnSuccess,
 				},
 				"test2": {
-					Badge: BadgeStatusOnFailure,
+					PayloadBadgeStatus: BadgeStatusOnFailure,
 				},
 			},
 			expected: ReleaseQualifiers{
 				"test1": {
-					Badge: BadgeStatusOnSuccess,
+					PayloadBadgeStatus: BadgeStatusOnSuccess,
 				},
 				"test2": {
-					Badge: BadgeStatusOnFailure,
+					PayloadBadgeStatus: BadgeStatusOnFailure,
 				},
 			},
 		},
@@ -796,85 +796,85 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 			name: "empty base with override",
 			base: ReleaseQualifier{},
 			override: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "TEST",
+				Enabled:   TRUE,
+				BadgeName: "TEST",
 			},
 			expected: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "TEST",
+				Enabled:   TRUE,
+				BadgeName: "TEST",
 			},
 		},
 		{
 			name: "base with empty override",
 			base: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "TEST",
+				Enabled:   TRUE,
+				BadgeName: "TEST",
 			},
 			override: ReleaseQualifier{},
 			expected: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "TEST",
+				Enabled:   TRUE,
+				BadgeName: "TEST",
 			},
 		},
 		{
 			name: "override all simple fields",
 			base: ReleaseQualifier{
-				Enabled:     FALSE,
-				Name:        "OLD_BADGE",
-				Summary:     "Old Summary",
-				Description: "Old Description",
-				Badge:       BadgeStatusNo,
+				Enabled:            FALSE,
+				BadgeName:          "OLD_BADGE",
+				Summary:            "Old Summary",
+				Description:        "Old Description",
+				PayloadBadgeStatus: BadgeStatusNo,
 			},
 			override: ReleaseQualifier{
-				Enabled:     TRUE,
-				Name:        "NEW_BADGE",
-				Summary:     "New Summary",
-				Description: "New Description",
-				Badge:       BadgeStatusYes,
+				Enabled:            TRUE,
+				BadgeName:          "NEW_BADGE",
+				Summary:            "New Summary",
+				Description:        "New Description",
+				PayloadBadgeStatus: BadgeStatusYes,
 			},
 			expected: ReleaseQualifier{
-				Enabled:     TRUE,
-				Name:        "NEW_BADGE",
-				Summary:     "New Summary",
-				Description: "New Description",
-				Badge:       BadgeStatusYes,
+				Enabled:            TRUE,
+				BadgeName:          "NEW_BADGE",
+				Summary:            "New Summary",
+				Description:        "New Description",
+				PayloadBadgeStatus: BadgeStatusYes,
 			},
 		},
 		{
 			name: "partial override - only some fields",
 			base: ReleaseQualifier{
-				Enabled:     FALSE,
-				Name:        "BASE_BADGE",
-				Summary:     "Base Summary",
-				Description: "Base Description",
-				Badge:       BadgeStatusNo,
+				Enabled:            FALSE,
+				BadgeName:          "BASE_BADGE",
+				Summary:            "Base Summary",
+				Description:        "Base Description",
+				PayloadBadgeStatus: BadgeStatusNo,
 			},
 			override: ReleaseQualifier{
-				Name:    "OVERRIDE_BADGE",
-				Summary: "Override Summary",
+				BadgeName: "OVERRIDE_BADGE",
+				Summary:   "Override Summary",
 			},
 			expected: ReleaseQualifier{
-				Enabled:     FALSE,
-				Name:        "OVERRIDE_BADGE",
-				Summary:     "Override Summary",
-				Description: "Base Description",
-				Badge:       BadgeStatusNo,
+				Enabled:            FALSE,
+				BadgeName:          "OVERRIDE_BADGE",
+				Summary:            "Override Summary",
+				Description:        "Base Description",
+				PayloadBadgeStatus: BadgeStatusNo,
 			},
 		},
 		{
 			name: "empty strings don't override",
 			base: ReleaseQualifier{
-				Name:        "ORIGINAL",
+				BadgeName:   "ORIGINAL",
 				Summary:     "Original Summary",
 				Description: "Original Description",
 			},
 			override: ReleaseQualifier{
-				Name:        "",
+				BadgeName:   "",
 				Summary:     "New Summary",
 				Description: "",
 			},
 			expected: ReleaseQualifier{
-				Name:        "ORIGINAL",
+				BadgeName:   "ORIGINAL",
 				Summary:     "New Summary",
 				Description: "Original Description",
 			},
@@ -882,28 +882,28 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 		{
 			name: "override enabled from nil to false",
 			base: ReleaseQualifier{
-				Name: "TEST",
+				BadgeName: "TEST",
 			},
 			override: ReleaseQualifier{
 				Enabled: FALSE,
 			},
 			expected: ReleaseQualifier{
-				Enabled: FALSE,
-				Name:    "TEST",
+				Enabled:   FALSE,
+				BadgeName: "TEST",
 			},
 		},
 		{
 			name: "override enabled from false to true",
 			base: ReleaseQualifier{
-				Enabled: FALSE,
-				Name:    "TEST",
+				Enabled:   FALSE,
+				BadgeName: "TEST",
 			},
 			override: ReleaseQualifier{
 				Enabled: TRUE,
 			},
 			expected: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "TEST",
+				Enabled:   TRUE,
+				BadgeName: "TEST",
 			},
 		},
 		{
@@ -933,13 +933,13 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 		{
 			name: "override Badge variants",
 			base: ReleaseQualifier{
-				Badge: BadgeStatusYes,
+				PayloadBadgeStatus: BadgeStatusYes,
 			},
 			override: ReleaseQualifier{
-				Badge: BadgeStatusOnSuccess,
+				PayloadBadgeStatus: BadgeStatusOnSuccess,
 			},
 			expected: ReleaseQualifier{
-				Badge: BadgeStatusOnSuccess,
+				PayloadBadgeStatus: BadgeStatusOnSuccess,
 			},
 		},
 		{
@@ -1199,12 +1199,12 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 		{
 			name: "complex merge - all fields",
 			base: ReleaseQualifier{
-				Enabled:     FALSE,
-				Name:        "BASE",
-				Summary:     "Base Summary",
-				Description: "Base Description",
-				Badge:       BadgeStatusNo,
-				Labels:      []string{"base-label"},
+				Enabled:            FALSE,
+				BadgeName:          "BASE",
+				Summary:            "Base Summary",
+				Description:        "Base Description",
+				PayloadBadgeStatus: BadgeStatusNo,
+				Labels:             []string{"base-label"},
 				Notifications: &notifications.Notifications{
 					Slack: &slack.Notification{
 						Escalations: []slack.Escalation{
@@ -1220,11 +1220,11 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 				},
 			},
 			override: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "OVERRIDE",
-				Summary: "Override Summary",
-				Badge:   BadgeStatusOnSuccess,
-				Labels:  []string{"override-label1", "override-label2"},
+				Enabled:            TRUE,
+				BadgeName:          "OVERRIDE",
+				Summary:            "Override Summary",
+				PayloadBadgeStatus: BadgeStatusOnSuccess,
+				Labels:             []string{"override-label1", "override-label2"},
 				Notifications: &notifications.Notifications{
 					Slack: &slack.Notification{
 						Escalations: []slack.Escalation{
@@ -1240,12 +1240,12 @@ func TestReleaseQualifier_Merge(t *testing.T) {
 				},
 			},
 			expected: ReleaseQualifier{
-				Enabled:     TRUE,
-				Name:        "OVERRIDE",
-				Summary:     "Override Summary",
-				Description: "Base Description",
-				Badge:       BadgeStatusOnSuccess,
-				Labels:      []string{"override-label1", "override-label2"},
+				Enabled:            TRUE,
+				BadgeName:          "OVERRIDE",
+				Summary:            "Override Summary",
+				Description:        "Base Description",
+				PayloadBadgeStatus: BadgeStatusOnSuccess,
+				Labels:             []string{"override-label1", "override-label2"},
 				Notifications: &notifications.Notifications{
 					Slack: &slack.Notification{
 						Escalations: []slack.Escalation{
@@ -1307,30 +1307,30 @@ func TestReleaseQualifier_Merge_PointerReceiver(t *testing.T) {
 		{
 			name: "pointer receiver with basic override",
 			base: &ReleaseQualifier{
-				Enabled: FALSE,
-				Name:    "BASE",
+				Enabled:   FALSE,
+				BadgeName: "BASE",
 			},
 			override: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "OVERRIDE",
+				Enabled:   TRUE,
+				BadgeName: "OVERRIDE",
 			},
 			expected: ReleaseQualifier{
-				Enabled: TRUE,
-				Name:    "OVERRIDE",
+				Enabled:   TRUE,
+				BadgeName: "OVERRIDE",
 			},
 		},
 		{
 			name: "pointer receiver preserves base when override is empty",
 			base: &ReleaseQualifier{
 				Enabled:     TRUE,
-				Name:        "BASE",
+				BadgeName:   "BASE",
 				Summary:     "Base Summary",
 				Description: "Base Description",
 			},
 			override: ReleaseQualifier{},
 			expected: ReleaseQualifier{
 				Enabled:     TRUE,
-				Name:        "BASE",
+				BadgeName:   "BASE",
 				Summary:     "Base Summary",
 				Description: "Base Description",
 			},

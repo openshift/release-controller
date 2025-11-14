@@ -413,10 +413,10 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
 							"test": {
-								Enabled:     releasequalifiers.BoolPtr(false),
-								Name:        "TEST",
-								Description: "An updated description when displaying badge details",
-								Badge:       releasequalifiers.BadgeStatusNo,
+								Enabled:            releasequalifiers.BoolPtr(false),
+								BadgeName:          "TEST",
+								Description:        "An updated description when displaying badge details",
+								PayloadBadgeStatus: releasequalifiers.BadgeStatusNo,
 							},
 						},
 					},
