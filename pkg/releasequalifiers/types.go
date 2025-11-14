@@ -10,16 +10,6 @@ import (
 // QualifierId is a unique name that corresponds to a specific ReleaseQualifier definition
 type QualifierId string
 
-// BadgeStatus badge status
-type BadgeStatus string
-
-const (
-	BadgeStatusYes       BadgeStatus = "Yes"
-	BadgeStatusNo        BadgeStatus = "No"
-	BadgeStatusOnSuccess BadgeStatus = "OnSuccess"
-	BadgeStatusOnFailure BadgeStatus = "OnFailure"
-)
-
 // ReleaseQualifiers represents a collection of release qualifiers indexed by their unique names
 // Each qualifier defines configuration for a specific component or feature
 type ReleaseQualifiers map[QualifierId]ReleaseQualifier
@@ -32,8 +22,8 @@ type ReleaseQualifier struct {
 	// Using a pointer to distinguish between "not set" and "set to false"
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
-	// Name is the short display name used for this qualifier in UI badges
-	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+	// BadgeName short name displayed, as UI badges, in job level summaries
+	BadgeName string `json:"badgeName,omitempty" yaml:"badgeName,omitempty"`
 
 	// Summary provides a brief description of what this qualifier represents
 	Summary string `json:"summary,omitempty" yaml:"summary,omitempty"`
@@ -41,8 +31,8 @@ type ReleaseQualifier struct {
 	// Description contains detailed information about the qualifier for display in tooltips or detailed views
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Badge indicates if/when the qualifier's badge should be displayed
-	Badge BadgeStatus `json:"badge,omitempty" yaml:"badge,omitempty"`
+	// PayloadBadgeStatus indicates if/when the qualifier's BadgeName should be displayed at the ReleasePayload level
+	PayloadBadgeStatus BadgeStatus `json:"payloadBadgeStatus,omitempty" yaml:"payloadBadgeStatus,omitempty"`
 
 	// Labels the labels to apply when qualifying jobs fail
 	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
@@ -50,6 +40,16 @@ type ReleaseQualifier struct {
 	// Notifications contains configuration for notification channels
 	Notifications *notifications.Notifications `json:"notifications,omitempty" yaml:"notifications,omitempty"`
 }
+
+// BadgeStatus badge status used to indicate if/when a ReleaseQualifier badge should be displayed
+type BadgeStatus string
+
+const (
+	BadgeStatusYes       BadgeStatus = "Yes"
+	BadgeStatusNo        BadgeStatus = "No"
+	BadgeStatusOnSuccess BadgeStatus = "OnSuccess"
+	BadgeStatusOnFailure BadgeStatus = "OnFailure"
+)
 
 // BoolPtr returns a pointer to the given bool value
 // This is a utility function for creating pointers to bool values

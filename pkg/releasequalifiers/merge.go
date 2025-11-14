@@ -33,8 +33,8 @@ func mergeQualifier(base, override ReleaseQualifier) ReleaseQualifier {
 	result := base
 
 	// Override simple fields if they are set in override
-	if override.Name != "" {
-		result.Name = override.Name
+	if override.BadgeName != "" {
+		result.BadgeName = override.BadgeName
 	}
 	if override.Summary != "" {
 		result.Summary = override.Summary
@@ -42,8 +42,8 @@ func mergeQualifier(base, override ReleaseQualifier) ReleaseQualifier {
 	if override.Description != "" {
 		result.Description = override.Description
 	}
-	if override.Badge != "" {
-		result.Badge = override.Badge
+	if override.PayloadBadgeStatus != "" {
+		result.PayloadBadgeStatus = override.PayloadBadgeStatus
 	}
 
 	// Override Enabled field if it's explicitly set in override
