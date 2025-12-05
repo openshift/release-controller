@@ -122,11 +122,27 @@ func (c *Controller) garbageCollectSync() error {
 		}
 	}
 
-	// all releasepayloads created for releases that no longer exist should be deleted
+	// all releasepayloads created for releases that no longer exist should be garbage collected
 	for _, payload := range payloads {
 		if active.Has(payload.Name) {
 			continue
 		}
+
+		// Get the release config from the ImageStream to check if alternate repository is configured
+		imageStream, err := c.releaseLister.ImageStreams(payload.Spec.PayloadCoordinates.Namespace).Get(payload.Spec.PayloadCoordinates.ImagestreamName)
+		if err == nil {
+			release, ok, err := releasecontroller.ReleaseDefinition(imageStream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+			if err == nil && ok && len(release.Config.AlternateImageRepository) > 0 && len(release.Config.AlternateImageRepositorySecretName) > 0 {
+				_, err := c.ensureRemoveTagJob(payload, release)
+				if err != nil {
+					klog.V(2).Infof("Failed to create remove tag job for releasepayload %s/%s: %v, proceeding with direct deletion", payload.Namespace, payload.Name, err)
+				} else {
+					klog.V(2).Infof("Created remove tag job for orphaned releasepayload %s/%s, pruner will handle quay.io tag deletion", payload.Namespace, payload.Name)
+				}
+			}
+		}
+
+		// Delete the ReleasePayload
 		klog.V(2).Infof("Removing orphaned releasepayload %s/%s", payload.Namespace, payload.Name)
 		if err := c.releasePayloadClient.ReleasePayloads(payload.Namespace).Delete(context.TODO(), payload.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("can't delete orphaned releasepayload %s/%s: %v", payload.Namespace, payload.Name, err))

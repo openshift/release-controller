@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -416,4 +417,45 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 
 func releaseMirrorJobName(tagName string) string {
 	return fmt.Sprintf("%s-alternate-mirror", tagName)
+}
+
+// ensureRemoveTagJob creates a job to copy the release tag to remove__rc_payload__{version} in quay.io
+func (c *Controller) ensureRemoveTagJob(payload *v1alpha1.ReleasePayload, release *releasecontroller.Release) (*batchv1.Job, error) {
+	if len(release.Config.AlternateImageRepository) == 0 || len(release.Config.AlternateImageRepositorySecretName) == 0 {
+		return nil, fmt.Errorf("alternate repository or secret not configured")
+	}
+
+	jobName := fmt.Sprintf("%s-remove-tag", payload.Name)
+	return c.ensureJob(jobName, nil, func() (*batchv1.Job, error) {
+		// Get cli image from mirror or config
+		cliImage := "registry.ci.openshift.org/ocp/4.21:cli"
+		if mirror, err := c.releaseLister.ImageStreams(release.Target.Namespace).Get(release.Target.Name); err == nil {
+			cliImage = fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
+		}
+		if len(release.Config.OverrideCLIImage) > 0 {
+			cliImage = release.Config.OverrideCLIImage
+		}
+
+		job, prefix := newReleaseJobBase(jobName, cliImage, release.Config.AlternateImageRepositorySecretName)
+
+		// Mirror from the actual release tag (which exists in quay.io) to the removal request tag
+		removeTag := fmt.Sprintf("remove__rc_payload__%s", payload.Name)
+		fromImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, payload.Name)
+		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, removeTag)
+
+		job.Spec.Template.Spec.Containers[0].Command = []string{
+			"/bin/bash", "-c",
+			prefix + `
+			oc image mirror --keep-manifest-list=true $1 $2
+			`,
+			"",
+			fromImage, toImage,
+		}
+
+		job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag] = payload.Name
+		job.Annotations[releasecontroller.ReleaseAnnotationTarget] = fmt.Sprintf("%s/%s", payload.Spec.PayloadCoordinates.Namespace, payload.Spec.PayloadCoordinates.ImagestreamName)
+
+		klog.V(2).Infof("Creating remove tag job %s/%s to copy %s to %s", c.jobNamespace, job.Name, fromImage, toImage)
+		return job, nil
+	})
 }
