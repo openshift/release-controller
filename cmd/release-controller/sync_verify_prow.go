@@ -245,13 +245,13 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
 			}
 		}
-		// This argument is being added, to all release-controller jobs, to override the default value
+		// This environment variable is being added, to all release-controller jobs, to override the default value
 		// of "true", specified in the Step definition.  Why? The variable is being added as a cost saving mechanism
 		// that forces everyone to utilize Public worker nodes and bypassing any NAT Gateway expenses on their
 		// clusters.  The release-controller must run its verification tests against "real" clusters and therefore,
-		// we're overriding this value by passing it as a --multi-stage-param to ci-operator. --multi-stage-param
-		// is necessary because environment variables in prowjob specs are not passed directly on to ci-operator.
-		c.Args = append(c.Args, "--multi-stage-param=OPENSHIFT_INSTALL_AWS_PUBLIC_ONLY=false")
+		// we're overriding this value.
+		c.Env = append(c.Env, corev1.EnvVar{Name: "OPENSHIFT_INSTALL_AWS_PUBLIC_ONLY", Value: "false"})
+
 		// Include an environment variable for any step logic that wants to know if the release controller
 		// triggered the job.
 		c.Args = append(c.Args, "--multi-stage-param=RELEASE_CONTROLLER_JOB=true")
