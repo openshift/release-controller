@@ -207,6 +207,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			case "ppc64le":
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 			case "multi":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 			default:
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
@@ -224,6 +225,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			case "ppc64le":
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 			case "multi":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
 			default:
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
@@ -240,6 +242,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			case "ppc64le":
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: previousReleasePullSpec})
 			case "multi":
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_INITIAL", Value: previousReleasePullSpec})
 			default:
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
