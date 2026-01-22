@@ -78,11 +78,11 @@ func getNonVerifiedTagsJira(acceptedTags []*v1.TagReference) (current, previous 
 // from the previous minor version to use as the previousReleaseTag for nightly releases.
 // For example, for "4.20.0-0.nightly", it would look for "4.19.0-rc.0" or "4.19.0-fc.0"
 //
-// Special test case: The 5.0 -> 4.22 mapping serves as a test case for hardcoding a previous release
+// Special test case: The 6.0 -> 5.55 mapping serves as a test case for hardcoding a previous release
 // when the normal calculation logic would not work. Used 5.0 as it is not a planned OpenShift release.
 // If a major version transition requires a specific previous release mapping, follow this pattern.
 func (c *Controller) calculatePreviousReleaseTagForNightly(currentVersion semver.Version) (*releasecontroller.VerifyIssuesTagInfo, error) {
-	// Get all stable releases (includes both 4-stable and 4-dev-preview streams)
+	// Get all stable releases (includes 4-stable, 4-dev-preview, 5-stable, and 5-dev-preview streams)
 	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get stable releases: %w", err)
@@ -91,14 +91,14 @@ func (c *Controller) calculatePreviousReleaseTagForNightly(currentVersion semver
 	// Calculate the target minor version (previous minor)
 	var targetMajor, targetMinor uint64
 
-	// Special case: 5.0 uses 4.22 as a test case for hardcoded previous release logic.
+	// Special case: 6.0 uses 5.55 as a test case for hardcoded previous release logic.
 	// This demonstrates how to handle major version transitions that require a specific
-	// previous release rather than calculated previous minor. Using 5.0 as this is not
-	// a planned release.
-	if currentVersion.Major == 5 && currentVersion.Minor == 0 {
-		targetMajor = 4
-		targetMinor = 22
-		klog.V(4).Infof("jira: special case for version 5.0, using hardcoded previous version 4.22 (test case)")
+	// previous release rather than calculated previous minor. Using 6.0 as this is not
+	// a planned release at this time.
+	if currentVersion.Major == 6 && currentVersion.Minor == 0 {
+		targetMajor = 5
+		targetMinor = 55
+		klog.V(4).Infof("jira: special case for version 6.0, using hardcoded previous version 5.55 (test case)")
 	} else if currentVersion.Minor == 0 {
 		return nil, fmt.Errorf("cannot calculate previous minor version for %d.%d", currentVersion.Major, currentVersion.Minor)
 	} else {
