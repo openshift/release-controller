@@ -155,7 +155,7 @@ type ReleaseConfig struct {
 	// AlternateImageRepository is the full path to an external Image Repository where we
 	// will mirror Accepted releases to.
 	// For example:
-	//   "alternateImageRepository": "quay.io/openshift-release-dev/dev-release"
+	//   "alternateImageRepository": "quay.io/openshift/ci"
 	AlternateImageRepository string `json:"alternateImageRepository"`
 
 	// AlternateImageRepositorySecret is the name of the secret containing credentials to the
