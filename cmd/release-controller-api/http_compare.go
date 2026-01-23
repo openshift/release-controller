@@ -91,7 +91,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		if err != nil || !ok {
 			continue
 		}
-		if r.Config.Name == "4-stable" {
+		if r.Config.Name == "4-stable" || r.Config.Name == "5-stable" {
 			s := ReleaseStream{
 				Release: r,
 				Tags:    releasecontroller.SortedReleaseTags(r),

@@ -209,6 +209,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		if err != nil {
 			return "", "", fmt.Errorf("invalid semver range `%s`: %w", upgradeRelease.Prerelease.VersionBounds.Query(), err)
 		}
+		//TODO: Right now, nothing relies on the "prerelease" stanza that would trigger this logic.  If it is ever used, we are going to need to handle "4-stable" and "5-stable"...
 		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, "4-stable", semverRange, 0, "")
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get latest tag in 4-stable stream: %w", err)

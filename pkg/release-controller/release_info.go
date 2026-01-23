@@ -1406,8 +1406,15 @@ class FileServer(handler):
             release_cache_dir = os.path.join(CACHE_DIR, release)
 
             release_imagestream_name = 'release'
+            major = int(parts[0])
+            if major > 4:
+                release_imagestream_name = f'release-{major}'
+
             if '-ec.' in release:
-                release_imagestream_name = '4-dev-preview'
+                if major > 4:
+                    release_imagestream_name = f'{major}-dev-preview'
+                else:
+                    release_imagestream_name = '4-dev-preview'
 
             if os.path.isfile(os.path.join(release_cache_dir, "sha256sum.txt")) or os.path.isfile(os.path.join(release_cache_dir, "FAILED.md")):
                 handler.do_GET(self)
