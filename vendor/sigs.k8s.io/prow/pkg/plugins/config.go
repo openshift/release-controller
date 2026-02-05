@@ -147,6 +147,18 @@ type ExternalPlugin struct {
 	Events []string `json:"events,omitempty"`
 }
 
+type ContextMatch struct {
+	// Context name of the context to match on, defaults to "tide"
+	Context string `json:"context,omitempty"`
+	// Description regular expression to match the context description, defaults to
+	// "Not mergeable. (PullRequest is missing sufficient approving GitHub review\(s\)|Needs (lgtm|approved) label)"
+	Description string `json:"description,omitempty"`
+	// Compiled description
+	DescriptionRe *regexp.Regexp `json:"-"`
+	// State is the state we want the context to be in before requesting reviews, e.g. "pending"
+	State string `json:"state,omitempty"`
+}
+
 // Blunderbuss defines configuration for the blunderbuss plugin.
 type Blunderbuss struct {
 	// ReviewerCount is the minimum number of reviewers to request
@@ -172,6 +184,9 @@ type Blunderbuss struct {
 	// This is useful when a bot user or admin opens a PR that will be
 	// merged regardless of approvals.
 	IgnoreAuthors []string `json:"ignore_authors,omitempty"`
+	// WaitForStatus specifies whether to request reviews if the tide status indicates that
+	// the tests have passed but there are insufficient pull request reviews.
+	WaitForStatus *ContextMatch `json:"wait_for_status,omitempty"`
 }
 
 // Owners contains configuration related to handling OWNERS files.
@@ -412,7 +427,34 @@ func (l Label) RestrictedLabelsFor(org, repo string) map[string]RestrictedLabel 
 	result := map[string]RestrictedLabel{}
 	for _, orgRepoKey := range []string{"*", org, org + "/" + repo} {
 		for _, restrictedLabel := range l.RestrictedLabels[orgRepoKey] {
-			result[strings.ToLower(restrictedLabel.Label)] = restrictedLabel
+			labelKey := strings.ToLower(restrictedLabel.Label)
+			existing, exists := result[labelKey]
+			if !exists {
+				result[labelKey] = restrictedLabel
+			} else {
+				merged := existing
+				// Merge allowed users
+				allUsers := sets.New(existing.AllowedUsers...)
+				allUsers.Insert(restrictedLabel.AllowedUsers...)
+				merged.AllowedUsers = sets.List(allUsers)
+				// Merge allowed teams
+				allTeams := sets.New(existing.AllowedTeams...)
+				allTeams.Insert(restrictedLabel.AllowedTeams...)
+				merged.AllowedTeams = sets.List(allTeams)
+				// Merge assign_on
+				assignOnMap := make(map[string]AssignOnLabel)
+				for _, ao := range existing.AssignOn {
+					assignOnMap[ao.Label] = ao
+				}
+				for _, ao := range restrictedLabel.AssignOn {
+					assignOnMap[ao.Label] = ao
+				}
+				merged.AssignOn = make([]AssignOnLabel, 0, len(assignOnMap))
+				for _, ao := range assignOnMap {
+					merged.AssignOn = append(merged.AssignOn, ao)
+				}
+				result[labelKey] = merged
+			}
 		}
 	}
 
@@ -1072,6 +1114,17 @@ func (c *Configuration) setDefaults() {
 		c.Blunderbuss.ReviewerCount = new(int)
 		*c.Blunderbuss.ReviewerCount = defaultBlunderbussReviewerCount
 	}
+	if c.Blunderbuss.WaitForStatus != nil {
+		if c.Blunderbuss.WaitForStatus.Context == "" {
+			c.Blunderbuss.WaitForStatus.Context = "tide"
+		}
+		if c.Blunderbuss.WaitForStatus.State == "" {
+			c.Blunderbuss.WaitForStatus.State = "pending"
+		}
+		if c.Blunderbuss.WaitForStatus.Description == "" {
+			c.Blunderbuss.WaitForStatus.Description = "Not mergeable. (PullRequest is missing sufficient approving GitHub review\\(s\\)|Needs (lgtm|approved|approved, lgtm) labels?)\\.?"
+		}
+	}
 	for i := range c.Triggers {
 		c.Triggers[i].SetDefaults()
 	}
@@ -1389,6 +1442,13 @@ func compileRegexpsAndDurations(pc *Configuration) error {
 			return fmt.Errorf("failed to compile grace period duration: %q, error: %w", rs[i].GracePeriod, err)
 		}
 		rs[i].GracePeriodDuration = dur
+	}
+
+	if pc.Blunderbuss.WaitForStatus != nil {
+		pc.Blunderbuss.WaitForStatus.DescriptionRe, err = regexp.Compile(pc.Blunderbuss.WaitForStatus.Description)
+		if err != nil {
+			return fmt.Errorf("failed to compile blunderbuss wait for context description regular expression: %q, error: %w", pc.Blunderbuss.WaitForStatus.Description, err)
+		}
 	}
 	return nil
 }

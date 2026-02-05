@@ -3,8 +3,10 @@ package rhcos
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +17,12 @@ import (
 const (
 	rhelCoreOs         = "Red Hat Enterprise Linux CoreOS"
 	centosStreamCoreOs = "CentOS Stream CoreOS"
+	baseLayerAlertBox  = `<div class="alert alert-info" id="coreos-base-alert">
+		<p>The CoreOS links above are for <em>the base CoreOS layer</em> used to build
+		the OpenShift node image and do not contain OpenShift components. This is
+		normally only useful to devs working closely with the CoreOS team. For info
+		about the node image, see the <a href="#node-image-info">Node Image Info</a>
+		section.</p></div>`
 )
 
 var (
@@ -26,14 +34,14 @@ var (
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
-	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
-	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d+)\.[\w\.\-]+)\n`)
 
-	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d)(\d+)\.[\w\.\-]+) to ((\d)(\d+)\.[\w\.\-]+)\n`)
-	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d)(\d+)\.[\w\.\-]+)\n`)
+	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d+)\.[\w\.\-]+)\n`)
 
-	// the postprocessed markdown diff line
-	reMdCoSDiffPost = regexp.MustCompile(`\* (.*? CoreOS upgraded from .*?) \(\[diff\]\(.*?\)\)`)
+	// the postprocessed markdown version/diff line
+	reMdCoSPost = regexp.MustCompile(`\* (.*? CoreOS) (upgraded from .+ to )?(.+)`)
 
 	// regex for RHCOS in < 4.19, where the version string was e.g. 418.94.202410090804-0
 	reOcpCoreOsVersion = regexp.MustCompile(`((\d)(\d+))\.(\d+)\.(\d+)-(\d+)`)
@@ -203,7 +211,7 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 		}
 	}
 
-	toRelease := matches[4]
+	toRelease := matches[3]
 	if toStream, ok = getRHCoSReleaseStream(toRelease, architectureExtension); ok {
 		toURL = url.URL{
 			Scheme:   serviceScheme,
@@ -226,11 +234,13 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 	// even for the few 4.19 releases we've had, we render the package diff so that we can test it out
 	hasCoreos419 := strings.HasPrefix(fromRelease, "419") || strings.HasPrefix(toRelease, "419")
 
-	var diffURL string
+	diffInfo := ""
 	if hasCoreos419 || hasCoreosLayered {
-		diffURL = "#coreos-package-diff"
+		// for newer styles, we print an infobox that links to the node image info section
+		diffInfo = baseLayerAlertBox
 	} else {
-		diffURL = (&url.URL{
+		// keep legacy behaviour of linking to internal RHCOS release browser for the diff
+		diffURL := (&url.URL{
 			Scheme: serviceScheme,
 			Host:   serviceUrl,
 			Path:   "/diff.html",
@@ -242,16 +252,17 @@ func transformCoreOSUpgradeLinks(name, architecture, architectureExtension, inpu
 				"arch":           []string{architecture},
 			}).Encode(),
 		}).String()
+		diffInfo = fmt.Sprintf(`([diff](%s))`, diffURL)
 	}
 
 	replace := fmt.Sprintf(
-		`* %s upgraded from [%s](%s) to [%s](%s) ([diff](%s))`,
+		`* %s upgraded from [%s](%s) to [%s](%s) %s`,
 		name,
 		fromRelease,
 		fromURL.String(),
 		toRelease,
 		toURL.String(),
-		diffURL,
+		diffInfo,
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
 }
@@ -275,29 +286,49 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 			}).Encode(),
 		}
 	}
+
+	// these conditions are similar to those in transformCoreOSUpgradeLinks() above
+	hasCoreosLayered := !strings.HasPrefix(fromRelease, "4")
+	hasCoreos419 := strings.HasPrefix(fromRelease, "419")
+
+	diffInfo := ""
+	if hasCoreos419 || hasCoreosLayered {
+		diffInfo = baseLayerAlertBox
+	}
 	replace := fmt.Sprintf(
-		`* %s [%s](%s)`+"\n",
+		`* %s [%s](%s) %s`+"\n",
 		name,
 		fromRelease,
 		fromURL.String(),
+		diffInfo,
 	)
 	return strings.ReplaceAll(input, matches[0], replace)
 }
 
-func RenderRpmDiff(markdown string, rpmDiff releasecontroller.RpmDiff) string {
+func RenderNodeImageInfo(markdown string, rpmList releasecontroller.RpmList, rpmDiff releasecontroller.RpmDiff) string {
 	output := new(strings.Builder)
 
-	// Reprint the upgrade line, with the browser links for the build itself.
-	if m := reMdCoSDiffPost.FindStringSubmatch(markdown); m != nil {
-		fmt.Fprintf(output, "%s\n\n", m[1])
+	fmt.Fprintf(output, "### Package List\n\n")
+
+	importantPkgs := []string{"cri-o", "kernel", "openshift-kubelet", "systemd"}
+	for _, pkg := range importantPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
 	}
 
+	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Packages))
+	sortedPkgs := slices.Sorted(maps.Keys(rpmList.Packages))
+	for _, pkg := range sortedPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
+	}
+	fmt.Fprintf(output, "</details>\n\n")
+
 	writeList := func(header string, elements []string) {
-		fmt.Fprintf(output, "#### %s:\n\n", header)
+		fmt.Fprintf(output, "### %s:\n\n", header)
 		sort.Strings(elements)
 		for _, elem := range elements {
 			fmt.Fprintf(output, "* %s\n", elem)
 		}
+		fmt.Fprint(output, "\n")
 	}
 
 	if len(rpmDiff.Changed) > 0 {
@@ -322,8 +353,19 @@ func RenderRpmDiff(markdown string, rpmDiff releasecontroller.RpmDiff) string {
 		writeList("Added", elements)
 	}
 
-	if output.Len() == 0 {
-		return "No package diff"
+	fmt.Fprintf(output, "\n\n### Extensions\n\n")
+
+	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Extensions))
+	sortedPkgs = slices.Sorted(maps.Keys(rpmList.Extensions))
+	for _, pkg := range sortedPkgs {
+		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Extensions[pkg])
+	}
+	fmt.Fprintf(output, "</details>\n\n")
+
+	// Reprint the version/diff line, with the browser links for the build itself.
+	// But put it last to de-emphasize it. Most people don't need to click on this.
+	if m := reMdCoSPost.FindStringSubmatch(markdown); m != nil {
+		fmt.Fprintf(output, "<br/>%s **base layer**: %s\n\n", m[1], m[3])
 	}
 
 	return output.String()

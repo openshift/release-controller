@@ -9,12 +9,22 @@ import (
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
-
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	"gopkg.in/robfig/cron.v2"
+	"gopkg.in/yaml.v2"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func validateConfigs(configDir string) error {
+func validateConfigs(options *options) error {
+	errors := []error{}
+	errors = append(errors, validateReleaseConfigs(options.validateConfigs))
+	if len(options.ReleaseQualifiersConfigPath) > 0 {
+		errors = append(errors, validateReleaseQualifiersConfig(options.ReleaseQualifiersConfigPath)...)
+	}
+	return utilerrors.NewAggregate(errors)
+}
+
+func validateReleaseConfigs(configDir string) error {
 	errors := []error{}
 	releaseConfigs := []releasecontroller.ReleaseConfig{}
 	err := filepath.Walk(configDir, func(path string, info os.FileInfo, err error) error {
@@ -37,8 +47,10 @@ func validateConfigs(configDir string) error {
 	if err != nil {
 		return fmt.Errorf("error encountered while trying to read config files: %w", err)
 	}
+	errors = append(errors, validateUpgradeJobs(releaseConfigs)...)
 	errors = append(errors, verifyPeriodicFields(releaseConfigs)...)
 	errors = append(errors, findDuplicatePeriodics(releaseConfigs)...)
+	errors = append(errors, validateQualifiers(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
 }
 
@@ -104,4 +116,47 @@ func findDuplicatePeriodics(releaseConfigs []releasecontroller.ReleaseConfig) []
 		duplicates = append(duplicates, fmt.Errorf("found job %s in multiple locations: %v", job, steps))
 	}
 	return duplicates
+}
+
+// validateQualifiers validates the contents of releasequalifiers.ReleaseQualifiers defined in releasecontroller.ReleaseConfig
+func validateQualifiers(releaseConfigs []releasecontroller.ReleaseConfig) []error {
+	errors := []error{}
+	for _, config := range releaseConfigs {
+		for verificationName, verification := range config.Verify {
+			for qualifierId, overrides := range verification.Qualifiers {
+				if err := validateQualifier(qualifierId, overrides); err != nil {
+					errors = append(errors, fmt.Errorf("unable to validate %q release qualifier %s: %v", verificationName, qualifierId, err))
+				}
+			}
+		}
+	}
+	return errors
+}
+
+// validateReleaseQualifiersConfig validates the contents of the file located at options.ReleaseQualifiersConfigPath
+func validateReleaseQualifiersConfig(configPath string) []error {
+	errors := []error{}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		return errors
+	}
+	config := releasecontroller.ReleaseQualifiersConfig{}
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.SetStrict(true)
+	if err = dec.Decode(&config); err != nil {
+		errors = append(errors, fmt.Errorf("failed to unmarshal release qualifier configuration file %s: %v", configPath, err))
+		return errors
+	}
+	for qualifierId, overrides := range config.Qualifiers {
+		errors = append(errors, validateQualifier(qualifierId, overrides))
+	}
+	return errors
+}
+
+func validateQualifier(name releasequalifiers.QualifierId, qualifier releasequalifiers.ReleaseQualifier) error {
+	err := qualifier.Validate()
+	if err != nil {
+		return fmt.Errorf("unable to validate qualifier %s: %v", name, err)
+	}
+	return nil
 }

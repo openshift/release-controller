@@ -18,3 +18,31 @@ func (in ByCoordinatesName) Len() int {
 func (in ByCoordinatesName) Swap(i, j int) {
 	in[i], in[j] = in[j], in[i]
 }
+
+type ByCompletionTime []v1alpha1.JobRunResult
+
+func (in ByCompletionTime) Less(i, j int) bool {
+	return in[i].CompletionTime.Before(in[j].CompletionTime)
+}
+
+func (in ByCompletionTime) Len() int {
+	return len(in)
+}
+
+func (in ByCompletionTime) Swap(i, j int) {
+	in[i], in[j] = in[j], in[i]
+}
+
+type ByStartTime []v1alpha1.JobRunResult
+
+func (in ByStartTime) Less(i, j int) bool {
+	return in[i].StartTime.Before(&in[j].StartTime)
+}
+
+func (in ByStartTime) Len() int {
+	return len(in)
+}
+
+func (in ByStartTime) Swap(i, j int) {
+	in[i], in[j] = in[j], in[i]
+}

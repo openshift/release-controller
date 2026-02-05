@@ -2,14 +2,18 @@ package jira
 
 import (
 	"fmt"
+	"math"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	jiraBaseClient "github.com/andygrunwald/go-jira"
 	"github.com/openshift-eng/jira-lifecycle-plugin/pkg/helpers"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/jira"
 	"sigs.k8s.io/prow/pkg/plugins"
@@ -19,6 +23,7 @@ type githubClient interface {
 	GetIssueLabels(org, repo string, number int) ([]github.Label, error)
 	CreateComment(org, repo string, number int, comment string) error
 	ListIssueComments(org, repo string, number int) ([]github.IssueComment, error)
+	GetPullRequest(org, repo string, number int) (*github.PullRequest, error)
 }
 type Verifier struct {
 	// jiraClient is used to retrieve external issue links and mark QA reviewed issues as VERIFIED
@@ -71,23 +76,13 @@ func issueTargetReleaseCheck(issue *jiraBaseClient.Issue, tagRelease string, tag
 	return false, nil
 }
 
-func (c *Verifier) ghUnlabeledPRs(extPR pr) ([]pr, error) {
-	var unlabeledPRs []pr
-	labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
-	if err != nil {
-		return unlabeledPRs, fmt.Errorf("unable to get labels for github pull %s/%s#%d: %w", extPR.org, extPR.repo, extPR.prNum, err)
-	}
-	var hasLabel bool
+func hasLabel(labels []github.Label, name string) bool {
 	for _, label := range labels {
-		if label.Name == "qe-approved" {
-			hasLabel = true
-			break
+		if label.Name == name {
+			return true
 		}
 	}
-	if !hasLabel {
-		unlabeledPRs = append(unlabeledPRs, extPR)
-	}
-	return unlabeledPRs, nil
+	return false
 }
 
 func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
@@ -110,18 +105,17 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 	return nil, true
 }
 
-func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess bool) {
+func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess, verifiedLater bool) {
 	var success bool
 	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
-	var unlabeledPRs []pr
-	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
+	var unApprovedPRs []pr
+	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) && !strings.EqualFold(issue.Fields.Status.Name, jira.StatusModified) {
 		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
-		return message, false
+		return message, false, false
 	} else {
 		for _, extPR := range extPRs {
-			var newErr error
-			unlabeledPRs, newErr = c.ghUnlabeledPRs(extPR)
-			if newErr != nil {
+			labels, err := c.ghClient.GetIssueLabels(extPR.org, extPR.repo, extPR.prNum)
+			if err != nil {
 				exists := false
 				for _, tmpErr := range *errs {
 					if tmpErr.Error() == "Internal Error on Automation" {
@@ -130,11 +124,35 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 					}
 				}
 				if !exists {
-					*errs = append(*errs, fmt.Errorf("Internal Error on Automation")) //nolint:staticcheck
+					*errs = append(*errs, fmt.Errorf("internal Error on Automation")) //nolint:staticcheck
 				}
-				klog.Warning(newErr)
-				return "", false
+				klog.Warning(err)
+				return "", false, false
 			}
+			qeApproved := hasLabel(labels, "qe-approved")
+			verified := hasLabel(labels, "verified")
+			verifiedLater = hasLabel(labels, "verified-later")
+
+			// For some time we'll need to support both the "old" and "new" methods...
+			// When a PR is labeled with "qe-approved", check for the pre-merge verification labels, which will take precedence,
+			// When we encounter the "verified" or "verified-later" labels, we need to react accordingly...
+			// Any PR's labeled with "verified-later" must also have the "verified" label, by definition, in order for the PR to have merged.
+			// In this situation, we will not move the Jira issue to "VERIFIED".
+			// PR's that have the "verified" follow the same behavior as "qe-approved" and move the Jira issue to "VERIFIED".
+			if qeApproved {
+				if verifiedLater && verified {
+					unApprovedPRs = append(unApprovedPRs, extPR)
+				}
+			} else if verified {
+				// The "new" method will deal with the pre-merge verification labels instead...
+				if verifiedLater {
+					unApprovedPRs = append(unApprovedPRs, extPR)
+				}
+			} else {
+				// This is the "old" method which will eventually be going away...
+				unApprovedPRs = append(unApprovedPRs, extPR)
+			}
+
 			// Comment on the PR saying that this PR is included in the release
 			prError, prSuccess := c.commentOnPR(extPR, message)
 			if !prSuccess {
@@ -142,9 +160,9 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 			}
 		}
 	}
-	if len(unlabeledPRs) > 0 || len(*errs) > 0 {
+	if len(unApprovedPRs) > 0 || len(*errs) > 0 {
 		message = fmt.Sprintf("%s\nJira issue will not be automatically moved to %s for the following reasons:", message, jira.StatusVerified)
-		for _, extPR := range unlabeledPRs {
+		for _, extPR := range unApprovedPRs {
 			message = fmt.Sprintf("%s\n- PR %s/%s#%d not approved by the QA Contact", message, extPR.org, extPR.repo, extPR.prNum)
 		}
 		for _, err := range *errs {
@@ -161,7 +179,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 	if success {
 		message = fmt.Sprintf("%s\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED", message)
 	}
-	return message, success
+	return message, success, verifiedLater
 }
 
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
@@ -200,6 +218,43 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 			errs = append(errs, fmt.Errorf("unable to get jira ID %s: %w", featureID, err))
 			continue
 		}
+		links, err := c.jiraClient.GetRemoteLinks(feature.ID)
+		if err != nil {
+			klog.Warningf("[%s] Unexpected error listing external links: %v", featureID, err)
+			errs = append(errs, fmt.Errorf("searching for external tracker links for issue %s: %w", featureID, err))
+			continue
+		}
+		// Should this feature have it's FeatureVersion set, default to true unless we prove otherwise...
+		fullyMerged := true
+		for _, link := range links {
+			identifier := strings.TrimPrefix(link.Object.URL, "https://github.com/")
+			parts := strings.Split(identifier, "/")
+			if len(parts) >= 3 && parts[2] != "pull" {
+				// this is not a github link
+				continue
+			}
+			if len(parts) != 4 && (len(parts) != 5 || parts[4] != "" && parts[4] != "files") && (len(parts) != 6 || ((parts[4] != "files" || parts[5] != "") && parts[4] != "commits")) {
+				klog.Warningf("[%s] Unexpected error splitting github URL for external link: %q.", featureID, identifier)
+				continue
+			}
+			org, repo := parts[0], parts[1]
+			number, err := strconv.Atoi(parts[3])
+			if err != nil {
+				klog.Warningf("Unexpected error splitting github URL for Jira (%s) external link: could not parse %s as number: %v", featureID, parts[3], err)
+				continue
+			}
+			// Allows processing of openshift specific repos, as needed...
+			if !slices.Contains([]string{"openshift"}, org) {
+				klog.Warningf("[%s] Not processing PR from repo: %q", featureID, fmt.Sprintf("%s/%s#%d", org, repo, number))
+				continue
+			}
+			pullRequest, err := c.ghClient.GetPullRequest(org, repo, number)
+			if err != nil {
+				klog.Warningf("[%s] Unexpected error checking merge state of related pull request (https://github.com/%s/%s/pull/%d): %v", featureID, org, repo, number, err)
+				continue
+			}
+			fullyMerged = fullyMerged && pullRequest.Merged
+		}
 		fixVersion, err := c.determineFixVersion(feature, version)
 		if err != nil {
 			errs = append(errs, err)
@@ -212,12 +267,17 @@ func (c *Verifier) SetFeatureFixedVersions(issues sets.Set[string], tagName, ver
 					FixVersions: []*jiraBaseClient.FixVersion{{Name: fixVersion}},
 				},
 			}
-			if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
-				errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
-				continue
+			if fullyMerged {
+				if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
+					errs = append(errs, fmt.Errorf("unable to update fix versions for feature %s: %v", featureID, err))
+					continue
+				}
+				c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
+				klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, fixVersion)
+			} else {
+				c.commentIssue(&errs, feature, fmt.Sprintf("Feature partially included in release %s", tagName))
+				klog.V(4).Infof("Jira feature issue %s partially included in release: %s", feature.Key, tagName)
 			}
-			c.commentIssue(&errs, feature, fmt.Sprintf("Feature included in release %s; setting FixVersions to %s", tagName, version))
-			klog.V(4).Infof("Jira feature issue %s Fix Versions updated to %s", feature.Key, fixVersion)
 		} else {
 			versions := []string{}
 			for _, v := range feature.Fields.FixVersions {
@@ -270,8 +330,8 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			errs = append(errs, tagError)
 			continue
 		}
-		message, success := c.verifyExtPRs(issue, extPRs, &errs, tagName)
-		if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
+		message, success, verifyLater := c.verifyExtPRs(issue, extPRs, &errs, tagName)
+		if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) && !strings.EqualFold(issue.Fields.Status.Name, jira.StatusModified) {
 			if strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
 				c.commentIssue(&errs, issue, message)
 			}
@@ -287,6 +347,12 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 			}
 		} else {
 			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.Key, issue.Fields.Status.Name)
+			if verifyLater {
+				klog.V(4).Infof("Updating issue %s (current status %s) to ON_QA status", issue.ID, issue.Fields.Status.Name)
+				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusOnQA); err != nil {
+					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				}
+			}
 		}
 	}
 	return errs
@@ -403,4 +469,71 @@ func (c *Verifier) determineFixVersion(feature *jiraBaseClient.Issue, version st
 	}
 	// If no match is found, return the version we calculated
 	return version, nil
+}
+
+type RateLimitInfo struct {
+	Data map[string]int
+}
+
+func (m *RateLimitInfo) JiraBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	if m.Data != nil && resp != nil {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			nodeId, isSet := getResponseHeaderString(resp, "x-anodeid")
+			if !isSet {
+				return simpleBackOff(min, max, attemptNum)
+			}
+			interval, isSet := getResponseHeaderInt(resp, "x-ratelimit-interval-seconds")
+			if !isSet {
+				return simpleBackOff(min, max, attemptNum)
+			}
+			fillRate, isSet := getResponseHeaderInt(resp, "x-ratelimit-fillrate")
+			if !isSet {
+				return simpleBackOff(min, max, attemptNum)
+			}
+			retryAfter, isSet := getResponseHeaderInt(resp, "Retry-After")
+			if !isSet {
+				return simpleBackOff(min, max, attemptNum)
+			}
+			m.Data[nodeId] = retryAfter
+			if sumMapValues(m.Data) == 0 {
+				rateLimit := interval / fillRate
+				return time.Duration(rateLimit) * time.Second
+			}
+		}
+	}
+	return simpleBackOff(min, max, attemptNum)
+}
+
+func getResponseHeaderInt(resp *http.Response, key string) (int, bool) {
+	if resp.Header.Get(key) != "" {
+		value, err := strconv.Atoi(resp.Header.Get(key))
+		if err == nil {
+			return value, true
+		}
+	}
+	return 0, false
+}
+
+func getResponseHeaderString(resp *http.Response, key string) (string, bool) {
+	if resp.Header.Get(key) != "" {
+		return resp.Header.Get(key), true
+	}
+	return "", false
+}
+
+func sumMapValues(m map[string]int) int {
+	var sum int
+	for _, value := range m {
+		sum += value
+	}
+	return sum
+}
+
+func simpleBackOff(min, max time.Duration, attemptNum int) time.Duration {
+	mult := math.Pow(2, float64(attemptNum)) * float64(min)
+	sleep := time.Duration(mult)
+	if float64(sleep) != mult || sleep > max {
+		sleep = max
+	}
+	return sleep
 }

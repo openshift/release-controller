@@ -622,6 +622,10 @@ plank:
                 # globbed matches.
                 include_directories:
                     - ""
+                # MinimumSecretLength is the minimum length a secret must have to be censored.
+                # Secrets shorter than this length will not be censored. If unset, defaults to 0
+                # (all secrets are censored regardless of length).
+                minimum_secret_length: 0
             # CookieFileSecret is the name of a kubernetes secret that contains
             # a git http.cookiefile, which should be used during the cloning process.
             cookiefile_secret: ""
@@ -975,6 +979,10 @@ plank:
                 # globbed matches.
                 include_directories:
                     - ""
+                # MinimumSecretLength is the minimum length a secret must have to be censored.
+                # Secrets shorter than this length will not be censored. If unset, defaults to 0
+                # (all secrets are censored regardless of length).
+                minimum_secret_length: 0
             # CookieFileSecret is the name of a kubernetes secret that contains
             # a git http.cookiefile, which should be used during the cloning process.
             cookiefile_secret: ""
@@ -1301,6 +1309,11 @@ plank:
     # JobURLPrefixDisableAppendStorageProvider disables that the storageProvider is
     # automatically appended to the JobURLPrefix.
     jobURLPrefixDisableAppendStorageProvider: true
+    # MaxRevivals is the maximum number of times a prowjob will be retried in case of an
+    # unexpected stop of the job before being marked as failed. Generally a job is stopped
+    # unexpectedly due to the underlying Node being terminated, evicted or becoming unreachable.
+    # Defaults to 3. A value of 0 means no retries.
+    max_revivals: 0
     # PodPendingTimeout defines how long the controller will wait to perform a garbage
     # collection on pending pods. Defaults to 10 minutes.
     pod_pending_timeout: 0s

@@ -3,6 +3,8 @@ package releasepayload
 import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasepayload/jobrunresult"
+	"sort"
 )
 
 func GenerateVerificationStatusMap(payload *v1alpha1.ReleasePayload, status *releasecontroller.VerificationStatusMap) bool {
@@ -89,6 +91,7 @@ func getVerificationStatusUrl(jobRunResults []v1alpha1.JobRunResult) string {
 	}
 	// Otherwise, return the URL of the "last" attempt
 	if len(jobRunResults) >= 1 {
+		sort.Sort(jobrunresult.ByStartTime(jobRunResults))
 		return jobRunResults[len(jobRunResults)-1].HumanProwResultsURL
 	}
 	return ""

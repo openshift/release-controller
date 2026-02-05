@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	stdErrors "errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -44,6 +46,12 @@ const (
 )
 
 const maxChunkSize = 450 // this seems to be the maximum Jira can handle, currently
+
+const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
+
+var (
+	ocPath = ""
+)
 
 type CachingReleaseInfo struct {
 	cache *groupcache.Group
@@ -85,6 +93,18 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					} else {
 						s = string(rpmdiffByte)
 					}
+				}
+			}
+		case "rpmlist":
+			var rpmlist RpmList
+			rpmlist, err = info.RpmList(parts[1])
+			if err == nil {
+				var rpmlistByte []byte
+				rpmlistByte, err = json.Marshal(rpmlist)
+				if err != nil {
+					klog.V(4).Infof("Failed to Marshal Rpm List for %s; %s", parts[1], err)
+				} else {
+					s = string(rpmlistByte)
 				}
 			}
 		case "changelog":
@@ -142,6 +162,22 @@ func (c *CachingReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	return rpmdiff, nil
 }
 
+func (c *CachingReleaseInfo) RpmList(image string) (RpmList, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmlist", image}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return RpmList{}, err
+	}
+	if s == "" {
+		return RpmList{}, nil
+	}
+	var rpmlist RpmList
+	if err = json.Unmarshal([]byte(s), &rpmlist); err != nil {
+		return RpmList{}, err
+	}
+	return rpmlist, nil
+}
+
 func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to, strconv.FormatBool(json)}, "\x00"), groupcache.StringSink(&s))
@@ -189,6 +225,7 @@ type ReleaseInfo interface {
 	// Bugs returns a list of jira bug IDs for bugs fixed between the provided release tags
 	Bugs(from, to string) ([]BugDetails, error)
 	ChangeLog(from, to string, json bool) (string, error)
+	RpmList(image string) (RpmList, error)
 	RpmDiff(from, to string) (RpmDiff, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
@@ -222,29 +259,55 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 	}
 }
 
+func ocCmd(args ...string) ([]byte, []byte, error) {
+	return ocCmdExt("", args...)
+}
+
+func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
+	var err error
+
+	if ocPath == "" {
+		ocPath, err = exec.LookPath("oc")
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to find `oc` executable: %w", err)
+		}
+	}
+
+	cmd := exec.Command(ocPath, args...)
+	klog.V(4).Infof("Running oc command: %s", cmd.String())
+
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	cmd.Stdout = out
+	cmd.Stdin = nil
+	cmd.Stderr = errOut
+
+	if dir != "" {
+		cmd.Dir = dir
+	}
+
+	if err := cmd.Run(); err != nil {
+		klog.V(4).Infof("Failed oc command: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
+		msg := errOut.String()
+		if len(msg) == 0 {
+			msg = err.Error()
+		}
+		return nil, nil, fmt.Errorf("could not run oc command: %v", msg)
+	}
+	klog.V(4).Infof("Finished oc command: %s", cmd.String())
+
+	return out.Bytes(), errOut.Bytes(), nil
+}
+
 func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	if _, err := imagereference.Parse(image); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
 	}
 
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	oc, err := exec.LookPath("oc")
+	info, _, err := ocCmd("adm", "release", "info", "-o", "json", image)
 	if err != nil {
-		return "", fmt.Errorf("failed to find `oc` executable: %w", err)
+		return "", fmt.Errorf("could not get release info for %s: %v", image, err)
 	}
-	cmd := exec.Command(oc, "adm", "release", "info", "-o", "json", image)
-	cmd.Stdout = out
-	cmd.Stdin = nil
-	cmd.Stderr = errOut
-	if err := cmd.Run(); err != nil {
-		klog.V(4).Infof("Failed to get release info for %s: %v\n$ %s\n%s\n%s", image, err, cmd.String(), errOut.String(), out.String())
-		msg := errOut.String()
-		if len(msg) == 0 {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("could not get release info for %s: %v", image, msg)
-	}
-	return out.String(), nil
+	return string(info), nil
 }
 
 func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error) {
@@ -258,6 +321,7 @@ func (r *ExecReleaseInfo) ChangeLog(from, to string, isJson bool) (string, error
 		return "", fmt.Errorf("not a valid reference")
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
@@ -306,6 +370,7 @@ func (r *ExecReleaseInfo) Bugs(from, to string) ([]BugDetails, error) {
 		return nil, fmt.Errorf("not a valid reference")
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
@@ -344,6 +409,64 @@ type BugDetails struct {
 	Source int    `json:"source"`
 }
 
+func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
+	if _, err := imagereference.Parse(image); err != nil {
+		return RpmList{}, fmt.Errorf("%s is not an image reference: %v", image, err)
+	}
+	if strings.HasPrefix(image, "-") {
+		return RpmList{}, fmt.Errorf("not a valid reference")
+	}
+
+	var rpmlist RpmList
+
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s", image)
+	}
+	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
+	}
+
+	// XXX: This is hacky... honestly we should just have consistent tag names
+	// across OCP and OKD. But for this specific case, we should probably have e.g.
+	// an explicit component version string instead on the extensions container that
+	// identifies it as such so we don't have to hardcode any tag names here
+	extensionsTagName := "rhel-coreos-extensions"
+	if _, ok := rpmlist.Packages["centos-stream-release"]; ok {
+		extensionsTagName = "stream-coreos-extensions"
+	}
+
+	out, _, err = ocCmd("adm", "release", "info", "--image-for", extensionsTagName, image)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM extensions image for %s", image)
+	}
+	extensionsImage := strings.TrimSpace(string(out))
+
+	tmpdir, err := os.MkdirTemp("", "extensions")
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to create tmpdir for RPM extensions list for %s", image)
+	}
+
+	defer os.RemoveAll(tmpdir)
+	// see https://github.com/openshift/os/commit/31816acb1ae377c9c48f1e4bc70fbf63cf4adc2d
+	_, _, err = ocCmdExt(tmpdir, "image", "extract", extensionsImage+"[-1]", "--file", coreosExtensionsMetadataPath)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM extensions list for %s", image)
+	}
+	extensions, err := os.ReadFile(filepath.Join(tmpdir, "extensions.json"))
+	if err != nil {
+		// Let's not break package lists/diffs if we fail to get extensions.
+		// Early 4.19 builds didn't have the required metadata yet.
+		klog.Warningf("Continuing without extensions information: %v\n", err)
+		return rpmlist, nil
+	}
+	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
+	}
+
+	return rpmlist, nil
+}
+
 func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", from, err)
@@ -355,32 +478,22 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 		return RpmDiff{}, fmt.Errorf("not a valid reference")
 	}
 
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	oc, err := exec.LookPath("oc")
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("failed to find `oc` executable: %w", err)
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %v", from, to, err)
 	}
-	cmd := exec.Command(oc, "adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
-	klog.V(4).Infof("Running RPM diff command: %s", cmd.String())
-	cmd.Stdout = out
-	cmd.Stdin = nil
-	cmd.Stderr = errOut
-	if err := cmd.Run(); err != nil {
-		klog.V(4).Infof("Failed to generate RPM diff: %v\n$ %s\n%s\n%s", err, cmd.String(), errOut.String(), out.String())
-		msg := errOut.String()
-		if len(msg) == 0 {
-			msg = err.Error()
-		}
-		return RpmDiff{}, fmt.Errorf("could not generate RPM diff: %v", msg)
-	}
-	klog.V(4).Infof("Finished running RPM diff command: %s", cmd.String())
 
 	var rpmdiff RpmDiff
-	if err = json.Unmarshal(out.Bytes(), &rpmdiff); err != nil {
+	if err = json.Unmarshal(out, &rpmdiff); err != nil {
 		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
 	}
 
 	return rpmdiff, nil
+}
+
+type RpmList struct {
+	Packages   map[string]string `json:"packages"`
+	Extensions map[string]string `json:"extensions"`
 }
 
 type RpmDiff struct {
@@ -427,6 +540,7 @@ func (r *ExecReleaseInfo) ImageInfo(image, architecture string) (string, error) 
 		architecture = "amd64"
 	}
 
+	// XXX: switch to ocCmd()
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	oc, err := exec.LookPath("oc")
 	if err != nil {
@@ -1209,6 +1323,22 @@ class FileServer(handler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _present_blocked_content(self, name):
+        content = ("""<!DOCTYPE html>
+        <html>
+            <head>
+            <body>
+                <p>You are attempting to download an Openshift release (%s) that has past it's end of life and is no longer available via this utility!</br>Please contact us in: <a href="https://redhat.enterprise.slack.com/archives/CNHC2DK2M">#forum-ocp-crt</a> if this is a problem.</br>Thank you!</p>
+            </body>
+        </html>
+        """ % name).encode('UTF-8')
+
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def list_directory(self, path):
         try:
             list = os.listdir(path)
@@ -1267,11 +1397,24 @@ class FileServer(handler):
 
         if len(segments) == 1 and re.match('[0-9]+[a-zA-Z0-9.-]+[a-zA-Z0-9]', segments[0]):
             release = segments[0]
+
+            parts = release.split('.')
+            if len(parts) < 2 or int(parts[1]) < 11:
+                self._present_blocked_content(release)
+                return
+            
             release_cache_dir = os.path.join(CACHE_DIR, release)
 
             release_imagestream_name = 'release'
+            major = int(parts[0])
+            if major > 4:
+                release_imagestream_name = f'release-{major}'
+
             if '-ec.' in release:
-                release_imagestream_name = '4-dev-preview'
+                if major > 4:
+                    release_imagestream_name = f'{major}-dev-preview'
+                else:
+                    release_imagestream_name = '4-dev-preview'
 
             if os.path.isfile(os.path.join(release_cache_dir, "sha256sum.txt")) or os.path.isfile(os.path.join(release_cache_dir, "FAILED.md")):
                 handler.do_GET(self)

@@ -594,6 +594,11 @@ type CensoringOptions struct {
 	// matches a glob in IncludeDirectories. Entries in this list are relative to $ARTIFACTS,
 	// and are parsed with the go-zglob library, allowing for globbed matches.
 	ExcludeDirectories []string `json:"exclude_directories,omitempty"`
+
+	// MinimumSecretLength is the minimum length a secret must have to be censored.
+	// Secrets shorter than this length will not be censored. If unset, defaults to 0
+	// (all secrets are censored regardless of length).
+	MinimumSecretLength *int `json:"minimum_secret_length,omitempty"`
 }
 
 type SchedulingOptions struct {
@@ -635,6 +640,10 @@ func (g *CensoringOptions) ApplyDefault(def *CensoringOptions) *CensoringOptions
 
 	if merged.ExcludeDirectories == nil {
 		merged.ExcludeDirectories = def.ExcludeDirectories
+	}
+
+	if merged.MinimumSecretLength == nil {
+		merged.MinimumSecretLength = def.MinimumSecretLength
 	}
 	return &merged
 }
@@ -1104,6 +1113,10 @@ type ProwJobStatus struct {
 	Description string       `json:"description,omitempty"`
 	URL         string       `json:"url,omitempty"`
 
+	// PodRevivalCount applies only to ProwJobs fulfilled by
+	// plank. This field shows the amount of times the
+	// Pod was recreated due to an unexpected stop.
+	PodRevivalCount int `json:"pod_revival_count,omitempty"`
 	// PodName applies only to ProwJobs fulfilled by
 	// plank. This field should always be the same as
 	// the ProwJob.ObjectMeta.Name field.

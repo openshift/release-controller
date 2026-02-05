@@ -1,9 +1,11 @@
 .idea/
+.vscode/
 
 /release-controller
 /release-controller-api
 /release-payload-controller
 /release-reimport-controller
+/release-mirror-cleanup-controller
 /_output
 
 .dccache

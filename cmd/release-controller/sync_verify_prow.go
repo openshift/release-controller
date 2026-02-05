@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -89,12 +88,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 		if buildClusterDistribution.Contains(periodicConfig.Cluster) {
 			spec.Cluster = buildClusterDistribution.Get()
 		}
-	}
-
-	// Currently, there is a set of jobs that must be run on the `build05` cluster
-	r := regexp.MustCompile(`\b(e2e-agent|metal|telco5g)\b`)
-	if r.FindString(jobName) != "" {
-		spec.Cluster = "build05"
 	}
 
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
@@ -258,6 +251,10 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 		// clusters.  The release-controller must run its verification tests against "real" clusters and therefore,
 		// we're overriding this value.
 		c.Env = append(c.Env, corev1.EnvVar{Name: "OPENSHIFT_INSTALL_AWS_PUBLIC_ONLY", Value: "false"})
+
+		// Include an environment variable for any step logic that wants to know if the release controller
+		// triggered the job.
+		c.Args = append(c.Args, "--multi-stage-param=RELEASE_CONTROLLER_JOB=true")
 	}
 	return true, nil
 }

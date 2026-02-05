@@ -110,6 +110,12 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 			suffix:   "aggregator-2",
 			expected: "4.16.0-0.nightly-2024-02-07-125310-aggrega-44j0w6k-aggregator-2",
 		},
+		{
+			name:     "TruncationResultsInInvalidJobName",
+			jobName:  "4.19.0-0.nightly-2025-06-19-224840-aws-ovn-upgrade-4.19-micro-fips",
+			suffix:   "1",
+			expected: "4.19.0-0.nightly-2025-06-19-224840-aws-ovn-upgrade-4-mzdcpq2-1",
+		},
 	}
 
 	t.Parallel()

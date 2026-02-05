@@ -184,16 +184,16 @@ func NewController(
 
 	c := &Controller{
 		eventRecorder: recorder,
-		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "releases"),
-		gcQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "gc"),
+		queue:         workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "releases"}),
+		gcQueue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "gc"}),
 
 		// rate limit the audit queue severely
-		auditQueue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+		auditQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 2*time.Hour),
 			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Every(5), 2)},
-		), "audit"),
+		), workqueue.RateLimitingQueueConfig{Name: "audit"}),
 
-		jiraQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "jira"),
+		jiraQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "jira"}),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -229,7 +229,7 @@ func NewController(
 		releasePayloadClient: releasePayloadClient,
 		releasePayloadLister: &releasecontroller.MultiReleasePayloadLister{Listers: make(map[string]v1alpha1.ReleasePayloadNamespaceLister)},
 
-		legacyResultsQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "legacyResults"),
+		legacyResultsQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "legacyResults"}),
 
 		manifestListMode: manifestListMode,
 	}

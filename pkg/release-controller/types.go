@@ -1,10 +1,13 @@
 package releasecontroller
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
+
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
+	"github.com/openshift/release-controller/pkg/utils"
 
 	"github.com/opencontainers/go-digest"
 
@@ -125,7 +128,7 @@ type ReleaseConfig struct {
 
 	// Expires is the amount of time as a golang duration before Accepted release tags
 	// should be expired and removed. If unset, tags are not expired.
-	Expires Duration `json:"expires"`
+	Expires utils.Duration `json:"expires"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -274,6 +277,11 @@ type ReleaseVerification struct {
 	// job runs from the payload. Thus, it needs some environment variables set, such as
 	// PAYLOAD_TAG.
 	MultiJobAnalysis bool `json:"multiJobAnalysis"`
+
+	// Qualifiers holds the releasequalifiers.ReleaseQualifiers definitions that enable,
+	// and override (if specified), any settings defined in:
+	// https://github.com/openshift/release/blob/master/core-services/release-controller/release-qualifiers.yaml
+	Qualifiers releasequalifiers.ReleaseQualifiers `json:"qualifiers,omitempty"`
 }
 
 // AggregatedProwJobVerification identifies the name of a prow job that will be used to
@@ -594,30 +602,6 @@ const (
 	ReleaseStreamAnnotationMessageOverride = "release.openshift.io/messageOverride"
 )
 
-type Duration time.Duration
-
-func (d *Duration) UnmarshalJSON(data []byte) error {
-	if len(data) == 4 && bytes.Equal(data, []byte("null")) {
-		return nil
-	}
-	if len(data) < 2 {
-		return fmt.Errorf("invalid duration")
-	}
-	if data[0] != '"' || data[len(data)-1] != '"' {
-		return fmt.Errorf("duration must be a string")
-	}
-	value, err := time.ParseDuration(string(data[1 : len(data)-1]))
-	if err != nil {
-		return err
-	}
-	*d = Duration(value)
-	return nil
-}
-
-func (d Duration) Duration() time.Duration {
-	return time.Duration(d)
-}
-
 // TagReferencesByAge returns the newest tag first, the oldest tag last
 type TagReferencesByAge []*imagev1.TagReference
 
@@ -781,3 +765,8 @@ func (t APITagsBySemVerName) Less(i, j int) bool {
 
 func (t APITagsBySemVerName) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 func (t APITagsBySemVerName) Len() int      { return len(t) }
+
+type ReleaseQualifiersConfig struct {
+	Qualifiers releasequalifiers.ReleaseQualifiers `yaml:"qualifiers"`
+	Mutex      sync.RWMutex                        `yaml:"-"`
+}

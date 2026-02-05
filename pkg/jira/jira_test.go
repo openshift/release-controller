@@ -4,15 +4,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/andygrunwald/go-jira"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/github/fakegithub"
 	"sigs.k8s.io/prow/pkg/jira/fakejira"
 	"sigs.k8s.io/prow/pkg/plugins"
 )
+
+type jiraFakeClientData struct {
+	issues        []*jira.Issue
+	remoteLinks   []jira.RemoteLink
+	existingLinks map[string][]jira.RemoteLink
+	transitions   []jira.Transition
+}
+
+type gitHubFakeClientData struct {
+	issueLabelsExisting []string
+	pullRequests        map[int]*github.PullRequest
+}
+
+type expectedResult struct {
+	errors     []error
+	status     string
+	message    string
+	fixVersion string
+}
 
 type fakeGHClient struct {
 	GetIssueLabelsError error
@@ -152,27 +175,15 @@ func readJSONIntoObject(issueJSON string, issue *jira.Issue) error {
 }
 
 func TestVerifyIssues(t *testing.T) {
-	type jiraFakeClientData struct {
-		issues        []*jira.Issue
-		remoteLinks   []jira.RemoteLink
-		existingLinks map[string][]jira.RemoteLink
-		transitions   []jira.Transition
-	}
-
-	type gitHubFakeClientData struct {
-		issueLabelsExisting []string
-	}
-
-	type expectedResult struct {
-		errors  []error
-		status  string
-		message string
-	}
-
 	// since the VerifyIssues command may modify issues, make a separate copy for each test
 	var onQAIssue jira.Issue
 	var onQAIssue2 jira.Issue
 	var onQAIssue3 jira.Issue
+	var onQAIssue4 jira.Issue
+	var onQAIssue5 jira.Issue
+	var onQAIssue6 jira.Issue
+	var modifiedIssue1 jira.Issue
+	var modifiedIssue2 jira.Issue
 	var verifiedIssue jira.Issue
 	var verifiedAndCommentedIssue jira.Issue
 	var inProgressIssue jira.Issue
@@ -195,6 +206,18 @@ func TestVerifyIssues(t *testing.T) {
 			object:    &onQAIssue3,
 		},
 		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue4,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue5,
+		},
+		{
+			issueJSON: onQAIssueJSON,
+			object:    &onQAIssue6,
+		},
+		{
 			issueJSON: verifiedIssueJSON,
 			object:    &verifiedIssue,
 		},
@@ -209,6 +232,14 @@ func TestVerifyIssues(t *testing.T) {
 		{
 			issueJSON: inProgressIssueJSON,
 			object:    &inProgressIssue2,
+		},
+		{
+			issueJSON: modifiedIssueJSON,
+			object:    &modifiedIssue1,
+		},
+		{
+			issueJSON: modifiedIssueJSON,
+			object:    &modifiedIssue2,
 		},
 	}
 
@@ -230,6 +261,11 @@ func TestVerifyIssues(t *testing.T) {
 			Name: "Verified",
 			ID:   "123",
 			To:   jira.Status{Name: "Verified", Description: "The issues has been verified"},
+		},
+		{
+			Name: "ON_QA",
+			ID:   "456",
+			To:   jira.Status{Name: "ON_QA", Description: "Status ON_QA"},
 		},
 	}
 
@@ -253,7 +289,7 @@ func TestVerifyIssues(t *testing.T) {
 				existingLinks: existingLinks,
 				transitions:   jiraTransition,
 			},
-			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{"openshift/vmware-vsphere-csi-driver-operator#105"}},
+			gitHubFakeClientData: gitHubFakeClientData{},
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.10",
 			expected: expectedResult{
@@ -332,7 +368,7 @@ func TestVerifyIssues(t *testing.T) {
 				existingLinks: existingLinks,
 				transitions:   jiraTransition,
 			},
-			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{"openshift/vmware-vsphere-csi-driver-operator#105"}},
+			gitHubFakeClientData: gitHubFakeClientData{},
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.12",
 			expected: expectedResult{
@@ -352,11 +388,107 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{errors.New("Internal Error on Automation")},
+				errors:  []error{errors.New("internal Error on Automation")},
 				status:  "ON_QA",
 				message: "",
 			},
 			labelsError: errors.New("injected error"),
+		},
+		{
+			name: "Move qe-approved and pre-merge verified to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue4},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:qe-approved",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Move MODIFIED pre-merge verified issue to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&modifiedIssue1},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Move ON_QA pre-merge verified to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue5},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{"openshift/vmware-vsphere-csi-driver-operator#105:verified"}},
+			issueToVerify:        "OCPBUGS-123",
+			tagName:              "4.10",
+			expected: expectedResult{
+				errors:  nil,
+				status:  "Verified",
+				message: "Fix included in accepted release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+			},
+		},
+		{
+			name: "Move MODIFIED pre-merge verified-later to ON_QA",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&modifiedIssue2},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified-later",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  []error{},
+				status:  "ON_QA",
+				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+			},
+		},
+		{
+			name: "Dont move ON_QA pre-merge verified-later to verified",
+			jiraFakeClientData: jiraFakeClientData{
+				issues:        []*jira.Issue{&onQAIssue6},
+				remoteLinks:   remoteLink,
+				existingLinks: existingLinks,
+				transitions:   jiraTransition,
+			},
+			gitHubFakeClientData: gitHubFakeClientData{issueLabelsExisting: []string{
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified",
+				"openshift/vmware-vsphere-csi-driver-operator#105:verified-later",
+			}},
+			issueToVerify: "OCPBUGS-123",
+			tagName:       "4.10",
+			expected: expectedResult{
+				errors:  []error{},
+				status:  "ON_QA",
+				message: "Fix included in accepted release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+			},
 		},
 	}
 
@@ -375,7 +507,7 @@ func TestVerifyIssues(t *testing.T) {
 			v := NewVerifier(jc, gh, &plugins.Configuration{})
 			err := v.VerifyIssues([]string{tc.issueToVerify}, tc.tagName)
 			if len(err) != len(tc.expected.errors) {
-				t.Errorf("number of errors (%d) does not match expected number of errors (%d)", len(err), len(tc.expected.errors))
+				t.Fatalf("number of errors (%d) does not match expected number of errors (%d)", len(err), len(tc.expected.errors))
 			}
 			for index, actualError := range err {
 				if index > len(tc.expected.errors)+1 {
@@ -809,7 +941,8 @@ func TestDetermineFixVersion(t *testing.T) {
 	}
 }
 
-const onQAIssueJSON = `
+const (
+	onQAIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -838,7 +971,7 @@ const onQAIssueJSON = `
 }
 `
 
-const verifiedIssueJSON = `
+	verifiedIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -867,7 +1000,7 @@ const verifiedIssueJSON = `
 }
 `
 
-const verifiedAndCommentedIssueJSON = `
+	verifiedAndCommentedIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -925,7 +1058,7 @@ const verifiedAndCommentedIssueJSON = `
 }
 `
 
-const inProgressIssueJSON = `
+	inProgressIssueJSON = `
 {
   "key": "OCPBUGS-123",
   "fields": {
@@ -954,7 +1087,36 @@ const inProgressIssueJSON = `
 }
 `
 
-const remoteLinksJSON = `
+	modifiedIssueJSON = `
+{
+  "key": "OCPBUGS-123",
+  "fields": {
+    "status": {
+      "description": "Status MODIFIED",
+      "name": "MODIFIED"
+    },
+    "customfield_12315948": {
+      "name": "qa_contact@redhat.com",
+      "key": "qa_contact",
+      "emailAddress": "qa_contact@redhat.com",
+      "displayName": "Jack Smith"
+    },
+    "customfield_12319940": [
+      {
+        "self": "https://issues.redhat.com/rest/api/2/version/12390168",
+        "id": "12390168",
+        "description": "Release Version",
+        "name": "4.10.z"
+      }
+    ],
+    "comment": {
+      "comments": []
+    }
+  }
+}
+`
+
+	remoteLinksJSON = `
 [
   {
     "object": {
@@ -963,3 +1125,779 @@ const remoteLinksJSON = `
   }
 ]
 `
+)
+
+func TestSumMapValues(t *testing.T) {
+	var testCases = []struct {
+		name   string
+		m      map[string]int
+		expect int
+	}{
+		{
+			name:   "NilMap",
+			m:      nil,
+			expect: 0,
+		},
+		{
+			name:   "EmptyMap",
+			m:      map[string]int{},
+			expect: 0,
+		},
+		{
+			name: "SingleEntryZero",
+			m: map[string]int{
+				"node-1": 0,
+			},
+			expect: 0,
+		},
+		{
+			name: "SingleEntryNonZero",
+			m: map[string]int{
+				"node-1": 2,
+			},
+			expect: 2,
+		},
+		{
+			name: "MultipleEntriesZero",
+			m: map[string]int{
+				"node-1": 0,
+				"node-2": 0,
+			},
+			expect: 0,
+		},
+		{
+			name: "MultipleEntriesNonZero",
+			m: map[string]int{
+				"node-1": 1,
+				"node-2": 2,
+			},
+			expect: 3,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sumMapValues(tc.m)
+			if got != tc.expect {
+				t.Errorf("expected: %d, but got: %d", tc.expect, got)
+			}
+		})
+	}
+}
+
+func TestSimpleBackoff(t *testing.T) {
+	retryWaitMin := 1 * time.Second
+	retryWaitMax := 30 * time.Second
+	for i := 0; i < 10; i++ {
+		t.Run(fmt.Sprintf("Attempt-%d", i), func(t *testing.T) {
+			got := simpleBackOff(retryWaitMin, retryWaitMax, i)
+			expect := time.Duration(math.Pow(2, float64(i)) * float64(retryWaitMin))
+			if expect >= retryWaitMax {
+				expect = retryWaitMax
+			}
+			if got != expect {
+				t.Errorf("expect: %s, but got: %s", expect, got)
+			}
+		})
+	}
+}
+
+func TestJiraBackoff(t *testing.T) {
+	var testCases = []struct {
+		name         string
+		data         map[string]int
+		retryWaitMin time.Duration
+		retryWaitMax time.Duration
+		attempt      int
+		response     *http.Response
+		expect       time.Duration
+	}{
+		{
+			name:         "NilData",
+			data:         nil,
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response:     &http.Response{StatusCode: 200},
+			expect:       1 * time.Second,
+		},
+		{
+			name:         "NilResponse",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response:     nil,
+			expect:       1 * time.Second,
+		},
+		{
+			name:         "200Response",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response:     &http.Response{StatusCode: 200},
+			expect:       1 * time.Second,
+		},
+		{
+			name:         "429ResponseMissingHeaders",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response:     &http.Response{StatusCode: 429},
+			expect:       1 * time.Second,
+		},
+		{
+			name:         "429ResponseMissingNodeIdHeader",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header:     http.Header{},
+				StatusCode: 429,
+			},
+			expect: 1 * time.Second,
+		},
+		{
+			name:         "429ResponseMissingIntervalHeader",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 1 * time.Second,
+		},
+		{
+			name:         "429ResponseMissingFillRateHeader",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 1 * time.Second,
+		},
+		{
+			name:         "429ResponseMissingRetryAfterHeader",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 1 * time.Second,
+		},
+		{
+			name:         "429ResponseWithRateLimitHeadersRetryAfter",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+					"Retry-After": []string{
+						"2",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 1 * time.Second,
+		},
+		{
+			name:         "429ResponseWithRateLimitHeadersRetryAfterFirstAttempt",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      1,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+					"Retry-After": []string{
+						"2",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 2 * time.Second,
+		},
+		{
+			name:         "429ResponseWithRateLimitHeadersRetryAfterSecondAttempt",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      2,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+					"Retry-After": []string{
+						"2",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 4 * time.Second,
+		},
+		{
+			name:         "429ResponseWithRateLimitHeadersRetryAfterThirdAttempt",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      3,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+					"Retry-After": []string{
+						"2",
+					},
+				},
+				StatusCode: 429,
+			},
+			expect: 8 * time.Second,
+		},
+		{
+			name:         "429ResponseWithRateLimitHeaders",
+			data:         map[string]int{},
+			retryWaitMin: 1 * time.Second,
+			retryWaitMax: 30 * time.Second,
+			attempt:      0,
+			response: &http.Response{
+				Header: http.Header{
+					"X-Anodeid": []string{
+						"node-1",
+					},
+					"X-Ratelimit-Interval-Seconds": []string{
+						"60",
+					},
+					"X-Ratelimit-Fillrate": []string{
+						"15",
+					},
+					"Retry-After": []string{
+						"0",
+					},
+				},
+				StatusCode: 429,
+			},
+			// This value is equal to X-Ratelimit-Interval-Seconds / X-Ratelimit-Fillrate
+			expect: 4 * time.Second,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rateLimitInfo := &RateLimitInfo{Data: tc.data}
+
+			got := rateLimitInfo.JiraBackoff(tc.retryWaitMin, tc.retryWaitMax, tc.attempt, tc.response)
+			if got != tc.expect {
+				t.Errorf("expected: %d, but got: %d", tc.expect, got)
+			}
+		})
+	}
+}
+
+func TestSetFeatureFixedVersions(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		jiraFakeClientData   jiraFakeClientData
+		gitHubFakeClientData gitHubFakeClientData
+		issues               sets.Set[string]
+		tagName              string
+		version              string
+		expected             expectedResult
+		labelsError          error
+	}{
+		{
+			name:                 "Unable to get Jira Issue",
+			jiraFakeClientData:   jiraFakeClientData{issues: []*jira.Issue{}},
+			gitHubFakeClientData: gitHubFakeClientData{},
+			issues:               sets.Set[string]{"OCPBUGS-123": {}},
+			tagName:              "4.11.0-0.nightly-2025-08-26-203916",
+			version:              "4.11",
+			expected: expectedResult{
+				errors: []error{fmt.Errorf("unable to get jira ID OCPBUGS-123: No issue OCPBUGS-123 found")},
+			},
+		},
+		{
+			name: "Issue with no links sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{},
+			issues:               sets.Set[string]{"OCPBUGS-123": {}},
+			tagName:              "4.11.0-0.nightly-2025-08-26-203916",
+			version:              "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with unmerged PR link comments only",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{
+					30175: {Merged: false},
+				},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message: "Feature partially included in release 4.11.0-0.nightly-2025-08-26-203916",
+				status:  "POST",
+			},
+		},
+		{
+			name: "Issue with merged PR link sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with merged and unmerged PR links only comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175"}},
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30164"}},
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30165"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{
+					30175: {Merged: true},
+					30164: {Merged: true},
+					30165: {Merged: false},
+				},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message: "Feature partially included in release 4.11.0-0.nightly-2025-08-26-203916",
+				status:  "POST",
+			},
+		},
+		{
+			name: "Issue with non-github remote link sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://issues.redhat.com/browse/OCPBUGS-456"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with incorrect PR link sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175/foo"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with incorrect PR number sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175a"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with incorrect PR repo sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift-eng/origin/pull/30175"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with missing PR link sets feature version and comments",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{},
+			issues:               sets.Set[string]{"OCPBUGS-123": {}},
+			tagName:              "4.11.0-0.nightly-2025-08-26-203916",
+			version:              "4.11",
+			expected: expectedResult{
+				message:    "Feature included in release 4.11.0-0.nightly-2025-08-26-203916; setting FixVersions to 4.11",
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+		{
+			name: "Issue with FixVersion already set",
+			jiraFakeClientData: jiraFakeClientData{
+				issues: []*jira.Issue{
+					{
+						Key: "OCPBUGS-123",
+						Fields: &jira.IssueFields{
+							Comments: &jira.Comments{
+								Comments: []*jira.Comment{},
+							},
+							Status: &jira.Status{
+								Description: "Status POST",
+								Name:        "POST",
+							},
+							FixVersions: []*jira.FixVersion{
+								{
+									Name: "4.11",
+								},
+							},
+						},
+					},
+				},
+				existingLinks: map[string][]jira.RemoteLink{
+					"OCPBUGS-123": {
+						{Object: &jira.RemoteLinkObject{URL: "https://github.com/openshift/origin/pull/30175"}},
+					},
+				},
+			},
+			gitHubFakeClientData: gitHubFakeClientData{
+				pullRequests: map[int]*github.PullRequest{30175: {Merged: true}},
+			},
+			issues:  sets.Set[string]{"OCPBUGS-123": {}},
+			tagName: "4.11.0-0.nightly-2025-08-26-203916",
+			version: "4.11",
+			expected: expectedResult{
+				fixVersion: "4.11",
+				status:     "POST",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jc := &fakejira.FakeClient{
+				Issues:        tc.jiraFakeClientData.issues,
+				RemovedLinks:  tc.jiraFakeClientData.remoteLinks,
+				ExistingLinks: tc.jiraFakeClientData.existingLinks,
+				Transitions:   tc.jiraFakeClientData.transitions,
+			}
+			// Initialize IssueComments
+			ghCommentMap := make(map[int][]github.IssueComment)
+			upstreamFakeGH := &fakegithub.FakeClient{
+				IssueLabelsExisting: tc.gitHubFakeClientData.issueLabelsExisting,
+				IssueComments:       ghCommentMap,
+				PullRequests:        tc.gitHubFakeClientData.pullRequests,
+			}
+			gh := &fakeGHClient{GetIssueLabelsError: tc.labelsError, FakeClient: upstreamFakeGH}
+			v := NewVerifier(jc, gh, &plugins.Configuration{})
+			errs := v.SetFeatureFixedVersions(tc.issues, tc.tagName, tc.version)
+
+			if len(errs) != len(tc.expected.errors) {
+				t.Fatalf("number of errors (%d) does not match expected number of errors (%d)", len(errs), len(tc.expected.errors))
+			}
+			for index, actualError := range errs {
+				if index > len(tc.expected.errors)+1 {
+					break
+				}
+				if actualError.Error() != tc.expected.errors[index].Error() {
+					t.Errorf("Actual error (%s) does not match expected error (%s)", actualError.Error(), tc.expected.errors[index].Error())
+				}
+			}
+			if len(jc.Issues) > 0 {
+				if tc.expected.status != "" {
+					if jc.Issues[0].Fields.Status.Name != tc.expected.status {
+						t.Errorf("Unexpected issues status. Expecting: %s, but got: %s", tc.expected.status, jc.Issues[0].Fields.Status.Name)
+					}
+				} else {
+					if jc.Issues[0].Fields.Status != nil && len(jc.Issues[0].Fields.Status.Name) > 0 {
+						t.Errorf("Unexpected issues status. Expecting: %s, but got: %s", tc.expected.status, jc.Issues[0].Fields.Status.Name)
+					}
+				}
+				if tc.expected.fixVersion != "" {
+					if jc.Issues[0].Fields.FixVersions[0].Name != tc.expected.fixVersion {
+						t.Errorf("Unexpected issue FixVersion. Expecting: %s, but got: %s", tc.expected.fixVersion, jc.Issues[0].Fields.FixVersions[0].Name)
+					}
+				} else {
+					if jc.Issues[0].Fields.FixVersions != nil && jc.Issues[0].Fields.FixVersions[0] != nil && len(jc.Issues[0].Fields.FixVersions[0].Name) > 0 {
+						t.Errorf("Unexpected issue FixVersion. Expecting: %s, but got: %s", tc.expected.fixVersion, jc.Issues[0].Fields.FixVersions[0].Name)
+					}
+				}
+				if tc.expected.message != "" {
+					foundExpectedComment := false
+					for _, comment := range jc.Issues[0].Fields.Comments.Comments {
+						if comment.Body == tc.expected.message {
+							foundExpectedComment = true
+							break
+						}
+					}
+					if !foundExpectedComment {
+						t.Errorf("The issue is not commented as expected!")
+					}
+				} else {
+					if len(jc.Issues) > 0 && len(jc.Issues[0].Fields.Comments.Comments) > 0 {
+						t.Errorf("A comment was made when none were expected")
+					}
+				}
+			}
+		})
+	}
+}

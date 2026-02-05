@@ -69,23 +69,24 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 	sort.Strings(sortedKeys)
 
 	for _, verifyName := range sortedKeys {
-		definition := verificationJobs[verifyName]
-		if definition.Disabled {
+		verificationJobDefinition := verificationJobs[verifyName]
+		if verificationJobDefinition.Disabled {
 			continue
 		}
+
 		ciConfig := v1alpha1.CIConfiguration{
 			CIConfigurationName:    verifyName,
-			CIConfigurationJobName: definition.ProwJob.Name,
-			MaxRetries:             definition.MaxRetries,
+			CIConfigurationJobName: verificationJobDefinition.ProwJob.Name,
+			MaxRetries:             verificationJobDefinition.MaxRetries,
 		}
 
 		switch {
-		case definition.AggregatedProwJob != nil:
+		case verificationJobDefinition.AggregatedProwJob != nil:
 			// Every Aggregated Job will contain a Blocking "Aggregator" job and an Informing "Analysis" job
 			// Adding the Blocking Job
 			blockingJobName := defaultAggregateProwJobName
-			if definition.AggregatedProwJob.ProwJob != nil && len(definition.AggregatedProwJob.ProwJob.Name) > 0 {
-				blockingJobName = definition.AggregatedProwJob.ProwJob.Name
+			if verificationJobDefinition.AggregatedProwJob.ProwJob != nil && len(verificationJobDefinition.AggregatedProwJob.ProwJob.Name) > 0 {
+				blockingJobName = verificationJobDefinition.AggregatedProwJob.ProwJob.Name
 			}
 			ciConfig.CIConfigurationJobName = fmt.Sprintf("%s-%s", verifyName, blockingJobName)
 			payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
@@ -93,12 +94,12 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 			// Adding the Informing Job
 			informingJob := v1alpha1.CIConfiguration{
 				CIConfigurationName:    verifyName,
-				CIConfigurationJobName: definition.ProwJob.Name,
-				AnalysisJobCount:       definition.AggregatedProwJob.AnalysisJobCount,
+				CIConfigurationJobName: verificationJobDefinition.ProwJob.Name,
+				AnalysisJobCount:       verificationJobDefinition.AggregatedProwJob.AnalysisJobCount,
 			}
 			payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, informingJob)
 		default:
-			if definition.Optional {
+			if verificationJobDefinition.Optional {
 				payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, ciConfig)
 			} else {
 				payload.Spec.PayloadVerificationConfig.BlockingJobs = append(payload.Spec.PayloadVerificationConfig.BlockingJobs, ciConfig)
