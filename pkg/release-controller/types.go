@@ -87,6 +87,11 @@ type ReleaseConfig struct {
 	// displayed by the release-controller
 	EndOfLife bool `json:"endOfLife"`
 
+	// EndOfSupport indicates this release stream is no longer supported and should
+	// stop creating new releases, but remain visible on the status pages without
+	// showing a countdown timer.
+	EndOfSupport bool `json:"endOfSupport"`
+
 	// As defines what this image stream provides. The default value is "Integration"
 	// and the images in the image stream will be used to build payloads. An optional
 	// mode is "Stable" and tags are assumed to be release payloads that should be promoted
