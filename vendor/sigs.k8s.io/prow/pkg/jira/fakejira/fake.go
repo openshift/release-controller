@@ -82,7 +82,9 @@ func (f *FakeClient) JiraClient() *jira.Client {
 	panic("not implemented")
 }
 
-const FakeJiraUrl = "https://my-jira.com"
+// FakeJiraUrl is the return value for FakeClient.JiraURL.
+// JiraURL of the real client returns the base URL with a trailing slash.
+const FakeJiraUrl = "https://my-jira.com/"
 
 func (f *FakeClient) JiraURL() string {
 	return FakeJiraUrl
@@ -354,8 +356,9 @@ func (f *FakeClient) UpdateStatus(issueID, statusName string) error {
 }
 
 type SearchRequest struct {
-	query   string
-	options *jira.SearchOptions
+	query     string
+	options   *jira.SearchOptions
+	optionsV2 *jira.SearchOptionsV2
 }
 
 type SearchResponse struct {
@@ -368,6 +371,14 @@ func (f *FakeClient) SearchWithContext(ctx context.Context, jql string, options 
 	resp, expected := f.SearchResponses[SearchRequest{query: jql, options: options}]
 	if !expected {
 		return nil, nil, fmt.Errorf("the query: %s is not registered", jql)
+	}
+	return resp.issues, resp.response, resp.error
+}
+
+func (f *FakeClient) SearchV2JqlWithContext(ctx context.Context, jql string, options *jira.SearchOptionsV2) ([]jira.Issue, *jira.Response, error) {
+	resp, expected := f.SearchResponses[SearchRequest{query: jql, optionsV2: options}]
+	if !expected {
+		return nil, nil, fmt.Errorf("the V2 query: %s is not registered", jql)
 	}
 	return resp.issues, resp.response, resp.error
 }

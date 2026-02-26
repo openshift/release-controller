@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/utils/clock"
 )
 
 type Options struct {
@@ -43,7 +44,7 @@ func NewReleaseMirrorCleanupControllerCommand(name string) *cobra.Command {
 		}
 
 		return nil
-	})
+	}, clock.RealClock{})
 	ccc.DisableLeaderElection = true
 
 	cmd := ccc.NewCommandWithContext(context.Background())

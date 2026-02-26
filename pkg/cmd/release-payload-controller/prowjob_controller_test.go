@@ -20,6 +20,7 @@ import (
 	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
 	"sigs.k8s.io/prow/pkg/kube"
+	"k8s.io/utils/clock"
 )
 
 func newJobStatus(name, jobName string, maxRetries, analysisJobCount int, aggregateState v1alpha1.JobState, results []v1alpha1.JobRunResult) v1alpha1.JobStatus {
@@ -863,7 +864,7 @@ func TestProwJobStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, events.NewInMemoryRecorder("prowjob-status-controller-test"))
+			c, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, events.NewInMemoryRecorder("prowjob-status-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create ProwJob Status Controller: %v", err)
 			}

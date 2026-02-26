@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 )
 
 type Options struct {
@@ -36,7 +37,7 @@ func NewReleaseReimportControllerCommand(name string) *cobra.Command {
 		}
 
 		return nil
-	})
+	}, clock.RealClock{})
 	ccc.DisableLeaderElection = true
 
 	cmd := ccc.NewCommandWithContext(context.Background())

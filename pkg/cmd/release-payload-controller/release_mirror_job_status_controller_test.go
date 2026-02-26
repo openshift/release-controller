@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/informers"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 )
 
 func TestComputeReleaseMirrorJobStatus(t *testing.T) {
@@ -446,7 +447,7 @@ func TestReleaseMirrorStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewReleaseMirrorJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-mirror-job-status-controller-test"))
+			c, err := NewReleaseMirrorJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-mirror-job-status-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create Release Mirror Job Status Controller: %v", err)
 			}
