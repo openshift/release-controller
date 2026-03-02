@@ -86,15 +86,15 @@ type Controller struct {
 	syncFn func(queueKey) error
 
 	// queue is the list of namespace keys that must be synced.
-	queue workqueue.RateLimitingInterface
+	queue workqueue.TypedRateLimitingInterface[queueKey]
 	// qcQueue is a trigger to performing cleanup for deleted resources.
-	gcQueue workqueue.RateLimitingInterface
+	gcQueue workqueue.TypedRateLimitingInterface[string]
 	// auditQueue is inputs that must be audited
-	auditQueue workqueue.RateLimitingInterface
+	auditQueue workqueue.TypedRateLimitingInterface[string]
 	// jiraQueue is the list of releases whose fixed issues must be synced to jira
-	jiraQueue workqueue.RateLimitingInterface
+	jiraQueue workqueue.TypedRateLimitingInterface[queueKey]
 	// legacyResultsQueue is the list of previous releases that need to migrate to ReleasePayloads
-	legacyResultsQueue workqueue.RateLimitingInterface
+	legacyResultsQueue workqueue.TypedRateLimitingInterface[queueKey]
 
 	// auditTracker keeps track of when tags were audited
 	auditTracker *AuditTracker
@@ -184,16 +184,16 @@ func NewController(
 
 	c := &Controller{
 		eventRecorder: recorder,
-		queue:         workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "releases"}),
-		gcQueue:       workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "gc"}),
+		queue:         workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[queueKey](), workqueue.TypedRateLimitingQueueConfig[queueKey]{Name: "releases"}),
+		gcQueue:       workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "gc"}),
 
 		// rate limit the audit queue severely
-		auditQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 2*time.Hour),
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Every(5), 2)},
-		), workqueue.RateLimitingQueueConfig{Name: "audit"}),
+		auditQueue: workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.NewTypedMaxOfRateLimiter(
+			workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Second, 2*time.Hour),
+			&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Every(5), 2)},
+		), workqueue.TypedRateLimitingQueueConfig[string]{Name: "audit"}),
 
-		jiraQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "jira"}),
+		jiraQueue: workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[queueKey](), workqueue.TypedRateLimitingQueueConfig[queueKey]{Name: "jira"}),
 
 		expectations:     newExpectations(),
 		expectationDelay: 2 * time.Second,
@@ -229,7 +229,7 @@ func NewController(
 		releasePayloadClient: releasePayloadClient,
 		releasePayloadLister: &releasecontroller.MultiReleasePayloadLister{Listers: make(map[string]v1alpha1.ReleasePayloadNamespaceLister)},
 
-		legacyResultsQueue: workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "legacyResults"}),
+		legacyResultsQueue: workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[queueKey](), workqueue.TypedRateLimitingQueueConfig[queueKey]{Name: "legacyResults"}),
 
 		manifestListMode: manifestListMode,
 	}
@@ -464,16 +464,15 @@ func (c *Controller) worker() {
 }
 
 func (c *Controller) processNext() bool {
-	obj, quit := c.queue.Get()
+	key, quit := c.queue.Get()
 	if quit {
 		return false
 	}
-	defer c.queue.Done(obj)
+	defer c.queue.Done(key)
 
 	// queue all release inputs in the namespace on a namespace sync
 	// this allows us to batch changes together when calculating which resource
 	// would be affected is inefficient
-	key := obj.(queueKey)
 	if len(key.name) == 0 {
 		err := c.processNextNamespace(key.namespace)
 		c.handleNamespaceErr(c.queue, err, key)
@@ -541,7 +540,7 @@ func (c *Controller) processNextAudit() bool {
 	defer c.auditQueue.Done(key)
 
 	klog.V(5).Infof("audit processing %v begin", key)
-	err := c.syncAuditTag(key.(string))
+	err := c.syncAuditTag(key)
 	c.handleNamespaceErr(c.auditQueue, err, key)
 	klog.V(5).Infof("audit processing %v end", key)
 
@@ -555,17 +554,16 @@ func (c *Controller) jiraWorker() {
 }
 
 func (c *Controller) processNextJira() bool {
-	obj, quit := c.jiraQueue.Get()
+	key, quit := c.jiraQueue.Get()
 	if quit {
 		return false
 	}
-	defer c.jiraQueue.Done(obj)
+	defer c.jiraQueue.Done(key)
 
 	// don't run if we don't have a verifier
 	if c.jiraVerifier == nil {
 		return true
 	}
-	key := obj.(queueKey)
 
 	klog.V(5).Infof("jira worker processing %v begin", key)
 	err := c.syncJira(key)
@@ -582,13 +580,11 @@ func (c *Controller) legacyResultsWorker() {
 }
 
 func (c *Controller) processNextLegacyResult() bool {
-	obj, quit := c.legacyResultsQueue.Get()
+	key, quit := c.legacyResultsQueue.Get()
 	if quit {
 		return false
 	}
-	defer c.legacyResultsQueue.Done(obj)
-
-	key := obj.(queueKey)
+	defer c.legacyResultsQueue.Done(key)
 
 	klog.V(5).Infof("legacy results worker processing %v begin", key)
 	err := c.syncLegacyResults(key)
@@ -598,7 +594,7 @@ func (c *Controller) processNextLegacyResult() bool {
 	return true
 }
 
-func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, err error, key any) {
+func handleErr[T comparable](queue workqueue.TypedRateLimitingInterface[T], err error, key T) {
 	if err == nil {
 		queue.Forget(key)
 		return
@@ -611,4 +607,13 @@ func (c *Controller) handleNamespaceErr(queue workqueue.RateLimitingInterface, e
 
 	klog.V(2).Infof("Error syncing %v: %v", key, err)
 	queue.AddRateLimited(key)
+}
+
+func (c *Controller) handleNamespaceErr(queue any, err error, key any) {
+	switch q := queue.(type) {
+	case workqueue.TypedRateLimitingInterface[queueKey]:
+		handleErr(q, err, key.(queueKey))
+	case workqueue.TypedRateLimitingInterface[string]:
+		handleErr(q, err, key.(string))
+	}
 }
