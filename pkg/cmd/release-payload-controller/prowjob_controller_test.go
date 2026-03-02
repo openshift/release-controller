@@ -16,11 +16,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
 	"sigs.k8s.io/prow/pkg/kube"
-	"k8s.io/utils/clock"
 )
 
 func newJobStatus(name, jobName string, maxRetries, analysisJobCount int, aggregateState v1alpha1.JobState, results []v1alpha1.JobRunResult) v1alpha1.JobStatus {

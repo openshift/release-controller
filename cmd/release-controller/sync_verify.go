@@ -241,10 +241,10 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 }
 
 func TrimPrefixes(s string, prefixes ...string) string {
-  for _, prefix := range prefixes {
-	  if after, found := strings.CutPrefix(s, prefix); found {
-		  return after
-	  }
-  }
-  return s
+	for _, prefix := range prefixes {
+		if after, found := strings.CutPrefix(s, prefix); found {
+			return after
+		}
+	}
+	return s
 }

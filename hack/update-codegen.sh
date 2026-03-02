@@ -22,14 +22,15 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEGEN_PKG="${SCRIPT_ROOT}/vendor/k8s.io/code-generator"
 
 # Temporary directory for code-generator binaries
-GOBIN="${SCRIPT_ROOT}/_tmp/bin"
-mkdir -p "${GOBIN}"
+GOBIN=$(mktemp -d)
 export PATH="${GOBIN}:${PATH}"
+trap 'rm -rf "${GOBIN}"' EXIT
 
 # Install code generators if not already present
 install_generator() {
     local tool=$1
-    if ! command -v "${tool}" &>/dev/null; then
+    local target="${GOBIN}/${tool}"
+    if [[ ! -x "${target}" ]]; then
         echo "Installing ${tool}..."
         GOBIN="${GOBIN}" go install "${CODEGEN_PKG}/cmd/${tool}"
     fi
@@ -92,8 +93,8 @@ echo "Generating clientset..."
 client-gen \
     --go-header-file "${BOILERPLATE}" \
     --clientset-name "versioned" \
-    --input-base "${SCRIPT_ROOT}" \
-    --input "pkg/apis/release/v1alpha1" \
+    --input-base "github.com/openshift/release-controller/pkg/apis" \
+    --input "release/v1alpha1" \
     --output-dir "${SCRIPT_ROOT}/pkg/client/clientset" \
     --output-pkg "github.com/openshift/release-controller/pkg/client/clientset"
 

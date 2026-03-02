@@ -13,7 +13,7 @@ type FakeReleaseV1alpha1 struct {
 }
 
 func (c *FakeReleaseV1alpha1) ReleasePayloads(namespace string) v1alpha1.ReleasePayloadInterface {
-	return &FakeReleasePayloads{c, namespace}
+	return newFakeReleasePayloads(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
