@@ -18,40 +18,99 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-SCRIPT_ROOT="$(dirname "${BASH_SOURCE[0]}")/.."
-CODEGEN_PKG=${CODEGEN_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator)}
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CODEGEN_PKG="${SCRIPT_ROOT}/vendor/k8s.io/code-generator"
 
-source ${CODEGEN_PKG}/kube_codegen.sh
+# Temporary directory for code-generator binaries
+GOBIN="${SCRIPT_ROOT}/_tmp/bin"
+mkdir -p "${GOBIN}"
+export PATH="${GOBIN}:${PATH}"
 
-# generate the code with:
-# --output-base    because this script should also be able to run inside the vendor dir of
-#                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
-#                  instead of the $GOPATH directly. For normal projects this can be dropped.
+# Install code generators if not already present
+install_generator() {
+    local tool=$1
+    if ! command -v "${tool}" &>/dev/null; then
+        echo "Installing ${tool}..."
+        GOBIN="${GOBIN}" go install "${CODEGEN_PKG}/cmd/${tool}"
+    fi
+}
 
-kube::codegen::gen_helpers \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/apis"
+# Install all required generators
+install_generator deepcopy-gen
+install_generator defaulter-gen
+install_generator client-gen
+install_generator lister-gen
+install_generator informer-gen
 
-kube::codegen::gen_helpers \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/releasequalifiers"
+BOILERPLATE="${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
-kube::codegen::gen_helpers \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/releasequalifiers/notifications"
+# Generate deepcopy and defaulter for each package
+# Note: We skip validation-gen as it's not needed (no validation markers in codebase)
 
-kube::codegen::gen_helpers \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/releasequalifiers/notifications/jira"
+echo "Generating deepcopy and defaults for pkg/apis..."
+deepcopy-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.deepcopy.go \
+    github.com/openshift/release-controller/pkg/apis/release/v1alpha1
 
-kube::codegen::gen_helpers \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/releasequalifiers/notifications/slack"
+defaulter-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.defaults.go \
+    github.com/openshift/release-controller/pkg/apis/release/v1alpha1
 
-kube::codegen::gen_client \
-    --with-watch \
-    --output-dir "${SCRIPT_ROOT}/pkg/client" \
-    --output-pkg github.com/openshift/release-controller/pkg/client \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    "${SCRIPT_ROOT}/pkg/apis"
+echo "Generating deepcopy and defaults for pkg/releasequalifiers..."
+deepcopy-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.deepcopy.go \
+    github.com/openshift/release-controller/pkg/releasequalifiers
 
+defaulter-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.defaults.go \
+    github.com/openshift/release-controller/pkg/releasequalifiers
+
+echo "Generating deepcopy for pkg/releasequalifiers/notifications..."
+deepcopy-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.deepcopy.go \
+    github.com/openshift/release-controller/pkg/releasequalifiers/notifications
+
+echo "Generating deepcopy for pkg/releasequalifiers/notifications/jira..."
+deepcopy-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.deepcopy.go \
+    github.com/openshift/release-controller/pkg/releasequalifiers/notifications/jira
+
+echo "Generating deepcopy for pkg/releasequalifiers/notifications/slack..."
+deepcopy-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-file zz_generated.deepcopy.go \
+    github.com/openshift/release-controller/pkg/releasequalifiers/notifications/slack
+
+# Generate typed clients (clientset, listers, informers)
+echo "Generating clientset..."
+client-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --clientset-name "versioned" \
+    --input-base "${SCRIPT_ROOT}" \
+    --input "pkg/apis/release/v1alpha1" \
+    --output-dir "${SCRIPT_ROOT}/pkg/client/clientset" \
+    --output-pkg "github.com/openshift/release-controller/pkg/client/clientset"
+
+echo "Generating listers..."
+lister-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --output-dir "${SCRIPT_ROOT}/pkg/client/listers" \
+    --output-pkg "github.com/openshift/release-controller/pkg/client/listers" \
+    github.com/openshift/release-controller/pkg/apis/release/v1alpha1
+
+echo "Generating informers..."
+informer-gen \
+    --go-header-file "${BOILERPLATE}" \
+    --versioned-clientset-package "github.com/openshift/release-controller/pkg/client/clientset/versioned" \
+    --listers-package "github.com/openshift/release-controller/pkg/client/listers" \
+    --output-dir "${SCRIPT_ROOT}/pkg/client/informers" \
+    --output-pkg "github.com/openshift/release-controller/pkg/client/informers" \
+    github.com/openshift/release-controller/pkg/apis/release/v1alpha1
+
+echo "Code generation complete!"
