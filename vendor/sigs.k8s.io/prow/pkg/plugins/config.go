@@ -84,6 +84,7 @@ type Configuration struct {
 	Lgtm                 []Lgtm                       `json:"lgtm,omitempty"`
 	Jira                 *Jira                        `json:"jira,omitempty"`
 	MilestoneApplier     map[string]BranchToMilestone `json:"milestone_applier,omitempty"`
+	ReleaseNote          ReleaseNote                  `json:"release_note,omitempty"`
 	RepoMilestone        map[string]Milestone         `json:"repo_milestone,omitempty"`
 	Project              ProjectConfig                `json:"project_config,omitempty"`
 	ProjectManager       ProjectManager               `json:"project_manager,omitempty"`
@@ -527,6 +528,19 @@ type Heart struct {
 	CommentRe     *regexp.Regexp `json:"-"`
 }
 
+// ReleaseNote contains the configuration options for the release note plugin
+type ReleaseNote struct {
+	// GuidelinesURL is the URL to the release note guidelines that users should follow
+	// Defaults to the Kubernetes community guide: https://git.k8s.io/community/contributors/guide/release-notes.md
+	GuidelinesURL string `json:"guidelines_url,omitempty"`
+}
+
+func (r *ReleaseNote) setDefaults() {
+	if r.GuidelinesURL == "" {
+		r.GuidelinesURL = "https://git.k8s.io/community/contributors/guide/release-notes.md"
+	}
+}
+
 // Milestone contains the configuration options for the milestone and
 // milestonestatus plugins.
 type Milestone struct {
@@ -579,6 +593,55 @@ type ConfigMapSpec struct {
 	// repository root should be used as the configmap key. Slashes will be replaced by
 	// dashes. Using this avoids the need for unique file names in the original repo.
 	UseFullPathAsKey bool `json:"use_full_path_as_key,omitempty"`
+	// AllowedRepos is a list of org or org/repo entries that are allowed to update this configmap.
+	// If specified, only PRs from these orgs/repos will trigger updates.
+	// Entries without a slash (e.g., "kubernetes") match the entire org.
+	// Entries with a slash (e.g., "kubernetes/test-infra") match a specific repo.
+	// When both AllowedRepos and DeniedRepos are specified, the org/repo must be in
+	// the allowed list and not in the denied list.
+	AllowedRepos []string `json:"allowed_repos,omitempty"`
+	// DeniedRepos is a list of org or org/repo entries that are denied from updating this configmap.
+	// PRs from these orgs/repos will not trigger updates.
+	// Entries without a slash (e.g., "kubernetes") match the entire org.
+	// Entries with a slash (e.g., "kubernetes/test-infra") match a specific repo.
+	DeniedRepos []string `json:"denied_repos,omitempty"`
+}
+
+// IsAllowed checks if the given repo is allowed to update this configmap based on the ACL settings.
+// The repo parameter should be in "org/repo" format.
+// The logic is:
+// 1. If the repo is in the denied list (exact match), it's not allowed.
+// 2. If the org is in the denied list, it's not allowed.
+// 3. If allow lists are specified, the repo must match an entry in the allowed list.
+// 4. If no allow lists are specified, it's allowed (unless denied).
+func (cm ConfigMapSpec) IsAllowed(repo string) bool {
+	or := config.NewOrgRepo(repo)
+
+	// Check denied list first
+	for _, denied := range cm.DeniedRepos {
+		if denied == repo {
+			return false
+		}
+		if denied == or.Org {
+			return false
+		}
+	}
+
+	// If no allow list is specified, allow by default (unless denied above)
+	if len(cm.AllowedRepos) == 0 {
+		return true
+	}
+
+	for _, allowed := range cm.AllowedRepos {
+		if allowed == repo {
+			return true
+		}
+		if allowed == or.Org {
+			return true
+		}
+	}
+
+	return false
 }
 
 // A ClusterGroup is a list of clusters with namespaces
@@ -1157,6 +1220,8 @@ func (c *Configuration) setDefaults() {
 			c.RequireMatchingLabel[i].GracePeriod = "5s"
 		}
 	}
+
+	c.ReleaseNote.setDefaults()
 }
 
 // validatePluginsDupes will return an error if there are duplicated plugins.
