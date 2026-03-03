@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/informers"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 )
 
 func TestComputeReleaseCreationJobStatus(t *testing.T) {
@@ -445,7 +446,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-creation-status-controller-test"))
+			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-creation-status-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create Release Creation Status Controller: %v", err)
 			}

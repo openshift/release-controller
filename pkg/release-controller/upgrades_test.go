@@ -55,7 +55,7 @@ func TestUpgradeGraph_UpgradesFrom(t *testing.T) {
 			got := g.UpgradesFrom(tt.fromNames...)
 			sort.Sort(NewNewestSemVerFromSummaries(got))
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectReflectDiff(tt.want, got))
+				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectGoPrintSideBySide(tt.want, got))
 			}
 		})
 	}
@@ -108,7 +108,7 @@ func TestUpgradeGraph_UpgradesTo(t *testing.T) {
 			got := g.UpgradesTo(tt.toNames...)
 			sort.Sort(NewNewestSemVerFromSummaries(got))
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectReflectDiff(tt.want, got))
+				t.Errorf("UpgradeGraph.UpgradesFrom() = %s", diff.ObjectGoPrintSideBySide(tt.want, got))
 			}
 		})
 	}

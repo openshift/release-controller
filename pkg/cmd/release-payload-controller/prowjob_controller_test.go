@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 	v1 "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 	prowfake "sigs.k8s.io/prow/pkg/client/clientset/versioned/fake"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
@@ -863,7 +864,7 @@ func TestProwJobStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, events.NewInMemoryRecorder("prowjob-status-controller-test"))
+			c, err := NewProwJobStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), prowJobInformer, events.NewInMemoryRecorder("prowjob-status-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create ProwJob Status Controller: %v", err)
 			}

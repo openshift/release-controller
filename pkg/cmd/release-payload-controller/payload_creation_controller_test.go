@@ -13,6 +13,7 @@ import (
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 )
 
 func TestPayloadCreationSync(t *testing.T) {
@@ -249,7 +250,7 @@ func TestPayloadCreationSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewPayloadCreationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("payload-creation-controller-test"))
+			c, err := NewPayloadCreationController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("payload-creation-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create Payload Creation Controller: %v", err)
 			}

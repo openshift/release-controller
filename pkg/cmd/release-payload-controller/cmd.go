@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	prowjobclientset "sigs.k8s.io/prow/pkg/client/clientset/versioned"
 	prowjobinformers "sigs.k8s.io/prow/pkg/client/informers/externalversions"
 )
@@ -40,7 +41,7 @@ func NewReleasePayloadControllerCommand(name string) *cobra.Command {
 		}
 
 		return nil
-	})
+	}, clock.RealClock{})
 
 	cmd := ccc.NewCommandWithContext(context.Background())
 	cmd.Use = name
