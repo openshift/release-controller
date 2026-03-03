@@ -51,7 +51,7 @@ func NewPayloadCreationController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-creation-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadCreationController")),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "PayloadCreationController"})),
 	}
 
 	c.syncFn = c.sync

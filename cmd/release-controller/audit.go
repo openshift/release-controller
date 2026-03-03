@@ -258,7 +258,7 @@ func ensureJobTerminationMessageRetrieved(podClient kv1core.PodsGetter, job *bat
 type AuditTracker struct {
 	lock    sync.Mutex
 	records map[string]*AuditRecord
-	queue   workqueue.DelayingInterface
+	queue   workqueue.TypedDelayingInterface[string]
 }
 
 type AuditRecord struct {
@@ -279,7 +279,7 @@ type AuditFailure struct {
 	Message string
 }
 
-func NewAuditTracker(queue workqueue.DelayingInterface) *AuditTracker {
+func NewAuditTracker(queue workqueue.TypedDelayingInterface[string]) *AuditTracker {
 	return &AuditTracker{
 		records: make(map[string]*AuditRecord),
 		queue:   queue,

@@ -13,6 +13,7 @@ import (
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/clock"
 )
 
 func TestJobStateSync(t *testing.T) {
@@ -367,7 +368,7 @@ func TestJobStateSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewJobStateController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("job-state-controller-test"))
+			c, err := NewJobStateController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), events.NewInMemoryRecorder("job-state-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create Job State Controller: %v", err)
 			}

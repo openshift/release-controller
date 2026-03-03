@@ -63,7 +63,7 @@ func NewLegacyJobStatusController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("legacy-job-status-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "LegacyJobStatusController")),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "LegacyJobStatusController"})),
 		imageStreamLister: imageStreamInformer.Lister(),
 	}
 

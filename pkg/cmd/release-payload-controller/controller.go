@@ -30,7 +30,7 @@ type ReleasePayloadController struct {
 
 	cachesToSync []cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
+	queue workqueue.TypedRateLimitingInterface[string]
 
 	syncFn func(ctx context.Context, key string) error
 }
@@ -40,7 +40,7 @@ func NewReleasePayloadController(
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	eventRecorder events.Recorder,
-	queue workqueue.RateLimitingInterface) *ReleasePayloadController {
+	queue workqueue.TypedRateLimitingInterface[string]) *ReleasePayloadController {
 	c := &ReleasePayloadController{
 		name:                 name,
 		releasePayloadLister: releasePayloadInformer.Lister(),
@@ -100,7 +100,7 @@ func (c *ReleasePayloadController) processNextItem(ctx context.Context) bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncFn(ctx, key.(string))
+	err := c.syncFn(ctx, key)
 
 	if err == nil {
 		c.queue.Forget(key)

@@ -41,7 +41,7 @@ func NewPayloadVerificationController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-verification-controller"),
-			workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "PayloadVerificationController")),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "PayloadVerificationController"})),
 	}
 
 	c.syncFn = c.sync

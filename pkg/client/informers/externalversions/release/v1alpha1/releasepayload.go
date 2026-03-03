@@ -3,13 +3,13 @@
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	releasev1alpha1 "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	apisreleasev1alpha1 "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	versioned "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/openshift/release-controller/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
+	releasev1alpha1 "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -20,7 +20,7 @@ import (
 // ReleasePayloads.
 type ReleasePayloadInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.ReleasePayloadLister
+	Lister() releasev1alpha1.ReleasePayloadLister
 }
 
 type releasePayloadInformer struct {
@@ -46,16 +46,28 @@ func NewFilteredReleasePayloadInformer(client versioned.Interface, namespace str
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ReleaseV1alpha1().ReleasePayloads(namespace).List(context.TODO(), options)
+				return client.ReleaseV1alpha1().ReleasePayloads(namespace).List(context.Background(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ReleaseV1alpha1().ReleasePayloads(namespace).Watch(context.TODO(), options)
+				return client.ReleaseV1alpha1().ReleasePayloads(namespace).Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options v1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.ReleaseV1alpha1().ReleasePayloads(namespace).List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options v1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.ReleaseV1alpha1().ReleasePayloads(namespace).Watch(ctx, options)
 			},
 		},
-		&releasev1alpha1.ReleasePayload{},
+		&apisreleasev1alpha1.ReleasePayload{},
 		resyncPeriod,
 		indexers,
 	)
@@ -66,9 +78,9 @@ func (f *releasePayloadInformer) defaultInformer(client versioned.Interface, res
 }
 
 func (f *releasePayloadInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&releasev1alpha1.ReleasePayload{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisreleasev1alpha1.ReleasePayload{}, f.defaultInformer)
 }
 
-func (f *releasePayloadInformer) Lister() v1alpha1.ReleasePayloadLister {
-	return v1alpha1.NewReleasePayloadLister(f.Informer().GetIndexer())
+func (f *releasePayloadInformer) Lister() releasev1alpha1.ReleasePayloadLister {
+	return releasev1alpha1.NewReleasePayloadLister(f.Informer().GetIndexer())
 }

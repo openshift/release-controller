@@ -56,7 +56,7 @@ func NewProwJobStatusController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("prowjob-status-controller"),
-			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ProwJobStatusController"})),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "ProwJobStatusController"})),
 		prowJobLister: prowJobInformer.Lister(),
 	}
 

@@ -57,7 +57,7 @@ func NewPayloadRejectedController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("payload-rejected-controller"),
-			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "PayloadRejectedController"})),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "PayloadRejectedController"})),
 	}
 
 	c.syncFn = c.sync

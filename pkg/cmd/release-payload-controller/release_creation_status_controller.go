@@ -69,7 +69,7 @@ func NewReleaseCreationStatusController(
 			releasePayloadInformer,
 			releasePayloadClient,
 			eventRecorder.WithComponentSuffix("release-creation-status-controller"),
-			workqueue.NewRateLimitingQueueWithConfig(workqueue.DefaultControllerRateLimiter(), workqueue.RateLimitingQueueConfig{Name: "ReleaseCreationStatusController"})),
+			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "ReleaseCreationStatusController"})),
 		batchJobLister: batchJobInformer.Lister(),
 	}
 

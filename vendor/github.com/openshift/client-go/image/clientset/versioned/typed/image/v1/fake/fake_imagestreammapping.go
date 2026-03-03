@@ -3,31 +3,43 @@
 package fake
 
 import (
-	"context"
+	context "context"
 
 	v1 "github.com/openshift/api/image/v1"
+	imagev1 "github.com/openshift/client-go/image/applyconfigurations/image/v1"
+	typedimagev1 "github.com/openshift/client-go/image/clientset/versioned/typed/image/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	gentype "k8s.io/client-go/gentype"
 	testing "k8s.io/client-go/testing"
 )
 
-// FakeImageStreamMappings implements ImageStreamMappingInterface
-type FakeImageStreamMappings struct {
+// fakeImageStreamMappings implements ImageStreamMappingInterface
+type fakeImageStreamMappings struct {
+	*gentype.FakeClientWithApply[*v1.ImageStreamMapping, *imagev1.ImageStreamMappingApplyConfiguration]
 	Fake *FakeImageV1
-	ns   string
 }
 
-var imagestreammappingsResource = schema.GroupVersionResource{Group: "image.openshift.io", Version: "v1", Resource: "imagestreammappings"}
-
-var imagestreammappingsKind = schema.GroupVersionKind{Group: "image.openshift.io", Version: "v1", Kind: "ImageStreamMapping"}
+func newFakeImageStreamMappings(fake *FakeImageV1, namespace string) typedimagev1.ImageStreamMappingInterface {
+	return &fakeImageStreamMappings{
+		gentype.NewFakeClientWithApply[*v1.ImageStreamMapping, *imagev1.ImageStreamMappingApplyConfiguration](
+			fake.Fake,
+			namespace,
+			v1.SchemeGroupVersion.WithResource("imagestreammappings"),
+			v1.SchemeGroupVersion.WithKind("ImageStreamMapping"),
+			func() *v1.ImageStreamMapping { return &v1.ImageStreamMapping{} },
+		),
+		fake,
+	}
+}
 
 // Create takes the representation of a imageStreamMapping and creates it.  Returns the server's representation of the status, and an error, if there is any.
-func (c *FakeImageStreamMappings) Create(ctx context.Context, imageStreamMapping *v1.ImageStreamMapping, opts metav1.CreateOptions) (result *metav1.Status, err error) {
+func (c *fakeImageStreamMappings) Create(ctx context.Context, imageStreamMapping *v1.ImageStreamMapping, opts metav1.CreateOptions) (result *metav1.Status, err error) {
+	emptyResult := &metav1.Status{}
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(imagestreammappingsResource, c.ns, imageStreamMapping), &metav1.Status{})
+		Invokes(testing.NewCreateActionWithOptions(c.Resource(), c.Namespace(), imageStreamMapping, opts), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*metav1.Status), err
 }
