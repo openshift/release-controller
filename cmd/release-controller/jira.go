@@ -99,6 +99,10 @@ func (c *Controller) calculatePreviousReleaseTagForNightly(currentVersion semver
 		targetMajor = 5
 		targetMinor = 55
 		klog.V(4).Infof("jira: special case for version 6.0, using hardcoded previous version 5.55 (test case)")
+	} else if currentVersion.Major == 5 && currentVersion.Minor == 0 {
+		targetMajor = 4
+		targetMinor = 23
+		klog.V(4).Infof("jira: special case for version 5.0, using hardcoded previous version 4.23")
 	} else if currentVersion.Minor == 0 {
 		return nil, fmt.Errorf("cannot calculate previous minor version for %d.%d", currentVersion.Major, currentVersion.Minor)
 	} else {
