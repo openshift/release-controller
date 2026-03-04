@@ -471,6 +471,38 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			continue
 		}
 		if len(value.URL) > 0 {
+			if value.Retries > 0 && len(value.PreviousAttemptURLs) > 0 {
+				// Expandable row showing all attempts
+				buf.WriteString("<li><details><summary style=\"cursor:pointer\">")
+				stateClass := ""
+				stateText := " Pending"
+				switch value.State {
+				case releasecontroller.ReleaseVerificationStateFailed:
+					stateClass = "text-danger"
+					stateText = " Failed"
+				case releasecontroller.ReleaseVerificationStateSucceeded:
+					stateClass = "text-success"
+					stateText = " Succeeded"
+				}
+				fmt.Fprintf(buf, "<span class=\"%s\">%s%s</span>", stateClass, template.HTMLEscapeString(key), stateText)
+				retryWord := "retries"
+				if value.Retries == 1 {
+					retryWord = "retry"
+				}
+				fmt.Fprintf(buf, " <span class=\"text-warning\">(%d %s)</span>", value.Retries, retryWord)
+				if pj := verificationJobs[key].ProwJob; pj != nil {
+					buf.WriteString(" ")
+					buf.WriteString(pj.Name)
+				}
+				buf.WriteString("</summary><ul>")
+				for i, retryURL := range value.PreviousAttemptURLs {
+					fmt.Fprintf(buf, "<li><a class=\"text-danger\" href=\"%s\">Attempt %d Failed</a></li>", template.HTMLEscapeString(releasecontroller.GenerateProwJobResultsURL(retryURL)), i+1)
+				}
+				attemptNum := len(value.PreviousAttemptURLs) + 1
+				fmt.Fprintf(buf, "<li><a class=\"%s\" href=\"%s\">Attempt %d%s</a></li>", stateClass, template.HTMLEscapeString(releasecontroller.GenerateProwJobResultsURL(value.URL)), attemptNum, stateText)
+				buf.WriteString("</ul></details>")
+				continue
+			}
 			switch value.State {
 			case releasecontroller.ReleaseVerificationStateFailed:
 				buf.WriteString("<li><a class=\"text-danger\" href=\"")

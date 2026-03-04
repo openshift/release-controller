@@ -181,6 +181,100 @@ func Test_getVerificationStatusState(t *testing.T) {
 	}
 }
 
+func Test_getVerificationStatusPreviousAttemptURLs(t *testing.T) {
+	tests := []struct {
+		name       string
+		results    []v1alpha1.JobRunResult
+		primaryURL string
+		want       []string
+	}{
+		{
+			name:       "No Results",
+			results:    []v1alpha1.JobRunResult{},
+			primaryURL: "",
+			want:       nil,
+		},
+		{
+			name: "Single Result",
+			results: []v1alpha1.JobRunResult{
+				{
+					HumanProwResultsURL: "https://abc.123/",
+					State:               v1alpha1.JobRunStateSuccess,
+				},
+			},
+			primaryURL: "https://abc.123/",
+			want:       nil,
+		},
+		{
+			name: "Multiple Results - Primary Is Success",
+			results: []v1alpha1.JobRunResult{
+				{
+					HumanProwResultsURL: "https://abc.123/",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+				{
+					HumanProwResultsURL: "https://def.456/",
+					State:               v1alpha1.JobRunStateSuccess,
+				},
+			},
+			primaryURL: "https://def.456/",
+			want:       []string{"https://abc.123/"},
+		},
+		{
+			name: "Multiple Results - All Failures",
+			results: []v1alpha1.JobRunResult{
+				{
+					HumanProwResultsURL: "https://abc.123/",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+				{
+					HumanProwResultsURL: "https://def.456/",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+				{
+					HumanProwResultsURL: "https://ghi.789/",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+			},
+			primaryURL: "https://ghi.789/",
+			want:       []string{"https://abc.123/", "https://def.456/"},
+		},
+		{
+			name: "Results With Empty URL Excluded",
+			results: []v1alpha1.JobRunResult{
+				{
+					HumanProwResultsURL: "",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+				{
+					HumanProwResultsURL: "https://def.456/",
+					State:               v1alpha1.JobRunStateFailure,
+				},
+				{
+					HumanProwResultsURL: "https://ghi.789/",
+					State:               v1alpha1.JobRunStateSuccess,
+				},
+			},
+			primaryURL: "https://ghi.789/",
+			want:       []string{"https://def.456/"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getVerificationStatusPreviousAttemptURLs(tt.results, tt.primaryURL)
+			if len(tt.want) != len(got) {
+				t.Errorf("%s: Expected %v, got %v", tt.name, tt.want, got)
+				return
+			}
+			for i := range tt.want {
+				if tt.want[i] != got[i] {
+					t.Errorf("%s: Expected %v at index %d, got %v", tt.name, tt.want[i], i, got[i])
+				}
+			}
+		})
+	}
+}
+
 func Test_getVerificationStatusUrl(t *testing.T) {
 	tests := []struct {
 		name    string
