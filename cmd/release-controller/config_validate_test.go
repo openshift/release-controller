@@ -238,6 +238,67 @@ func TestFindDuplicatePeriodics(t *testing.T) {
 	}
 }
 
+func TestValidateAsyncJobs(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configs     []releasecontroller.ReleaseConfig
+		expectedErr bool
+	}{
+		{
+			name: "async with optional is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"my-async-job": {
+						Optional: true,
+						Async:    true,
+						ProwJob:  &releasecontroller.ProwJobVerification{Name: "some-job"},
+					},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "async without optional is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"my-async-job": {
+						Optional: false,
+						Async:    true,
+						ProwJob:  &releasecontroller.ProwJobVerification{Name: "some-job"},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "async with maxRetries is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"my-async-job": {
+						Optional:   true,
+						Async:      true,
+						MaxRetries: 3,
+						ProwJob:    &releasecontroller.ProwJobVerification{Name: "some-job"},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+	}
+	for _, testCase := range testCases {
+		errs := validateAsyncJobs(testCase.configs)
+		if len(errs) > 0 && !testCase.expectedErr {
+			t.Errorf("%s: got error when error was not expected: %v", testCase.name, errs)
+		}
+		if len(errs) == 0 && testCase.expectedErr {
+			t.Errorf("%s: did not get error when error was expected", testCase.name)
+		}
+	}
+}
+
 func TestValidateUpgradeJobs(t *testing.T) {
 	testCases := []struct {
 		name        string

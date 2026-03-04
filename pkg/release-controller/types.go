@@ -245,6 +245,10 @@ type ReleaseVerification struct {
 	// Optional verifications are run, but failures will not cause the release to
 	// be rejected.
 	Optional bool `json:"optional"`
+	// Async, when set with Optional, means the release controller will not wait
+	// for this job to complete before accepting or rejecting the payload. The job
+	// will continue running after the payload reaches a terminal state.
+	Async bool `json:"async,omitempty"`
 	// Upgrade is true if this verification should be used to verify upgrades.
 	// The default UpgradeFrom for stable streams is PreviousMicro and the default
 	// for other types of streams is Previous.
@@ -437,7 +441,7 @@ func (m VerificationStatusMap) Failures() ([]string, bool) {
 func (m VerificationStatusMap) Incomplete(required map[string]ReleaseVerification) ([]string, bool) {
 	var names []string
 	for name, definition := range required {
-		if definition.Disabled {
+		if definition.Disabled || definition.Async {
 			continue
 		}
 		if s, ok := m[name]; !ok || !slices.Contains([]string{ReleaseVerificationStateSucceeded, ReleaseVerificationStateFailed}, s.State) {
@@ -451,7 +455,7 @@ func VerificationJobsWithRetries(jobs map[string]ReleaseVerification, result Ver
 	var names []string
 	blockingJobFailure := false
 	for name, definition := range jobs {
-		if definition.Disabled {
+		if definition.Disabled || definition.Async {
 			continue
 		}
 		s, ok := result[name]
