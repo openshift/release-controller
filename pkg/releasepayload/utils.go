@@ -31,10 +31,12 @@ func GenerateVerificationStatusMap(payload *v1alpha1.ReleasePayload, status *rel
 }
 
 func convertToVerificationStatusMapResult(job v1alpha1.JobStatus) (*releasecontroller.VerificationStatus, bool) {
+	url := getVerificationStatusUrl(job.JobRunResults)
 	status := &releasecontroller.VerificationStatus{
-		Retries: getVerificationStatusRetries(job),
-		State:   getVerificationStatusState(job.AggregateState),
-		URL:     getVerificationStatusUrl(job.JobRunResults),
+		Retries:   getVerificationStatusRetries(job),
+		PreviousAttemptURLs: getVerificationStatusPreviousAttemptURLs(job.JobRunResults, url),
+		State:     getVerificationStatusState(job.AggregateState),
+		URL:       url,
 	}
 	return status, true
 }
@@ -80,6 +82,23 @@ func getVerificationStatusState(state v1alpha1.JobState) string {
 	default:
 		return releasecontroller.ReleaseVerificationStatePending
 	}
+}
+
+func getVerificationStatusPreviousAttemptURLs(jobRunResults []v1alpha1.JobRunResult, primaryURL string) []string {
+	if len(jobRunResults) <= 1 {
+		return nil
+	}
+	sorted := make([]v1alpha1.JobRunResult, len(jobRunResults))
+	copy(sorted, jobRunResults)
+	sort.Sort(jobrunresult.ByStartTime(sorted))
+
+	var urls []string
+	for _, result := range sorted {
+		if result.HumanProwResultsURL != "" && result.HumanProwResultsURL != primaryURL {
+			urls = append(urls, result.HumanProwResultsURL)
+		}
+	}
+	return urls
 }
 
 func getVerificationStatusUrl(jobRunResults []v1alpha1.JobRunResult) string {
