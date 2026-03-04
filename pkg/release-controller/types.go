@@ -404,6 +404,7 @@ type VerificationStatusMap map[string]*VerificationStatus
 type VerificationJobsSummary struct {
 	BlockingJobs  VerificationStatusMap `json:"blockingJobs,omitempty"`
 	InformingJobs VerificationStatusMap `json:"informingJobs,omitempty"`
+	AsyncJobs     VerificationStatusMap `json:"asyncJobs,omitempty"`
 	PendingJobs   VerificationStatusMap `json:"pendingJobs,omitempty"`
 }
 

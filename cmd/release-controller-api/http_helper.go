@@ -395,6 +395,7 @@ func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *rele
 	}
 	blockingJobs := make(releasecontroller.VerificationStatusMap)
 	informingJobs := make(releasecontroller.VerificationStatusMap)
+	asyncJobs := make(releasecontroller.VerificationStatusMap)
 	pendingJobs := make(releasecontroller.VerificationStatusMap)
 	keys := make([]string, 0, len(verificationJobs))
 	for k := range verificationJobs {
@@ -403,7 +404,9 @@ func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *rele
 	sort.Strings(keys)
 	for _, key := range keys {
 		if value, ok := status[key]; ok {
-			if verificationJobs[key].Optional {
+			if verificationJobs[key].Async {
+				asyncJobs[key] = value
+			} else if verificationJobs[key].Optional {
 				informingJobs[key] = value
 			} else {
 				blockingJobs[key] = value
@@ -415,6 +418,7 @@ func (c *Controller) getVerificationJobs(tag imagev1.TagReference, release *rele
 	return &releasecontroller.VerificationJobsSummary{
 		BlockingJobs:  blockingJobs,
 		InformingJobs: informingJobs,
+		AsyncJobs:     asyncJobs,
 		PendingJobs:   pendingJobs,
 	}, ""
 }
@@ -435,6 +439,11 @@ func (c *Controller) renderVerifyLinks(w io.Writer, tag imagev1.TagReference, re
 	if len(verificationJobs.InformingJobs) > 0 {
 		buf.WriteString("<li>Informing jobs<ul>")
 		buf.WriteString(c.renderVerificationJobsList(verificationJobs.InformingJobs, release, tag, final))
+		buf.WriteString("</ul></li>")
+	}
+	if len(verificationJobs.AsyncJobs) > 0 {
+		buf.WriteString("<li>Async jobs<ul>")
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.AsyncJobs, release, tag, final))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.PendingJobs) > 0 {
