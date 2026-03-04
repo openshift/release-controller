@@ -47,11 +47,27 @@ func validateReleaseConfigs(configDir string) error {
 	if err != nil {
 		return fmt.Errorf("error encountered while trying to read config files: %w", err)
 	}
+	errors = append(errors, validateAsyncJobs(releaseConfigs)...)
 	errors = append(errors, validateUpgradeJobs(releaseConfigs)...)
 	errors = append(errors, verifyPeriodicFields(releaseConfigs)...)
 	errors = append(errors, findDuplicatePeriodics(releaseConfigs)...)
 	errors = append(errors, validateQualifiers(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
+}
+
+func validateAsyncJobs(releaseConfigs []releasecontroller.ReleaseConfig) []error {
+	var errors []error
+	for _, config := range releaseConfigs {
+		for name, verify := range config.Verify {
+			if verify.Async && !verify.Optional {
+				errors = append(errors, fmt.Errorf("%s: verification job %s has async set but is not optional", config.Name, name))
+			}
+			if verify.Async && verify.MaxRetries > 0 {
+				errors = append(errors, fmt.Errorf("%s: verification job %s has async set with maxRetries > 0, which is contradictory because async jobs are skipped by retry logic", config.Name, name))
+			}
+		}
+	}
+	return errors
 }
 
 func validateUpgradeJobs(releaseConfigs []releasecontroller.ReleaseConfig) []error {
