@@ -30,6 +30,17 @@ verify-codegen-script:
 
 # Ensure codegen is run before generating the CRD, so updates to Godoc are included.
 update-crd: update-codegen-script update-codegen-crds
+.PHONY: update-crd
+
+# Create CRD from scratch using the 'crd' generator instead of 'schemapatch'
+# This target can regenerate the CRD even if it doesn't exist, unlike update-crd
+# which uses 'schemapatch' and only patches existing CRDs.
+create-crd: update-codegen-script ensure-controller-gen
+	'$(CONTROLLER_GEN)' \
+		crd \
+		paths="./pkg/apis/release/v1alpha1" \
+		'output:crd:dir=./artifacts'
+.PHONY: create-crd
 
 sonar-reports:
 	go test ./... -coverprofile=coverage.out -covermode=count -json > report.json
