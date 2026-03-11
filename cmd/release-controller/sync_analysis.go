@@ -14,7 +14,10 @@ const (
 	defaultAggregateProwJobName = "release-openshift-release-analysis-aggregator"
 )
 
-func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) error {
+// launchAnalysisJobs creates analysis jobs for an aggregated verification step.
+// It returns true if all analysis jobs have been created (or already exist), and
+// false if some jobs were deferred by splay and still need to be created later.
+func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, verifyName string, verifyType releasecontroller.ReleaseVerification, releaseTag *imagev1.TagReference, previousTag, previousReleasePullSpec string) (bool, error) {
 	jobLabels := map[string]string{
 		releasecontroller.ProwJobLabelCapability: "rce",
 		"release.openshift.io/analysis":          releaseTag.Name,
@@ -25,15 +28,19 @@ func (c *Controller) launchAnalysisJobs(release *releasecontroller.Release, veri
 	copied := verifyType.DeepCopy()
 	copied.AggregatedProwJob.AnalysisJobCount = 0
 
+	allCreated := true
 	for i := range verifyType.AggregatedProwJob.AnalysisJobCount {
 		// Postfix the name to differentiate it from the aggregator job
 		jobNameSuffix := fmt.Sprintf("analysis-%d", i)
-		_, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
+		job, err := c.ensureProwJobForReleaseTag(release, verifyName, jobNameSuffix, *copied, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 		if err != nil {
-			return err
+			return false, err
+		}
+		if job == nil {
+			allCreated = false
 		}
 	}
-	return nil
+	return allCreated, nil
 }
 
 func addAnalysisEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, payloadTag, verificationJobName string) (bool, error) {
