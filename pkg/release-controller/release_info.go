@@ -1399,7 +1399,7 @@ class FileServer(handler):
             release = segments[0]
 
             parts = release.split('.')
-            if len(parts) < 2 or int(parts[1]) < 11:
+            if len(parts) < 2 or int(parts[0]) < 4 or (int(parts[0]) == 4 and int(parts[1]) < 11):
                 self._present_blocked_content(release)
                 return
             
