@@ -34,8 +34,11 @@ var (
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
-	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
-	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS ((\d+)\.[\w\.\-]+)\n`)
+	// Handle both old format (no RHEL version) and new format (with RHEL version like "9.8")
+	// Old: "* Red Hat Enterprise Linux CoreOS upgraded from 9.8.20260312-0 to 9.8.20260227-0"
+	// New: "* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260305-0 to 9.8.20260312-0"
+	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS(?: \d+\.\d+)? upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS(?: \d+\.\d+)? ((\d+)\.[\w\.\-]+)\n`)
 
 	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
 	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d+)\.[\w\.\-]+)\n`)

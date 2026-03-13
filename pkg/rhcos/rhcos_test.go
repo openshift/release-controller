@@ -102,3 +102,119 @@ func TestComputeJobState(t *testing.T) {
 		})
 	}
 }
+
+func TestRHCoSDiffRegex(t *testing.T) {
+	testCases := []struct {
+		name        string
+		input       string
+		shouldMatch bool
+		fromVersion string
+		toVersion   string
+	}{
+		{
+			name:        "Old format without RHEL version",
+			input:       "* Red Hat Enterprise Linux CoreOS upgraded from 9.8.20260312-0 to 9.8.20260227-0\n",
+			shouldMatch: true,
+			fromVersion: "9.8.20260312-0",
+			toVersion:   "9.8.20260227-0",
+		},
+		{
+			name:        "New format with RHEL version",
+			input:       "* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260305-0 to 9.8.20260312-0\n",
+			shouldMatch: true,
+			fromVersion: "9.8.20260305-0",
+			toVersion:   "9.8.20260312-0",
+		},
+		{
+			name:        "Old format with 4.x style versions",
+			input:       "* Red Hat Enterprise Linux CoreOS upgraded from 418.94.202410090804-0 to 418.94.202410150804-0\n",
+			shouldMatch: true,
+			fromVersion: "418.94.202410090804-0",
+			toVersion:   "418.94.202410150804-0",
+		},
+		{
+			name:        "Old format without RHEL version and without 4.x style",
+			input:       "* Red Hat Enterprise Linux CoreOS upgraded from 9.6.20260225-1 to 9.6.20260303-1\n",
+			shouldMatch: true,
+			fromVersion: "9.6.20260225-1",
+			toVersion:   "9.6.20260303-1",
+		},
+		{
+			name:        "CentOS Stream CoreOS does not match RHEL CoreOS regex",
+			input:       "* CentOS Stream CoreOS upgraded from 9.6.20260225-1 to 9.6.20260303-1\n",
+			shouldMatch: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			matches := reMdRHCoSDiff.FindStringSubmatch(tc.input)
+			if tc.shouldMatch {
+				if matches == nil {
+					t.Errorf("Expected match but got none for input: %s", tc.input)
+					return
+				}
+				if matches[1] != tc.fromVersion {
+					t.Errorf("Expected from version %q, got %q", tc.fromVersion, matches[1])
+				}
+				if matches[3] != tc.toVersion {
+					t.Errorf("Expected to version %q, got %q", tc.toVersion, matches[3])
+				}
+			} else {
+				if matches != nil {
+					t.Errorf("Expected no match but got: %v", matches)
+				}
+			}
+		})
+	}
+}
+
+func TestRHCoSVersionRegex(t *testing.T) {
+	testCases := []struct {
+		name        string
+		input       string
+		shouldMatch bool
+		version     string
+	}{
+		{
+			name:        "Old format without RHEL version",
+			input:       "* Red Hat Enterprise Linux CoreOS 9.8.20260312-0\n",
+			shouldMatch: true,
+			version:     "9.8.20260312-0",
+		},
+		{
+			name:        "New format with RHEL version",
+			input:       "* Red Hat Enterprise Linux CoreOS 9.8 9.8.20260305-0\n",
+			shouldMatch: true,
+			version:     "9.8.20260305-0",
+		},
+		{
+			name:        "Old format with 4.x style versions",
+			input:       "* Red Hat Enterprise Linux CoreOS 418.94.202410090804-0\n",
+			shouldMatch: true,
+			version:     "418.94.202410090804-0",
+		},
+		{
+			name:        "CentOS Stream CoreOS does not match RHEL CoreOS regex",
+			input:       "* CentOS Stream CoreOS 9.8.20260312-0\n",
+			shouldMatch: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			matches := reMdRHCoSVersion.FindStringSubmatch(tc.input)
+			if tc.shouldMatch {
+				if matches == nil {
+					t.Errorf("Expected match but got none for input: %s", tc.input)
+					return
+				}
+				if matches[1] != tc.version {
+					t.Errorf("Expected version %q, got %q", tc.version, matches[1])
+				}
+			} else {
+				if matches != nil {
+					t.Errorf("Expected no match but got: %v", matches)
+				}
+			}
+		})
+	}
+}
