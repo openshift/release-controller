@@ -34,8 +34,8 @@ import (
 
 const (
 	sourceJira                       = "jira"
-	JiraCustomFieldEpicLink          = "customfield_12311140"
-	JiraCustomFieldFeatureLinkOnEpic = "customfield_12313140"
+	JiraCustomFieldEpicLink          = "customfield_10014"
+	JiraCustomFieldFeatureLinkOnEpic = "customfield_10018"
 	JiraCustomFieldFeatureLink       = "customfield_12318341"
 	JiraCustomFieldReleaseNotes      = "customfield_12310211"
 	JiraTypeSubTask                  = "Sub-task"
