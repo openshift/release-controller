@@ -131,7 +131,7 @@ func TestGetPRS(t *testing.T) {
 }
 
 func TestIssueTargetReleaseCheck(t *testing.T) {
-	issueJSON := "{\n \"id\":\"0000\",\n\"key\":\"OCPBUGS-0000\",\n\"fields\":{\n \"customfield_12319940\": [\n{\n\"name\": \"4.11.Z\"\n}\n]\n}\n}"
+	issueJSON := "{\n \"id\":\"0000\",\n\"key\":\"OCPBUGS-0000\",\n\"fields\":{\n \"customfield_10855\": [\n{\n\"name\": \"4.11.Z\"\n}\n]\n}\n}"
 
 	var issue jira.Issue
 	err := json.Unmarshal([]byte(issueJSON), &issue)
@@ -950,13 +950,13 @@ const (
       "description": "Status ON_QA",
       "name": "ON_QA"
     },
-    "customfield_12315948": {
+    "customfield_10470": {
       "name": "qa_contact@redhat.com",
       "key": "qa_contact",
       "emailAddress": "qa_contact@redhat.com",
       "displayName": "Jack Smith"
     },
-    "customfield_12319940": [
+    "customfield_10855": [
       {
         "self": "https://issues.redhat.com/rest/api/2/version/12390168",
         "id": "12390168",
@@ -979,13 +979,13 @@ const (
       "description": "Issue is verified",
       "name": "Verified"
     },
-    "customfield_12315948": {
+    "customfield_10470": {
       "name": "qa_contact@redhat.com",
       "key": "qa_contact",
       "emailAddress": "qa_contact@redhat.com",
       "displayName": "Jack Smith"
     },
-    "customfield_12319940": [
+    "customfield_10855": [
       {
         "self": "https://issues.redhat.com/rest/api/2/version/12390168",
         "id": "12390168",
@@ -1008,13 +1008,13 @@ const (
       "description": "Issue is verified",
       "name": "Verified"
     },
-    "customfield_12315948": {
+    "customfield_10470": {
       "name": "qa_contact@redhat.com",
       "key": "qa_contact",
       "emailAddress": "qa_contact@redhat.com",
       "displayName": "Jack Smith"
     },
-    "customfield_12319940": [
+    "customfield_10855": [
       {
         "self": "https://issues.redhat.com/rest/api/2/version/12390168",
         "id": "12390168",
@@ -1066,13 +1066,13 @@ const (
       "description": "Issue is in progress",
       "name": "In Progress"
     },
-    "customfield_12315948": {
+    "customfield_10470": {
       "name": "qa_contact@redhat.com",
       "key": "qa_contact",
       "emailAddress": "qa_contact@redhat.com",
       "displayName": "Jack Smith"
     },
-    "customfield_12319940": [
+    "customfield_10855": [
       {
         "self": "https://issues.redhat.com/rest/api/2/version/12390168",
         "id": "12390168",
@@ -1095,13 +1095,13 @@ const (
       "description": "Status MODIFIED",
       "name": "MODIFIED"
     },
-    "customfield_12315948": {
+    "customfield_10470": {
       "name": "qa_contact@redhat.com",
       "key": "qa_contact",
       "emailAddress": "qa_contact@redhat.com",
       "displayName": "Jack Smith"
     },
-    "customfield_12319940": [
+    "customfield_10855": [
       {
         "self": "https://issues.redhat.com/rest/api/2/version/12390168",
         "id": "12390168",
