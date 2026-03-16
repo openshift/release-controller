@@ -1,0 +1,74 @@
+---
+qualifiers:
+  scooby:
+    enabled: true
+    badgeName: "SCOOBY"
+  fred:
+    enabled: true
+    badgeName: "FRED"
+    payloadBadgeStatus: "No"
+  daphne:
+    enabled: true
+    badgeName: "DAPHNE"
+    payloadBadgeStatus: "Yes"
+  shaggy:
+    enabled: true
+    badgeName: "SHAGGY"
+    payloadBadgeStatus: "OnSuccess"
+  velma:
+    enabled: true
+    badgeName: "VELMA"
+    payloadBadgeStatus: "OnFailure"
+  rosa:
+    enabled: true
+    badgeName: "ROSA"
+    summary: "RedHat OpenShift on AWS"
+    description: "A longer description when displaying badge details"
+    payloadBadgeStatus: "Yes"
+    labels:
+    - "prevent_rc"
+  hcm:
+    enabled: true
+    badgeName: "HCM"
+    summary: "Hybrid Cloud Management"
+    description: "A longer description when displaying badge details"
+    payloadBadgeStatus: "Yes"
+    notifications:
+      slack:
+        escalations:
+          - name: "monitor"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-..."
+            mentions:
+              - "@ocm-support"
+              - "@patch-manager"
+          - name: "high"
+            period: "72h"
+            minFailures: 8
+            channel: "#forum-..."
+            mentions:
+              - "@hcm-escalation-manager"
+      jira:
+        project: "OCPBUGS"
+        component: "Installer"
+        assignee: "dilbert@redhat.com"
+        summary: "Best summary ever"
+        description: "Best description ever"
+        escalations:
+          - name: "low"
+            failures: 2
+            priority: "low"
+          - name: "normal"
+            failures: 4
+            priority: "normal"
+          - name: "high"
+            failures: 6
+            priority: "high"
+            mentions:
+              - "nstielau"
+          - name: "critical"
+            failures: 8
+            priority: "critical"
+            mentions:
+              - "trankin"

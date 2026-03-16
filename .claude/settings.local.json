@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(go tool cover:*)",
+      "Bash(ls:*)",
+      "Bash(go build:*)",
+      "Bash(make update-codegen-crds:*)",
+      "Bash(make update:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

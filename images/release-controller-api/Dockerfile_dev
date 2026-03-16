@@ -1,0 +1,5 @@
+FROM registry.dptools.openshift.org/ci/release-controller-api:latest
+LABEL maintainer="apavel@redhat.com"
+
+ADD release-controller-api /usr/bin/release-controller-api
+ENTRYPOINT ["/usr/bin/release-controller-api"]

@@ -1,0 +1,700 @@
+---
+# Comprehensive ReleasePayload Example
+#
+# This ReleasePayload demonstrates how the Release Qualifiers system works in practice.
+#
+# IMPORTANT: The .spec.payloadVerificationConfig.*.qualifiers field contains ONLY
+# what's defined in the ReleaseConfig (release-ocp-4.22-comprehensive.json).
+#
+# The merge with global config (release-qualifiers-comprehensive.yaml) happens
+# internally within the controllers. The spec reflects the SOURCE configuration,
+# not the computed/merged configuration.
+#
+# The QualifiersSummary in .status is automatically computed by the
+# QualifiersSummaryController and shows the final merged state.
+#
+# See: /home/brawilli/Workspaces/Go/src/github.com/openshift/release-controller/pkg/apis/release/v1alpha1/types.go
+
+apiVersion: release.openshift.io/v1alpha1
+kind: ReleasePayload
+metadata:
+  name: 4.22.0-0.nightly-2026-03-11-120000
+  namespace: ocp
+  labels:
+    release.openshift.io/imagestream: release
+    release.openshift.io/imagestreamtag-name: 4.22.0-0.nightly-2026-03-11-120000
+  annotations:
+    release.openshift.io/release-config: 4.22.0-0.nightly
+    release.openshift.io/source: "ocp/4.22-art-latest-2026-03-11-120000"
+
+spec:
+  # ============================================================================
+  # Payload Coordinates - Points to the release imagestreamtag
+  # ============================================================================
+  payloadCoordinates:
+    namespace: ocp
+    imagestreamName: release
+    imagestreamTagName: 4.22.0-0.nightly-2026-03-11-120000
+
+  # ============================================================================
+  # Payload Creation Config - Job and mirror configuration
+  # ============================================================================
+  payloadCreationConfig:
+    releaseCreationCoordinates:
+      namespace: ci-release
+      releaseCreationJobName: release-4.22.0-0.nightly-2026-03-11-120000
+    prowCoordinates:
+      namespace: ci
+    releaseMirrorCoordinates:
+      namespace: ci-release
+      releaseMirrorJobName: mirror-4.22.0-0.nightly-2026-03-11-120000
+
+  # ============================================================================
+  # Payload Verification Config - Jobs that verify this release
+  # ============================================================================
+  # The qualifiers shown here are EXACTLY as defined in the ReleaseConfig
+  # (release-ocp-4.22-comprehensive.json). The merge with global qualifiers
+  # happens internally in the controllers.
+  payloadVerificationConfig:
+    payloadVerificationDataSource: BuildFarmLookup
+
+    # --------------------------------------------------------------------------
+    # Blocking Jobs - Must pass for release acceptance
+    # --------------------------------------------------------------------------
+    blockingJobs:
+      # ========================================================================
+      # PATTERN 1: Simple Inheritance
+      # ========================================================================
+      # Empty object {} means: inherit everything from global rosa qualifier
+      # No job-level overrides at all
+      - ciConfigurationName: rosa-classic-sts-conformance
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-sts-ovn
+        maxRetries: 1
+        qualifiers:
+          rosa: {}
+
+      # ========================================================================
+      # PATTERN 2: Labels-Only Override
+      # ========================================================================
+      # Job specifies ONLY labels - everything else inherited from global
+      - ciConfigurationName: rosa-hcp-conformance
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-hcp-ovn
+        maxRetries: 2
+        qualifiers:
+          rosa:
+            labels:
+              - "rosa-hcp-failure"
+              - "hosted-cp-blocker"
+
+      # ========================================================================
+      # PATTERN 3: Adding New Escalations
+      # ========================================================================
+      # Job defines ONLY new escalations (urgent, blocker)
+      # Global escalations will be merged in by the controller
+      - ciConfigurationName: hcm-cluster-lifecycle
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle
+        maxRetries: 2
+        qualifiers:
+          hcm:
+            notifications:
+              slack:
+                escalations:
+                  - name: "urgent"
+                    period: "12h"
+                    minFailures: 5
+                    channel: "#forum-ocm-urgent"
+                    mentions:
+                      - "@ocm-director"
+                      - "@hcm-vp"
+              jira:
+                escalations:
+                  - name: "blocker"
+                    failures: 10
+                    priority: "blocker"
+                    mentions:
+                      - "ocm-director"
+
+      # ========================================================================
+      # PATTERN 8: Complete Override
+      # ========================================================================
+      # Job specifies ALL fields - completely replaces global security qualifier
+      - ciConfigurationName: security-fips-scan
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan
+        maxRetries: 0
+        qualifiers:
+          security:
+            badgeName: "FIPS"
+            summary: "FIPS Compliance Validation"
+            description: "Validates FIPS 140-2 compliance including cryptographic module validation and approved algorithms"
+            labels:
+              - "fips-failure"
+              - "compliance-blocker"
+              - "security-critical"
+            notifications:
+              slack:
+                escalations:
+                  - name: "security-alert"
+                    period: "1h"
+                    minFailures: 1
+                    channel: "#forum-fips-compliance"
+                    mentions:
+                      - "@fips-compliance-team"
+                      - "@security-architect"
+              jira:
+                project: "SECURITY"
+                component: "FIPS"
+                assignee: "fips-team@redhat.com"
+                summary: "CRITICAL: FIPS compliance failure in {{.Release}}"
+                description: "FIPS validation has failed. This is a compliance violation and blocks release. Do not ship this payload."
+                escalations:
+                  - name: "immediate"
+                    failures: 1
+                    priority: "blocker"
+                    mentions:
+                      - "fips-lead"
+                      - "compliance-manager"
+                      - "legal-contact"
+                    needsInfo:
+                      - "crypto-team"
+
+      # ========================================================================
+      # PATTERN 10: Thread Separation
+      # ========================================================================
+      # Job specifies notification overrides with thread
+      # Other fields inherited from global
+      - ciConfigurationName: hypershift-aws-conformance
+        ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-aws-ovn-conformance
+        maxRetries: 2
+        qualifiers:
+          hypershift:
+            notifications:
+              slack:
+                thread: "hypershift-aws"
+                escalations:
+                  - name: "hypershift-dev"
+                    period: "24h"
+                    minFailures: 2
+                    channel: "#forum-hypershift-aws"
+                    mentions:
+                      - "@hypershift-aws-team"
+              jira:
+                thread: "hypershift-aws"
+                component: "HyperShift-AWS"
+                assignee: "hypershift-aws@redhat.com"
+                summary: "HyperShift AWS failure in {{.Release}}"
+
+    # --------------------------------------------------------------------------
+    # Informing Jobs - Don't block release but provide important data
+    # --------------------------------------------------------------------------
+    informingJobs:
+      # ========================================================================
+      # PATTERN 5: Disabling a Qualifier
+      # ========================================================================
+      # Job explicitly sets enabled: false to disable this qualifier for this job
+      - ciConfigurationName: osd-aws-interop
+        ciConfigurationJobName: periodic-ci-openshift-osde2e-main-nightly-4.22-osd-aws
+        maxRetries: 2
+        qualifiers:
+          osd:
+            enabled: false
+
+      # ========================================================================
+      # PATTERN 6: Complete Override
+      # ========================================================================
+      # Job completely replaces global OSD qualifier with production-specific config
+      - ciConfigurationName: osd-gcp-production
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-osd-ccs-gcp
+        maxRetries: 3
+        qualifiers:
+          osd:
+            badgeName: "OSD-GCP-PROD"
+            summary: "OSD GCP Production Validation"
+            description: "Production-level validation of OSD on GCP with customer simulation workloads"
+            payloadBadgeStatus: "Yes"
+            labels:
+              - "osd-gcp-production-failure"
+              - "customer-impact"
+            notifications:
+              slack:
+                escalations:
+                  - name: "production-alert"
+                    period: "6h"
+                    minFailures: 1
+                    channel: "#osd-production-alerts"
+                    mentions:
+                      - "@osd-production-oncall"
+                      - "@osd-gcp-lead"
+              jira:
+                project: "OSDPROD"
+                component: "GCP"
+                assignee: "osd-gcp-oncall@redhat.com"
+                summary: "PRODUCTION: OSD GCP failure in {{.Release}}"
+                description: "Production OSD GCP testing has failed. Customer impact possible. Investigate immediately."
+                escalations:
+                  - name: "production-failure"
+                    failures: 1
+                    priority: "critical"
+                    mentions:
+                      - "osd-gcp-oncall"
+                      - "osd-production-manager"
+
+      # ========================================================================
+      # PATTERN 7: Multi-Qualifier Job
+      # ========================================================================
+      # Single job references TWO qualifiers with different overrides for each
+      - ciConfigurationName: telco-5g-ran-du
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran
+        maxRetries: 2
+        qualifiers:
+          # First qualifier: telco with custom labels and notifications
+          telco:
+            labels:
+              - "telco-ran-failure"
+              - "5g-blocker"
+            notifications:
+              slack:
+                escalations:
+                  - name: "telco-alert"
+                    period: "24h"
+                    minFailures: 2
+                    channel: "#forum-telco-ran"
+                    mentions:
+                      - "@ran-du-team"
+                      - "@telco-5g-lead"
+          # Second qualifier: perfscale with custom badge and summary
+          perfscale:
+            badgeName: "5G-PERF"
+            summary: "5G RAN Performance"
+            description: "Performance validation for 5G RAN DU workloads under production load"
+            labels:
+              - "5g-performance-regression"
+
+      # ========================================================================
+      # PATTERN 9: Performance Override with Relaxed Thresholds
+      # ========================================================================
+      # Job overrides perfscale with more relaxed settings for heavy testing
+      - ciConfigurationName: perfscale-cluster-density-heavy
+        ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-perfscale-density
+        maxRetries: 3
+        qualifiers:
+          perfscale:
+            summary: "Cluster Density - Heavy Load"
+            description: "Extreme cluster density testing with maximum pod count and control plane stress"
+            labels:
+              - "density-performance-issue"
+            notifications:
+              slack:
+                escalations:
+                  - name: "perf-alert"
+                    period: "168h"
+                    minFailures: 8
+                    channel: "#forum-perfscale-density"
+                    mentions:
+                      - "@density-testing-team"
+              jira:
+                escalations:
+                  - name: "regression"
+                    overLastRuns: 30
+                    passPercentage: 40
+                    priority: "normal"
+                    mentions:
+                      - "density-lead"
+
+      # ========================================================================
+      # PATTERN 10: Thread Separation (Azure)
+      # ========================================================================
+      # Same qualifier as hypershift-aws but with different thread
+      - ciConfigurationName: hypershift-azure-conformance
+        ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-azure-aks-ovn-conformance
+        maxRetries: 2
+        qualifiers:
+          hypershift:
+            notifications:
+              slack:
+                thread: "hypershift-azure"
+                escalations:
+                  - name: "hypershift-dev"
+                    period: "24h"
+                    minFailures: 2
+                    channel: "#forum-hypershift-azure"
+                    mentions:
+                      - "@hypershift-azure-team"
+              jira:
+                thread: "hypershift-azure"
+                component: "HyperShift-Azure"
+                assignee: "hypershift-azure@redhat.com"
+                summary: "HyperShift Azure failure in {{.Release}}"
+
+# ==============================================================================
+# STATUS - Computed by the Release Controller
+# ==============================================================================
+# The status section is populated and updated by the release-controller as jobs
+# execute and complete. The QualifiersSummary is computed by the
+# QualifiersSummaryController by merging the spec qualifiers with global config.
+
+status:
+  # ----------------------------------------------------------------------------
+  # Conditions - High-level payload state
+  # ----------------------------------------------------------------------------
+  conditions:
+    - type: PayloadCreated
+      status: "True"
+      lastTransitionTime: "2026-03-11T12:00:00Z"
+      reason: ReleaseCreated
+      message: "Release image successfully created"
+
+    - type: PayloadMirrored
+      status: "True"
+      lastTransitionTime: "2026-03-11T12:05:00Z"
+      reason: ReleaseMirrored
+      message: "Release image successfully mirrored to external registry"
+
+    - type: PayloadAccepted
+      status: "False"
+      lastTransitionTime: "2026-03-11T12:05:00Z"
+      reason: JobsPending
+      message: "Waiting for verification jobs to complete"
+
+    - type: PayloadRejected
+      status: "False"
+      lastTransitionTime: "2026-03-11T12:05:00Z"
+      reason: JobsPending
+      message: "No blocking jobs have failed yet"
+
+  # ----------------------------------------------------------------------------
+  # Release Creation Job Result
+  # ----------------------------------------------------------------------------
+  releaseCreationJobResult:
+    coordinates:
+      name: release-4.22.0-0.nightly-2026-03-11-120000
+      namespace: ci-release
+    status: Success
+    message: "Release image created successfully"
+
+  # ----------------------------------------------------------------------------
+  # Release Mirror Job Result
+  # ----------------------------------------------------------------------------
+  releaseMirrorJobResult:
+    coordinates:
+      name: mirror-4.22.0-0.nightly-2026-03-11-120000
+      namespace: ci-release
+    status: Success
+    message: "Release image mirrored to quay.io successfully"
+
+  # ----------------------------------------------------------------------------
+  # Blocking Job Results
+  # ----------------------------------------------------------------------------
+  blockingJobResults:
+    # ROSA - Classic STS (SUCCESS - inherits global config)
+    - ciConfigurationName: rosa-classic-sts-conformance
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-sts-ovn
+      maxRetries: 1
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-rosa-classic-sts-conformance
+            namespace: ci
+            cluster: build01
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:15:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-sts-ovn/1234567890"
+
+    # ROSA - HCP (SUCCESS - with custom labels)
+    - ciConfigurationName: rosa-hcp-conformance
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-hcp-ovn
+      maxRetries: 2
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-rosa-hcp-conformance
+            namespace: ci
+            cluster: build01
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:25:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-hcp-ovn/1234567891"
+
+    # HCM - Cluster Lifecycle (FAILURE - demonstrates escalations)
+    - ciConfigurationName: hcm-cluster-lifecycle
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle
+      maxRetries: 2
+      state: Failure
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-hcm-cluster-lifecycle-0
+            namespace: ci
+            cluster: build02
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:00:00Z"
+          state: Failure
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle/1234567892"
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-hcm-cluster-lifecycle-1
+            namespace: ci
+            cluster: build02
+          startTime: "2026-03-11T13:00:00Z"
+          completionTime: "2026-03-11T13:55:00Z"
+          state: Failure
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle/1234567893"
+
+    # SECURITY - FIPS (PENDING - still running)
+    - ciConfigurationName: security-fips-scan
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan
+      maxRetries: 0
+      state: Pending
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-security-fips-scan
+            namespace: ci
+            cluster: build01
+          startTime: "2026-03-11T12:05:00Z"
+          state: Pending
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/1234567894"
+
+    # HYPERSHIFT - AWS (SUCCESS)
+    - ciConfigurationName: hypershift-aws-conformance
+      ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-aws-ovn-conformance
+      maxRetries: 2
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-hypershift-aws-conformance
+            namespace: ci
+            cluster: build03
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:45:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-aws-ovn-conformance/1234567895"
+
+  # ----------------------------------------------------------------------------
+  # Informing Job Results
+  # ----------------------------------------------------------------------------
+  informingJobResults:
+    # OSD - AWS Interop (SUCCESS - but qualifier disabled)
+    - ciConfigurationName: osd-aws-interop
+      ciConfigurationJobName: periodic-ci-openshift-osde2e-main-nightly-4.22-osd-aws
+      maxRetries: 2
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-osd-aws-interop
+            namespace: ci
+            cluster: build01
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:30:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-osde2e-main-nightly-4.22-osd-aws/1234567896"
+
+    # OSD - GCP Production (SUCCESS - complete override config)
+    - ciConfigurationName: osd-gcp-production
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-osd-ccs-gcp
+      maxRetries: 3
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-osd-gcp-production
+            namespace: ci
+            cluster: build02
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T13:40:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-osd-ccs-gcp/1234567897"
+
+    # TELCO - 5G RAN DU (SUCCESS - multi-qualifier job)
+    - ciConfigurationName: telco-5g-ran-du
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran
+      maxRetries: 2
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-telco-5g-ran-du
+            namespace: ci
+            cluster: build03
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T14:00:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran/1234567898"
+
+    # PERFSCALE - Cluster Density Heavy (SUCCESS - relaxed thresholds)
+    - ciConfigurationName: perfscale-cluster-density-heavy
+      ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-perfscale-density
+      maxRetries: 3
+      state: Success
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-perfscale-cluster-density-heavy
+            namespace: ci
+            cluster: build01
+          startTime: "2026-03-11T12:05:00Z"
+          completionTime: "2026-03-11T14:30:00Z"
+          state: Success
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-perfscale-density/1234567899"
+
+    # HYPERSHIFT - Azure (PENDING)
+    - ciConfigurationName: hypershift-azure-conformance
+      ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-azure-aks-ovn-conformance
+      maxRetries: 2
+      state: Pending
+      results:
+        - coordinates:
+            name: 4.22.0-0.nightly-2026-03-11-120000-hypershift-azure-conformance
+            namespace: ci
+            cluster: build03
+          startTime: "2026-03-11T12:05:00Z"
+          state: Pending
+          humanProwResultsURL: "https://prow.ci.openshift.org/view/gs/origin-ci-test/logs/periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-azure-aks-ovn-conformance/1234567900"
+
+  # ============================================================================
+  # QUALIFIERS SUMMARY - Computed by QualifiersSummaryController
+  # ============================================================================
+  # This section is automatically computed by the QualifiersSummaryController.
+  # It takes the job-level qualifiers from .spec, merges them with global config
+  # (from release-qualifiers-comprehensive.yaml), and aggregates by qualifier ID.
+  #
+  # For each qualifier:
+  # - jobs: All jobs referencing this qualifier
+  # - aggregateState: Overall state (Success/Failure/Pending/Unknown)
+  # - badgeName: Display name from merged config
+  # - badgeEarned: true if enabled AND all jobs succeeded
+  # - badgePropagated: true if badge earned AND PayloadBadgeStatus allows it
+  qualifiersSummary:
+    # --------------------------------------------------------------------------
+    # ROSA Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 2 jobs: rosa-classic-sts-conformance (empty override), rosa-hcp-conformance (labels override)
+    # After merge with global:
+    #   - rosa-classic-sts-conformance: Full global config
+    #   - rosa-hcp-conformance: Global config but with job labels
+    # Both succeeded → aggregateState: Success
+    # Global payloadBadgeStatus: Yes → Badge propagated
+    rosa:
+      jobs:
+        - ciConfigurationName: rosa-classic-sts-conformance
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-sts-ovn
+        - ciConfigurationName: rosa-hcp-conformance
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-hcp-ovn
+      aggregateState: Success
+      badgeName: "ROSA"  # From global config
+      badgeEarned: true      # enabled: true AND aggregateState: Success
+      badgePropagated: true  # badgeEarned: true AND payloadBadgeStatus: Yes
+
+    # --------------------------------------------------------------------------
+    # HCM Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 1 job: hcm-cluster-lifecycle (adds new escalations)
+    # After merge with global:
+    #   - Global escalations (monitor, high, low, normal, high, critical)
+    #   - Job escalations (urgent, blocker) added
+    # Job failed → aggregateState: Failure
+    # Global payloadBadgeStatus: Yes, but badge not earned due to failure
+    hcm:
+      jobs:
+        - ciConfigurationName: hcm-cluster-lifecycle
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle
+      aggregateState: Failure
+      badgeName: "HCM"  # From global config
+      badgeEarned: false     # enabled: true BUT aggregateState: Failure
+      badgePropagated: false # badgeEarned: false
+
+    # --------------------------------------------------------------------------
+    # OSD Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 2 jobs:
+    #   - osd-aws-interop (enabled: false in job)
+    #   - osd-gcp-production (complete override in job)
+    # After merge:
+    #   - osd-aws-interop: enabled: false (disabled, won't count)
+    #   - osd-gcp-production: Uses job config entirely
+    # Only osd-gcp-production counts (enabled job succeeded)
+    # Job payloadBadgeStatus: Yes → Badge propagated (shown as "OSD-GCP-PROD")
+    osd:
+      jobs:
+        - ciConfigurationName: osd-aws-interop
+          ciConfigurationJobName: periodic-ci-openshift-osde2e-main-nightly-4.22-osd-aws
+        - ciConfigurationName: osd-gcp-production
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-osd-ccs-gcp
+      aggregateState: Success  # Only osd-gcp-production counts (enabled)
+      badgeName: "OSD-GCP-PROD"  # From job-level override
+      badgeEarned: true        # enabled job succeeded
+      badgePropagated: true    # badgeEarned: true AND payloadBadgeStatus: Yes
+
+    # --------------------------------------------------------------------------
+    # TELCO Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 1 job: telco-5g-ran-du (labels and notifications override)
+    # After merge with global:
+    #   - Uses job labels and notifications
+    #   - Other fields from global
+    # Job succeeded → aggregateState: Success
+    # Global payloadBadgeStatus: Yes → Badge earned and propagated
+    telco:
+      jobs:
+        - ciConfigurationName: telco-5g-ran-du
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran
+      aggregateState: Success
+      badgeName: "TELCO"  # From global config
+      badgeEarned: true
+      badgePropagated: true
+
+    # --------------------------------------------------------------------------
+    # HYPERSHIFT Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 2 jobs:
+    #   - hypershift-aws-conformance (notification override with thread)
+    #   - hypershift-azure-conformance (notification override with different thread)
+    # After merge with global:
+    #   - Both use job notification config (different threads)
+    #   - Other fields from global
+    # AWS succeeded, Azure pending → aggregateState: Pending
+    # Global payloadBadgeStatus: OnSuccess → Badge NOT propagated (not all Success)
+    hypershift:
+      jobs:
+        - ciConfigurationName: hypershift-aws-conformance
+          ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-aws-ovn-conformance
+        - ciConfigurationName: hypershift-azure-conformance
+          ciConfigurationJobName: periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-azure-aks-ovn-conformance
+      aggregateState: Pending
+      badgeName: "HYPERSHIFT"  # From global config
+      badgeEarned: false     # aggregateState: Pending (not Success)
+      badgePropagated: false # badgeEarned: false
+
+    # --------------------------------------------------------------------------
+    # PERFSCALE Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 2 jobs:
+    #   - telco-5g-ran-du (badgeName, summary, description, labels override)
+    #   - perfscale-cluster-density-heavy (summary, description, labels, notifications override)
+    # After merge:
+    #   - telco-5g-ran-du: Uses "5G-PERF" badge name
+    #   - perfscale-cluster-density-heavy: Uses global "PERFSCALE" badge name with job overrides
+    # Both succeeded → aggregateState: Success
+    # Global payloadBadgeStatus: OnSuccess → Badge earned and propagated
+    # Note: When multiple jobs have different badgeNames, summary could show both or pick one
+    perfscale:
+      jobs:
+        - ciConfigurationName: telco-5g-ran-du
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran
+        - ciConfigurationName: perfscale-cluster-density-heavy
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-e2e-perfscale-density
+      aggregateState: Success
+      badgeName: "PERFSCALE"  # From global (or could show both badges)
+      badgeEarned: true
+      badgePropagated: true
+
+    # --------------------------------------------------------------------------
+    # SECURITY Qualifier Summary
+    # --------------------------------------------------------------------------
+    # 1 job: security-fips-scan (complete override)
+    # After merge:
+    #   - Uses job config entirely (no global fields used)
+    # Job still running → aggregateState: Pending
+    # Job payloadBadgeStatus: Yes, but badge not earned (not succeeded yet)
+    security:
+      jobs:
+        - ciConfigurationName: security-fips-scan
+          ciConfigurationJobName: periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan
+      aggregateState: Pending
+      badgeName: "FIPS"  # From job-level override
+      badgeEarned: false     # aggregateState: Pending (not Success)
+      badgePropagated: false # badgeEarned: false

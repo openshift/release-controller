@@ -1,0 +1,469 @@
+---
+# Comprehensive Release Qualifiers Configuration Example
+#
+# This file demonstrates all features available in the Release Qualifiers system.
+# It showcases 10 different qualifiers representing real-world use cases with varying
+# complexity levels, badge status modes, and notification patterns.
+#
+# Configuration Architecture:
+# - Global qualifiers defined here serve as base configurations
+# - Jobs in ReleaseConfigs reference these qualifiers and can override any field
+# - Merge behavior: strings override when non-empty, bools when non-nil, notifications deep merge
+#
+# See: /home/brawilli/Workspaces/Go/src/github.com/openshift/release-controller/pkg/releasequalifiers/types.go
+
+qualifiers:
+  # ============================================================================
+  # 1. ROSA - Simple Qualifier (Slack-only notifications)
+  # ============================================================================
+  # Demonstrates: Basic qualifier with simple Slack escalation
+  # Badge Status: Yes - Always show at payload level
+  # Use Case: Red Hat OpenShift Service on AWS verification
+  rosa:
+    enabled: true
+    badgeName: "ROSA"
+    summary: "Red Hat OpenShift Service on AWS"
+    description: "Validates ROSA-specific functionality including STS authentication, hosted control planes, and AWS service integrations"
+    payloadBadgeStatus: "Yes"  # Always display badge at payload level
+    labels:
+      - "rosa-failure"
+      - "prevent-promotion"
+    notifications:
+      slack:
+        # Single escalation level - notify after 2 failures within 24 hours
+        escalations:
+          - name: "rosa-team-alert"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-rosa"
+            mentions:
+              - "@rosa-dev-team"
+
+  # ============================================================================
+  # 2. HCM - Complex Qualifier (Full Slack + Jira escalations)
+  # ============================================================================
+  # Demonstrates: Multi-level escalations with both Slack and Jira
+  # Badge Status: Yes - Always show at payload level
+  # Use Case: Hybrid Cloud Management validation
+  hcm:
+    enabled: true
+    badgeName: "HCM"
+    summary: "Hybrid Cloud Management"
+    description: "Comprehensive testing of OpenShift Cluster Manager, fleet management, and multi-cluster orchestration capabilities"
+    payloadBadgeStatus: "Yes"
+    labels:
+      - "hcm-failure"
+      - "ocm-blocker"
+    notifications:
+      slack:
+        escalations:
+          # Monitor level - early warning
+          - name: "monitor"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-ocm-dev"
+            mentions:
+              - "@ocm-support"
+              - "@patch-manager"
+          # High level - escalation to management
+          - name: "high"
+            period: "72h"
+            minFailures: 8
+            channel: "#forum-ocm-escalation"
+            mentions:
+              - "@hcm-escalation-manager"
+              - "@ocm-leadership"
+      jira:
+        project: "OCPBUGS"
+        component: "OCM"
+        assignee: "ocm-team@redhat.com"
+        summary: "HCM qualifier failure in release {{.Release}}"
+        description: "The HCM qualifier has failed validation. Review job results and investigate failures."
+        escalations:
+          # Low priority - 2 consecutive failures
+          - name: "low"
+            failures: 2
+            priority: "low"
+          # Normal priority - 4 failures in last 10 runs
+          - name: "normal"
+            failures: 4
+            overLastRuns: 10
+            priority: "normal"
+          # High priority - 6 failures in last 10 runs
+          - name: "high"
+            failures: 6
+            overLastRuns: 10
+            priority: "high"
+            mentions:
+              - "ocm-lead"
+          # Critical priority - 8 consecutive failures
+          - name: "critical"
+            failures: 8
+            priority: "critical"
+            mentions:
+              - "ocm-lead"
+              - "engineering-manager"
+
+  # ============================================================================
+  # 3. OSD - Medium Complexity (Jira-only with percentage thresholds)
+  # ============================================================================
+  # Demonstrates: Jira notifications with percentage-based escalations
+  # Badge Status: OnSuccess - Only show badge when jobs succeed
+  # Use Case: OpenShift Dedicated platform validation
+  osd:
+    enabled: true
+    badgeName: "OSD"
+    summary: "OpenShift Dedicated"
+    description: "Validates OSD cluster provisioning, management APIs, and customer-facing features across AWS and GCP"
+    payloadBadgeStatus: "OnSuccess"  # Only show badge when qualifier succeeds
+    labels:
+      - "osd-failure"
+    notifications:
+      jira:
+        project: "OSD"
+        component: "Platform"
+        assignee: "osd-sre-team@redhat.com"
+        summary: "OSD qualifier failure - {{.Job}} in {{.Release}}"
+        description: "OSD platform validation has failed. Please investigate cluster provisioning and management API issues."
+        escalations:
+          # Warning - less than 80% pass rate in last 20 runs
+          - name: "warning"
+            overLastRuns: 20
+            passPercentage: 80
+            priority: "low"
+          # Alert - less than 60% pass rate in last 20 runs
+          - name: "alert"
+            overLastRuns: 20
+            passPercentage: 60
+            priority: "normal"
+            mentions:
+              - "osd-team-lead"
+          # Critical - less than 40% pass rate in last 20 runs
+          - name: "critical"
+            overLastRuns: 20
+            passPercentage: 40
+            priority: "high"
+            mentions:
+              - "osd-team-lead"
+              - "osd-engineering-manager"
+
+  # ============================================================================
+  # 4. TELCO - Specialized Configuration
+  # ============================================================================
+  # Demonstrates: Telecommunications and edge computing specific validation
+  # Badge Status: Yes - Always show at payload level
+  # Use Case: Telco 5G and edge workload validation
+  telco:
+    enabled: true
+    badgeName: "TELCO"
+    summary: "Telecommunications & Edge"
+    description: "Validates RAN, DU/CU profiles, PTP, DPDK, SR-IOV, and real-time kernel requirements for telco workloads"
+    payloadBadgeStatus: "Yes"
+    labels:
+      - "telco-failure"
+      - "edge-blocker"
+    notifications:
+      slack:
+        escalations:
+          - name: "telco-alert"
+            period: "48h"
+            minFailures: 3
+            channel: "#forum-telco"
+            mentions:
+              - "@telco-5g-team"
+              - "@cnf-team"
+      jira:
+        project: "CNF"
+        component: "Telco"
+        assignee: "telco-team@redhat.com"
+        summary: "Telco qualifier failure in {{.Release}}"
+        description: "Telco-specific testing has failed. Check RAN functionality, real-time kernel, and edge workload requirements."
+        escalations:
+          - name: "initial"
+            failures: 3
+            priority: "normal"
+          - name: "escalated"
+            failures: 5
+            priority: "high"
+            mentions:
+              - "telco-architect"
+
+  # ============================================================================
+  # 5. HYPERSHIFT - Percentage-based with time windows
+  # ============================================================================
+  # Demonstrates: Hosted control planes with percentage-based escalations
+  # Badge Status: OnSuccess - Only show badge when qualifier succeeds
+  # Use Case: HyperShift hosted control plane validation
+  hypershift:
+    enabled: true
+    badgeName: "HYPERSHIFT"
+    summary: "Hosted Control Planes"
+    description: "Validates HyperShift architecture including hosted control planes on AWS, Azure, and agent-based installations"
+    payloadBadgeStatus: "OnSuccess"
+    labels:
+      - "hypershift-failure"
+    notifications:
+      slack:
+        escalations:
+          - name: "hypershift-dev"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-hypershift"
+            mentions:
+              - "@hypershift-team"
+      jira:
+        project: "HOSTEDCP"
+        component: "HyperShift"
+        assignee: "hypershift-dev@redhat.com"
+        summary: "HyperShift qualifier degraded - {{.Release}}"
+        description: "HyperShift testing shows degraded results. Investigate hosted control plane provisioning and management."
+        escalations:
+          # Use PassPercentage for gradual degradation detection
+          - name: "degraded"
+            overLastRuns: 15
+            passPercentage: 70
+            priority: "low"
+          - name: "unhealthy"
+            overLastRuns: 15
+            passPercentage: 50
+            priority: "normal"
+            mentions:
+              - "hypershift-lead"
+          - name: "critical"
+            overLastRuns: 15
+            passPercentage: 30
+            priority: "high"
+            mentions:
+              - "hypershift-lead"
+              - "hypershift-manager"
+
+  # ============================================================================
+  # 6. METAL - Time-bounded escalations
+  # ============================================================================
+  # Demonstrates: Bare metal IPI with time-period based escalations
+  # Badge Status: Yes - Always show at payload level
+  # Use Case: Bare metal installation and infrastructure validation
+  metal:
+    enabled: true
+    badgeName: "METAL"
+    summary: "Bare Metal IPI"
+    description: "Validates bare metal IPI installations including Ironic integration, RAID configuration, and hardware provisioning"
+    payloadBadgeStatus: "Yes"
+    labels:
+      - "metal-failure"
+      - "baremetal-blocker"
+    notifications:
+      slack:
+        escalations:
+          - name: "metal-team"
+            period: "48h"
+            minFailures: 3
+            channel: "#forum-metal"
+            mentions:
+              - "@metal-ipi-team"
+      jira:
+        project: "METAL"
+        component: "IPI"
+        assignee: "metal-team@redhat.com"
+        summary: "Bare metal qualifier failure in {{.Release}}"
+        description: "Bare metal IPI testing has failed. Check Ironic services, BMC connectivity, and hardware provisioning."
+        escalations:
+          # Time-bounded escalations - consider last 2 days of runs
+          - name: "recent-issues"
+            overPeriod: "2d"
+            overLastRuns: 10
+            failures: 3
+            priority: "normal"
+          # More severe - last 3 days with stricter criteria
+          - name: "persistent-issues"
+            overPeriod: "3d"
+            overLastRuns: 15
+            passPercentage: 60
+            priority: "high"
+            mentions:
+              - "metal-lead"
+
+  # ============================================================================
+  # 7. VSPHERE - Disabled Example
+  # ============================================================================
+  # Demonstrates: How to disable a qualifier globally
+  # Badge Status: No - Never show badge at payload level (also disabled)
+  # Use Case: vSphere platform validation (currently disabled for maintenance)
+  vsphere:
+    enabled: false  # Qualifier is globally disabled
+    badgeName: "VSPHERE"
+    summary: "VMware vSphere"
+    description: "Validates vSphere IPI and UPI installations including vCenter integration, storage, and networking"
+    payloadBadgeStatus: "No"  # Even if enabled, don't show at payload level
+    labels:
+      - "vsphere-failure"
+    # Notifications configured but won't trigger while disabled
+    notifications:
+      slack:
+        escalations:
+          - name: "vsphere-team"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-vmware"
+            mentions:
+              - "@vsphere-team"
+
+  # ============================================================================
+  # 8. UPGRADE - Critical Path Qualifier
+  # ============================================================================
+  # Demonstrates: Upgrade testing with strict consecutive failure tracking
+  # Badge Status: OnFailure - Only show badge when jobs fail
+  # Use Case: Upgrade path validation and compatibility testing
+  upgrade:
+    enabled: true
+    badgeName: "UPGRADE"
+    summary: "Upgrade Testing"
+    description: "Validates upgrade paths including micro, minor, and EUS upgrades across all supported platforms"
+    payloadBadgeStatus: "OnFailure"  # Only show badge when upgrades fail
+    labels:
+      - "upgrade-failure"
+      - "upgrade-blocker"
+      - "prevent-promotion"
+    notifications:
+      slack:
+        escalations:
+          # Immediate alert on first failure
+          - name: "immediate"
+            period: "1h"
+            minFailures: 1
+            channel: "#forum-ocp-upgrades"
+            mentions:
+              - "@upgrade-oncall"
+          # Escalate if problem persists
+          - name: "persistent"
+            period: "24h"
+            minFailures: 3
+            channel: "#forum-ocp-upgrades"
+            mentions:
+              - "@upgrade-oncall"
+              - "@upgrade-team-lead"
+      jira:
+        project: "OCPBUGS"
+        component: "Upgrades"
+        assignee: "upgrades-team@redhat.com"
+        summary: "Critical upgrade failure in {{.Release}}"
+        description: "Upgrade testing has failed. This is a blocker for release acceptance. Investigate immediately."
+        escalations:
+          # Very strict - single failure creates ticket
+          - name: "first-failure"
+            failures: 1
+            priority: "high"
+            mentions:
+              - "upgrade-oncall"
+          # Consecutive failures escalate quickly
+          - name: "consecutive"
+            failures: 2
+            priority: "critical"
+            mentions:
+              - "upgrade-oncall"
+              - "upgrade-team-lead"
+              - "release-manager"
+
+  # ============================================================================
+  # 9. PERFSCALE - Relaxed Thresholds
+  # ============================================================================
+  # Demonstrates: Performance testing with relaxed failure thresholds
+  # Badge Status: OnSuccess - Only show badge when tests pass
+  # Use Case: Performance and scalability validation
+  perfscale:
+    enabled: true
+    badgeName: "PERFSCALE"
+    summary: "Performance & Scale"
+    description: "Validates cluster performance, scalability limits, control plane density, and resource utilization under load"
+    payloadBadgeStatus: "OnSuccess"
+    labels:
+      - "performance-regression"
+    notifications:
+      slack:
+        escalations:
+          # Higher threshold - performance tests can be flaky
+          - name: "perf-alert"
+            period: "72h"
+            minFailures: 5
+            channel: "#forum-perfscale"
+            mentions:
+              - "@perfscale-team"
+      jira:
+        project: "PERFSCALE"
+        component: "Testing"
+        assignee: "perfscale-team@redhat.com"
+        summary: "Performance regression detected in {{.Release}}"
+        description: "Performance or scale testing shows regression. Review metrics and compare against baseline."
+        escalations:
+          # Allow more failures before escalating - performance can vary
+          - name: "trend"
+            overLastRuns: 20
+            passPercentage: 65  # Lower threshold than typical
+            priority: "low"
+          - name: "regression"
+            overLastRuns: 20
+            passPercentage: 50
+            priority: "normal"
+            mentions:
+              - "perfscale-lead"
+
+  # ============================================================================
+  # 10. SECURITY - Strict Requirements
+  # ============================================================================
+  # Demonstrates: Security scanning with strict requirements and multiple escalations
+  # Badge Status: Yes - Always show at payload level (security is critical)
+  # Use Case: Security vulnerability scanning and compliance validation
+  security:
+    enabled: true
+    badgeName: "SECURITY"
+    summary: "Security Validation"
+    description: "Validates security compliance including CVE scanning, FIPS mode, SELinux policies, and security benchmarks"
+    payloadBadgeStatus: "Yes"
+    labels:
+      - "security-failure"
+      - "security-blocker"
+      - "prevent-promotion"
+    notifications:
+      slack:
+        escalations:
+          # Immediate notification
+          - name: "security-alert"
+            period: "1h"
+            minFailures: 1
+            channel: "#forum-security"
+            mentions:
+              - "@security-oncall"
+              - "@prodsec-team"
+          # Critical escalation
+          - name: "security-critical"
+            period: "24h"
+            minFailures: 2
+            channel: "#forum-security-critical"
+            mentions:
+              - "@security-oncall"
+              - "@prodsec-team"
+              - "@security-manager"
+      jira:
+        project: "SECURITY"
+        component: "Scanning"
+        assignee: "prodsec@redhat.com"
+        summary: "CRITICAL: Security qualifier failure in {{.Release}}"
+        description: "Security validation has failed. This may indicate CVE violations, FIPS compliance issues, or security policy violations. Do not promote this release."
+        escalations:
+          # Zero tolerance for security failures
+          - name: "immediate"
+            failures: 1
+            priority: "critical"
+            mentions:
+              - "security-oncall"
+              - "prodsec-lead"
+          - name: "persistent"
+            failures: 2
+            priority: "blocker"
+            mentions:
+              - "security-oncall"
+              - "prodsec-lead"
+              - "security-manager"
+              - "release-manager"
+            needsInfo:
+              - "component-security-contact"

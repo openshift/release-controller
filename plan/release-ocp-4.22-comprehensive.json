@@ -1,0 +1,463 @@
+{
+  "name": "4.22.0-0.nightly",
+  "to": "release",
+  "message": "This release contains COMPREHENSIVE EXAMPLES of Release Qualifier configurations",
+  "mirrorPrefix": "4.22-art-latest",
+  "expires": "336h",
+  "maxUnreadyReleases": 1,
+  "minCreationIntervalSeconds": 14400,
+  "referenceMode": "source",
+  "pullSecretName": "source",
+  "verify": {
+    "_comment_pattern_1": "===== PATTERN 1: Simple Inheritance =====",
+    "_comment_pattern_1_desc": "Empty qualifier object {} inherits all global configuration",
+    "rosa-classic-sts-conformance": {
+      "optional": false,
+      "maxRetries": 1,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-sts-ovn"
+      },
+      "qualifiers": {
+        "rosa": {}
+      }
+    },
+
+    "_comment_pattern_2": "===== PATTERN 2: Labels-Only Override =====",
+    "_comment_pattern_2_desc": "Replace failure labels while keeping all other global settings",
+    "rosa-hcp-conformance": {
+      "optional": false,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-rosa-hcp-ovn"
+      },
+      "qualifiers": {
+        "rosa": {
+          "_comment": "Job-specific labels completely replace global labels",
+          "labels": [
+            "rosa-hcp-failure",
+            "hosted-cp-blocker"
+          ]
+        }
+      }
+    },
+
+    "_comment_pattern_3": "===== PATTERN 3: Adding New Escalations =====",
+    "_comment_pattern_3_desc": "Add new escalation level to existing global escalations (merge by name)",
+    "hcm-cluster-lifecycle": {
+      "optional": false,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-lifecycle"
+      },
+      "qualifiers": {
+        "hcm": {
+          "_comment": "Add 'urgent' escalation to existing monitor/high/low/normal/high/critical",
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "_comment": "New escalation - will be added to global escalations",
+                  "name": "urgent",
+                  "period": "12h",
+                  "minFailures": 5,
+                  "channel": "#forum-ocm-urgent",
+                  "mentions": [
+                    "@ocm-director",
+                    "@hcm-vp"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "escalations": [
+                {
+                  "_comment": "New Jira escalation - blocker level",
+                  "name": "blocker",
+                  "failures": 10,
+                  "priority": "blocker",
+                  "mentions": [
+                    "ocm-director"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_pattern_4": "===== PATTERN 4: Replacing Existing Escalations =====",
+    "_comment_pattern_4_desc": "Replace existing escalation by using the same name",
+    "hcm-fleet-management": {
+      "optional": true,
+      "maxRetries": 1,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-hcm-fleet"
+      },
+      "qualifiers": {
+        "hcm": {
+          "_comment": "Replace the 'high' Slack escalation with job-specific thresholds",
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "_comment": "Replaces global 'high' escalation (same name = replacement)",
+                  "name": "high",
+                  "period": "48h",
+                  "minFailures": 5,
+                  "channel": "#forum-fleet-critical",
+                  "mentions": [
+                    "@fleet-team",
+                    "@hcm-fleet-lead"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "escalations": [
+                {
+                  "_comment": "Replace global 'normal' escalation with stricter criteria",
+                  "name": "normal",
+                  "failures": 3,
+                  "overLastRuns": 10,
+                  "priority": "normal",
+                  "mentions": [
+                    "fleet-lead"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_pattern_5": "===== PATTERN 5: Disabling a Qualifier for Specific Job =====",
+    "_comment_pattern_5_desc": "Set enabled: false to disable qualifier for this job only",
+    "osd-aws-interop": {
+      "optional": true,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-osde2e-main-nightly-4.22-osd-aws"
+      },
+      "qualifiers": {
+        "osd": {
+          "_comment": "Disable OSD qualifier for this specific interop test",
+          "enabled": false
+        }
+      }
+    },
+
+    "_comment_pattern_6": "===== PATTERN 6: Complete Override =====",
+    "_comment_pattern_6_desc": "Replace most global settings with job-specific configuration",
+    "osd-gcp-production": {
+      "optional": false,
+      "maxRetries": 3,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-osd-ccs-gcp"
+      },
+      "qualifiers": {
+        "osd": {
+          "_comment": "Completely different configuration for production GCP testing",
+          "badgeName": "OSD-GCP-PROD",
+          "summary": "OSD GCP Production Validation",
+          "description": "Production-level validation of OSD on GCP with customer simulation workloads",
+          "payloadBadgeStatus": "Yes",
+          "labels": [
+            "osd-gcp-production-failure",
+            "customer-impact"
+          ],
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "name": "production-alert",
+                  "period": "6h",
+                  "minFailures": 1,
+                  "channel": "#osd-production-alerts",
+                  "mentions": [
+                    "@osd-production-oncall",
+                    "@osd-gcp-lead"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "project": "OSDPROD",
+              "component": "GCP",
+              "assignee": "osd-gcp-oncall@redhat.com",
+              "summary": "PRODUCTION: OSD GCP failure in {{.Release}}",
+              "description": "Production OSD GCP testing has failed. Customer impact possible. Investigate immediately.",
+              "escalations": [
+                {
+                  "name": "production-failure",
+                  "failures": 1,
+                  "priority": "critical",
+                  "mentions": [
+                    "osd-gcp-oncall",
+                    "osd-production-manager"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_pattern_7": "===== PATTERN 7: Multi-Qualifier Job =====",
+    "_comment_pattern_7_desc": "Single job can reference multiple qualifiers with different overrides",
+    "telco-5g-ran-du": {
+      "optional": false,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-telco-5g-ran"
+      },
+      "qualifiers": {
+        "telco": {
+          "_comment": "Telco qualifier with job-specific labels",
+          "labels": [
+            "telco-ran-failure",
+            "5g-blocker"
+          ],
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "_comment": "Replace telco-alert with RAN-specific escalation",
+                  "name": "telco-alert",
+                  "period": "24h",
+                  "minFailures": 2,
+                  "channel": "#forum-telco-ran",
+                  "mentions": [
+                    "@ran-du-team",
+                    "@telco-5g-lead"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "perfscale": {
+          "_comment": "Also track performance for this intensive telco workload",
+          "badgeName": "5G-PERF",
+          "summary": "5G RAN Performance",
+          "description": "Performance validation for 5G RAN DU workloads under production load",
+          "labels": [
+            "5g-performance-regression"
+          ]
+        }
+      }
+    },
+
+    "_comment_pattern_8": "===== PATTERN 8: Security Override with Custom Escalations =====",
+    "_comment_pattern_8_desc": "Security-critical job with custom notification escalations",
+    "security-fips-scan": {
+      "optional": false,
+      "maxRetries": 0,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan"
+      },
+      "qualifiers": {
+        "security": {
+          "_comment": "FIPS-specific security validation with immediate escalation",
+          "badgeName": "FIPS",
+          "summary": "FIPS Compliance Validation",
+          "description": "Validates FIPS 140-2 compliance including cryptographic module validation and approved algorithms",
+          "labels": [
+            "fips-failure",
+            "compliance-blocker",
+            "security-critical"
+          ],
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "_comment": "Replace security-alert with FIPS-specific escalation",
+                  "name": "security-alert",
+                  "period": "1h",
+                  "minFailures": 1,
+                  "channel": "#forum-fips-compliance",
+                  "mentions": [
+                    "@fips-compliance-team",
+                    "@security-architect"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "project": "SECURITY",
+              "component": "FIPS",
+              "assignee": "fips-team@redhat.com",
+              "summary": "CRITICAL: FIPS compliance failure in {{.Release}}",
+              "description": "FIPS validation has failed. This is a compliance violation and blocks release. Do not ship this payload.",
+              "escalations": [
+                {
+                  "_comment": "Replace immediate escalation with FIPS-specific",
+                  "name": "immediate",
+                  "failures": 1,
+                  "priority": "blocker",
+                  "mentions": [
+                    "fips-lead",
+                    "compliance-manager",
+                    "legal-contact"
+                  ],
+                  "needsInfo": [
+                    "crypto-team"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_pattern_9": "===== PATTERN 9: Performance Override with Relaxed Thresholds =====",
+    "_comment_pattern_9_desc": "Adjust thresholds for specific performance testing scenarios",
+    "perfscale-cluster-density-heavy": {
+      "optional": true,
+      "maxRetries": 3,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-perfscale-density"
+      },
+      "qualifiers": {
+        "perfscale": {
+          "_comment": "Even more relaxed thresholds for heavy density testing",
+          "summary": "Cluster Density - Heavy Load",
+          "description": "Extreme cluster density testing with maximum pod count and control plane stress",
+          "labels": [
+            "density-performance-issue"
+          ],
+          "notifications": {
+            "slack": {
+              "escalations": [
+                {
+                  "_comment": "Replace perf-alert with higher threshold for flaky test",
+                  "name": "perf-alert",
+                  "period": "168h",
+                  "minFailures": 8,
+                  "channel": "#forum-perfscale-density",
+                  "mentions": [
+                    "@density-testing-team"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "escalations": [
+                {
+                  "_comment": "Very relaxed - only escalate on severe regression",
+                  "name": "regression",
+                  "overLastRuns": 30,
+                  "passPercentage": 40,
+                  "priority": "normal",
+                  "mentions": [
+                    "density-lead"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_pattern_10": "===== PATTERN 10: Thread Separation for Job-Specific Notifications =====",
+    "_comment_pattern_10_desc": "Use different threads to separate notifications for the same qualifier across jobs",
+    "hypershift-aws-conformance": {
+      "optional": false,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-aws-ovn-conformance"
+      },
+      "qualifiers": {
+        "hypershift": {
+          "_comment": "Use thread to separate AWS notifications from other platforms",
+          "notifications": {
+            "slack": {
+              "_comment": "Thread ensures AWS failures go to separate Slack thread",
+              "thread": "hypershift-aws",
+              "escalations": [
+                {
+                  "_comment": "Replace hypershift-dev with AWS-specific escalation",
+                  "name": "hypershift-dev",
+                  "period": "24h",
+                  "minFailures": 2,
+                  "channel": "#forum-hypershift-aws",
+                  "mentions": [
+                    "@hypershift-aws-team"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "_comment": "Thread ensures separate Jira tickets for AWS",
+              "thread": "hypershift-aws",
+              "component": "HyperShift-AWS",
+              "assignee": "hypershift-aws@redhat.com",
+              "summary": "HyperShift AWS failure in {{.Release}}"
+            }
+          }
+        }
+      }
+    },
+
+    "hypershift-azure-conformance": {
+      "optional": true,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-hypershift-release-4.22-periodics-e2e-azure-aks-ovn-conformance"
+      },
+      "qualifiers": {
+        "hypershift": {
+          "_comment": "Different thread for Azure - separate notifications from AWS",
+          "notifications": {
+            "slack": {
+              "_comment": "Different thread = different Slack conversation",
+              "thread": "hypershift-azure",
+              "escalations": [
+                {
+                  "_comment": "Azure-specific team in separate thread",
+                  "name": "hypershift-dev",
+                  "period": "24h",
+                  "minFailures": 2,
+                  "channel": "#forum-hypershift-azure",
+                  "mentions": [
+                    "@hypershift-azure-team"
+                  ]
+                }
+              ]
+            },
+            "jira": {
+              "_comment": "Different thread = separate Jira ticket series",
+              "thread": "hypershift-azure",
+              "component": "HyperShift-Azure",
+              "assignee": "hypershift-azure@redhat.com",
+              "summary": "HyperShift Azure failure in {{.Release}}"
+            }
+          }
+        }
+      }
+    },
+
+    "_comment_additional": "===== Additional Jobs Without Qualifiers =====",
+    "_comment_additional_desc": "Standard jobs without qualifier configuration for comparison",
+    "aws-ovn-upgrade-micro": {
+      "optional": false,
+      "maxRetries": 2,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade"
+      },
+      "upgrade": true
+    },
+
+    "metal-ipi-ovn-ipv6": {
+      "optional": false,
+      "maxRetries": 1,
+      "prowJob": {
+        "name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-metal-ipi-ovn-ipv6"
+      }
+    }
+  }
+}
