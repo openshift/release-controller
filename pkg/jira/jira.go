@@ -341,16 +341,22 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 		c.commentIssue(&errs, issue, message)
 
 		if success {
-			klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
-			if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
-				errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+			// Ensure we're not duplicating messages
+			if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusVerified) {
+				klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
+				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
+					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				}
 			}
 		} else {
 			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.Key, issue.Fields.Status.Name)
 			if verifyLater {
-				klog.V(4).Infof("Updating issue %s (current status %s) to ON_QA status", issue.ID, issue.Fields.Status.Name)
-				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusOnQA); err != nil {
-					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				// Ensure we're not duplicating messages
+				if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
+					klog.V(4).Infof("Updating issue %s (current status %s) to ON_QA status", issue.ID, issue.Fields.Status.Name)
+					if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusOnQA); err != nil {
+						errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+					}
 				}
 			}
 		}
