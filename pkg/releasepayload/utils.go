@@ -32,11 +32,17 @@ func GenerateVerificationStatusMap(payload *v1alpha1.ReleasePayload, status *rel
 
 func convertToVerificationStatusMapResult(job v1alpha1.JobStatus) (*releasecontroller.VerificationStatus, bool) {
 	url := getVerificationStatusUrl(job.JobRunResults)
+	state := getVerificationStatusState(job.AggregateState)
+	// If the job appears successful but has no URL, it's likely a freshly created job
+	// that hasn't had results populated yet — treat it as pending rather than successful.
+	if state == releasecontroller.ReleaseVerificationStateSucceeded && url == "" {
+		state = releasecontroller.ReleaseVerificationStatePending
+	}
 	status := &releasecontroller.VerificationStatus{
-		Retries:   getVerificationStatusRetries(job),
+		Retries:             getVerificationStatusRetries(job),
 		PreviousAttemptURLs: getVerificationStatusPreviousAttemptURLs(job.JobRunResults, url),
-		State:     getVerificationStatusState(job.AggregateState),
-		URL:       url,
+		State:               state,
+		URL:                 url,
 	}
 	return status, true
 }
