@@ -144,6 +144,86 @@ func Test_getVerificationStatusRetries(t *testing.T) {
 	}
 }
 
+func Test_convertToVerificationStatusMapResult(t *testing.T) {
+	tests := []struct {
+		name      string
+		job       v1alpha1.JobStatus
+		wantState string
+	}{
+		{
+			name: "Unknown state with no URL returns Pending",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateUnknown,
+			},
+			wantState: releasecontroller.ReleaseVerificationStatePending,
+		},
+		{
+			name: "Unknown state with URL returns Succeeded",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateUnknown,
+				JobRunResults: []v1alpha1.JobRunResult{
+					{
+						HumanProwResultsURL: "https://abc.123/",
+						State:               v1alpha1.JobRunStateSuccess,
+					},
+				},
+			},
+			wantState: releasecontroller.ReleaseVerificationStateSucceeded,
+		},
+		{
+			name: "Success state with URL returns Succeeded",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateSuccess,
+				JobRunResults: []v1alpha1.JobRunResult{
+					{
+						HumanProwResultsURL: "https://abc.123/",
+						State:               v1alpha1.JobRunStateSuccess,
+					},
+				},
+			},
+			wantState: releasecontroller.ReleaseVerificationStateSucceeded,
+		},
+		{
+			name: "Success state with no URL returns Pending",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateSuccess,
+			},
+			wantState: releasecontroller.ReleaseVerificationStatePending,
+		},
+		{
+			name: "Pending state returns Pending",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStatePending,
+			},
+			wantState: releasecontroller.ReleaseVerificationStatePending,
+		},
+		{
+			name: "Failure state returns Failed",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateFailure,
+				JobRunResults: []v1alpha1.JobRunResult{
+					{
+						HumanProwResultsURL: "https://abc.123/",
+						State:               v1alpha1.JobRunStateFailure,
+					},
+				},
+			},
+			wantState: releasecontroller.ReleaseVerificationStateFailed,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, ok := convertToVerificationStatusMapResult(tt.job)
+			if !ok {
+				t.Fatalf("%s: expected ok to be true", tt.name)
+			}
+			if result.State != tt.wantState {
+				t.Errorf("%s: Expected state %v, got %v", tt.name, tt.wantState, result.State)
+			}
+		})
+	}
+}
+
 func Test_getVerificationStatusState(t *testing.T) {
 	tests := []struct {
 		name  string
