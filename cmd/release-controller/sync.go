@@ -382,7 +382,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				}
 				if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
-						fromPullSpec := releasecontroller.FindPublicImagePullSpec(release.Target, tags[0].Name)
+						fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0].Name)
 						if len(fromPullSpec) == 0 {
 							klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
 							return
@@ -393,7 +393,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 							return
 						}
 
-						toPullSpec := releasecontroller.FindPublicImagePullSpec(release.Target, tag.Name)
+						toPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
 						if len(toPullSpec) == 0 {
 							klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
 							return
@@ -434,7 +434,12 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			return fmt.Errorf("mirror hash for %q does not match, release cannot be created", tag.Name)
 		}
 
-		job, err := c.ensureReleaseJob(release, tag.Name, mirror)
+		var job *batchv1.Job
+		if releasecontroller.IsReferenceRelease(release) {
+			job, err = c.ensureReferenceReleaseJob(release, tag.Name, mirror)
+		} else {
+			job, err = c.ensureReleaseJob(release, tag.Name, mirror)
+		}
 		if err != nil || job == nil {
 			return err
 		}
@@ -455,13 +460,23 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			}
 			if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 				go func() {
-					fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tags[0].Name)
+					fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0].Name)
+					if len(fromPullSpec) == 0 {
+						klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
+						return
+					}
+					fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
 					if err != nil {
 						klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
 						return
 					}
 
-					toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, tag.Name)
+					toPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
+					if len(toPullSpec) == 0 {
+						klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
+						return
+					}
+					toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
 					if err != nil {
 						klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
 						return

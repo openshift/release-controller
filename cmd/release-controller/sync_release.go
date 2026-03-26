@@ -53,6 +53,90 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 	})
 }
 
+func (c *Controller) ensureReferenceReleaseJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
+	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
+		job, err := buildReferenceReleaseJob(release, name, mirror, c.manifestListMode)
+		if err != nil {
+			return nil, err
+		}
+		klog.V(2).Infof("Running reference release creation job %s/%s for %s", c.jobNamespace, job.Name, name)
+		return job, nil
+	})
+}
+
+func buildReferenceReleaseJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream, manifestListMode bool) (*batchv1.Job, error) {
+	if release.Config.ReferenceRelease == nil {
+		return nil, fmt.Errorf("release %q has no ReferenceRelease configuration", name)
+	}
+	toImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferencePayloadTag(name))
+	cliImage := release.Config.OverrideCLIImage
+	if len(cliImage) == 0 {
+		if cliTag := releasecontroller.FindSpecTag(mirror.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
+			cliImage = cliTag.From.Name
+		}
+	}
+	if len(cliImage) == 0 {
+		return nil, fmt.Errorf("unable to determine CLI image for reference payload release: set overrideCLIImage or ensure a 'cli' tag exists in the source imagestream")
+	}
+
+	secretName := release.Config.ReferenceRelease.SecretName
+	if len(secretName) == 0 {
+		secretName = release.Config.PullSecretName
+	}
+	job, prefix := newReleaseJobBase(name, cliImage, secretName)
+
+	keepManifestList := "false"
+	if manifestListMode && !release.Config.DisableManifestListMode {
+		keepManifestList = "true"
+	}
+
+	job.Spec.Template.Spec.Containers[0].Command = []string{
+		"/bin/bash", "-c",
+		prefix + `
+			oc get imagestream "$1" -n "$2" -o yaml > /tmp/mirror-full.yaml
+			awk '/^status:/{s=1;next} s&&/^[^ ]/{s=0} !s' /tmp/mirror-full.yaml > /tmp/mirror.yaml
+			oc adm release new "--name=$3" "--from-image-stream-file=/tmp/mirror.yaml" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"
+			`,
+		"", mirror.Name, mirror.Namespace, name, toImage, release.Config.ReferenceMode, keepManifestList,
+	}
+
+	job.Annotations[releasecontroller.ReleaseAnnotationSource] = mirror.Annotations[releasecontroller.ReleaseAnnotationSource]
+	job.Annotations[releasecontroller.ReleaseAnnotationTarget] = mirror.Annotations[releasecontroller.ReleaseAnnotationTarget]
+	job.Annotations[releasecontroller.ReleaseAnnotationGeneration] = strconv.FormatInt(release.Target.Generation, 10)
+	job.Annotations[releasecontroller.ReleaseAnnotationReleaseTag] = mirror.Annotations[releasecontroller.ReleaseAnnotationReleaseTag]
+
+	return job, nil
+}
+
+func buildReferenceRemovalJob(release *releasecontroller.Release, name, cliImage string) (*batchv1.Job, error) {
+	if release.Config.ReferenceRelease == nil {
+		return nil, fmt.Errorf("release %q has no ReferenceRelease configuration", name)
+	}
+	fromImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferencePayloadTag(name))
+	toImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferenceRemovalTag(name))
+
+	secretName := release.Config.ReferenceRelease.SecretName
+	if len(secretName) == 0 {
+		secretName = release.Config.PullSecretName
+	}
+	job, prefix := newReleaseJobBase(referenceRemovalJobName(name), cliImage, secretName)
+
+	job.Spec.Template.Spec.Containers[0].Command = []string{
+		"/bin/bash", "-c",
+		prefix + `
+			oc image mirror --keep-manifest-list=true $1 $2
+			`,
+		"",
+		fromImage, toImage,
+	}
+
+	return job, nil
+}
+
+func referenceRemovalJobName(tagName string) string {
+	return fmt.Sprintf("remove-%s", tagName)
+}
+
 func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream, metadataJSON string) (*batchv1.Job, error) {
 	ref := releasecontroller.FindTagReference(release.Source, name)
 	generation := *ref.Generation
@@ -380,7 +464,7 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		return nil, nil
 	}
 	return c.ensureJob(releaseMirrorJobName(name), nil, func() (*batchv1.Job, error) {
-		fromImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
+		fromImage := releasecontroller.ReleasePullSpec(release, name)
 		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, name)
 
 		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)

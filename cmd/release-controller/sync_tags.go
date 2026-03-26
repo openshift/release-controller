@@ -11,6 +11,7 @@ import (
 
 	"github.com/blang/semver"
 
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -30,6 +31,7 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 			releasecontroller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 			releasecontroller.ReleaseAnnotationPhase:             releasecontroller.ReleasePhasePending,
 		},
+		Reference:    releasecontroller.HasReferenceSpecTags(release.Source),
 		ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
@@ -98,6 +100,7 @@ func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Releas
 	}
 	origin.From = tag.From
 	origin.ImportPolicy = tag.ImportPolicy
+	origin.Reference = tag.Reference
 
 	klog.V(2).Infof("Updating next tag for %s to be %s", release.Config.Name, next)
 	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
@@ -109,6 +112,16 @@ func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Releas
 }
 
 func (c *Controller) removeReleaseTags(release *releasecontroller.Release, removeTags []*imagev1.TagReference) error {
+	if releasecontroller.IsReferenceRelease(release) {
+		allComplete, err := c.ensureReferenceRemovalTags(release, removeTags)
+		if err != nil {
+			return err
+		}
+		if !allComplete {
+			return nil
+		}
+	}
+
 	for _, tag := range removeTags {
 		ctx := context.TODO()
 		name := fmt.Sprintf("%s:%s", release.Target.Name, tag.Name)
@@ -142,6 +155,50 @@ func (c *Controller) removeReleaseTags(release *releasecontroller.Release, remov
 		}
 	}
 	return nil
+}
+
+// ensureReferenceRemovalTags creates jobs to push remove__ prefixed tags to the
+// ReferenceRepository for each tag being removed. Returns true when all jobs
+// have completed successfully.
+func (c *Controller) ensureReferenceRemovalTags(release *releasecontroller.Release, removeTags []*imagev1.TagReference) (bool, error) {
+	cliImage := release.Config.OverrideCLIImage
+	if len(cliImage) == 0 {
+		if cliTag := releasecontroller.FindSpecTag(release.Source.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
+			cliImage = cliTag.From.Name
+		}
+	}
+	if len(cliImage) == 0 {
+		klog.Warningf("Unable to determine CLI image for reference removal tags, skipping removal tagging")
+		return true, nil
+	}
+
+	allComplete := true
+	for _, tag := range removeTags {
+		job, err := c.ensureJob(referenceRemovalJobName(tag.Name), nil, func() (*batchv1.Job, error) {
+			job, err := buildReferenceRemovalJob(release, tag.Name, cliImage)
+			if err != nil {
+				return nil, err
+			}
+			klog.V(2).Infof("Running reference removal job %s/%s for %s", c.jobNamespace, job.Name, tag.Name)
+			return job, nil
+		})
+		if err != nil {
+			return false, err
+		}
+		if job == nil {
+			continue
+		}
+		succeeded, complete := jobIsComplete(job)
+		if !complete {
+			klog.V(2).Infof("Waiting for reference removal job %s to complete for %s", job.Name, tag.Name)
+			allComplete = false
+			continue
+		}
+		if !succeeded {
+			klog.Warningf("Reference removal job %s failed for %s, proceeding with tag deletion", job.Name, tag.Name)
+		}
+	}
+	return allComplete, nil
 }
 
 func (c *Controller) setReleaseAnnotation(release *releasecontroller.Release, phase string, annotations map[string]string, names ...string) error {

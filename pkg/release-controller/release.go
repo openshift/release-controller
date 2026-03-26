@@ -97,8 +97,12 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 	}
 
 	if len(is.Status.Tags) == 0 {
-		klog.V(4).Infof("The release input has no status tags, waiting")
-		return nil, false, nil
+		if len(is.Spec.Tags) > 0 && HasReferenceSpecTags(is) {
+			klog.V(4).Infof("The release input has no status tags, but has reference true spec tags, assuming reference-based release")
+		} else {
+			klog.V(4).Infof("The release input has no status tags, waiting")
+			return nil, false, nil
+		}
 	}
 
 	switch cfg.As {
@@ -206,6 +210,13 @@ func ReleaseGenerationFromObject(name string, annotations map[string]string) (in
 }
 
 func HashSpecTagImageDigests(is *imagev1.ImageStream) string {
+	if HasReferenceSpecTags(is) {
+		return hashReferenceSpecTags(is)
+	}
+	return hashStatusTags(is)
+}
+
+func hashStatusTags(is *imagev1.ImageStream) string {
 	h := sha256.New()
 	for _, tag := range is.Status.Tags {
 		if len(tag.Items) == 0 {
@@ -217,6 +228,20 @@ func HashSpecTagImageDigests(is *imagev1.ImageStream) string {
 			input = latest.DockerImageReference
 		}
 		h.Write([]byte(input))
+	}
+	return fmt.Sprintf("sha256:%x", h.Sum(nil))
+}
+
+// hashReferenceSpecTags computes a hash from the spec tags of an imagestream
+// whose tags have reference: true. These tags are not imported, so status
+// fields are not populated; we hash the From reference instead.
+func hashReferenceSpecTags(is *imagev1.ImageStream) string {
+	h := sha256.New()
+	for _, tag := range is.Spec.Tags {
+		if tag.From == nil {
+			continue
+		}
+		h.Write([]byte(tag.From.Name))
 	}
 	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
@@ -236,6 +261,18 @@ func Int32p(i int32) *int32 {
 func ContainsTagReference(tags []*imagev1.TagReference, name string) bool {
 	for _, tag := range tags {
 		if name == tag.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// HasReferenceSpecTags returns true if any tag in the imagestream's spec has
+// Reference set to true, indicating the payload uses external image references
+// rather than imported images.
+func HasReferenceSpecTags(is *imagev1.ImageStream) bool {
+	for _, tag := range is.Spec.Tags {
+		if tag.Reference {
 			return true
 		}
 	}
@@ -569,4 +606,24 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		}
 	}
 	return jobs, nil
+}
+
+// IsReferenceRelease returns true when the release is configured to use
+// external image references (reference: true spec tags) backed by an
+// external ReferenceRelease repository.
+func IsReferenceRelease(release *Release) bool {
+	return release.Source != nil &&
+		HasReferenceSpecTags(release.Source) &&
+		release.Config != nil &&
+		release.Config.ReferenceRelease != nil
+}
+
+// ReleasePullSpec returns the correct pull spec for a release payload tag.
+// For reference-based releases the payload lives in the external ReferenceRepository;
+// for traditional releases it lives in the Target imagestream.
+func ReleasePullSpec(release *Release, tagName string) string {
+	if IsReferenceRelease(release) {
+		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tagName))
+	}
+	return release.Target.Status.PublicDockerImageRepository + ":" + tagName
 }

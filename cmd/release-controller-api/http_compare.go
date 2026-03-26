@@ -104,7 +104,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	for _, stream := range page.Streams {
 		for _, tag := range stream.Tags {
 			if len(fromRelease) > 0 && len(toRelease) > 0 {
-				pullSpec := releasecontroller.FindPublicImagePullSpec(stream.Release.Target, tag.Name)
+				pullSpec := resolveReleasePullSpec(stream.Release, tag.Name)
 				switch tag.Name {
 				case fromRelease:
 					fromComparison.PullSpec = pullSpec

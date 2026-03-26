@@ -31,6 +31,7 @@ func TestNewReleasePayload(t *testing.T) {
 		verificationJobs map[string]releasecontroller.ReleaseVerification
 		upgradeJobs      map[string]releasecontroller.UpgradeVerification
 		dataSource       v1alpha1.PayloadVerificationDataSource
+		payloadType      v1alpha1.PayloadType
 		expected         *v1alpha1.ReleasePayload
 	}{
 		{
@@ -794,11 +795,201 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:          "ReferencePayloadType",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"blocking-job": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+					},
+				},
+			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeReference,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "blocking-job",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+							},
+						},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+					PayloadType: v1alpha1.PayloadTypeReference,
+				},
+			},
+		},
+		{
+			name: "ReleaseCoordinates populated for reference release",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "release",
+						Namespace: "ocp",
+					},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release",
+						PullRepository: "quay.io/openshift-release-dev/ocp-release",
+					},
+				},
+			},
+			payloadName:      "4.18.0-0.nightly-2025-01-01-000000",
+			jobNamespace:     "ci-release",
+			prowNamespace:    "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{},
+			upgradeJobs:      map[string]releasecontroller.UpgradeVerification{},
+			dataSource:       v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType:      v1alpha1.PayloadTypeReference,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.18.0-0.nightly-2025-01-01-000000",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.18.0-0.nightly-2025-01-01-000000",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.18.0-0.nightly-2025-01-01-000000",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.18.0-0.nightly-2025-01-01-000000-alternate-mirror",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:                  []v1alpha1.CIConfiguration{},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+					ReleaseCoordinates: []v1alpha1.ReleaseCoordinates{{
+						Repository: "quay.io/openshift-release-dev/ocp-release",
+						Tag:        "rc_payload__4.18.0-0.nightly-2025-01-01-000000",
+					}},
+					PayloadType: v1alpha1.PayloadTypeReference,
+				},
+			},
+		},
+		{
+			name: "ReleaseCoordinates populated for local release",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "release",
+						Namespace: "ocp",
+					},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{},
+			},
+			payloadName:      "4.12.0",
+			jobNamespace:     "ci-release",
+			prowNamespace:    "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{},
+			upgradeJobs:      map[string]releasecontroller.UpgradeVerification{},
+			dataSource:       v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.12.0",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.12.0",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.12.0",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.12.0-alternate-mirror",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs:                  []v1alpha1.CIConfiguration{},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+					ReleaseCoordinates: []v1alpha1.ReleaseCoordinates{{
+						Repository: "registry.ci.openshift.org/ocp/release",
+						Tag:        "4.12.0",
+					}},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource)
+			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource, tc.payloadType)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
 			}

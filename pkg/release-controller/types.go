@@ -165,11 +165,31 @@ type ReleaseConfig struct {
 	//   "alternateImageRepositorySecretName": "quay-openshift-release-dev-pull-secret"
 	AlternateImageRepositorySecretName string `json:"alternateImageRepositorySecretName"`
 
+	// ReferenceRelease configures reference-based releases where payloads are
+	// pushed to and pulled from an external image repository, with no local
+	// imagestream copy. When nil, reference releases are disabled.
+	ReferenceRelease *ReferenceRelease `json:"referenceRelease"`
+
 	// DisableManifestListMode indicates this release stream should not utilize the --keep-manifest-list for release
 	// creation.  This flag should NOT be used unless absolutely necessary...
 	// Currently, it's being added to work around a limitation with `oc` and images from konflux:
 	// https://issues.redhat.com/browse/OCPBUGS-50660
 	DisableManifestListMode bool `json:"disableManifestListMode"`
+}
+
+// ReferenceRelease holds configuration for reference-based releases that
+// live in an external image repository rather than in a local imagestream.
+type ReferenceRelease struct {
+	// PushRepository is the full path to the external image repository where
+	// release payloads are created (pushed).
+	PushRepository string `json:"pushRepository"`
+	// PullRepository is the full path to the external image repository used
+	// when resolving pull specs for release payloads.
+	PullRepository string `json:"pullRepository"`
+	// SecretName is the name of the secret containing credentials to the
+	// reference repository. Secret must exist in the job namespace. The secret
+	// must contain a single file config.json with a valid Docker auths array.
+	SecretName string `json:"secretName"`
 }
 
 type ReleaseCheck struct {
@@ -391,11 +411,11 @@ type ProwJobVerification struct {
 }
 
 type VerificationStatus struct {
-	State          string       `json:"state"`
-	URL            string       `json:"url"`
-	Retries        int          `json:"retries,omitempty"`
-	PreviousAttemptURLs []string `json:"previousAttemptURLs,omitempty"`
-	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
+	State               string       `json:"state"`
+	URL                 string       `json:"url"`
+	Retries             int          `json:"retries,omitempty"`
+	PreviousAttemptURLs []string     `json:"previousAttemptURLs,omitempty"`
+	TransitionTime      *metav1.Time `json:"transitionTime,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
@@ -522,6 +542,16 @@ const (
 
 	ReleaseConfigModeStable = "Stable"
 
+	// ReferencePayloadTagPrefix is prepended to release names when pushing
+	// to ReferenceRepository, so that image cleanup tooling can identify
+	// payload images created by the release controller.
+	ReferencePayloadTagPrefix = "rc_payload__"
+
+	// ReferenceRemovalTagPrefix is prepended to a reference payload tag when
+	// signaling to external cleanup tooling that the release image is ready
+	// to be pruned from the ReferenceRepository.
+	ReferenceRemovalTagPrefix = "remove__"
+
 	ReleaseUpgradeFromPreviousMinor  = "PreviousMinor"
 	ReleaseUpgradeFromPreviousPatch  = "PreviousPatch"
 	ReleaseUpgradeFromPrevious       = "Previous"
@@ -607,6 +637,18 @@ const (
 	// ReleaseStreamAnnotationMessageOverride overrides the message specified in ReleaseConfig.Message
 	ReleaseStreamAnnotationMessageOverride = "release.openshift.io/messageOverride"
 )
+
+// ReferencePayloadTag returns the image tag to use when pushing a release
+// payload to the ReferenceRepository.
+func ReferencePayloadTag(name string) string {
+	return ReferencePayloadTagPrefix + name
+}
+
+// ReferenceRemovalTag returns the image tag to push when signaling that a
+// release payload should be pruned from the ReferenceRepository.
+func ReferenceRemovalTag(name string) string {
+	return ReferenceRemovalTagPrefix + ReferencePayloadTag(name)
+}
 
 // TagReferencesByAge returns the newest tag first, the oldest tag last
 type TagReferencesByAge []*imagev1.TagReference

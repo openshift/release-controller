@@ -64,7 +64,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 				} else {
 					nodes = append(nodes, ReleaseNode{
 						Version: tag.Name,
-						Payload: s.Release.Target.Status.PublicDockerImageRepository + ":" + tag.Name,
+						Payload: resolveReleasePullSpec(s.Release, tag.Name),
 					})
 				}
 			}
