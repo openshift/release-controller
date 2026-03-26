@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openshift/release-controller/pkg/prow"
 
@@ -53,6 +55,24 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	if exists {
 		// TODO: check metadata on object
 		return obj.(*unstructured.Unstructured), nil
+	}
+
+	// If splay is configured, defer job creation by a deterministic random delay
+	// derived from the payload tag and job name. This spreads out job launches to
+	// reduce the blast radius of transient infrastructure issues.
+	splay := time.Duration(release.Config.Splay)
+	if splay > 0 {
+		tagCreated, parseErr := time.Parse(time.RFC3339, releaseTag.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp])
+		if parseErr == nil {
+			h := fnv.New32a()
+			h.Write([]byte(releaseTag.Name + "/" + prowJobName))
+			delay := time.Duration(h.Sum32()%uint32(splay.Seconds())) * time.Second
+			remaining := delay - time.Since(tagCreated)
+			if remaining > 0 {
+				klog.V(4).Infof("Splay: deferring job %s for %s (delay %s, tag created %s)", prowJobName, remaining.Truncate(time.Second), delay.Truncate(time.Second), tagCreated.Format(time.RFC3339))
+				return nil, nil
+			}
+		}
 	}
 
 	// It is very important that you do not modify anything returned from c.prowConfigLoader.Config():
