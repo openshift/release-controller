@@ -490,8 +490,14 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 		mirror, err := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
 		if err != nil {
 			klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
-		} else if _, err := c.ensureReleaseMirrorJob(release, releaseTag.Name, mirror); err != nil {
-			klog.Errorf("Failed to create release mirror job: %v", err)
+		} else {
+			if _, err := c.ensureReleaseMirrorJob(release, releaseTag.Name, mirror); err != nil {
+				klog.Errorf("Failed to create release mirror job: %v", err)
+			}
+			// For CI payloads, also create rc_payload__ tag for pruner to preserve component images
+			if _, err := c.ensureRCPayloadTagJob(release, releaseTag.Name, mirror); err != nil {
+				klog.Errorf("Failed to create rc_payload__ tag job: %v", err)
+			}
 		}
 
 		if err := c.ensureReleaseUpgradeJobs(release, releaseTag); err != nil {
