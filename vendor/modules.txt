@@ -336,7 +336,7 @@ github.com/cjwagner/httpcache/redis
 # github.com/clarketm/json v1.13.4
 ## explicit
 github.com/clarketm/json
-# github.com/cloudflare/circl v1.6.1
+# github.com/cloudflare/circl v1.6.3
 ## explicit; go 1.22.0
 github.com/cloudflare/circl/dh/x25519
 github.com/cloudflare/circl/dh/x448
@@ -869,7 +869,7 @@ github.com/spiffe/go-spiffe/v2/spiffeid
 # github.com/stoewer/go-strcase v1.3.0
 ## explicit; go 1.11
 github.com/stoewer/go-strcase
-# github.com/tektoncd/pipeline v1.6.0
+# github.com/tektoncd/pipeline v1.6.1
 ## explicit; go 1.24.0
 github.com/tektoncd/pipeline/internal/artifactref
 github.com/tektoncd/pipeline/pkg/apis/config
