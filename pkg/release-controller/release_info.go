@@ -813,10 +813,10 @@ func (r *ExecReleaseInfo) GetFeatureChildren(featuresList []string, validityPeri
 		go func(id string) {
 			defer func() { <-limit }()
 			defer wg.Done()
-			a, _, err := r.jiraClient.SearchWithContext(
+			a, _, err := r.jiraClient.SearchV2JqlWithContext(
 				context.Background(),
 				fmt.Sprintf("issuekey in childIssuesOf(%s) AND issuetype in (Epic)", id),
-				&jiraBaseClient.SearchOptions{
+				&jiraBaseClient.SearchOptionsV2{
 					MaxResults: 500, // TODO : here we assume that a feature will not have more than 500 epics, if so, we need to paginate
 					Fields: []string{
 						"key",
@@ -895,10 +895,10 @@ func (r *ExecReleaseInfo) GetIssuesWithChunks(issues []string) (result []jiraBas
 
 		go func(jql string) {
 			defer wg.Done()
-			issues, _, err := r.jiraClient.SearchWithContext(
+			issues, _, err := r.jiraClient.SearchV2JqlWithContext(
 				context.Background(),
 				jql,
-				&jiraBaseClient.SearchOptions{
+				&jiraBaseClient.SearchOptionsV2{
 					MaxResults: chunk + 1,
 					Fields: []string{
 						"security",
@@ -997,10 +997,10 @@ func (r *ExecReleaseInfo) GetIssuesWithDemoLink(issues []string) (result []jiraB
 
 		go func(jql string) {
 			defer wg.Done()
-			issues, _, err := r.jiraClient.SearchWithContext(
+			issues, _, err := r.jiraClient.SearchV2JqlWithContext(
 				context.Background(),
 				jql,
-				&jiraBaseClient.SearchOptions{
+				&jiraBaseClient.SearchOptionsV2{
 					MaxResults: chunk + 1,
 				},
 			)
