@@ -1,6 +1,6 @@
 module github.com/openshift/release-controller
 
-go 1.25.5
+go 1.25.8
 
 replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
@@ -52,7 +52,7 @@ require (
 	k8s.io/component-base v0.34.1
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/prow v0.0.0-20260227184331-937f24a5dcd2
+	sigs.k8s.io/prow v0.0.0-20260325094416-feedafda4290
 )
 
 require (
