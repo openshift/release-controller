@@ -54,6 +54,8 @@ type APIReleaseInfo struct {
 	ChangeLog []byte `json:"changeLog,omitempty"`
 	//ChangeLogJson is the json representation of the changes included in this release tag
 	ChangeLogJson ChangeLog `json:"changeLogJson,omitempty"`
+	// NodeImageRpmDiff is the RPM package diff between the previous and current node images
+	NodeImageRpmDiff *RpmDiff `json:"nodeImageRpmDiff,omitempty"`
 }
 
 // Release holds information about the release used during processing.
