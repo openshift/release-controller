@@ -667,6 +667,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	var changeLog []byte
 	var changeLogJson releasecontroller.ChangeLog
+	var rpmDiff *releasecontroller.RpmDiff
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		var wg sync.WaitGroup
@@ -685,6 +686,18 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				c.changeLogWorker(result, tagInfo, format)
 			}()
 		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			diff, err := c.releaseInfo.RpmDiff(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec)
+			if err != nil {
+				klog.V(4).Infof("Unable to retrieve RPM diff for %s: %v", tagInfo.Tag, err)
+				return
+			}
+			rpmDiff = &diff
+		}()
+
 		wg.Wait()
 
 		if renderHTML.err == nil {
@@ -705,13 +718,14 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	summary := releasecontroller.APIReleaseInfo{
-		Name:          tagInfo.Tag,
-		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:       verificationJobs,
-		UpgradesTo:    c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom:  c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:     changeLog,
-		ChangeLogJson: changeLogJson,
+		Name:             tagInfo.Tag,
+		Phase:            tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:          verificationJobs,
+		UpgradesTo:       c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:     c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:        changeLog,
+		ChangeLogJson:    changeLogJson,
+		NodeImageRpmDiff: rpmDiff,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
