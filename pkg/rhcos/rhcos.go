@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	rhelCoreOs         = "Red Hat Enterprise Linux CoreOS"
-	centosStreamCoreOs = "CentOS Stream CoreOS"
+	rhelCoreOs           = "Red Hat Enterprise Linux CoreOS"
+	rhelCoreOs10         = "Red Hat Enterprise Linux CoreOS 10"
+	centosStreamCoreOs   = "CentOS Stream CoreOS"
 	baseLayerAlertBox  = `<div class="alert alert-info" id="coreos-base-alert">
 		<p>The CoreOS links above are for <em>the base CoreOS layer</em> used to build
 		the OpenShift node image and do not contain OpenShift components. This is
@@ -39,6 +40,10 @@ var (
 	// New: "* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260305-0 to 9.8.20260312-0"
 	reMdRHCoSDiff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS(?: \d+\.\d+)? upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
 	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS(?: \d+\.\d+)? ((\d+)\.[\w\.\-]+)\n`)
+
+	// RHEL 10 node image (rhel-coreos-10); match before generic RHCOS regex (longer prefix first).
+	reMdRHCoS10Diff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?: \d+\.\d+)? upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoS10Version = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?: \d+\.\d+)? ((\d+)\.[\w\.\-]+)\n`)
 
 	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
 	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d+)\.[\w\.\-]+)\n`)
@@ -70,17 +75,48 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 	// add link to tag from which current version promoted from
 	markdown = reMdPromotedFrom.ReplaceAllString(markdown, fmt.Sprintf("Release %s was created from [$1:$2](/releasetag/$2)", toTag))
 
-	// TODO: As we get more comfortable with these sorts of transformations, we could make them more generic.
-	//       For now, this will have to do.
-	if m := reMdRHCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
-	} else if m = reMdCentOSCoSDiff.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSUpgradeLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
+	// Apply CoreOS link transforms for every matching line (OpenShift 4.21+ may list RHCOS 9 and 10 separately).
+	for {
+		var m []string
+		var name string
+		switch {
+		case reMdRHCoS10Diff.MatchString(markdown):
+			m = reMdRHCoS10Diff.FindStringSubmatch(markdown)
+			name = rhelCoreOs10
+		case reMdRHCoSDiff.MatchString(markdown):
+			m = reMdRHCoSDiff.FindStringSubmatch(markdown)
+			name = rhelCoreOs
+		case reMdCentOSCoSDiff.MatchString(markdown):
+			m = reMdCentOSCoSDiff.FindStringSubmatch(markdown)
+			name = centosStreamCoreOs
+		default:
+			m = nil
+		}
+		if m == nil {
+			break
+		}
+		markdown = transformCoreOSUpgradeLinks(name, architecture, architectureExtension, markdown, m)
 	}
-	if m := reMdRHCoSVersion.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSLinks(rhelCoreOs, architecture, architectureExtension, markdown, m)
-	} else if m = reMdCentOSCoSVersion.FindStringSubmatch(markdown); m != nil {
-		markdown = transformCoreOSLinks(centosStreamCoreOs, architecture, architectureExtension, markdown, m)
+	for {
+		var m []string
+		var name string
+		switch {
+		case reMdRHCoS10Version.MatchString(markdown):
+			m = reMdRHCoS10Version.FindStringSubmatch(markdown)
+			name = rhelCoreOs10
+		case reMdRHCoSVersion.MatchString(markdown):
+			m = reMdRHCoSVersion.FindStringSubmatch(markdown)
+			name = rhelCoreOs
+		case reMdCentOSCoSVersion.MatchString(markdown):
+			m = reMdCentOSCoSVersion.FindStringSubmatch(markdown)
+			name = centosStreamCoreOs
+		default:
+			m = nil
+		}
+		if m == nil {
+			break
+		}
+		markdown = transformCoreOSLinks(name, architecture, architectureExtension, markdown, m)
 	}
 	return markdown, nil
 }
@@ -94,58 +130,8 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 
 	for i, component := range changeLogJson.Components {
 		switch component.Name {
-		case rhelCoreOs, centosStreamCoreOs:
-			var ok bool
-			var fromStream, toStream string
-			if len(component.Version) == 0 {
-				continue
-			}
-			if toStream, ok = getRHCoSReleaseStream(component.Version, architectureExtension); ok {
-				toURL := url.URL{
-					Scheme:   serviceScheme,
-					Host:     serviceUrl,
-					Path:     "/",
-					Fragment: component.Version,
-					RawQuery: (url.Values{
-						"stream":  []string{toStream},
-						"arch":    []string{architecture},
-						"release": []string{component.Version},
-					}).Encode(),
-				}
-				component.VersionUrl = toURL.String()
-			}
-
-			if len(component.From) > 0 {
-				if fromStream, ok = getRHCoSReleaseStream(component.From, architectureExtension); ok {
-					fromUrl := url.URL{
-						Scheme:   serviceScheme,
-						Host:     serviceUrl,
-						Path:     "/",
-						Fragment: component.From,
-						RawQuery: (url.Values{
-							"stream":  []string{fromStream},
-							"arch":    []string{architecture},
-							"release": []string{component.From},
-						}).Encode(),
-					}
-					component.FromUrl = fromUrl.String()
-
-					diffURL := url.URL{
-						Scheme: serviceScheme,
-						Host:   serviceUrl,
-						Path:   "/diff.html",
-						RawQuery: (url.Values{
-							"first_stream":   []string{fromStream},
-							"first_release":  []string{component.From},
-							"second_stream":  []string{toStream},
-							"second_release": []string{component.Version},
-							"arch":           []string{architecture},
-						}).Encode(),
-					}
-					component.DiffUrl = diffURL.String()
-				}
-			}
-			changeLogJson.Components[i] = component
+		case rhelCoreOs, rhelCoreOs10, centosStreamCoreOs:
+			changeLogJson.Components[i] = enrichCoreOSComponentJSON(component, architecture, architectureExtension)
 		}
 	}
 
@@ -155,6 +141,60 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 	}
 
 	return string(updated), nil
+}
+
+func enrichCoreOSComponentJSON(component releasecontroller.ChangeLogComponentInfo, architecture, architectureExtension string) releasecontroller.ChangeLogComponentInfo {
+	var ok bool
+	var fromStream, toStream string
+	if len(component.Version) == 0 {
+		return component
+	}
+	if toStream, ok = getRHCoSReleaseStream(component.Version, architectureExtension); ok {
+		toURL := url.URL{
+			Scheme:   serviceScheme,
+			Host:     serviceUrl,
+			Path:     "/",
+			Fragment: component.Version,
+			RawQuery: (url.Values{
+				"stream":  []string{toStream},
+				"arch":    []string{architecture},
+				"release": []string{component.Version},
+			}).Encode(),
+		}
+		component.VersionUrl = toURL.String()
+	}
+
+	if len(component.From) > 0 {
+		if fromStream, ok = getRHCoSReleaseStream(component.From, architectureExtension); ok {
+			fromUrl := url.URL{
+				Scheme:   serviceScheme,
+				Host:     serviceUrl,
+				Path:     "/",
+				Fragment: component.From,
+				RawQuery: (url.Values{
+					"stream":  []string{fromStream},
+					"arch":    []string{architecture},
+					"release": []string{component.From},
+				}).Encode(),
+			}
+			component.FromUrl = fromUrl.String()
+
+			diffURL := url.URL{
+				Scheme: serviceScheme,
+				Host:   serviceUrl,
+				Path:   "/diff.html",
+				RawQuery: (url.Values{
+					"first_stream":   []string{fromStream},
+					"first_release":  []string{component.From},
+					"second_stream":  []string{toStream},
+					"second_release": []string{component.Version},
+					"arch":           []string{architecture},
+				}).Encode(),
+			}
+			component.DiffUrl = diffURL.String()
+		}
+	}
+	return component
 }
 
 func getRHCoSReleaseStream(version, architectureExtension string) (string, bool) {
@@ -308,68 +348,107 @@ func transformCoreOSLinks(name, architecture, architectureExtension, input strin
 	return strings.ReplaceAll(input, matches[0], replace)
 }
 
-func RenderNodeImageInfo(markdown string, rpmList releasecontroller.RpmList, rpmDiff releasecontroller.RpmDiff) string {
-	output := new(strings.Builder)
+// CoreOSNodeStream holds RPM package lists and diffs for one rhel-coreos* or stream-coreos image.
+type CoreOSNodeStream struct {
+	Title   string
+	RpmList releasecontroller.RpmList
+	RpmDiff releasecontroller.RpmDiff
+}
 
-	fmt.Fprintf(output, "### Package List\n\n")
+func RenderNodeImageInfo(markdown string, rpmList releasecontroller.RpmList, rpmDiff releasecontroller.RpmDiff) string {
+	return RenderDualNodeImageInfo(markdown, []CoreOSNodeStream{{RpmList: rpmList, RpmDiff: rpmDiff}})
+}
+
+// RenderDualNodeImageInfo renders one or more Node Image Info sections (e.g. multiple machine-OS
+// streams in OpenShift 4.21+).
+func RenderDualNodeImageInfo(markdown string, streams []CoreOSNodeStream) string {
+	if len(streams) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	dual := len(streams) > 1
+	for i, s := range streams {
+		if i > 0 {
+			out.WriteString("\n\n")
+		}
+		renderOneNodeStream(&out, s, dual)
+	}
+	out.WriteString(baseLayerFooter(markdown))
+	return out.String()
+}
+
+func renderOneNodeStream(out *strings.Builder, stream CoreOSNodeStream, dual bool) {
+	h := "###"
+	if stream.Title != "" {
+		fmt.Fprintf(out, "### %s\n\n", stream.Title)
+		h = "####"
+	} else if dual {
+		h = "####"
+	}
+
+	fmt.Fprintf(out, "%s Package List\n\n", h)
 
 	importantPkgs := []string{"cri-o", "kernel", "openshift-kubelet", "systemd"}
 	for _, pkg := range importantPkgs {
-		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
+		fmt.Fprintf(out, "* %s-%s\n", pkg, stream.RpmList.Packages[pkg])
 	}
 
-	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Packages))
-	sortedPkgs := slices.Sorted(maps.Keys(rpmList.Packages))
+	fmt.Fprintf(out, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(stream.RpmList.Packages))
+	sortedPkgs := slices.Sorted(maps.Keys(stream.RpmList.Packages))
 	for _, pkg := range sortedPkgs {
-		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Packages[pkg])
+		fmt.Fprintf(out, "* %s-%s\n", pkg, stream.RpmList.Packages[pkg])
 	}
-	fmt.Fprintf(output, "</details>\n\n")
+	fmt.Fprintf(out, "</details>\n\n")
 
 	writeList := func(header string, elements []string) {
-		fmt.Fprintf(output, "### %s:\n\n", header)
+		fmt.Fprintf(out, "%s %s:\n\n", h, header)
 		sort.Strings(elements)
 		for _, elem := range elements {
-			fmt.Fprintf(output, "* %s\n", elem)
+			fmt.Fprintf(out, "* %s\n", elem)
 		}
-		fmt.Fprint(output, "\n")
+		fmt.Fprint(out, "\n")
 	}
 
-	if len(rpmDiff.Changed) > 0 {
+	if len(stream.RpmDiff.Changed) > 0 {
 		elements := []string{}
-		for pkg, v := range rpmDiff.Changed {
+		for pkg, v := range stream.RpmDiff.Changed {
 			elements = append(elements, fmt.Sprintf("%s %s → %s", pkg, v.Old, v.New))
 		}
 		writeList("Changed", elements)
 	}
-	if len(rpmDiff.Removed) > 0 {
+	if len(stream.RpmDiff.Removed) > 0 {
 		elements := []string{}
-		for pkg, v := range rpmDiff.Removed {
+		for pkg, v := range stream.RpmDiff.Removed {
 			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
 		}
 		writeList("Removed", elements)
 	}
-	if len(rpmDiff.Added) > 0 {
+	if len(stream.RpmDiff.Added) > 0 {
 		elements := []string{}
-		for pkg, v := range rpmDiff.Added {
+		for pkg, v := range stream.RpmDiff.Added {
 			elements = append(elements, fmt.Sprintf("%s %s", pkg, v))
 		}
 		writeList("Added", elements)
 	}
 
-	fmt.Fprintf(output, "\n\n### Extensions\n\n")
+	fmt.Fprintf(out, "\n\n%s Extensions\n\n", h)
 
-	fmt.Fprintf(output, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(rpmList.Extensions))
-	sortedPkgs = slices.Sorted(maps.Keys(rpmList.Extensions))
+	fmt.Fprintf(out, "\n<details><summary>Full list (%d packages)</summary>\n\n", len(stream.RpmList.Extensions))
+	sortedPkgs = slices.Sorted(maps.Keys(stream.RpmList.Extensions))
 	for _, pkg := range sortedPkgs {
-		fmt.Fprintf(output, "* %s-%s\n", pkg, rpmList.Extensions[pkg])
+		fmt.Fprintf(out, "* %s-%s\n", pkg, stream.RpmList.Extensions[pkg])
 	}
-	fmt.Fprintf(output, "</details>\n\n")
+	fmt.Fprintf(out, "</details>\n\n")
+}
 
-	// Reprint the version/diff line, with the browser links for the build itself.
-	// But put it last to de-emphasize it. Most people don't need to click on this.
-	if m := reMdCoSPost.FindStringSubmatch(markdown); m != nil {
-		fmt.Fprintf(output, "<br/>%s **base layer**: %s\n\n", m[1], m[3])
+func baseLayerFooter(markdown string) string {
+	matches := reMdCoSPost.FindAllStringSubmatch(markdown, -1)
+	if len(matches) == 0 {
+		return ""
 	}
-
-	return output.String()
+	var b strings.Builder
+	for _, m := range matches {
+		fmt.Fprintf(&b, "<br/>%s **base layer**: %s\n\n", m[1], m[3])
+	}
+	return b.String()
 }

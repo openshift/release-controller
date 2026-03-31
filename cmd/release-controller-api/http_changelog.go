@@ -72,6 +72,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderRe
 			return
 		}
 		ch <- renderResult{out: out}
+		return
 	}
 
 	out, err = rhcos.TransformMarkDownOutput(out, fromTag, toTag, architecture, archExtension)
@@ -86,25 +87,31 @@ func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderRe
 		return
 	}
 
-	// Only request node image info if it'll be rendered. Use the exact
-	// check that renderChangeLog does to know if to consume from us.
-	if !strings.Contains(out, "#node-image-info") {
+	toImagePullspec := toImage.GenerateDigestPullSpec()
+	fromImagePullspec := fromImage.GenerateDigestPullSpec()
+
+	// Request node image info when the changelog links to #node-image-info (CoreOS infobox) or when
+	// the target payload has discoverable machine-os streams (newer oc may omit RHCOS summary lines).
+	fetchNode := strings.Contains(out, "#node-image-info")
+	if !fetchNode {
+		streams, err := c.releaseInfo.ListMachineOSStreams(toImagePullspec)
+		if err != nil {
+			chNodeInfo <- renderResult{err: err}
+			return
+		}
+		fetchNode = len(streams) > 0
+	}
+	if !fetchNode {
 		chNodeInfo <- renderResult{}
 		return
 	}
 
-	toImagePullspec := toImage.GenerateDigestPullSpec()
-	rpmlist, err := c.releaseInfo.RpmList(toImagePullspec)
+	nodeMD, err := rhcos.NodeImageSectionMarkdown(c.releaseInfo, fromImagePullspec, toImagePullspec, out)
 	if err != nil {
 		chNodeInfo <- renderResult{err: err}
+		return
 	}
-
-	rpmdiff, err := c.releaseInfo.RpmDiff(fromImage.GenerateDigestPullSpec(), toImagePullspec)
-	if err != nil {
-		chNodeInfo <- renderResult{err: err}
-	}
-
-	chNodeInfo <- renderResult{out: rhcos.RenderNodeImageInfo(out, rpmlist, rpmdiff)}
+	chNodeInfo <- renderResult{out: nodeMD}
 }
 
 func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {
@@ -173,9 +180,17 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
 	}
 
-	// only render a CoreOS diff if we need to; we can know this by
-	// checking if it links to the diff section we create here
-	if !strings.Contains(render.out, "#node-image-info") {
+	needsNode := strings.Contains(render.out, "#node-image-info")
+	if !needsNode && render.err == nil && format != "json" {
+		toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPull)
+		if err == nil {
+			streams, err2 := c.releaseInfo.ListMachineOSStreams(toImage.GenerateDigestPullSpec())
+			if err2 == nil && len(streams) > 0 {
+				needsNode = true
+			}
+		}
+	}
+	if !needsNode {
 		return
 	}
 
