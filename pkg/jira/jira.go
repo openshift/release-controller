@@ -92,8 +92,11 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 		return err, false
 	}
 	// Check to see if the same message has already been posted.
+	// Also check the legacy message format ("accepted release") to avoid duplicates
+	// after the wording change from "Fix included in accepted release" to "Fix included in release".
+	legacyMessage := strings.Replace(message, "in release ", "in accepted release ", 1)
 	for _, comment := range comments {
-		if strings.Contains(comment.Body, message) {
+		if strings.Contains(comment.Body, message) || strings.Contains(comment.Body, legacyMessage) {
 			return nil, true
 		}
 	}
