@@ -107,7 +107,7 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess, verifiedLater bool) {
 	var success bool
-	message := fmt.Sprintf("Fix included in accepted release %s", tagName)
+	message := fmt.Sprintf("Fix included in release %s", tagName)
 	var unApprovedPRs []pr
 	if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) && !strings.EqualFold(issue.Fields.Status.Name, jira.StatusModified) {
 		klog.V(4).Infof("Issue %s is in %s status; ignoring", issue.Key, issue.Fields.Status.Name)
