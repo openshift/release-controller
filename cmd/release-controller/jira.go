@@ -217,8 +217,8 @@ func (c *Controller) syncJira(key queueKey) error {
 	// confirms that all blocking tests have been executed (accepted or rejected) and that the code
 	// fix is present in the payload, allowing the bug status to be automatically transitioned to
 	// VERIFIED and notifying assignees which payload contains their fix.
-	acceptedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted, releasecontroller.ReleasePhaseRejected)
-	tag, prevTag := getNonVerifiedTagsJira(acceptedTags)
+	completedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted, releasecontroller.ReleasePhaseRejected)
+	tag, prevTag := getNonVerifiedTagsJira(completedTags)
 	if tag == nil {
 		klog.V(6).Infof("jira: All accepted/rejected tags for %s have already been verified", release.Config.Name)
 		return nil

@@ -80,6 +80,36 @@ func TestCommentOnPR(t *testing.T) {
 	}
 }
 
+// TestCommentOnPRLegacyDedupe tests that commentOnPR does not post a duplicate
+// comment when an existing comment uses the legacy "accepted release" wording,
+// after the message was changed to "Fix included in release".
+func TestCommentOnPRLegacyDedupe(t *testing.T) {
+	tagName := "4.20.0-0.nightly-2026-04-01-022028"
+	newMessage := fmt.Sprintf("Fix included in release %s", tagName)
+	legacyMessage := fmt.Sprintf("Fix included in accepted release %s", tagName)
+
+	// Seed the fake client with an existing comment using the legacy wording
+	existingComments := map[int][]github.IssueComment{
+		1: {{Body: legacyMessage}},
+	}
+	mockClient := &fakegithub.FakeClient{IssueComments: existingComments}
+	verifier := &Verifier{ghClient: mockClient}
+	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
+
+	// commentOnPR should detect the legacy comment and not post a duplicate
+	err, created := verifier.commentOnPR(extPR, newMessage)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if !created {
+		t.Errorf("Expected created=true (comment already exists), but got false")
+	}
+	// Verify no new comment was posted
+	if len(mockClient.IssueComments[1]) != 1 {
+		t.Errorf("Expected 1 comment (no duplicate), but got %d", len(mockClient.IssueComments[1]))
+	}
+}
+
 func TestGetPRS(t *testing.T) {
 	issue := jira.Issue{ID: "OCPBUGS-0000"}
 	removeLinkArray := []jira.RemoteLink{
