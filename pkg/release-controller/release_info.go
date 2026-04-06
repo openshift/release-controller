@@ -128,6 +128,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 		case "rpmliststream":
 			if len(parts) < 4 {
 				s, err = "", fmt.Errorf("invalid rpmliststream key")
+			} else if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
+				s, err = "", fmt.Errorf("invalid release/tag")
 			} else {
 				var rpmlist RpmList
 				rpmlist, err = info.RpmListForStream(parts[1], parts[2], parts[3])
@@ -144,12 +146,16 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 		case "imagefor":
 			if len(parts) < 3 {
 				s, err = "", fmt.Errorf("invalid imagefor key")
+			} else if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
+				s, err = "", fmt.Errorf("invalid release/component")
 			} else {
 				s, err = info.ImageReferenceForComponent(parts[1], parts[2])
 			}
 		case "machineosstreams":
 			if len(parts) < 2 {
 				s, err = "", fmt.Errorf("invalid machineosstreams key")
+			} else if strings.Contains(parts[1], "\x00") {
+				s, err = "", fmt.Errorf("invalid release")
 			} else {
 				var streams []MachineOSStreamInfo
 				streams, err = info.ListMachineOSStreams(parts[1])
