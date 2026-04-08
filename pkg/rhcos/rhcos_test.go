@@ -1,6 +1,7 @@
 package rhcos
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -216,5 +217,49 @@ func TestRHCoSVersionRegex(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRHCoS10DiffRegex(t *testing.T) {
+	input := "* Red Hat Enterprise Linux CoreOS 10 10.0 upgraded from 10.0.20260101-0 to 10.0.20260201-0\n"
+	m := reMdRHCoS10Diff.FindStringSubmatch(input)
+	if m == nil {
+		t.Fatal("expected match for RHEL 10 upgrade line")
+	}
+	if m[1] != "10.0.20260101-0" || m[3] != "10.0.20260201-0" {
+		t.Fatalf("unexpected submatches: %v", m)
+	}
+}
+
+func TestTransformMarkDownOutputDualRHCOSLines(t *testing.T) {
+	input := `## Changes from 4.20.0
+* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260101-0 to 9.8.20260201-0
+* Red Hat Enterprise Linux CoreOS 10 10.0 upgraded from 10.0.20260101-0 to 10.0.20260201-0
+`
+	out, err := TransformMarkDownOutput(input, "4.20.0", "4.21.0", "x86_64", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out, "coreos-base-alert") < 2 {
+		t.Fatalf("expected two CoreOS base layer infoboxes, got:\n%s", out)
+	}
+}
+
+func TestTransformJsonOutputDualCoreOS(t *testing.T) {
+	j := `{
+  "components": [
+    {"name": "Red Hat Enterprise Linux CoreOS", "version": "9.8.20260201-0", "from": "9.8.20260101-0"},
+    {"name": "Red Hat Enterprise Linux CoreOS 10", "version": "10.0.20260201-0", "from": "10.0.20260101-0"}
+  ]
+}`
+	out, err := TransformJsonOutput(j, "x86_64", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"versionUrl"`) {
+		t.Fatalf("expected versionUrl in output: %s", out)
+	}
+	if strings.Count(out, `"versionUrl"`) < 2 {
+		t.Fatalf("expected two versionUrl fields: %s", out)
 	}
 }
