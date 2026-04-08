@@ -101,10 +101,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				}
 			}
 		case "rpmdiffstream":
-			if len(parts) < 4 {
+			if len(parts) != 4 {
 				s, err = "", fmt.Errorf("invalid rpmdiffstream key")
-			} else if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
-				s, err = "", fmt.Errorf("invalid from/to/component")
 			} else {
 				var rpmdiff RpmDiff
 				rpmdiff, err = info.RpmDiffForStream(parts[1], parts[2], parts[3])
@@ -131,10 +129,8 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				}
 			}
 		case "rpmliststream":
-			if len(parts) < 4 {
+			if len(parts) != 4 {
 				s, err = "", fmt.Errorf("invalid rpmliststream key")
-			} else if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
-				s, err = "", fmt.Errorf("invalid release/tag")
 			} else {
 				var rpmlist RpmList
 				rpmlist, err = info.RpmListForStream(parts[1], parts[2], parts[3])
@@ -149,18 +145,14 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 				}
 			}
 		case "imagefor":
-			if len(parts) < 3 {
+			if len(parts) != 3 {
 				s, err = "", fmt.Errorf("invalid imagefor key")
-			} else if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") {
-				s, err = "", fmt.Errorf("invalid release/component")
 			} else {
 				s, err = info.ImageReferenceForComponent(parts[1], parts[2])
 			}
 		case "machineosstreams":
-			if len(parts) < 2 {
+			if len(parts) != 2 {
 				s, err = "", fmt.Errorf("invalid machineosstreams key")
-			} else if strings.Contains(parts[1], "\x00") {
-				s, err = "", fmt.Errorf("invalid release")
 			} else {
 				var streams []MachineOSStreamInfo
 				streams, err = info.ListMachineOSStreams(parts[1])
@@ -570,7 +562,7 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 		return RpmList{}, fmt.Errorf("failed to query RPM list for %s: %w", image, err)
 	}
 	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %w", err)
 	}
 
 	// XXX: This is hacky... honestly we should just have consistent tag names
@@ -607,7 +599,7 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 		return rpmlist, nil
 	}
 	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %w", err)
 	}
 
 	return rpmlist, nil
@@ -622,7 +614,7 @@ func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName
 	}
 	out, _, err := ocCmd("adm", "release", "info", "--image-for", componentName, releaseImage)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve image for component %q in %s: %v", componentName, releaseImage, err)
+		return "", fmt.Errorf("failed to resolve image for component %q in %s: %w", componentName, releaseImage, err)
 	}
 	ref := strings.TrimSpace(string(out))
 	if ref == "" {
@@ -645,10 +637,10 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 
 	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
 	if err != nil {
-		return RpmList{}, fmt.Errorf("failed to query RPM list for %s (rpmdb-image %s): %v", releaseImage, coreosTagName, err)
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s (rpmdb-image %s): %w", releaseImage, coreosTagName, err)
 	}
 	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %w", err)
 	}
 
 	extTag := extensionsTagName
@@ -676,7 +668,7 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 	if err == nil {
 		// Cache hit
 		if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
-			return RpmList{}, fmt.Errorf("unmarshaling extensions from cache: %s", err)
+			return RpmList{}, fmt.Errorf("unmarshaling extensions from cache: %w", err)
 		}
 		return rpmlist, nil
 	}
@@ -713,7 +705,7 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 	}
 
 	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %w", err)
 	}
 
 	return rpmlist, nil
@@ -732,12 +724,12 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 
 	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %v", from, to, err)
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %w", from, to, err)
 	}
 
 	var rpmdiff RpmDiff
 	if err = json.Unmarshal(out, &rpmdiff); err != nil {
-		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
+		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %w", err)
 	}
 
 	return rpmdiff, nil
@@ -759,12 +751,12 @@ func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageNam
 
 	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s (rpmdb-image %s): %v", fromRelease, toRelease, rpmdbImageName, err)
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s (rpmdb-image %s): %w", fromRelease, toRelease, rpmdbImageName, err)
 	}
 
 	var rpmdiff RpmDiff
 	if err = json.Unmarshal(out, &rpmdiff); err != nil {
-		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
+		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %w", err)
 	}
 
 	return rpmdiff, nil

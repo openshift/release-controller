@@ -88,6 +88,9 @@ func machineOSStreamsFromReleaseJSON(raw string) ([]MachineOSStreamInfo, error) 
 	return out, nil
 }
 
+// machineOSDisplayNameFromAnnotations extracts the machine-os display name from the
+// io.openshift.build.version-display-names annotation. Returns empty string if not found.
+// Typical format: "machine-os=Red Hat Enterprise Linux CoreOS" (comma-separated key=value pairs).
 func machineOSDisplayNameFromAnnotations(annotations map[string]string) string {
 	v := strings.TrimSpace(annotations[versionDisplayNamesKey])
 	if v == "" {
