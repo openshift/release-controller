@@ -49,8 +49,13 @@ const maxChunkSize = 450 // this seems to be the maximum Jira can handle, curren
 
 const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
+// maxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
+// --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
+const maxConcurrentRpmdbOCCalls = 10
+
 var (
-	ocPath = ""
+	ocPath       = ""
+	rpmdbOCSlots = make(chan struct{}, maxConcurrentRpmdbOCCalls)
 )
 
 type CachingReleaseInfo struct {
@@ -389,6 +394,21 @@ func ocCmd(args ...string) ([]byte, []byte, error) {
 	return ocCmdExt("", args...)
 }
 
+// ocCmdRpmdb runs oc adm release info with --rpmdb / --rpmdb-diff under a process-wide
+// concurrency cap. If the limit is already reached, it returns an error without starting oc.
+func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
+	select {
+	case rpmdbOCSlots <- struct{}{}:
+	default:
+		return nil, nil, fmt.Errorf(
+			"too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
+			maxConcurrentRpmdbOCCalls,
+		)
+	}
+	defer func() { <-rpmdbOCSlots }()
+	return ocCmd(args...)
+}
+
 func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
 	var err error
 
@@ -545,9 +565,9 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 
 	var rpmlist RpmList
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
 	if err != nil {
-		return RpmList{}, fmt.Errorf("failed to query RPM list for %s", image)
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s: %w", image, err)
 	}
 	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
 		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
@@ -623,7 +643,7 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 
 	var rpmlist RpmList
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
 	if err != nil {
 		return RpmList{}, fmt.Errorf("failed to query RPM list for %s (rpmdb-image %s): %v", releaseImage, coreosTagName, err)
 	}
@@ -678,7 +698,7 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 		return RpmDiff{}, fmt.Errorf("not a valid reference")
 	}
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	if err != nil {
 		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %v", from, to, err)
 	}
@@ -705,7 +725,7 @@ func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageNam
 		return r.RpmDiff(fromRelease, toRelease)
 	}
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
 	if err != nil {
 		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s (rpmdb-image %s): %v", fromRelease, toRelease, rpmdbImageName, err)
 	}
