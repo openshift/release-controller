@@ -164,3 +164,13 @@ func SemverParseTolerant(v string) (semver.Version, error) {
 func SemverToMajorMinor(sr semver.Version) string {
 	return fmt.Sprintf("%d.%d", sr.Major, sr.Minor)
 }
+
+// ReleaseTagIsDualRHCOS reports whether the target release tag should show independent
+// RHCOS 9 (rhel-coreos) and RHCOS 10 (rhel-coreos-10) changelogs and node image sections.
+func ReleaseTagIsDualRHCOS(toTag string) bool {
+	v, err := SemverParseTolerant(toTag)
+	if err != nil {
+		return false
+	}
+	return v.Major == 4 && v.Minor >= 21
+}
