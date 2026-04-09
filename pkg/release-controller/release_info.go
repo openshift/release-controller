@@ -605,6 +605,9 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 	return rpmlist, nil
 }
 
+// ImageReferenceForComponent resolves the full image reference (pullspec) for a named component
+// within a release image using oc adm release info --image-for. Returns the complete image reference
+// including registry, repository, and digest.
 func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName string) (string, error) {
 	if _, err := imagereference.Parse(releaseImage); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", releaseImage, err)
@@ -625,6 +628,8 @@ func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName
 
 // RpmListForStream loads the RPM database for a machine-os component inside the release payload
 // (--rpmdb on the release image plus --rpmdb-image) and extensions from the named extensions tag.
+// Extensions metadata is cached in /tmp/rpmdb/extensions-<sha256> keyed by the image digest to
+// avoid repeated oc image extract operations for the same extensions image.
 func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensionsTagName string) (RpmList, error) {
 	if _, err := imagereference.Parse(releaseImage); err != nil {
 		return RpmList{}, fmt.Errorf("%s is not an image reference: %v", releaseImage, err)
@@ -711,6 +716,9 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 	return rpmlist, nil
 }
 
+// RpmDiff generates a diff of RPM packages between two release images using oc adm release info --rpmdb-diff.
+// The diff includes changed, added, and removed packages. Uses a process-wide semaphore to limit concurrent
+// rpmdb operations and shares the /tmp/rpmdb/ cache across calls.
 func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", from, err)
@@ -735,6 +743,9 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	return rpmdiff, nil
 }
 
+// RpmDiffForStream generates a diff of RPM packages for a specific RHCOS stream (e.g., rhel-coreos or rhel-coreos-10)
+// between two release images. If rpmdbImageName is empty, delegates to RpmDiff for the default machine-os image.
+// Uses a process-wide semaphore to limit concurrent rpmdb operations and shares the /tmp/rpmdb/ cache across calls.
 func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageName string) (RpmDiff, error) {
 	if _, err := imagereference.Parse(fromRelease); err != nil {
 		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", fromRelease, err)

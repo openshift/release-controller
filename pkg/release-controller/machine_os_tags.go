@@ -124,12 +124,17 @@ func MachineOSTitle(s MachineOSStreamInfo) string {
 	}
 }
 
+// sortMachineOSTags sorts a slice of machine OS tag names in-place using a stable sort.
+// rhel-coreos and stream-coreos are prioritized first, other tags are sorted lexicographically.
 func sortMachineOSTags(tags []string) {
 	sort.SliceStable(tags, func(i, j int) bool {
 		return machineOSTagLess(tags[i], tags[j])
 	})
 }
 
+// machineOSTagLess is a comparison function for machine OS tag names.
+// Returns true if a should sort before b. Prioritizes rhel-coreos (0) and stream-coreos (1),
+// then falls back to lexicographic ordering for all other tags.
 func machineOSTagLess(a, b string) bool {
 	prio := map[string]int{
 		"rhel-coreos":   0,
