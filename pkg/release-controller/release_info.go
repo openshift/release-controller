@@ -664,22 +664,54 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 		return RpmList{}, err
 	}
 
+	// Extract sha256 digest from the image reference for cache key
+	_, extensionsSha, found := strings.Cut(extensionsPull, "@sha256:")
+	if !found {
+		return RpmList{}, fmt.Errorf("extensions image reference missing sha256 digest: %s", extensionsPull)
+	}
+
+	// Check cache first
+	cachedPath := filepath.Join("/tmp/rpmdb", "extensions-"+extensionsSha)
+	extensions, err := os.ReadFile(cachedPath)
+	if err == nil {
+		// Cache hit
+		if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
+			return RpmList{}, fmt.Errorf("unmarshaling extensions from cache: %s", err)
+		}
+		return rpmlist, nil
+	}
+
+	// Cache miss - extract to tmpdir
 	tmpdir, err := os.MkdirTemp("", "extensions")
 	if err != nil {
 		return RpmList{}, fmt.Errorf("failed to create tmpdir for RPM extensions list for %s", extensionsPull)
 	}
-
 	defer os.RemoveAll(tmpdir)
+
 	// see https://github.com/openshift/os/commit/31816acb1ae377c9c48f1e4bc70fbf63cf4adc2d
 	_, _, err = ocCmdExt(tmpdir, "image", "extract", extensionsPull+"[-1]", "--file", coreosExtensionsMetadataPath)
 	if err != nil {
 		return RpmList{}, fmt.Errorf("failed to query RPM extensions list for %s", extensionsPull)
 	}
-	extensions, err := os.ReadFile(filepath.Join(tmpdir, "extensions.json"))
+	extensions, err = os.ReadFile(filepath.Join(tmpdir, "extensions.json"))
 	if err != nil {
 		klog.Warningf("Continuing without extensions information: %v\n", err)
 		return rpmlist, nil
 	}
+
+	// Write to cache atomically (best-effort, ignore errors)
+	// Use temp file + rename to avoid partial reads by concurrent processes
+	tmpCache, err := os.CreateTemp(filepath.Dir(cachedPath), ".extensions-tmp-*")
+	if err == nil {
+		_, writeErr := tmpCache.Write(extensions)
+		closeErr := tmpCache.Close()
+		if writeErr == nil && closeErr == nil {
+			_ = os.Rename(tmpCache.Name(), cachedPath)
+		} else {
+			_ = os.Remove(tmpCache.Name())
+		}
+	}
+
 	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
 		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
 	}
