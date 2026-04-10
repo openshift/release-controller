@@ -114,8 +114,7 @@ def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_me
             with oc.project(namespace):
                 tag = oc.selector(f'imagestreamtag/{imagestream}:{release}').object(ignore_not_found=True)
                 if not tag:
-                    logger.error(f'Unable to locate imagestreamtag: {namespace}/{imagestream}:{release}')
-                    return
+                    raise ValueError(f'Unable to locate imagestreamtag: {namespace}/{imagestream}:{release}')
 
                 logger.info(f'{action.capitalize()}ing imagestreamtag: {namespace}/{imagestream}:{release}')
                 if execute:
@@ -156,6 +155,19 @@ def create_releasepayload_patch(action, custom_reason):
     }
 
     return data
+
+
+def resolve_imagestream_from_releasepayload(ctx, namespace, release):
+    """Look up the imagestream name from the ReleasePayload's spec.payloadCoordinates.imagestreamName."""
+    with oc.options(ctx), oc.tracking(), oc.timeout(15):
+        try:
+            with oc.project(namespace):
+                payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+                if not payload:
+                    return None
+                return payload.model.spec.payloadCoordinates.imagestreamName
+        except (ValueError, OpenShiftPythonException, Exception):
+            return None
 
 
 def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute, output_path):
@@ -750,7 +762,7 @@ if __name__ == '__main__':
     ocp_group.add_argument('-c', '--context', help='The OC context to use (default is "app.ci")', default='app.ci')
     ocp_group.add_argument('-k', '--kubeconfig', help='The kubeconfig to use (default is "~/.kube/config")', default='')
     ocp_group.add_argument('-n', '--name', help='The product prefix to use (default is "ocp")', choices=SUPPORTED_PRODUCTS, default='ocp')
-    ocp_group.add_argument('-i', '--imagestream', help='The name of the release imagestream to use (default is "release")', default='release')
+    ocp_group.add_argument('-i', '--imagestream', help='The name of the release imagestream to use', default=None)
     ocp_group.add_argument('-a', '--architecture', help='The architecture of the release to process (default is "amd64")', choices=SUPPORTED_ARCHITECTURES, default='amd64')
     ocp_group.add_argument('-p', '--private', help='Enable updates of "private" releases', action='store_true')
 
@@ -837,8 +849,39 @@ if __name__ == '__main__':
 
     logger.info(f'Using output directory: {output_dir}')
 
-    # Get the appropriate release imagestream information
-    release_namespace, release_image_stream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
+    # Resolve the release namespace and imagestream name.
+    # If the user explicitly specified -i, use it exclusively. Otherwise, try
+    # to resolve the imagestream name from the ReleasePayload when a release
+    # name is available.
+    if args['imagestream']:
+        release_namespace, release_image_stream = generate_resource_values(args['name'], args['imagestream'], args['architecture'], args['private'])
+    else:
+        release_namespace, release_image_stream = generate_resource_values(args['name'], 'release', args['architecture'], args['private'])
+
+        # Extract a release name (if available) to resolve the imagestream from
+        # the ReleasePayload. Actions that operate on a specific release can
+        # look up the authoritative imagestream name from the ReleasePayload's
+        # spec.payloadCoordinates. The "archive" action only receives version
+        # prefixes (e.g. "5.0"), not a specific release name, so it cannot
+        # resolve this way and falls back to "release"; use -i for imagestreams
+        # other than "release" (e.g. -i release-5).
+        release_name = None
+        if args['action'] in ['accept', 'reject', 'keep']:
+            release_name = args.get('release')
+        elif args['action'] == 'prune':
+            releases = args.get('releases', [])
+            release_name = releases[0] if releases else None
+        elif args['action'] == 'approval':
+            releases = args.get('release', [])
+            release_name = releases[0] if releases else None
+
+        if release_name:
+            resolved = resolve_imagestream_from_releasepayload(context, release_namespace, release_name)
+            if resolved:
+                release_image_stream = resolved
+                logger.info(f'Resolved imagestream from ReleasePayload: {release_image_stream}')
+            else:
+                logger.warning(f'Unable to resolve imagestream from ReleasePayload, falling back to: {release_image_stream}')
 
     # Execute action
     if args['action'] in ['accept', 'reject']:
