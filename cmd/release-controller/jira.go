@@ -211,11 +211,16 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	klog.V(4).Infof("Verifying fixed issues in %s", release.Config.Name)
 
-	// get accepted tags
-	acceptedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted)
-	tag, prevTag := getNonVerifiedTagsJira(acceptedTags)
+	// Include both accepted and rejected tags when looking for bugs to verify.
+	// Bugs are pre-merge verified by QA on ephemeral clusters (via qe-approved/verified PR labels),
+	// so no additional payload-level QA verification is needed. The payload phase check here simply
+	// confirms that all blocking tests have been executed (accepted or rejected) and that the code
+	// fix is present in the payload, allowing the bug status to be automatically transitioned to
+	// VERIFIED and notifying assignees which payload contains their fix.
+	completedTags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseAccepted, releasecontroller.ReleasePhaseRejected)
+	tag, prevTag := getNonVerifiedTagsJira(completedTags)
 	if tag == nil {
-		klog.V(6).Infof("jira: All accepted tags for %s have already been verified", release.Config.Name)
+		klog.V(6).Infof("jira: All accepted/rejected tags for %s have already been verified", release.Config.Name)
 		return nil
 	}
 	if prevTag == nil {
