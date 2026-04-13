@@ -1,7 +1,9 @@
 package rhcos
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
@@ -39,25 +41,54 @@ func NodeImageSectionMarkdown(info releasecontroller.ReleaseInfo, fromReleasePul
 		return RenderNodeImageInfo(changelogMarkdown, rpmlist, rpmdiff), nil
 	}
 
-	var nodeStreams []CoreOSNodeStream
-	for _, ms := range streams {
-		ext := ms.Tag + "-extensions"
-		list, err := info.RpmListForStream(toReleasePullSpec, ms.Tag, ext)
-		if err != nil {
-			return "", err
-		}
-		var diff releasecontroller.RpmDiff
-		if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, ms.Tag); errFrom == nil {
-			diff, err = info.RpmDiffForStream(fromReleasePullSpec, toReleasePullSpec, ms.Tag)
+	// Process all streams in parallel to reduce cache population time
+	nodeStreams := make([]CoreOSNodeStream, len(streams))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	for i, ms := range streams {
+		wg.Add(1)
+		go func(idx int, stream releasecontroller.MachineOSStreamInfo) {
+			defer wg.Done()
+
+			ext := stream.Tag + "-extensions"
+			list, err := info.RpmListForStream(toReleasePullSpec, stream.Tag, ext)
 			if err != nil {
-				return "", err
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
 			}
-		}
-		nodeStreams = append(nodeStreams, CoreOSNodeStream{
-			Title:   releasecontroller.MachineOSTitle(ms),
-			RpmList: list,
-			RpmDiff: diff,
-		})
+
+			var diff releasecontroller.RpmDiff
+			if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, stream.Tag); errFrom == nil {
+				diff, err = info.RpmDiffForStream(fromReleasePullSpec, toReleasePullSpec, stream.Tag)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					return
+				}
+			}
+
+			nodeStreams[idx] = CoreOSNodeStream{
+				Title:   releasecontroller.MachineOSTitle(stream),
+				RpmList: list,
+				RpmDiff: diff,
+			}
+		}(i, ms)
 	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return "", fmt.Errorf("failed to fetch stream info: %w", firstErr)
+	}
+
 	return RenderDualNodeImageInfo(changelogMarkdown, nodeStreams), nil
 }

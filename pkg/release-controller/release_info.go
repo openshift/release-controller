@@ -51,7 +51,7 @@ const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
 // maxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
 // --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
-const maxConcurrentRpmdbOCCalls = 10
+const maxConcurrentRpmdbOCCalls = 16
 
 var (
 	ocPath       = ""
