@@ -49,8 +49,13 @@ const maxChunkSize = 450 // this seems to be the maximum Jira can handle, curren
 
 const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
+// maxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
+// --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
+const maxConcurrentRpmdbOCCalls = 10
+
 var (
-	ocPath = ""
+	ocPath       = ""
+	rpmdbOCSlots = make(chan struct{}, maxConcurrentRpmdbOCCalls)
 )
 
 type CachingReleaseInfo struct {
@@ -95,6 +100,22 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					}
 				}
 			}
+		case "rpmdiffstream":
+			if len(parts) != 4 {
+				s, err = "", fmt.Errorf("invalid rpmdiffstream key")
+			} else {
+				var rpmdiff RpmDiff
+				rpmdiff, err = info.RpmDiffForStream(parts[1], parts[2], parts[3])
+				if err == nil {
+					var rpmdiffByte []byte
+					rpmdiffByte, err = json.Marshal(rpmdiff)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal Rpm Diff stream; from: %s to: %s img: %s; %s", parts[1], parts[2], parts[3], err)
+					} else {
+						s = string(rpmdiffByte)
+					}
+				}
+			}
 		case "rpmlist":
 			var rpmlist RpmList
 			rpmlist, err = info.RpmList(parts[1])
@@ -105,6 +126,44 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					klog.V(4).Infof("Failed to Marshal Rpm List for %s; %s", parts[1], err)
 				} else {
 					s = string(rpmlistByte)
+				}
+			}
+		case "rpmliststream":
+			if len(parts) != 4 {
+				s, err = "", fmt.Errorf("invalid rpmliststream key")
+			} else {
+				var rpmlist RpmList
+				rpmlist, err = info.RpmListForStream(parts[1], parts[2], parts[3])
+				if err == nil {
+					var rpmlistByte []byte
+					rpmlistByte, err = json.Marshal(rpmlist)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal Rpm List for stream %s/%s; %s", parts[2], parts[3], err)
+					} else {
+						s = string(rpmlistByte)
+					}
+				}
+			}
+		case "imagefor":
+			if len(parts) != 3 {
+				s, err = "", fmt.Errorf("invalid imagefor key")
+			} else {
+				s, err = info.ImageReferenceForComponent(parts[1], parts[2])
+			}
+		case "machineosstreams":
+			if len(parts) != 2 {
+				s, err = "", fmt.Errorf("invalid machineosstreams key")
+			} else {
+				var streams []MachineOSStreamInfo
+				streams, err = info.ListMachineOSStreams(parts[1])
+				if err == nil {
+					var b []byte
+					b, err = json.Marshal(streams)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal machine OS streams for %s; %s", parts[1], err)
+					} else {
+						s = string(b)
+					}
 				}
 			}
 		case "changelog":
@@ -162,6 +221,22 @@ func (c *CachingReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	return rpmdiff, nil
 }
 
+func (c *CachingReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageName string) (RpmDiff, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmdiffstream", fromRelease, toRelease, rpmdbImageName}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return RpmDiff{}, err
+	}
+	if s == "" {
+		return RpmDiff{}, nil
+	}
+	var rpmdiff RpmDiff
+	if err = json.Unmarshal([]byte(s), &rpmdiff); err != nil {
+		return RpmDiff{}, err
+	}
+	return rpmdiff, nil
+}
+
 func (c *CachingReleaseInfo) RpmList(image string) (RpmList, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmlist", image}, "\x00"), groupcache.StringSink(&s))
@@ -176,6 +251,47 @@ func (c *CachingReleaseInfo) RpmList(image string) (RpmList, error) {
 		return RpmList{}, err
 	}
 	return rpmlist, nil
+}
+
+func (c *CachingReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensionsTagName string) (RpmList, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"rpmliststream", releaseImage, coreosTagName, extensionsTagName}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return RpmList{}, err
+	}
+	if s == "" {
+		return RpmList{}, nil
+	}
+	var rpmlist RpmList
+	if err = json.Unmarshal([]byte(s), &rpmlist); err != nil {
+		return RpmList{}, err
+	}
+	return rpmlist, nil
+}
+
+func (c *CachingReleaseInfo) ImageReferenceForComponent(releaseImage, componentName string) (string, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"imagefor", releaseImage, componentName}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return "", err
+	}
+	return s, nil
+}
+
+func (c *CachingReleaseInfo) ListMachineOSStreams(releaseImage string) ([]MachineOSStreamInfo, error) {
+	var s string
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"machineosstreams", releaseImage}, "\x00"), groupcache.StringSink(&s))
+	if err != nil {
+		return nil, err
+	}
+	if s == "" {
+		return nil, nil
+	}
+	var streams []MachineOSStreamInfo
+	if err = json.Unmarshal([]byte(s), &streams); err != nil {
+		return nil, err
+	}
+	return streams, nil
 }
 
 func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
@@ -226,7 +342,14 @@ type ReleaseInfo interface {
 	Bugs(from, to string) ([]BugDetails, error)
 	ChangeLog(from, to string, json bool) (string, error)
 	RpmList(image string) (RpmList, error)
+	RpmListForStream(releaseImage, coreosTagName, extensionsTagName string) (RpmList, error)
 	RpmDiff(from, to string) (RpmDiff, error)
+	// RpmDiffForStream runs rpmdb-diff between two release payloads for a specific machine-os component (e.g. rhel-coreos, rhel-coreos-10).
+	RpmDiffForStream(fromRelease, toRelease, rpmdbImageName string) (RpmDiff, error)
+	// ImageReferenceForComponent resolves a component tag (e.g. rhel-coreos) to a pull spec via oc adm release info --image-for.
+	ImageReferenceForComponent(releaseImage, componentName string) (string, error)
+	// ListMachineOSStreams returns machine-OS streams from the release payload (see machine_os_tags.go).
+	ListMachineOSStreams(releaseImage string) ([]MachineOSStreamInfo, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
@@ -261,6 +384,21 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 
 func ocCmd(args ...string) ([]byte, []byte, error) {
 	return ocCmdExt("", args...)
+}
+
+// ocCmdRpmdb runs oc adm release info with --rpmdb / --rpmdb-diff under a process-wide
+// concurrency cap. If the limit is already reached, it returns an error without starting oc.
+func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
+	select {
+	case rpmdbOCSlots <- struct{}{}:
+	default:
+		return nil, nil, fmt.Errorf(
+			"too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
+			maxConcurrentRpmdbOCCalls,
+		)
+	}
+	defer func() { <-rpmdbOCSlots }()
+	return ocCmd(args...)
 }
 
 func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
@@ -419,12 +557,12 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 
 	var rpmlist RpmList
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", image)
 	if err != nil {
-		return RpmList{}, fmt.Errorf("failed to query RPM list for %s", image)
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s: %w", image, err)
 	}
 	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %w", err)
 	}
 
 	// XXX: This is hacky... honestly we should just have consistent tag names
@@ -461,12 +599,126 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 		return rpmlist, nil
 	}
 	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
-		return RpmList{}, fmt.Errorf("unmarshaling extensions: %s", err)
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %w", err)
 	}
 
 	return rpmlist, nil
 }
 
+// ImageReferenceForComponent resolves the full image reference (pullspec) for a named component
+// within a release image using oc adm release info --image-for. Returns the complete image reference
+// including registry, repository, and digest.
+func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName string) (string, error) {
+	if _, err := imagereference.Parse(releaseImage); err != nil {
+		return "", fmt.Errorf("%s is not an image reference: %v", releaseImage, err)
+	}
+	if strings.HasPrefix(releaseImage, "-") {
+		return "", fmt.Errorf("not a valid reference")
+	}
+	out, _, err := ocCmd("adm", "release", "info", "--image-for", componentName, releaseImage)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve image for component %q in %s: %w", componentName, releaseImage, err)
+	}
+	ref := strings.TrimSpace(string(out))
+	if ref == "" {
+		return "", fmt.Errorf("empty image reference for component %q in %s", componentName, releaseImage)
+	}
+	return ref, nil
+}
+
+// RpmListForStream loads the RPM database for a machine-os component inside the release payload
+// (--rpmdb on the release image plus --rpmdb-image) and extensions from the named extensions tag.
+// Extensions metadata is cached in /tmp/rpmdb/extensions-<sha256> keyed by the image digest to
+// avoid repeated oc image extract operations for the same extensions image.
+func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensionsTagName string) (RpmList, error) {
+	if _, err := imagereference.Parse(releaseImage); err != nil {
+		return RpmList{}, fmt.Errorf("%s is not an image reference: %v", releaseImage, err)
+	}
+	if strings.HasPrefix(releaseImage, "-") {
+		return RpmList{}, fmt.Errorf("not a valid reference")
+	}
+
+	var rpmlist RpmList
+
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM list for %s (rpmdb-image %s): %w", releaseImage, coreosTagName, err)
+	}
+	if err = json.Unmarshal(out, &rpmlist.Packages); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling RPM list: %w", err)
+	}
+
+	extTag := extensionsTagName
+	if extTag == "" {
+		extTag = coreosTagName + "-extensions"
+	}
+	if _, ok := rpmlist.Packages["centos-stream-release"]; ok && extTag == "rhel-coreos-extensions" {
+		extTag = "stream-coreos-extensions"
+	}
+
+	extensionsPull, err := r.ImageReferenceForComponent(releaseImage, extTag)
+	if err != nil {
+		return RpmList{}, err
+	}
+
+	// Extract sha256 digest from the image reference for cache key
+	_, extensionsSha, found := strings.Cut(extensionsPull, "@sha256:")
+	if !found {
+		return RpmList{}, fmt.Errorf("extensions image reference missing sha256 digest: %s", extensionsPull)
+	}
+
+	// Check cache first
+	cachedPath := filepath.Join("/tmp/rpmdb", "extensions-"+extensionsSha)
+	extensions, err := os.ReadFile(cachedPath)
+	if err == nil {
+		// Cache hit
+		if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
+			return RpmList{}, fmt.Errorf("unmarshaling extensions from cache: %w", err)
+		}
+		return rpmlist, nil
+	}
+
+	// Cache miss - extract to tmpdir
+	tmpdir, err := os.MkdirTemp("", "extensions")
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to create tmpdir for RPM extensions list for %s", extensionsPull)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	// see https://github.com/openshift/os/commit/31816acb1ae377c9c48f1e4bc70fbf63cf4adc2d
+	_, _, err = ocCmdExt(tmpdir, "image", "extract", extensionsPull+"[-1]", "--file", coreosExtensionsMetadataPath)
+	if err != nil {
+		return RpmList{}, fmt.Errorf("failed to query RPM extensions list for %s", extensionsPull)
+	}
+	extensions, err = os.ReadFile(filepath.Join(tmpdir, "extensions.json"))
+	if err != nil {
+		klog.Warningf("Continuing without extensions information: %v\n", err)
+		return rpmlist, nil
+	}
+
+	// Write to cache atomically (best-effort, ignore errors)
+	// Use temp file + rename to avoid partial reads by concurrent processes
+	tmpCache, err := os.CreateTemp(filepath.Dir(cachedPath), ".extensions-tmp-*")
+	if err == nil {
+		_, writeErr := tmpCache.Write(extensions)
+		closeErr := tmpCache.Close()
+		if writeErr == nil && closeErr == nil {
+			_ = os.Rename(tmpCache.Name(), cachedPath)
+		} else {
+			_ = os.Remove(tmpCache.Name())
+		}
+	}
+
+	if err = json.Unmarshal(extensions, &rpmlist.Extensions); err != nil {
+		return RpmList{}, fmt.Errorf("unmarshaling extensions: %w", err)
+	}
+
+	return rpmlist, nil
+}
+
+// RpmDiff generates a diff of RPM packages between two release images using oc adm release info --rpmdb-diff.
+// The diff includes changed, added, and removed packages. Uses a process-wide semaphore to limit concurrent
+// rpmdb operations and shares the /tmp/rpmdb/ cache across calls.
 func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 	if _, err := imagereference.Parse(from); err != nil {
 		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", from, err)
@@ -478,14 +730,44 @@ func (r *ExecReleaseInfo) RpmDiff(from, to string) (RpmDiff, error) {
 		return RpmDiff{}, fmt.Errorf("not a valid reference")
 	}
 
-	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-diff", from, to)
 	if err != nil {
-		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %v", from, to, err)
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s: %w", from, to, err)
 	}
 
 	var rpmdiff RpmDiff
 	if err = json.Unmarshal(out, &rpmdiff); err != nil {
-		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %s", err)
+		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %w", err)
+	}
+
+	return rpmdiff, nil
+}
+
+// RpmDiffForStream generates a diff of RPM packages for a specific RHCOS stream (e.g., rhel-coreos or rhel-coreos-10)
+// between two release images. If rpmdbImageName is empty, delegates to RpmDiff for the default machine-os image.
+// Uses a process-wide semaphore to limit concurrent rpmdb operations and shares the /tmp/rpmdb/ cache across calls.
+func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageName string) (RpmDiff, error) {
+	if _, err := imagereference.Parse(fromRelease); err != nil {
+		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", fromRelease, err)
+	}
+	if _, err := imagereference.Parse(toRelease); err != nil {
+		return RpmDiff{}, fmt.Errorf("%s is not an image reference: %v", toRelease, err)
+	}
+	if strings.HasPrefix(fromRelease, "-") || strings.HasPrefix(toRelease, "-") {
+		return RpmDiff{}, fmt.Errorf("not a valid reference")
+	}
+	if rpmdbImageName == "" {
+		return r.RpmDiff(fromRelease, toRelease)
+	}
+
+	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
+	if err != nil {
+		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s (rpmdb-image %s): %w", fromRelease, toRelease, rpmdbImageName, err)
+	}
+
+	var rpmdiff RpmDiff
+	if err = json.Unmarshal(out, &rpmdiff); err != nil {
+		return RpmDiff{}, fmt.Errorf("unmarshaling RPM diff: %w", err)
 	}
 
 	return rpmdiff, nil
