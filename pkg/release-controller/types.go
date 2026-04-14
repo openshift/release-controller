@@ -56,6 +56,59 @@ type APIReleaseInfo struct {
 	ChangeLogJson ChangeLog `json:"changeLogJson,omitempty"`
 }
 
+// APINodeImageInfo contains RPM package information for the node image.
+// For releases with multiple CoreOS streams (4.21+), Streams contains info for each stream.
+// For older releases with a single stream, Streams contains one entry.
+type APINodeImageInfo struct {
+	// Streams contains RPM package information for each CoreOS stream in the release
+	Streams []APINodeImageStream `json:"streams"`
+}
+
+// APINodeImageStream contains RPM package information for a single CoreOS stream.
+type APINodeImageStream struct {
+	// Name is the component tag name (e.g., "rhel-coreos", "rhel-coreos-10")
+	Name string `json:"name"`
+	// DisplayName is the human-readable name (e.g., "Red Hat Enterprise Linux CoreOS 9.8")
+	DisplayName string `json:"displayName,omitempty"`
+	// Packages is a map of package name to version for all packages in this stream
+	Packages map[string]string `json:"packages"`
+	// Extensions is a map of extension package name to version for this stream
+	Extensions map[string]string `json:"extensions"`
+}
+
+// APINodeImageDiff contains the RPM package diff between two releases.
+// This is returned when the ?from= query parameter is provided.
+type APINodeImageDiff struct {
+	// From is the tag name of the base release being compared from
+	From string `json:"from"`
+	// To is the tag name of the target release being compared to
+	To string `json:"to"`
+	// Streams contains the package diff for each CoreOS stream
+	Streams []APINodeImageStreamDiff `json:"streams"`
+}
+
+// APINodeImageStreamDiff contains the RPM package diff for a single CoreOS stream.
+type APINodeImageStreamDiff struct {
+	// Name is the component tag name (e.g., "rhel-coreos", "rhel-coreos-10")
+	Name string `json:"name"`
+	// DisplayName is the human-readable name (e.g., "Red Hat Enterprise Linux CoreOS 9.8")
+	DisplayName string `json:"displayName,omitempty"`
+	// Changed contains packages that have different versions between releases
+	Changed map[string]RpmChangedDiff `json:"changed,omitempty"`
+	// Added contains packages that exist in the target but not in the base release
+	Added map[string]string `json:"added,omitempty"`
+	// Removed contains packages that exist in the base but not in the target release
+	Removed map[string]string `json:"removed,omitempty"`
+}
+
+// APIError represents an error response from the API.
+type APIError struct {
+	// Code is the HTTP status code
+	Code int `json:"code"`
+	// Message describes the error
+	Message string `json:"message"`
+}
+
 // Release holds information about the release used during processing.
 type Release struct {
 	// Source is the image stream that the Config was loaded from and holds all
