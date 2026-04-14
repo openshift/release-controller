@@ -185,6 +185,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/latest", c.apiReleaseLatest)
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
+	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}/nodeimageinfo", c.apiNodeImageInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
@@ -725,6 +726,246 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	fmt.Fprintln(w)
+}
+
+func writeAPIError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	response := releasecontroller.APIError{
+		Code:    code,
+		Message: message,
+	}
+	data, err := json.MarshalIndent(&response, "", "  ")
+	if err != nil {
+		klog.Errorf("Failed to marshal API error response: %v", err)
+		return
+	}
+	w.Write(data)
+	fmt.Fprintln(w)
+}
+
+func writeAPIResponse(w http.ResponseWriter, response interface{}) error {
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(data); err != nil {
+		klog.Errorf("Failed to write API response: %v", err)
+	}
+	fmt.Fprintln(w)
+	return nil
+}
+
+func (c *Controller) apiNodeImageInfo(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	vars := mux.Vars(req)
+	tag := vars["tag"]
+	from := req.URL.Query().Get("from")
+
+	// Parse target tag version and check if 4.19+
+	version, err := releasecontroller.SemverParseTolerant(tag)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest,
+			fmt.Sprintf("Unable to parse version from tag '%s': %v", tag, err))
+		return
+	}
+
+	// Node Image Info is only available for OCP 4.19+
+	if version.Major == 4 && version.Minor < 19 {
+		writeAPIError(w, http.StatusBadRequest,
+			fmt.Sprintf("Node Image Info is only available for OCP 4.19 and later. Tag '%s' is version %d.%d.",
+				tag, version.Major, version.Minor))
+		return
+	}
+
+	// If from is provided, validate it is also 4.19+ and same minor version
+	if from != "" {
+		fromVersion, err := releasecontroller.SemverParseTolerant(from)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest,
+				fmt.Sprintf("Unable to parse version from 'from' tag '%s': %v", from, err))
+			return
+		}
+		if fromVersion.Major == 4 && fromVersion.Minor < 19 {
+			writeAPIError(w, http.StatusBadRequest,
+				fmt.Sprintf("Node Image Info is only available for OCP 4.19 and later. 'from' tag '%s' is version %d.%d.",
+					from, fromVersion.Major, fromVersion.Minor))
+			return
+		}
+		// Require same major.minor version for comparisons
+		if version.Major != fromVersion.Major || version.Minor != fromVersion.Minor {
+			writeAPIError(w, http.StatusBadRequest,
+				fmt.Sprintf("Cannot compare releases from different minor versions. Tag '%s' is version %d.%d, but 'from' tag '%s' is version %d.%d.",
+					tag, version.Major, version.Minor, from, fromVersion.Major, fromVersion.Minor))
+			return
+		}
+	}
+
+	// Look up tags
+	release := vars["release"]
+	tagsToFind := []string{tag}
+	if from != "" {
+		tagsToFind = append(tagsToFind, from)
+	}
+	tags, ok := c.findReleaseStreamTags(false, tagsToFind...)
+	if !ok {
+		for k, v := range tags {
+			if v == nil {
+				writeAPIError(w, http.StatusNotFound,
+					fmt.Sprintf("Release tag not found: %s", k))
+				return
+			}
+		}
+	}
+
+	// Validate tag belongs to the specified release stream
+	if len(release) > 0 && tags[tag].Release.Config.Name != release {
+		writeAPIError(w, http.StatusNotFound,
+			fmt.Sprintf("Release tag %s does not belong to release %s", tag, release))
+		return
+	}
+
+	// Get pullspec for target tag
+	toPullSpec := releasecontroller.FindPublicImagePullSpec(tags[tag].Release.Target, tag)
+	if toPullSpec == "" {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Release target %s does not have a configured registry", tags[tag].Release.Target.Name))
+		return
+	}
+
+	// Get image info for target to get digest-based pullspec
+	toImageInfo, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Unable to get image info for tag '%s': %v", tag, err))
+		return
+	}
+	toDigestPullSpec := toImageInfo.GenerateDigestPullSpec()
+
+	// Discover available CoreOS streams in the target release
+	streams, err := c.releaseInfo.ListMachineOSStreams(toDigestPullSpec)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Unable to list machine-os streams: %v", err))
+		return
+	}
+
+	// If no ?from= parameter, return full package list
+	if from == "" {
+		c.apiNodeImageInfoList(w, tag, toDigestPullSpec, streams)
+		return
+	}
+
+	// Get pullspec for from tag
+	fromPullSpec := releasecontroller.FindPublicImagePullSpec(tags[from].Release.Target, from)
+	if fromPullSpec == "" {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Release target %s does not have a configured registry", tags[from].Release.Target.Name))
+		return
+	}
+
+	// Get image info for from tag to get digest-based pullspec
+	fromImageInfo, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Unable to get image info for 'from' tag '%s': %v", from, err))
+		return
+	}
+	fromDigestPullSpec := fromImageInfo.GenerateDigestPullSpec()
+
+	// Return diff between from and to
+	c.apiNodeImageInfoDiff(w, from, tag, fromDigestPullSpec, toDigestPullSpec, streams)
+}
+
+// apiNodeImageInfoList returns the full RPM package list for each stream (no diff)
+func (c *Controller) apiNodeImageInfoList(w http.ResponseWriter, tag, pullspec string, streams []releasecontroller.MachineOSStreamInfo) {
+	var response releasecontroller.APINodeImageInfo
+
+	if len(streams) == 0 {
+		// Fallback for older releases without discoverable streams
+		rpmList, err := c.releaseInfo.RpmList(pullspec)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError,
+				fmt.Sprintf("Unable to get RPM list: %v", err))
+			return
+		}
+		response.Streams = []releasecontroller.APINodeImageStream{{
+			Name:       "rhel-coreos",
+			Packages:   rpmList.Packages,
+			Extensions: rpmList.Extensions,
+		}}
+	} else {
+		// Get RPM list for each stream
+		for _, stream := range streams {
+			extTag := stream.Tag + "-extensions"
+			rpmList, err := c.releaseInfo.RpmListForStream(pullspec, stream.Tag, extTag)
+			if err != nil {
+				writeAPIError(w, http.StatusInternalServerError,
+					fmt.Sprintf("Unable to get RPM list for stream %s: %v", stream.Tag, err))
+				return
+			}
+			response.Streams = append(response.Streams, releasecontroller.APINodeImageStream{
+				Name:        stream.Tag,
+				DisplayName: stream.DisplayName,
+				Packages:    rpmList.Packages,
+				Extensions:  rpmList.Extensions,
+			})
+		}
+	}
+
+	if err := writeAPIResponse(w, &response); err != nil {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Unable to marshal response: %v", err))
+	}
+}
+
+// apiNodeImageInfoDiff returns the RPM package diff between two releases for each stream
+func (c *Controller) apiNodeImageInfoDiff(w http.ResponseWriter, from, to, fromPullSpec, toPullSpec string, streams []releasecontroller.MachineOSStreamInfo) {
+	response := releasecontroller.APINodeImageDiff{
+		From: from,
+		To:   to,
+	}
+
+	if len(streams) == 0 {
+		// Fallback for older releases without discoverable streams
+		rpmDiff, err := c.releaseInfo.RpmDiff(fromPullSpec, toPullSpec)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError,
+				fmt.Sprintf("Unable to get RPM diff: %v", err))
+			return
+		}
+		response.Streams = []releasecontroller.APINodeImageStreamDiff{{
+			Name:    "rhel-coreos",
+			Changed: rpmDiff.Changed,
+			Added:   rpmDiff.Added,
+			Removed: rpmDiff.Removed,
+		}}
+	} else {
+		// Get RPM diff for each stream
+		for _, stream := range streams {
+			rpmDiff, err := c.releaseInfo.RpmDiffForStream(fromPullSpec, toPullSpec, stream.Tag)
+			if err != nil {
+				writeAPIError(w, http.StatusInternalServerError,
+					fmt.Sprintf("Unable to get RPM diff for stream %s: %v", stream.Tag, err))
+				return
+			}
+			response.Streams = append(response.Streams, releasecontroller.APINodeImageStreamDiff{
+				Name:        stream.Tag,
+				DisplayName: stream.DisplayName,
+				Changed:     rpmDiff.Changed,
+				Added:       rpmDiff.Added,
+				Removed:     rpmDiff.Removed,
+			})
+		}
+	}
+
+	if err := writeAPIResponse(w, &response); err != nil {
+		writeAPIError(w, http.StatusInternalServerError,
+			fmt.Sprintf("Unable to marshal response: %v", err))
+	}
 }
 
 func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagInfo, format string) {
