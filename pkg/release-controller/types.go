@@ -391,11 +391,11 @@ type ProwJobVerification struct {
 }
 
 type VerificationStatus struct {
-	State          string       `json:"state"`
-	URL            string       `json:"url"`
-	Retries        int          `json:"retries,omitempty"`
-	PreviousAttemptURLs []string `json:"previousAttemptURLs,omitempty"`
-	TransitionTime *metav1.Time `json:"transitionTime,omitempty"`
+	State               string       `json:"state"`
+	URL                 string       `json:"url"`
+	Retries             int          `json:"retries,omitempty"`
+	PreviousAttemptURLs []string     `json:"previousAttemptURLs,omitempty"`
+	TransitionTime      *metav1.Time `json:"transitionTime,omitempty"`
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
