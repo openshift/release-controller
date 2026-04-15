@@ -49,13 +49,14 @@ const maxChunkSize = 450 // this seems to be the maximum Jira can handle, curren
 
 const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
-// maxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
+// MaxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
 // --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
-const maxConcurrentRpmdbOCCalls = 16
+const MaxConcurrentRpmdbOCCalls = 8
 
 var (
-	ocPath       = ""
-	rpmdbOCSlots = make(chan struct{}, maxConcurrentRpmdbOCCalls)
+	ocPath = ""
+	// RpmdbOCSlots is the semaphore channel for limiting concurrent rpmdb operations
+	RpmdbOCSlots = make(chan struct{}, MaxConcurrentRpmdbOCCalls)
 )
 
 type CachingReleaseInfo struct {
@@ -390,14 +391,14 @@ func ocCmd(args ...string) ([]byte, []byte, error) {
 // concurrency cap. If the limit is already reached, it returns an error without starting oc.
 func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
 	select {
-	case rpmdbOCSlots <- struct{}{}:
+	case RpmdbOCSlots <- struct{}{}:
 	default:
 		return nil, nil, fmt.Errorf(
 			"too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
-			maxConcurrentRpmdbOCCalls,
+			MaxConcurrentRpmdbOCCalls,
 		)
 	}
-	defer func() { <-rpmdbOCSlots }()
+	defer func() { <-RpmdbOCSlots }()
 	return ocCmd(args...)
 }
 
@@ -411,7 +412,11 @@ func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
 		}
 	}
 
-	cmd := exec.Command(ocPath, args...)
+	// Add 50-second timeout to prevent indefinite hangs
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, ocPath, args...)
 	klog.V(4).Infof("Running oc command: %s", cmd.String())
 
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
@@ -640,7 +645,7 @@ func (r *ExecReleaseInfo) RpmListForStream(releaseImage, coreosTagName, extensio
 
 	var rpmlist RpmList
 
-	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb", "--rpmdb-image="+coreosTagName, releaseImage)
 	if err != nil {
 		return RpmList{}, fmt.Errorf("failed to query RPM list for %s (rpmdb-image %s): %w", releaseImage, coreosTagName, err)
 	}
@@ -760,7 +765,7 @@ func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageNam
 		return r.RpmDiff(fromRelease, toRelease)
 	}
 
-	out, _, err := ocCmdRpmdb("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
+	out, _, err := ocCmd("adm", "release", "info", "--rpmdb-cache=/tmp/rpmdb/", "--output=json", "--rpmdb-image="+rpmdbImageName, "--rpmdb-diff", fromRelease, toRelease)
 	if err != nil {
 		return RpmDiff{}, fmt.Errorf("could not generate RPM diff for %s to %s (rpmdb-image %s): %w", fromRelease, toRelease, rpmdbImageName, err)
 	}
