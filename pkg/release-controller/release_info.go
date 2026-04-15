@@ -412,11 +412,7 @@ func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
 		}
 	}
 
-	// Add 50-second timeout to prevent indefinite hangs
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, ocPath, args...)
+	cmd := exec.Command(ocPath, args...)
 	klog.V(4).Infof("Running oc command: %s", cmd.String())
 
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
