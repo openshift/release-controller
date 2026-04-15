@@ -1,6 +1,7 @@
 package rhcos
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 // Newer oc releases may omit the "* Red Hat Enterprise Linux CoreOS upgraded from …" summary lines,
 // so that anchor is absent even when the payload has rhel-coreos* streams—we still render node
 // info when streams are discoverable.
-func NodeImageSectionMarkdown(info releasecontroller.ReleaseInfo, fromReleasePullSpec, toReleasePullSpec, changelogMarkdown string) (string, error) {
+func NodeImageSectionMarkdown(ctx context.Context, info releasecontroller.ReleaseInfo, fromReleasePullSpec, toReleasePullSpec, changelogMarkdown string) (string, error) {
 	streams, err := info.ListMachineOSStreams(toReleasePullSpec)
 	if err != nil {
 		return "", err
@@ -40,9 +41,14 @@ func NodeImageSectionMarkdown(info releasecontroller.ReleaseInfo, fromReleasePul
 		return RenderNodeImageInfo(changelogMarkdown, rpmlist, rpmdiff), nil
 	}
 
-	// Acquire single semaphore slot for all stream operations
+	// Acquire single semaphore slot for all stream operations.
+	// Respect context cancellation so orphaned goroutines from timed-out HTTP
+	// handlers release their slot promptly instead of holding it until all
+	// streams are processed.
 	select {
 	case releasecontroller.RpmdbOCSlots <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
 	default:
 		return "", fmt.Errorf("too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
 			releasecontroller.MaxConcurrentRpmdbOCCalls)
@@ -53,6 +59,13 @@ func NodeImageSectionMarkdown(info releasecontroller.ReleaseInfo, fromReleasePul
 	nodeStreams := make([]CoreOSNodeStream, len(streams))
 
 	for i, stream := range streams {
+		// Between stream iterations, check if the caller gave up (e.g. HTTP
+		// handler timed out). This releases the semaphore slot without waiting
+		// for remaining streams to finish.
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+
 		ext := stream.Tag + "-extensions"
 		list, err := info.RpmListForStream(toReleasePullSpec, stream.Tag, ext)
 		if err != nil {
