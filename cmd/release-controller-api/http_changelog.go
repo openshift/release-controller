@@ -136,7 +136,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		flusher.Flush()
 		select {
 		case render = <-ch:
-		case <-time.After(15 * time.Second):
+		case <-time.After(60 * time.Second):
 			render.err = fmt.Errorf("the changelog is still loading, if this is the first access it may take several minutes to clone all repositories")
 		}
 		fmt.Fprintf(w, `<style>#loading{display: none;}</style>`)
@@ -200,7 +200,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 
 	select {
 	case render = <-chNodeInfo:
-	case <-time.After(15 * time.Second):
+	case <-time.After(60 * time.Second):
 		render.err = fmt.Errorf("node image info is still loading, check back later")
 	}
 	fmt.Fprintf(w, `<style>#node_loading{display: none;}</style>`)

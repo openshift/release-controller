@@ -1,6 +1,7 @@
 package rhcos
 
 import (
+	"fmt"
 	"strings"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -39,25 +40,39 @@ func NodeImageSectionMarkdown(info releasecontroller.ReleaseInfo, fromReleasePul
 		return RenderNodeImageInfo(changelogMarkdown, rpmlist, rpmdiff), nil
 	}
 
-	var nodeStreams []CoreOSNodeStream
-	for _, ms := range streams {
-		ext := ms.Tag + "-extensions"
-		list, err := info.RpmListForStream(toReleasePullSpec, ms.Tag, ext)
+	// Acquire single semaphore slot for all stream operations
+	select {
+	case releasecontroller.RpmdbOCSlots <- struct{}{}:
+	default:
+		return "", fmt.Errorf("too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
+			releasecontroller.MaxConcurrentRpmdbOCCalls)
+	}
+	defer func() { <-releasecontroller.RpmdbOCSlots }()
+
+	// Process all streams sequentially to avoid cache stomping
+	nodeStreams := make([]CoreOSNodeStream, len(streams))
+
+	for i, stream := range streams {
+		ext := stream.Tag + "-extensions"
+		list, err := info.RpmListForStream(toReleasePullSpec, stream.Tag, ext)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to fetch RPM list for stream %s: %w", stream.Tag, err)
 		}
+
 		var diff releasecontroller.RpmDiff
-		if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, ms.Tag); errFrom == nil {
-			diff, err = info.RpmDiffForStream(fromReleasePullSpec, toReleasePullSpec, ms.Tag)
+		if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, stream.Tag); errFrom == nil {
+			diff, err = info.RpmDiffForStream(fromReleasePullSpec, toReleasePullSpec, stream.Tag)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to fetch RPM diff for stream %s: %w", stream.Tag, err)
 			}
 		}
-		nodeStreams = append(nodeStreams, CoreOSNodeStream{
-			Title:   releasecontroller.MachineOSTitle(ms),
+
+		nodeStreams[i] = CoreOSNodeStream{
+			Title:   releasecontroller.MachineOSTitle(stream),
 			RpmList: list,
 			RpmDiff: diff,
-		})
+		}
 	}
+
 	return RenderDualNodeImageInfo(changelogMarkdown, nodeStreams), nil
 }
