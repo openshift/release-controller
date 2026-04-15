@@ -123,7 +123,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	flusher.Flush()
 
 	ch := make(chan renderResult)
-	chNodeInfo := make(chan renderResult)
+	chNodeInfo := make(chan renderResult, 1)
 
 	// run the changelog in a goroutine because it may take significant time
 	go c.getChangeLog(ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format)
