@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -67,7 +68,7 @@ func main() {
 	}
 
 	if !*skipNode {
-		nodeMD, err := rhcos.NodeImageSectionMarkdown(info, *from, *to, out)
+		nodeMD, err := rhcos.NodeImageSectionMarkdown(context.Background(), info, *from, *to, out)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "NodeImageSectionMarkdown: %v\n", err)
 			os.Exit(1)

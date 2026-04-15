@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,7 +25,7 @@ type renderResult struct {
 	err error
 }
 
-func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
+func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chNodeInfo chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
 	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
@@ -106,7 +107,7 @@ func (c *Controller) getChangeLog(ch chan renderResult, chNodeInfo chan renderRe
 		return
 	}
 
-	nodeMD, err := rhcos.NodeImageSectionMarkdown(c.releaseInfo, fromImagePullspec, toImagePullspec, out)
+	nodeMD, err := rhcos.NodeImageSectionMarkdown(ctx, c.releaseInfo, fromImagePullspec, toImagePullspec, out)
 	if err != nil {
 		chNodeInfo <- renderResult{err: err}
 		return
@@ -122,11 +123,16 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 
 	flusher.Flush()
 
+	// Cancel ctx when the handler returns so orphaned goroutines release
+	// semaphore slots promptly instead of processing remaining streams.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	ch := make(chan renderResult)
 	chNodeInfo := make(chan renderResult, 1)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format)
+	go c.getChangeLog(ctx, ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format)
 
 	var render renderResult
 	select {
