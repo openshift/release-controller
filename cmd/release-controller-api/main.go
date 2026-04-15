@@ -314,10 +314,7 @@ func (o *options) Run() error {
 	http.DefaultServeMux.Handle("/", c.userInterfaceHandler())
 	klog.Infof("Listening on port %s for UI and metrics", strconv.Itoa(o.ListenPort))
 	interrupts.ListenAndServe(&http.Server{
-		Addr:         ":" + strconv.Itoa(o.ListenPort),
-		ReadTimeout:  90 * time.Second,
-		WriteTimeout: 90 * time.Second,
-		IdleTimeout:  90 * time.Second,
+		Addr: ":" + strconv.Itoa(o.ListenPort),
 	}, time.Second*10)
 	// report that this release-controller-api is ready while http server is responding
 	health.ServeReady(func() bool {
