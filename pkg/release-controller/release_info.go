@@ -51,7 +51,7 @@ const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
 // MaxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
 // --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
-const MaxConcurrentRpmdbOCCalls = 8
+const MaxConcurrentRpmdbOCCalls = 16
 
 var (
 	ocPath = ""
@@ -399,10 +399,17 @@ func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
 		)
 	}
 	defer func() { <-RpmdbOCSlots }()
-	return ocCmd(args...)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	return ocCmdCtx(ctx, "", args...)
 }
 
 func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
+	return ocCmdCtx(context.Background(), dir, args...)
+}
+
+func ocCmdCtx(ctx context.Context, dir string, args ...string) ([]byte, []byte, error) {
 	var err error
 
 	if ocPath == "" {
@@ -412,7 +419,7 @@ func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
 		}
 	}
 
-	cmd := exec.Command(ocPath, args...)
+	cmd := exec.CommandContext(ctx, ocPath, args...)
 	klog.V(4).Infof("Running oc command: %s", cmd.String())
 
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
@@ -429,6 +436,9 @@ func ocCmdExt(dir string, args ...string) ([]byte, []byte, error) {
 		msg := errOut.String()
 		if len(msg) == 0 {
 			msg = err.Error()
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, nil, fmt.Errorf("oc command timed out: %v", msg)
 		}
 		return nil, nil, fmt.Errorf("could not run oc command: %v", msg)
 	}
