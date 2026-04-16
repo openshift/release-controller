@@ -2,7 +2,7 @@
 <p class="small mb-3">
     Quick links: {{ dashboardsJoin .Dashboards }}
 </p>
-<p>Visualize upgrades in <a href="/graph">Cincinnati</a> | <a href="/graph?format=dot">dot</a> | <a href="/graph?format=svg">SVG</a> | <a href="/graph?format=png">PNG</a> format. Run the following command to make this your update server:</p>
+<p>Visualize upgrades in <a href="/graph">Cincinnati</a> format. Run the following command to make this your update server:</p>
 <pre class="ml-4">
 oc patch clusterversion/version --patch '{"spec":{"upstream":"{{ .BaseURL }}graph"}}' --type=merge
 </pre>

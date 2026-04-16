@@ -1,20 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os/exec"
-	"strconv"
 	"strings"
-	"text/template"
 
-	viz "github.com/awalterschulze/gographviz"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog"
 )
 
 type ReleaseNode struct {
@@ -158,142 +151,7 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
-	case "dot", "svg", "png":
-		g := viz.NewGraph()
-		if err := g.SetDir(true); err != nil {
-			http.Error(w, fmt.Sprintf("Unable to set directionality of graph: %v", err), http.StatusBadRequest)
-			return
-		}
-		if err := g.SetName("Upgrades"); err != nil {
-			http.Error(w, fmt.Sprintf("Unable set graph name: %v", err), http.StatusBadRequest)
-			return
-		}
-		if err := g.AddAttr("Upgrades", string(viz.RankDir), "BT"); err != nil {
-			http.Error(w, fmt.Sprintf("Unable to set graph rank direction: %v", err), http.StatusBadRequest)
-			return
-		}
-		if err := g.AddAttr("Upgrades", string(viz.LabelLOC), "t"); err != nil {
-			http.Error(w, fmt.Sprintf("Unable to set `labelloc` for graph: %v", err), http.StatusBadRequest)
-			return
-		}
-		nodeLabels := make(map[string]int, nodeCount)
-		index := 0
-		for j, s := range streams {
-			subgraphName := fmt.Sprintf("cluster_%d", j)
-			subgraphLabel := fmt.Sprintf("%q", "Stream "+s.Release.Config.Name)
-			if err := g.AddSubGraph("Upgrades", subgraphName, map[string]string{
-				string(viz.Label): subgraphLabel,
-			}); err != nil {
-				http.Error(w, fmt.Sprintf("Unable to add subgraph: %v", err), http.StatusBadRequest)
-				return
-			}
-			for i, tag := range s.Tags {
-				nodeLabels[tag.Name] = index
-				attrs := map[string]string{
-					string(viz.Label): fmt.Sprintf(`%q`, tag.Name),
-					string(viz.HREF):  fmt.Sprintf(`"/releasetag/%s"`, template.HTMLEscapeString(tag.Name)),
-				}
-				if phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; phase == releasecontroller.ReleasePhaseRejected {
-					attrs[string(viz.Color)] = "red"
-				}
-				if err := g.AddNode(subgraphName, dotNodeName(index), attrs); err != nil {
-					http.Error(w, fmt.Sprintf("Unable to add node to graph: %v", err), http.StatusBadRequest)
-					return
-				}
-				if i > 0 {
-					if err := g.AddEdge(dotNodeName(index), dotNodeName(index-1), true, map[string]string{
-						string(viz.Style):  "invis",
-						string(viz.Weight): "5",
-					}); err != nil {
-						http.Error(w, fmt.Sprintf("Unable to add edge to graph: %v", err), http.StatusBadRequest)
-						return
-					}
-				}
-				index++
-			}
-		}
-	Edges:
-		for _, history := range histories {
-			from, ok := nodeLabels[history.From]
-			if !ok {
-				continue
-			}
-			to, ok := nodeLabels[history.To]
-			if !ok {
-				continue
-			}
-
-			attrs := map[string]string{}
-			if history.Success == 0 && history.Failure > 0 {
-				attrs[string(viz.Style)] = "dashed"
-				attrs[string(viz.Color)] = "red"
-				attrs[string(viz.Weight)] = "1"
-			} else {
-				attrs[string(viz.Weight)] = "2"
-			}
-
-			if dsts := g.Edges.SrcToDsts[dotNodeName(from)]; dsts != nil {
-				if edges := dsts[dotNodeName(to)]; len(edges) > 0 {
-					for _, edge := range edges {
-						if edge.Attrs[viz.Style] == "invis" {
-							for k := range edge.Attrs {
-								delete(edge.Attrs, k)
-							}
-							for k, v := range attrs {
-								edge.Attrs[viz.Attr(k)] = v
-							}
-							edge.Attrs[viz.Weight] = "5"
-							continue Edges
-						}
-					}
-				}
-			}
-
-			if err := g.AddEdge(dotNodeName(from), dotNodeName(to), true, attrs); err != nil {
-				http.Error(w, fmt.Sprintf("Unable to add edge to graph: %v", err), http.StatusBadRequest)
-				return
-			}
-		}
-
-		switch format {
-		case "dot":
-			w.Header().Set("Content-Type", "text/plain")
-			if _, err := w.Write([]byte(g.String())); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		case "svg", "png":
-			cmd := exec.Command("dot", fmt.Sprintf("-T%s", format))
-			cmd.Stdin = bytes.NewBufferString(g.String())
-			buf := &bytes.Buffer{}
-			cmd.Stderr = buf
-			out, err := cmd.Output()
-			if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
-				http.Error(w, "The 'dot' binary is not installed", http.StatusBadRequest)
-				return
-			}
-			if err != nil {
-				klog.Errorf("dot failed:\n%s", buf.String())
-				http.Error(w, fmt.Sprintf("Unable to render graph: %v", err), http.StatusBadRequest)
-				return
-			}
-			switch format {
-			case "svg":
-				w.Header().Set("Content-Type", "image/svg+xml")
-			case "png":
-				w.Header().Set("Content-Type", "image/png")
-			}
-			if _, err := w.Write(out); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-
 	default:
-		http.Error(w, "Unsupported ?format, must be 'dot', 'cincinnati' (default)", http.StatusBadRequest)
+		http.Error(w, "Unsupported ?format, must be 'cincinnati' (default)", http.StatusBadRequest)
 	}
-}
-
-func dotNodeName(index int) string {
-	return strconv.Itoa(index)
 }
