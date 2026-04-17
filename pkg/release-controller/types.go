@@ -54,8 +54,18 @@ type APIReleaseInfo struct {
 	ChangeLog []byte `json:"changeLog,omitempty"`
 	//ChangeLogJson is the json representation of the changes included in this release tag
 	ChangeLogJson ChangeLog `json:"changeLogJson,omitempty"`
-	// NodeImageRpmDiff is the RPM package diff between the previous and current node images
-	NodeImageRpmDiff *RpmDiff `json:"nodeImageRpmDiff,omitempty"`
+	// NodeImageStreams contains per-stream RPM diffs for each machine-OS image (e.g. rhel-coreos, rhel-coreos-10).
+	NodeImageStreams []APINodeImageStream `json:"nodeImageStreams,omitempty"`
+}
+
+// APINodeImageStream holds RPM diff information for a single machine-OS stream in a release payload.
+type APINodeImageStream struct {
+	// Name is the human-readable display name (e.g. "Red Hat Enterprise Linux CoreOS").
+	Name string `json:"name"`
+	// Tag is the payload component tag (e.g. "rhel-coreos", "rhel-coreos-10").
+	Tag string `json:"tag"`
+	// RpmDiff is the RPM package diff between previous and current releases for this stream.
+	RpmDiff *RpmDiff `json:"rpmDiff,omitempty"`
 }
 
 // Release holds information about the release used during processing.
