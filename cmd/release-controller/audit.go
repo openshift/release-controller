@@ -57,6 +57,13 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		return nil
 	}
 
+	if len(record.ID) == 0 && len(record.Location) > 0 {
+		info, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, record.Location)
+		if err == nil && len(info.Digest) > 0 {
+			record.ID = info.Digest
+			c.auditTracker.SetID(record.Name, info.Digest)
+		}
+	}
 	if len(record.ID) == 0 {
 		msg := fmt.Sprintf("Release %s has no digest and cannot be verified", record.Name)
 		c.auditTracker.SetFailure(record.Name, msg)
@@ -283,6 +290,14 @@ func NewAuditTracker(queue workqueue.TypedDelayingInterface[string]) *AuditTrack
 	return &AuditTracker{
 		records: make(map[string]*AuditRecord),
 		queue:   queue,
+	}
+}
+
+func (a *AuditTracker) SetID(name, id string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if existing, ok := a.records[name]; ok {
+		existing.ID = id
 	}
 }
 

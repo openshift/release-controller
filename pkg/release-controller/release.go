@@ -218,7 +218,10 @@ func HashSpecTagImageDigests(is *imagev1.ImageStream) string {
 
 func hashStatusTags(is *imagev1.ImageStream) string {
 	h := sha256.New()
-	for _, tag := range is.Status.Tags {
+	tags := make([]imagev1.NamedTagEventList, len(is.Status.Tags))
+	copy(tags, is.Status.Tags)
+	sort.Slice(tags, func(i, j int) bool { return tags[i].Tag < tags[j].Tag })
+	for _, tag := range tags {
 		if len(tag.Items) == 0 {
 			continue
 		}
@@ -237,7 +240,10 @@ func hashStatusTags(is *imagev1.ImageStream) string {
 // fields are not populated; we hash the From reference instead.
 func hashReferenceSpecTags(is *imagev1.ImageStream) string {
 	h := sha256.New()
-	for _, tag := range is.Spec.Tags {
+	tags := make([]imagev1.TagReference, len(is.Spec.Tags))
+	copy(tags, is.Spec.Tags)
+	sort.Slice(tags, func(i, j int) bool { return tags[i].Name < tags[j].Name })
+	for _, tag := range tags {
 		if tag.From == nil {
 			continue
 		}

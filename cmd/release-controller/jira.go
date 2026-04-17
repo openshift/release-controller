@@ -249,7 +249,8 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	prevPullSpec := releasecontroller.ReleasePullSpec(release, prevTag.Name)
 	curPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
-	if len(prevPullSpec) == 0 || len(curPullSpec) == 0 {
+	if len(prevPullSpec) == 0 || len(curPullSpec) == 0 ||
+		strings.HasPrefix(prevPullSpec, ":") || strings.HasPrefix(curPullSpec, ":") {
 		klog.V(4).Infof("jira: release target %s does not have a configured registry", release.Target.Name)
 		c.jiraErrorMetrics.WithLabelValues(jiraNoRegistry).Inc()
 		return fmt.Errorf("jira: release target %s does not have a configured registry", release.Target.Name)

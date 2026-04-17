@@ -433,6 +433,23 @@ func TestBuildReferenceReleaseJob(t *testing.T) {
 			t.Errorf("expected manifest list mode %q, got %q", "true", lastArg)
 		}
 	})
+
+	t.Run("manifest list mode disabled by config override", func(t *testing.T) {
+		releaseCopy := *release
+		configCopy := *release.Config
+		configCopy.DisableManifestListMode = true
+		releaseCopy.Config = &configCopy
+
+		job, err := buildReferenceReleaseJob(&releaseCopy, releaseName, mirror, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		args := job.Spec.Template.Spec.Containers[0].Command
+		lastArg := args[len(args)-1]
+		if lastArg != "false" {
+			t.Errorf("expected manifest list mode %q when DisableManifestListMode is set, got %q", "false", lastArg)
+		}
+	})
 }
 
 func TestBuildReferenceRemovalJob(t *testing.T) {

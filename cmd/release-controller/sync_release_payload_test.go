@@ -47,6 +47,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -77,6 +78,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -95,6 +97,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -130,6 +133,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -148,6 +152,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceImageStream,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -183,6 +188,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceImageStream,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -202,6 +208,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -238,6 +245,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -257,6 +265,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -292,6 +301,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -312,6 +322,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -348,6 +359,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -376,6 +388,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.12.11",
@@ -419,6 +432,7 @@ func TestNewReleasePayload(t *testing.T) {
 						},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -448,6 +462,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.12.11",
@@ -487,6 +502,7 @@ func TestNewReleasePayload(t *testing.T) {
 						},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -509,6 +525,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -550,6 +567,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -575,6 +593,7 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
 			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -616,6 +635,7 @@ func TestNewReleasePayload(t *testing.T) {
 						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -703,6 +723,7 @@ func TestNewReleasePayload(t *testing.T) {
 				},
 			},
 			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.11.0-0.nightly-2022-03-11-113341",
@@ -792,6 +813,7 @@ func TestNewReleasePayload(t *testing.T) {
 						},
 						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
 					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},
@@ -948,6 +970,7 @@ func TestNewReleasePayload(t *testing.T) {
 			verificationJobs: map[string]releasecontroller.ReleaseVerification{},
 			upgradeJobs:      map[string]releasecontroller.UpgradeVerification{},
 			dataSource:       v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType:      v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "4.12.0",
@@ -982,6 +1005,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Repository: "registry.ci.openshift.org/ocp/release",
 						Tag:        "4.12.0",
 					}},
+					PayloadType: v1alpha1.PayloadTypeLocal,
 				},
 			},
 		},

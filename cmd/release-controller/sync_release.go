@@ -95,6 +95,7 @@ func buildReferenceReleaseJob(release *releasecontroller.Release, name string, m
 		prefix + `
 			oc get imagestream "$1" -n "$2" -o yaml > /tmp/mirror-full.yaml
 			awk '/^status:/{s=1;next} s&&/^[^ ]/{s=0} !s' /tmp/mirror-full.yaml > /tmp/mirror.yaml
+			if [ ! -s /tmp/mirror.yaml ]; then echo "ERROR: mirror.yaml is empty after status stripping" >&2; exit 1; fi
 			oc adm release new "--name=$3" "--from-image-stream-file=/tmp/mirror.yaml" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"
 			`,
 		"", mirror.Name, mirror.Namespace, name, toImage, release.Config.ReferenceMode, keepManifestList,

@@ -19,7 +19,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 		return nil, err
 	}
 	payloadType := v1alpha1.PayloadTypeLocal
-	if releasecontroller.HasReferenceSpecTags(release.Source) {
+	if releasecontroller.IsReferenceRelease(release) {
 		payloadType = v1alpha1.PayloadTypeReference
 	}
 	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm, payloadType), metav1.CreateOptions{})
