@@ -387,7 +387,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
-			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -461,7 +461,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
-			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -722,7 +722,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
-			dataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
 			payloadType: v1alpha1.PayloadTypeLocal,
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
