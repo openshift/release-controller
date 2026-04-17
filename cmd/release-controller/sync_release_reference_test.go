@@ -89,6 +89,124 @@ func TestCalculateReferenceMirrorImageStream(t *testing.T) {
 	}
 }
 
+func TestReleaseTagFromForReferenceRelease(t *testing.T) {
+	testCases := []struct {
+		name       string
+		release    *releasecontroller.Release
+		expectFrom bool
+		expectSpec string
+	}{
+		{
+			name: "reference release sets From with DockerImage pullspec",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "4.18-art-latest", Namespace: "ocp"},
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true, From: &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/org/cli@sha256:abc"}},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "release", Namespace: "ocp"},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "4.18.0-0.nightly",
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release-push",
+						PullRepository: "quay.io/openshift-release-dev/ocp-release-pull",
+						SecretName:     "quay-secret",
+					},
+				},
+			},
+			expectFrom: true,
+			expectSpec: "quay.io/openshift-release-dev/ocp-release-pull:" + releasecontroller.ReferencePayloadTagPrefix + "4.18.0-0.nightly-2025-01-15-120000",
+		},
+		{
+			name: "non-reference release does not set From",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "4.18-art-latest", Namespace: "ocp"},
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+					Status: imagev1.ImageStreamStatus{
+						Tags: []imagev1.NamedTagEventList{{Tag: "cli", Items: []imagev1.TagEvent{{Image: "sha256:abc"}}}},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "release", Namespace: "ocp"},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "4.18.0-0.ci",
+				},
+			},
+			expectFrom: false,
+		},
+		{
+			name: "reference spec tags without ReferenceRelease config does not set From",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "4.18-art-latest", Namespace: "ocp"},
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true, From: &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/org/cli@sha256:abc"}},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "release", Namespace: "ocp"},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "4.18.0-0.ci",
+				},
+			},
+			expectFrom: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tagName := tc.release.Config.Name + "-2025-01-15-120000"
+
+			tag := imagev1.TagReference{
+				Name:         tagName,
+				Reference:    releasecontroller.HasReferenceSpecTags(tc.release.Source),
+				ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
+			}
+			if releasecontroller.IsReferenceRelease(tc.release) {
+				tag.From = &corev1.ObjectReference{
+					Kind: "DockerImage",
+					Name: releasecontroller.ReleasePullSpec(tc.release, tag.Name),
+				}
+			}
+
+			if tc.expectFrom {
+				if tag.From == nil {
+					t.Fatal("expected From to be set, got nil")
+				}
+				if tag.From.Kind != "DockerImage" {
+					t.Errorf("expected From.Kind %q, got %q", "DockerImage", tag.From.Kind)
+				}
+				if tag.From.Name != tc.expectSpec {
+					t.Errorf("expected From.Name %q, got %q", tc.expectSpec, tag.From.Name)
+				}
+			} else {
+				if tag.From != nil {
+					t.Errorf("expected From to be nil, got %+v", tag.From)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildReferenceReleaseJob(t *testing.T) {
 	mirror := &imagev1.ImageStream{
 		ObjectMeta: metav1.ObjectMeta{

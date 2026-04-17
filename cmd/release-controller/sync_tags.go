@@ -12,6 +12,7 @@ import (
 	"github.com/blang/semver"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -33,6 +34,12 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 		},
 		Reference:    releasecontroller.HasReferenceSpecTags(release.Source),
 		ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
+	}
+	if releasecontroller.IsReferenceRelease(release) {
+		tag.From = &corev1.ObjectReference{
+			Kind: "DockerImage",
+			Name: releasecontroller.ReleasePullSpec(release, tag.Name),
+		}
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
 
