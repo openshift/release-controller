@@ -1717,16 +1717,18 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.EndOfSupport {
+			s.Delayed = &ReleaseDelay{Message: "Release has reached end of support"}
+		} else if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
 			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
 			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 			}
-		}
-		if len(delays) > 0 {
-			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+			if len(delays) > 0 {
+				s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+			}
 		}
 		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
@@ -1967,16 +1969,18 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 		Tags:    releasecontroller.SortedReleaseTags(r),
 	}
 	var delays []string
-	if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+	if r.Config.EndOfSupport {
+		s.Delayed = &ReleaseDelay{Message: "Release has reached end of support"}
+	} else if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
 		if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 			delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 		}
 		if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
 			delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 		}
-	}
-	if len(delays) > 0 {
-		s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+		if len(delays) > 0 {
+			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+		}
 	}
 	if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
@@ -2124,20 +2128,21 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.EndOfSupport {
+			s.Delayed = &ReleaseDelay{Message: "Release has reached end of support"}
+		} else if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
 			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
 			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 			}
+			if len(delays) > 0 {
+				s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+			}
 		}
 		if isReleaseFailing(s.Tags, r.Config.MaxUnreadyReleases) {
 			s.Failing = true
-		}
-
-		if len(delays) > 0 {
-			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
 		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
