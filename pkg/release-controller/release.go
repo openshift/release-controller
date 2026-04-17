@@ -97,7 +97,7 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 	}
 
 	if len(is.Status.Tags) == 0 {
-		if len(is.Spec.Tags) > 0 && HasReferenceSpecTags(is) {
+		if len(is.Spec.Tags) > 0 && HasReferenceSpecTags(is) && cfg.ReferenceRelease != nil {
 			klog.V(4).Infof("The release input has no status tags, but has reference true spec tags, assuming reference-based release")
 		} else {
 			klog.V(4).Infof("The release input has no status tags, waiting")
