@@ -68,6 +68,9 @@ func buildReferenceReleaseJob(release *releasecontroller.Release, name string, m
 	if release.Config.ReferenceRelease == nil {
 		return nil, fmt.Errorf("release %q has no ReferenceRelease configuration", name)
 	}
+	if release.Config.ReferenceRelease.PushRepository == "" {
+		return nil, fmt.Errorf("release %q ReferenceRelease.PushRepository is empty", name)
+	}
 	toImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferencePayloadTag(name))
 	cliImage := release.Config.OverrideCLIImage
 	if len(cliImage) == 0 {
@@ -112,6 +115,9 @@ func buildReferenceReleaseJob(release *releasecontroller.Release, name string, m
 func buildReferenceRemovalJob(release *releasecontroller.Release, name, cliImage string) (*batchv1.Job, error) {
 	if release.Config.ReferenceRelease == nil {
 		return nil, fmt.Errorf("release %q has no ReferenceRelease configuration", name)
+	}
+	if release.Config.ReferenceRelease.PushRepository == "" {
+		return nil, fmt.Errorf("release %q ReferenceRelease.PushRepository is empty", name)
 	}
 	fromImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferencePayloadTag(name))
 	toImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferenceRemovalTag(name))

@@ -91,7 +91,7 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 		return nil, false, TerminalError{err}
 	}
 
-	if is.Status.PublicDockerImageRepository == "" {
+	if is.Status.PublicDockerImageRepository == "" && !(cfg.ReferenceRelease != nil && HasReferenceSpecTags(is) && len(is.Spec.Tags) > 0) {
 		klog.V(4).Infof("The release input has no public docker image repository, waiting")
 		return nil, false, nil
 	}
@@ -629,7 +629,13 @@ func IsReferenceRelease(release *Release) bool {
 // for traditional releases it lives in the Target imagestream.
 func ReleasePullSpec(release *Release, tagName string) string {
 	if IsReferenceRelease(release) {
+		if release.Config.ReferenceRelease.PullRepository == "" {
+			return ""
+		}
 		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tagName))
+	}
+	if release.Target.Status.PublicDockerImageRepository == "" {
+		return ""
 	}
 	return release.Target.Status.PublicDockerImageRepository + ":" + tagName
 }

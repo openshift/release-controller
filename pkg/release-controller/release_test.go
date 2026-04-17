@@ -184,6 +184,54 @@ func TestReleasePullSpec(t *testing.T) {
 			expected: "registry.ci.openshift.org/ocp/release:4.17.0-0.nightly-2025-01-01-000000",
 		},
 		{
+			name: "reference release with empty PullRepository returns empty string",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &ReleaseConfig{
+					Name: "4.17.0-0.nightly",
+					ReferenceRelease: &ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release",
+						PullRepository: "",
+					},
+				},
+			},
+			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			expected: "",
+		},
+		{
+			name: "non-reference release with empty PublicDockerImageRepository returns empty string",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "",
+					},
+				},
+				Config: &ReleaseConfig{
+					Name: "4.17.0-0.nightly",
+				},
+			},
+			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			expected: "",
+		},
+		{
 			name: "no spec tags means non-reference",
 			release: &Release{
 				Source: &imagev1.ImageStream{

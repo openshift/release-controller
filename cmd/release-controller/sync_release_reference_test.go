@@ -409,6 +409,24 @@ func TestBuildReferenceReleaseJob(t *testing.T) {
 		}
 	})
 
+	t.Run("empty PushRepository returns error", func(t *testing.T) {
+		releaseCopy := *release
+		configCopy := *release.Config
+		configCopy.ReferenceRelease = &releasecontroller.ReferenceRelease{
+			PullRepository: configCopy.ReferenceRelease.PullRepository,
+			PushRepository: "",
+		}
+		releaseCopy.Config = &configCopy
+
+		_, err := buildReferenceReleaseJob(&releaseCopy, releaseName, mirror, false)
+		if err == nil {
+			t.Fatal("expected error when PushRepository is empty")
+		}
+		if !strings.Contains(err.Error(), "PushRepository is empty") {
+			t.Errorf("expected error about empty PushRepository, got: %v", err)
+		}
+	})
+
 	t.Run("manifest list mode disabled", func(t *testing.T) {
 		job, err := buildReferenceReleaseJob(release, releaseName, mirror, false)
 		if err != nil {
@@ -558,6 +576,24 @@ func TestBuildReferenceRemovalJob(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "no ReferenceRelease configuration") {
 			t.Errorf("expected error about missing ReferenceRelease configuration, got: %v", err)
+		}
+	})
+
+	t.Run("empty PushRepository returns error", func(t *testing.T) {
+		releaseCopy := *release
+		configCopy := *release.Config
+		configCopy.ReferenceRelease = &releasecontroller.ReferenceRelease{
+			PullRepository: configCopy.ReferenceRelease.PullRepository,
+			PushRepository: "",
+		}
+		releaseCopy.Config = &configCopy
+
+		_, err := buildReferenceRemovalJob(&releaseCopy, releaseName, cliImage)
+		if err == nil {
+			t.Fatal("expected error when PushRepository is empty")
+		}
+		if !strings.Contains(err.Error(), "PushRepository is empty") {
+			t.Errorf("expected error about empty PushRepository, got: %v", err)
 		}
 	})
 
