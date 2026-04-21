@@ -624,6 +624,29 @@ func IsReferenceRelease(release *Release) bool {
 		release.Config.ReferenceRelease != nil
 }
 
+// ResolveCLIImage determines the CLI image to use for job creation.
+// For reference-based releases the CLI image is taken from the mirror's spec
+// tag "cli"; for traditional releases it comes from the mirror's
+// DockerImageRepository. An explicit OverrideCLIImage always takes precedence.
+func ResolveCLIImage(release *Release, mirror *imagev1.ImageStream) (string, error) {
+	if mirror == nil {
+		return "", fmt.Errorf("unable to determine CLI image: mirror imagestream is nil")
+	}
+	if len(release.Config.OverrideCLIImage) > 0 {
+		return release.Config.OverrideCLIImage, nil
+	}
+	if IsReferenceRelease(release) {
+		if cliTag := FindSpecTag(mirror.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
+			return cliTag.From.Name, nil
+		}
+		return "", fmt.Errorf("unable to determine CLI image for reference release: ensure a 'cli' spec tag exists in the mirror imagestream %s/%s", mirror.Namespace, mirror.Name)
+	}
+	if len(mirror.Status.DockerImageRepository) == 0 {
+		return "", fmt.Errorf("unable to determine CLI image: mirror imagestream %s/%s has no DockerImageRepository", mirror.Namespace, mirror.Name)
+	}
+	return fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository), nil
+}
+
 // ReleasePullSpec returns the correct pull spec for a release payload tag.
 // For reference-based releases the payload lives in the external ReferenceRepository;
 // for traditional releases it lives in the Target imagestream.

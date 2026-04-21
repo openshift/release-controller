@@ -1,9 +1,12 @@
 package releasecontroller
 
 import (
+	"strings"
 	"testing"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestIsReferenceRelease(t *testing.T) {
@@ -101,6 +104,151 @@ func TestIsReferenceRelease(t *testing.T) {
 			actual := IsReferenceRelease(tc.release)
 			if actual != tc.expected {
 				t.Errorf("expected %v, got %v", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestResolveCLIImage(t *testing.T) {
+	testCases := []struct {
+		name          string
+		release       *Release
+		mirror        *imagev1.ImageStream
+		expected      string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "override set returns override regardless of release type",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Config: &ReleaseConfig{
+					OverrideCLIImage: "quay.io/custom/cli:latest",
+					ReferenceRelease: &ReferenceRelease{},
+				},
+			},
+			mirror: &imagev1.ImageStream{
+				Spec: imagev1.ImageStreamSpec{
+					Tags: []imagev1.TagReference{
+						{Name: "cli", From: &corev1.ObjectReference{Kind: "DockerImage", Name: "registry.example.com/cli:v1"}},
+					},
+				},
+			},
+			expected: "quay.io/custom/cli:latest",
+		},
+		{
+			name: "reference release with cli spec tag returns spec tag image",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{},
+				},
+			},
+			mirror: &imagev1.ImageStream{
+				Spec: imagev1.ImageStreamSpec{
+					Tags: []imagev1.TagReference{
+						{Name: "cli", From: &corev1.ObjectReference{Kind: "DockerImage", Name: "registry.example.com/cli:v1"}},
+					},
+				},
+			},
+			expected: "registry.example.com/cli:v1",
+		},
+		{
+			name: "reference release with no cli spec tag returns error",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "other", Reference: true},
+						},
+					},
+				},
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{},
+				},
+			},
+			mirror: &imagev1.ImageStream{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ocp", Name: "4.17-art-latest"},
+				Spec: imagev1.ImageStreamSpec{
+					Tags: []imagev1.TagReference{
+						{Name: "other"},
+					},
+				},
+			},
+			expectError:   true,
+			errorContains: "4.17-art-latest",
+		},
+		{
+			name: "traditional release with DockerImageRepository returns repo:cli",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+				},
+				Config: &ReleaseConfig{},
+			},
+			mirror: &imagev1.ImageStream{
+				Status: imagev1.ImageStreamStatus{
+					DockerImageRepository: "image-registry.openshift-image-registry.svc:5000/ocp/release",
+				},
+			},
+			expected: "image-registry.openshift-image-registry.svc:5000/ocp/release:cli",
+		},
+		{
+			name: "traditional release with empty DockerImageRepository returns error",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+				},
+				Config: &ReleaseConfig{},
+			},
+			mirror: &imagev1.ImageStream{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ocp", Name: "4.17-art-latest"},
+				Status:     imagev1.ImageStreamStatus{},
+			},
+			expectError:   true,
+			errorContains: "4.17-art-latest",
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			actual, err := ResolveCLIImage(tc.release, tc.mirror)
+			if tc.expectError {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tc.errorContains != "" && !strings.Contains(err.Error(), tc.errorContains) {
+					t.Errorf("expected error to contain %q, got %q", tc.errorContains, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if actual != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, actual)
 			}
 		})
 	}

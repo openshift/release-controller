@@ -168,19 +168,18 @@ func (c *Controller) removeReleaseTags(release *releasecontroller.Release, remov
 // ReferenceRepository for each tag being removed. Returns true when all jobs
 // have completed successfully.
 func (c *Controller) ensureReferenceRemovalTags(release *releasecontroller.Release, removeTags []*imagev1.TagReference) (bool, error) {
-	cliImage := release.Config.OverrideCLIImage
-	if len(cliImage) == 0 {
-		if cliTag := releasecontroller.FindSpecTag(release.Source.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
-			cliImage = cliTag.From.Name
-		}
-	}
-	if len(cliImage) == 0 {
-		klog.Warningf("Unable to determine CLI image for reference removal tags, skipping removal tagging")
-		return true, nil
-	}
-
 	allComplete := true
 	for _, tag := range removeTags {
+		mirror, err := releasecontroller.GetMirror(release, tag.Name, c.releaseLister)
+		if err != nil {
+			klog.Warningf("Unable to get mirror for tag %s, skipping removal tagging: %v", tag.Name, err)
+			continue
+		}
+		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+		if err != nil {
+			klog.Warningf("Unable to determine CLI image for tag %s, skipping removal tagging: %v", tag.Name, err)
+			continue
+		}
 		job, err := c.ensureJob(referenceRemovalJobName(tag.Name), nil, func() (*batchv1.Job, error) {
 			job, err := buildReferenceRemovalJob(release, tag.Name, cliImage)
 			if err != nil {

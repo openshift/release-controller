@@ -237,6 +237,15 @@ func TestBuildReferenceReleaseJob(t *testing.T) {
 	release := &releasecontroller.Release{
 		Source: &imagev1.ImageStream{
 			ObjectMeta: metav1.ObjectMeta{Name: "4.17-art-latest", Namespace: "ocp"},
+			Spec: imagev1.ImageStreamSpec{
+				Tags: []imagev1.TagReference{
+					{
+						Name:      "cli",
+						Reference: true,
+						From:      &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/org/cli@sha256:abc"},
+					},
+				},
+			},
 		},
 		Target: &imagev1.ImageStream{
 			ObjectMeta: metav1.ObjectMeta{Name: "release", Namespace: "ocp", Generation: 5},

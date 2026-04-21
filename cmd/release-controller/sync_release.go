@@ -22,9 +22,9 @@ import (
 func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name string, mirror *imagev1.ImageStream) (*batchv1.Job, error) {
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Target.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
-		if len(release.Config.OverrideCLIImage) > 0 {
-			cliImage = release.Config.OverrideCLIImage
+		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+		if err != nil {
+			return nil, err
 		}
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
@@ -72,14 +72,9 @@ func buildReferenceReleaseJob(release *releasecontroller.Release, name string, m
 		return nil, fmt.Errorf("release %q ReferenceRelease.PushRepository is empty", name)
 	}
 	toImage := fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PushRepository, releasecontroller.ReferencePayloadTag(name))
-	cliImage := release.Config.OverrideCLIImage
-	if len(cliImage) == 0 {
-		if cliTag := releasecontroller.FindSpecTag(mirror.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
-			cliImage = cliTag.From.Name
-		}
-	}
-	if len(cliImage) == 0 {
-		return nil, fmt.Errorf("unable to determine CLI image for reference payload release: set overrideCLIImage or ensure a 'cli' tag exists in the source imagestream")
+	cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+	if err != nil {
+		return nil, err
 	}
 
 	secretName := release.Config.ReferenceRelease.SecretName
@@ -152,9 +147,9 @@ func (c *Controller) ensureRewriteJob(release *releasecontroller.Release, name s
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
-		if len(release.Config.OverrideCLIImage) > 0 {
-			cliImage = release.Config.OverrideCLIImage
+		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+		if err != nil {
+			return nil, err
 		}
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
@@ -226,9 +221,9 @@ func (c *Controller) ensureImportJob(release *releasecontroller.Release, name st
 	}
 	return c.ensureJob(name, preconditions, func() (*batchv1.Job, error) {
 		toImage := fmt.Sprintf("%s:%s", release.Source.Status.PublicDockerImageRepository, name)
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
-		if len(release.Config.OverrideCLIImage) > 0 {
-			cliImage = release.Config.OverrideCLIImage
+		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+		if err != nil {
+			return nil, err
 		}
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
@@ -474,9 +469,9 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		fromImage := releasecontroller.ReleasePullSpec(release, name)
 		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, name)
 
-		cliImage := fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository)
-		if len(release.Config.OverrideCLIImage) > 0 {
-			cliImage = release.Config.OverrideCLIImage
+		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)
+		if err != nil {
+			return nil, err
 		}
 
 		job, prefix := newReleaseJobBase(releaseMirrorJobName(name), cliImage, release.Config.AlternateImageRepositorySecretName)
