@@ -128,6 +128,12 @@ type ReleasePayloadSpec struct {
 	PayloadVerificationConfig PayloadVerificationConfig `json:"payloadVerificationConfig,omitempty"`
 	// ReleaseCoordinates list of ReleaseCoordinates where this ReleasePayload has been, or will be, published
 	ReleaseCoordinates []ReleaseCoordinates `json:"releaseCoordinates,omitempty"`
+	// PayloadType specifies how the release payload is stored. If "Local" (the default), the release
+	// is created in a local imagestream. If "Reference", the release is created directly in a remote
+	// repository with no local imagestream copy.
+	// +optional
+	// +kubebuilder:default=Local
+	PayloadType PayloadType `json:"payloadType,omitempty"`
 }
 
 // PayloadCoordinates houses the information pointing to the location of the imagesteamtag that this ReleasePayload
@@ -262,6 +268,20 @@ const (
 	// PayloadVerificationDataSourceImageStream payload verification results will be collected from respective release's
 	// ImageStream Annotation
 	PayloadVerificationDataSourceImageStream PayloadVerificationDataSource = "ImageStreamTagAnnotation"
+)
+
+// PayloadType specifies how the release payload is stored.
+// If Local, the release is created in a local imagestream on the cluster (default behavior).
+// If Reference, the release is created directly in a remote repository with no local copy.
+// +kubebuilder:validation:Optional
+// +kubebuilder:validation:Enum=Local;Reference
+type PayloadType string
+
+const (
+	// PayloadTypeLocal the release payload is stored in a local imagestream
+	PayloadTypeLocal PayloadType = "Local"
+	// PayloadTypeReference the release payload is stored in a remote repository with no local copy
+	PayloadTypeReference PayloadType = "Reference"
 )
 
 // CIConfiguration is an Openshift CI system's job definition of a verification test to run against a ReleasePayload
