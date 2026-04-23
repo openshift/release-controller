@@ -35,7 +35,7 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 	if err != nil {
 		return fmt.Errorf("unable to determine platform distribution: %v", err)
 	}
-	pullSpec := releasecontroller.FindPublicImagePullSpec(release.Target, releaseTag.Name)
+	pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag.Name)
 	if len(pullSpec) == 0 {
 		return fmt.Errorf("unable to get determine pullSpec for for release: %s", releaseTag.Name)
 	}

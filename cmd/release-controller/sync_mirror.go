@@ -58,9 +58,13 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 		}
 	}
 
-	switch release.Config.As {
-	case releasecontroller.ReleaseConfigModeStable:
+	switch {
+	case release.Config.As == releasecontroller.ReleaseConfigModeStable:
 		// stream will be populated later
+	case releasecontroller.HasReferenceSpecTags(release.Source):
+		if err := calculateReferenceMirrorImageStream(release, is); err != nil {
+			return nil, err
+		}
 	default:
 		if err := calculateMirrorImageStream(release, is); err != nil {
 			return nil, err
@@ -83,6 +87,21 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 		}
 	}
 	return is, err
+}
+
+// calculateReferenceMirrorImageStream populates the mirror imagestream from
+// the source's spec tags. This is used for reference-type payloads where tags
+// have reference: true and status tags are never populated via import.
+func calculateReferenceMirrorImageStream(release *releasecontroller.Release, is *imagev1.ImageStream) error {
+	for _, tag := range release.Source.Spec.Tags {
+		if tag.From == nil {
+			continue
+		}
+		ref := tag.DeepCopy()
+		ref.ImportPolicy.Scheduled = false
+		is.Spec.Tags = append(is.Spec.Tags, *ref)
+	}
+	return nil
 }
 
 func calculateMirrorImageStream(release *releasecontroller.Release, is *imagev1.ImageStream) error {

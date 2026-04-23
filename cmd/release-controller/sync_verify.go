@@ -160,12 +160,12 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 	case releasecontroller.ReleaseUpgradeFromPrevious:
 		if tags := releasecontroller.SortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 0 {
 			previousTag = tags[0].Name
-			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+			previousReleasePullSpec = releasecontroller.ReleasePullSpec(release, previousTag)
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousMinus1:
 		if tags := releasecontroller.SortedReleaseTags(release, releasecontroller.ReleasePhaseAccepted); len(tags) > 1 {
 			previousTag = tags[1].Name
-			previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
+			previousReleasePullSpec = releasecontroller.ReleasePullSpec(release, previousTag)
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousMinor:
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
@@ -196,7 +196,7 @@ func findLatestStableForVersion(ref *releasecontroller.StableReferences, version
 			if currentLatestRelease == nil || v.Version.Compare(*currentLatestRelease) > 0 {
 				currentLatestRelease = v.Version
 				latestTag = v.Tag.Name
-				latestPullSpec = stable.Release.Target.Status.PublicDockerImageRepository + ":" + latestTag
+				latestPullSpec = releasecontroller.ReleasePullSpec(stable.Release, latestTag)
 			}
 		}
 	}
@@ -215,7 +215,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 			return "", "", fmt.Errorf("failed to get latest tag in 4-stable stream: %w", err)
 		}
 		tag := latest.Name
-		pullSpec := r.Target.Status.PublicDockerImageRepository + ":" + tag
+		pullSpec := releasecontroller.ReleasePullSpec(r, tag)
 		return tag, pullSpec, nil
 	} else if upgradeRelease.Candidate != nil {
 		// create blank semver.Range
@@ -226,7 +226,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", stream, err)
 		}
 		tag := latest.Name
-		pullSpec := r.Target.Status.PublicDockerImageRepository + ":" + tag
+		pullSpec := releasecontroller.ReleasePullSpec(r, tag)
 		return tag, pullSpec, nil
 	} else if upgradeRelease.Official != nil {
 		httpClient := retryablehttp.NewClient()

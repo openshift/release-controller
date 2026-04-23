@@ -174,7 +174,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			switch name := c.Env[j].Name; {
 			case name == "RELEASE_IMAGE_LATEST":
 				hasReleaseImage = true
-				c.Env[j].Value = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
+				c.Env[j].Value = releasecontroller.ReleasePullSpec(release, releaseTag.Name)
 			case name == "RELEASE_IMAGE_INITIAL":
 				if len(previousReleasePullSpec) == 0 {
 					return false, nil
@@ -182,6 +182,9 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				hasUpgradeImage = true
 				c.Env[j].Value = previousReleasePullSpec
 			case name == "IMAGE_FORMAT":
+				if releasecontroller.HasReferenceSpecTags(release.Source) {
+					break
+				}
 				if mirror == nil {
 					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
 				}
@@ -189,6 +192,9 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			case strings.HasPrefix(name, "IMAGE_"):
 				suffix := strings.TrimPrefix(name, "IMAGE_")
 				if len(suffix) == 0 {
+					break
+				}
+				if releasecontroller.HasReferenceSpecTags(release.Source) {
 					break
 				}
 				if mirror == nil {
@@ -199,36 +205,38 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			}
 		}
 		if !hasReleaseImage {
+			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag.Name)
 			switch architecture {
 			case "arm64":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_LATEST", Value: pullSpec})
 			case "s390x":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_LATEST", Value: pullSpec})
 			case "ppc64le":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_LATEST", Value: pullSpec})
 			case "multi":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: pullSpec})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_LATEST", Value: pullSpec})
 			default:
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_LATEST", Value: pullSpec})
 			}
 		}
 		if !isUpgrade {
 			// If an initial release is specified in the ci-operator config, ci-operator will always try to pull it. This can cause jobs to fail
 			// if there are not at least 2 accepted releases for the release being tested. To prevent this issue, always set RELEASE_IMAGE_INITIAL,
 			// even for non-upgrade jobs
+			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag.Name)
 			switch architecture {
 			case "arm64":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_INITIAL", Value: pullSpec})
 			case "s390x":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_S390X_INITIAL", Value: pullSpec})
 			case "ppc64le":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_PPC64LE_INITIAL", Value: pullSpec})
 			case "multi":
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: pullSpec})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_MULTI_INITIAL", Value: pullSpec})
 			default:
-				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name})
+				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: pullSpec})
 			}
 		} else if !hasUpgradeImage {
 			if len(previousReleasePullSpec) == 0 {

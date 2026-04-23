@@ -57,6 +57,13 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 		return nil
 	}
 
+	if len(record.ID) == 0 && len(record.Location) > 0 {
+		info, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, record.Location)
+		if err == nil && len(info.Digest) > 0 {
+			record.ID = info.Digest
+			c.auditTracker.SetID(record.Name, info.Digest)
+		}
+	}
 	if len(record.ID) == 0 {
 		msg := fmt.Sprintf("Release %s has no digest and cannot be verified", record.Name)
 		c.auditTracker.SetFailure(record.Name, msg)
@@ -286,6 +293,14 @@ func NewAuditTracker(queue workqueue.TypedDelayingInterface[string]) *AuditTrack
 	}
 }
 
+func (a *AuditTracker) SetID(name, id string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if existing, ok := a.records[name]; ok {
+		existing.ID = id
+	}
+}
+
 func (a *AuditTracker) SetFailure(name string, message string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
@@ -345,7 +360,7 @@ func (a *AuditTracker) Sync(release *releasecontroller.Release) {
 
 		id := releasecontroller.FindImageIDForTag(from, tag.Name)
 		// TODO: this should really be the digest
-		location := releasecontroller.FindPublicImagePullSpec(from, tag.Name)
+		location := releasecontroller.ReleasePullSpec(release, tag.Name)
 		existing, ok := a.records[tag.Name]
 		if !ok {
 			a.records[tag.Name] = &AuditRecord{

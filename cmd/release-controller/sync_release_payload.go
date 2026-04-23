@@ -18,7 +18,11 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	if err != nil {
 		return nil, err
 	}
-	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm), metav1.CreateOptions{})
+	payloadType := v1alpha1.PayloadTypeLocal
+	if releasecontroller.IsReferenceRelease(release) {
+		payloadType = v1alpha1.PayloadTypeReference
+	}
+	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm, payloadType), metav1.CreateOptions{})
 	if err == nil {
 		klog.V(4).Infof("ReleasePayload: %s/%s created", payload.Namespace, payload.Name)
 		return payload, nil
@@ -29,7 +33,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	return nil, err
 }
 
-func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource) *v1alpha1.ReleasePayload {
+func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource, payloadType v1alpha1.PayloadType) *v1alpha1.ReleasePayload {
 	payload := v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -58,7 +62,20 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 				UpgradeJobs:                   []v1alpha1.CIConfiguration{},
 				PayloadVerificationDataSource: dataSource,
 			},
+			PayloadType: payloadType,
 		},
+	}
+
+	if releasecontroller.IsReferenceRelease(release) {
+		payload.Spec.ReleaseCoordinates = []v1alpha1.ReleaseCoordinates{{
+			Repository: release.Config.ReferenceRelease.PullRepository,
+			Tag:        releasecontroller.ReferencePayloadTag(name),
+		}}
+	} else if len(release.Target.Status.PublicDockerImageRepository) > 0 {
+		payload.Spec.ReleaseCoordinates = []v1alpha1.ReleaseCoordinates{{
+			Repository: release.Target.Status.PublicDockerImageRepository,
+			Tag:        name,
+		}}
 	}
 
 	// Sort the ReleaseVerification items into a consistent order

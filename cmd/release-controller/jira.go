@@ -223,6 +223,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		klog.V(6).Infof("jira: All accepted/rejected tags for %s have already been verified", release.Config.Name)
 		return nil
 	}
+	prevReleaseForPullSpec := release
 	if prevTag == nil {
 		if verifyIssues.PreviousReleaseTag == nil {
 			klog.V(2).Infof("jira error: previous release unset for %s", release.Config.Name)
@@ -241,20 +242,30 @@ func (c *Controller) syncJira(key queueKey) error {
 			c.jiraErrorMetrics.WithLabelValues(jiraMissingTag).Inc()
 			return fmt.Errorf("failed to find tag %s in imagestream %s/%s", verifyIssues.PreviousReleaseTag.Tag, verifyIssues.PreviousReleaseTag.Namespace, verifyIssues.PreviousReleaseTag.Name)
 		}
+		prevRelease, prevOk, prevErr := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		if prevErr != nil {
+			return prevErr
+		}
+		if !prevOk {
+			return fmt.Errorf("jira: previous release imagestream %s/%s is not a valid release definition", verifyIssues.PreviousReleaseTag.Namespace, verifyIssues.PreviousReleaseTag.Name)
+		}
+		prevReleaseForPullSpec = prevRelease
 	}
 	// To make sure all tags are up-to-date, requeue when non-verified tags are found; this allows us to make
 	// sure tags that may not have been passed to this function (such as older tags) get processed,
 	// and it also allows us to handle the case where the imagestream fails to update below.
 	defer c.queue.AddAfter(key, time.Second)
 
-	dockerRepo := release.Target.Status.PublicDockerImageRepository
-	if len(dockerRepo) == 0 {
+	prevPullSpec := releasecontroller.ReleasePullSpec(prevReleaseForPullSpec, prevTag.Name)
+	curPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
+	if len(prevPullSpec) == 0 || len(curPullSpec) == 0 ||
+		strings.HasPrefix(prevPullSpec, ":") || strings.HasPrefix(curPullSpec, ":") {
 		klog.V(4).Infof("jira: release target %s does not have a configured registry", release.Target.Name)
 		c.jiraErrorMetrics.WithLabelValues(jiraNoRegistry).Inc()
 		return fmt.Errorf("jira: release target %s does not have a configured registry", release.Target.Name)
 	}
 
-	issues, err := c.releaseInfo.Bugs(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name)
+	issues, err := c.releaseInfo.Bugs(prevPullSpec, curPullSpec)
 	var issueList []string
 	for _, issue := range issues {
 		if issue.Source == 1 {
@@ -275,7 +286,7 @@ func (c *Controller) syncJira(key queueKey) error {
 
 	// Handle feature tags
 	// Generate the change log from image digests; this should be pretty quick since the Bugs function was run recently
-	changelogJSON, err := c.releaseInfo.ChangeLog(dockerRepo+":"+prevTag.Name, dockerRepo+":"+tag.Name, true)
+	changelogJSON, err := c.releaseInfo.ChangeLog(prevPullSpec, curPullSpec, true)
 	if err != nil {
 		klog.V(4).Infof("Jira: Unable to generate changelog from %s to %s: %v", prevTag.Name, tag.Name, err)
 		c.jiraErrorMetrics.WithLabelValues(jiraChangelogGeneration).Inc()

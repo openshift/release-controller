@@ -537,7 +537,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 	downloadURL, _ := c.urlForArtifacts(latest.Name)
 	resp := releasecontroller.APITag{
 		Name:        latest.Name,
-		PullSpec:    releasecontroller.FindPublicImagePullSpec(r.Target, latest.Name),
+		PullSpec:    resolveReleasePullSpec(r, latest.Name),
 		DownloadURL: downloadURL,
 		Phase:       latest.Annotations[releasecontroller.ReleaseAnnotationPhase],
 	}
@@ -622,7 +622,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 		}
 		tags = append(tags, releasecontroller.APITag{
 			Name:        tag.Name,
-			PullSpec:    releasecontroller.FindPublicImagePullSpec(r.Release.Target, tag.Name),
+			PullSpec:    resolveReleasePullSpec(r.Release, tag.Name),
 			DownloadURL: downloadURL,
 			Phase:       phase,
 		})
@@ -793,18 +793,18 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	fromBase := tags[from].Release.Target.Status.PublicDockerImageRepository
-	if len(fromBase) == 0 {
+	fromPullSpec := resolveReleasePullSpec(tags[from].Release, from)
+	if len(fromPullSpec) == 0 {
 		http.Error(w, fmt.Sprintf("release target %s does not have a configured registry", tags[from].Release.Target.Name), http.StatusBadRequest)
 		return
 	}
-	toBase := tags[to].Release.Target.Status.PublicDockerImageRepository
-	if len(toBase) == 0 {
+	toPullSpec := resolveReleasePullSpec(tags[to].Release, to)
+	if len(toPullSpec) == 0 {
 		http.Error(w, fmt.Sprintf("release target %s does not have a configured registry", tags[to].Release.Target.Name), http.StatusBadRequest)
 		return
 	}
 
-	out, err := c.releaseInfo.ChangeLog(fromBase+":"+from, toBase+":"+to, isJson)
+	out, err := c.releaseInfo.ChangeLog(fromPullSpec, toPullSpec, isJson)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Internal error\n%v", err), http.StatusInternalServerError)
 		return
@@ -872,7 +872,7 @@ func (c *Controller) httpReleaseInfoJson(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	tagPullSpec := releasecontroller.FindPublicImagePullSpec(tags[tag].Release.Target, tag)
+	tagPullSpec := resolveReleasePullSpec(tags[tag].Release, tag)
 	if len(tagPullSpec) == 0 {
 		http.Error(w, fmt.Sprintf("could not find pull spec for tag %s in image stream %s", tag, tags[tag].Release.Target.Name), http.StatusBadRequest)
 		return
@@ -966,10 +966,10 @@ func (c *Controller) getReleaseTagInfo(req *http.Request) (*releaseTagInfo, erro
 	}
 
 	// require public pull specs because we can't get the x509 cert for the internal registry without service-ca.crt
-	tagPull := releasecontroller.FindPublicImagePullSpec(info.Release.Target, info.Tag.Name)
+	tagPull := resolveReleasePullSpec(info.Release, info.Tag.Name)
 	var previousTagPull string
 	if info.Previous != nil {
-		previousTagPull = releasecontroller.FindPublicImagePullSpec(info.PreviousRelease.Target, info.Previous.Name)
+		previousTagPull = resolveReleasePullSpec(info.PreviousRelease, info.Previous.Name)
 	}
 
 	return &releaseTagInfo{
@@ -1596,16 +1596,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	now := time.Now()
 	var releasePage = template.Must(template.New("releasePageHtml.tmpl").Funcs(
 		template.FuncMap{
-			"publishSpec": func(r *ReleaseStream) string {
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
-						}
-					}
-				}
-				return ""
-			},
+			"publishSpec": referencePublishSpec,
 			"publishDescription": func(r *ReleaseStream) string {
 				streamMessage := generateStreamMessage(r)
 				if len(streamMessage) > 0 {
@@ -1626,16 +1617,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
 				}
 
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.Disabled {
-							continue
-						}
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
-						}
-					}
-				}
+				out = append(out, referencePublishDescriptionEntries(r)...)
 				for _, target := range r.Release.Config.Publish {
 					if target.Disabled {
 						continue
@@ -1854,16 +1836,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 	now := time.Now()
 	var releasePage = template.Must(template.New("releaseStreamPageHtml.tmpl").Funcs(
 		template.FuncMap{
-			"publishSpec": func(r *ReleaseStream) string {
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
-						}
-					}
-				}
-				return ""
-			},
+			"publishSpec": referencePublishSpec,
 			"publishDescription": func(r *ReleaseStream) string {
 				streamMessage := generateStreamMessage(r)
 				if len(streamMessage) > 0 {
@@ -1884,16 +1857,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
 				}
 
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.Disabled {
-							continue
-						}
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
-						}
-					}
-				}
+				out = append(out, referencePublishDescriptionEntries(r)...)
 				for _, target := range r.Release.Config.Publish {
 					if target.Disabled {
 						continue
@@ -2027,16 +1991,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	now := time.Now()
 	var releasePage = template.Must(template.New("releaseDashboardPage.tmpl").Funcs(
 		template.FuncMap{
-			"publishSpec": func(r *ReleaseStream) string {
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
-						}
-					}
-				}
-				return ""
-			},
+			"publishSpec": referencePublishSpec,
 			"publishDescription": func(r *ReleaseStream) string {
 				streamMessage := generateStreamMessage(r)
 				if len(streamMessage) > 0 {
@@ -2052,16 +2007,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
 				}
 
-				if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
-					for _, target := range r.Release.Config.Publish {
-						if target.Disabled {
-							continue
-						}
-						if target.TagRef != nil && len(target.TagRef.Name) > 0 {
-							out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`, r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
-						}
-					}
-				}
+				out = append(out, referencePublishDescriptionEntries(r)...)
 				for _, target := range r.Release.Config.Publish {
 					if target.Disabled {
 						continue
@@ -2526,15 +2472,19 @@ func (c *Controller) apiReleaseApprovals(w http.ResponseWriter, req *http.Reques
 
 	var tags []releasecontroller.APITag
 	for _, payload := range results {
-		imageStream, err := c.releaseLister.ImageStreams(payload.Spec.PayloadCoordinates.Namespace).Get(payload.Spec.PayloadCoordinates.ImagestreamName)
-		if err != nil {
-			klog.Errorf("Unable to locate imagestream \"%s/%s\": %v", payload.Spec.PayloadCoordinates.Namespace, payload.Spec.PayloadCoordinates.ImagestreamName, err)
-			continue
+		pullSpec := pullSpecFromCoordinates(payload.Spec.ReleaseCoordinates)
+		if len(pullSpec) == 0 {
+			imageStream, err := c.releaseLister.ImageStreams(payload.Spec.PayloadCoordinates.Namespace).Get(payload.Spec.PayloadCoordinates.ImagestreamName)
+			if err != nil {
+				klog.Errorf("Unable to locate imagestream \"%s/%s\": %v", payload.Spec.PayloadCoordinates.Namespace, payload.Spec.PayloadCoordinates.ImagestreamName, err)
+				continue
+			}
+			pullSpec = releasecontroller.FindPublicImagePullSpec(imageStream, payload.Name)
 		}
 		downloadURL, _ := c.urlForArtifacts(payload.Name)
 		tag := releasecontroller.APITag{
 			Name:        payload.Name,
-			PullSpec:    releasecontroller.FindPublicImagePullSpec(imageStream, payload.Name),
+			PullSpec:    pullSpec,
 			DownloadURL: downloadURL,
 			Phase:       releasecontroller.GetReleasePhase(payload),
 		}

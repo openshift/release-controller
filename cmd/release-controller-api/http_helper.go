@@ -88,6 +88,36 @@ type ReleaseTagUpgradeVisual struct {
 	Begin, Current, End *releasecontroller.UpgradeHistory
 }
 
+// pullSpecFromCoordinates constructs a pull spec from a ReleasePayload's
+// ReleaseCoordinates.  Returns empty string when no usable coordinates exist.
+func pullSpecFromCoordinates(coords []v1alpha1.ReleaseCoordinates) string {
+	if len(coords) == 0 {
+		return ""
+	}
+	c := coords[0]
+	if len(c.Repository) == 0 {
+		return ""
+	}
+	if len(c.Digest) > 0 {
+		return c.Repository + "@" + c.Digest
+	}
+	if len(c.Tag) > 0 {
+		return c.Repository + ":" + c.Tag
+	}
+	return ""
+}
+
+// resolveReleasePullSpec returns the pull spec for the given tag within the
+// release. For reference-based releases (external repo) it uses ReleasePullSpec;
+// for local releases it falls back to FindPublicImagePullSpec which handles
+// digest resolution and status-tag checking.
+func resolveReleasePullSpec(release *releasecontroller.Release, tagName string) string {
+	if releasecontroller.IsReferenceRelease(release) {
+		return releasecontroller.ReleasePullSpec(release, tagName)
+	}
+	return releasecontroller.FindPublicImagePullSpec(release.Target, tagName)
+}
+
 func phaseCell(tag imagev1.TagReference) string {
 	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
 	switch phase {
@@ -997,4 +1027,49 @@ func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.Set[string]) {
 func pruneTagInfo(tagInfo string) string {
 	tagInfoParts := strings.Split(tagInfo, ".")
 	return fmt.Sprintf("%s.%s", tagInfoParts[0], tagInfoParts[1])
+}
+
+func referencePublishSpec(r *ReleaseStream) string {
+	if releasecontroller.IsReferenceRelease(r.Release) {
+		for _, target := range r.Release.Config.Publish {
+			if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+				return r.Release.Config.ReferenceRelease.PullRepository + ":" + target.TagRef.Name
+			}
+		}
+		return ""
+	}
+	if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+		for _, target := range r.Release.Config.Publish {
+			if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+				return r.Release.Target.Status.PublicDockerImageRepository + ":" + target.TagRef.Name
+			}
+		}
+	}
+	return ""
+}
+
+func referencePublishDescriptionEntries(r *ReleaseStream) []string {
+	var out []string
+	if releasecontroller.IsReferenceRelease(r.Release) {
+		for _, target := range r.Release.Config.Publish {
+			if target.Disabled {
+				continue
+			}
+			if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+				out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`,
+					r.Release.Config.ReferenceRelease.PullRepository, target.TagRef.Name))
+			}
+		}
+	} else if len(r.Release.Target.Status.PublicDockerImageRepository) > 0 {
+		for _, target := range r.Release.Config.Publish {
+			if target.Disabled {
+				continue
+			}
+			if target.TagRef != nil && len(target.TagRef.Name) > 0 {
+				out = append(out, fmt.Sprintf(`<span>promote to pull spec <code>%s:%s</code></span>`,
+					r.Release.Target.Status.PublicDockerImageRepository, target.TagRef.Name))
+			}
+		}
+	}
+	return out
 }

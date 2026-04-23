@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"github.com/blang/semver"
@@ -299,6 +300,161 @@ func Test_takeUpgradesFromNames(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotWithoutNames, tt.wantWithoutNames) {
 				t.Errorf("takeUpgradesFromNames() gotWithoutNames = %v, want %v", gotWithoutNames, tt.wantWithoutNames)
+			}
+		})
+	}
+}
+
+func TestResolveReleasePullSpec(t *testing.T) {
+	tests := []struct {
+		name    string
+		release *releasecontroller.Release
+		tag     string
+		want    string
+	}{
+		{
+			name: "reference release with ReferenceRelease",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release",
+						PullRepository: "quay.io/openshift-release-dev/ocp-release",
+					},
+				},
+			},
+			tag:  "4.18.0-0.nightly-2025-01-01-000000",
+			want: "quay.io/openshift-release-dev/ocp-release:rc_payload__4.18.0-0.nightly-2025-01-01-000000",
+		},
+		{
+			name: "reference release without ReferenceRelease falls back to FindPublicImagePullSpec",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+						Tags: []imagev1.NamedTagEventList{
+							{
+								Tag:   "4.18.0-0.nightly-2025-01-01-000000",
+								Items: []imagev1.TagEvent{{DockerImageReference: "sha256:abc123", Generation: 1}},
+							},
+						},
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{},
+			},
+			tag:  "4.18.0-0.nightly-2025-01-01-000000",
+			want: "registry.ci.openshift.org/ocp/release:4.18.0-0.nightly-2025-01-01-000000",
+		},
+		{
+			name: "local release uses FindPublicImagePullSpec",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli"},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+						Tags: []imagev1.NamedTagEventList{
+							{
+								Tag:   "4.12.0",
+								Items: []imagev1.TagEvent{{DockerImageReference: "sha256:def456", Generation: 1}},
+							},
+						},
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{},
+			},
+			tag:  "4.12.0",
+			want: "registry.ci.openshift.org/ocp/release:4.12.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveReleasePullSpec(tt.release, tt.tag)
+			if got != tt.want {
+				t.Errorf("resolveReleasePullSpec() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPullSpecFromCoordinates(t *testing.T) {
+	tests := []struct {
+		name   string
+		coords []v1alpha1.ReleaseCoordinates
+		want   string
+	}{
+		{
+			name:   "nil coordinates",
+			coords: nil,
+			want:   "",
+		},
+		{
+			name:   "empty slice",
+			coords: []v1alpha1.ReleaseCoordinates{},
+			want:   "",
+		},
+		{
+			name:   "empty repository",
+			coords: []v1alpha1.ReleaseCoordinates{{Tag: "v1.0"}},
+			want:   "",
+		},
+		{
+			name:   "tag-based",
+			coords: []v1alpha1.ReleaseCoordinates{{Repository: "quay.io/ocp/release", Tag: "rc_payload__4.18.0"}},
+			want:   "quay.io/ocp/release:rc_payload__4.18.0",
+		},
+		{
+			name:   "digest-based",
+			coords: []v1alpha1.ReleaseCoordinates{{Repository: "quay.io/ocp/release", Digest: "sha256:abc123"}},
+			want:   "quay.io/ocp/release@sha256:abc123",
+		},
+		{
+			name:   "digest takes precedence over tag",
+			coords: []v1alpha1.ReleaseCoordinates{{Repository: "quay.io/ocp/release", Tag: "v1", Digest: "sha256:abc123"}},
+			want:   "quay.io/ocp/release@sha256:abc123",
+		},
+		{
+			name:   "repository only with no tag or digest",
+			coords: []v1alpha1.ReleaseCoordinates{{Repository: "quay.io/ocp/release"}},
+			want:   "",
+		},
+		{
+			name: "uses first coordinate",
+			coords: []v1alpha1.ReleaseCoordinates{
+				{Repository: "quay.io/ocp/release", Tag: "first"},
+				{Repository: "registry.example.com/release", Tag: "second"},
+			},
+			want: "quay.io/ocp/release:first",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pullSpecFromCoordinates(tt.coords)
+			if got != tt.want {
+				t.Errorf("pullSpecFromCoordinates() = %q, want %q", got, tt.want)
 			}
 		})
 	}

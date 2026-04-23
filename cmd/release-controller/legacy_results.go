@@ -91,7 +91,11 @@ func (c *Controller) syncLegacyResults(key queueKey) error {
 
 		// Ensure the existing state is preserved.  This is a big hammer, but it's the only way we have to guarantee that
 		// the ReleasePayload's status matches the status of the ImageStream's Annotation.
-		releasePayload := newReleasePayload(release, tag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceImageStream)
+		payloadType := v1alpha1.PayloadTypeLocal
+		if releasecontroller.IsReferenceRelease(release) {
+			payloadType = v1alpha1.PayloadTypeReference
+		}
+		releasePayload := newReleasePayload(release, tag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceImageStream, payloadType)
 		setPayloadOverride(tag, releasePayload)
 
 		// Create the payload

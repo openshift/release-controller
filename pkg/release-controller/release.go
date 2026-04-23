@@ -91,14 +91,18 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 		return nil, false, TerminalError{err}
 	}
 
-	if is.Status.PublicDockerImageRepository == "" {
+	if is.Status.PublicDockerImageRepository == "" && (cfg.ReferenceRelease == nil || !HasReferenceSpecTags(is) || len(is.Spec.Tags) == 0) {
 		klog.V(4).Infof("The release input has no public docker image repository, waiting")
 		return nil, false, nil
 	}
 
 	if len(is.Status.Tags) == 0 {
-		klog.V(4).Infof("The release input has no status tags, waiting")
-		return nil, false, nil
+		if len(is.Spec.Tags) > 0 && HasReferenceSpecTags(is) && cfg.ReferenceRelease != nil {
+			klog.V(4).Infof("The release input has no status tags, but has reference true spec tags, assuming reference-based release")
+		} else {
+			klog.V(4).Infof("The release input has no status tags, waiting")
+			return nil, false, nil
+		}
 	}
 
 	switch cfg.As {
@@ -206,8 +210,18 @@ func ReleaseGenerationFromObject(name string, annotations map[string]string) (in
 }
 
 func HashSpecTagImageDigests(is *imagev1.ImageStream) string {
+	if HasReferenceSpecTags(is) {
+		return hashReferenceSpecTags(is)
+	}
+	return hashStatusTags(is)
+}
+
+func hashStatusTags(is *imagev1.ImageStream) string {
 	h := sha256.New()
-	for _, tag := range is.Status.Tags {
+	tags := make([]imagev1.NamedTagEventList, len(is.Status.Tags))
+	copy(tags, is.Status.Tags)
+	sort.Slice(tags, func(i, j int) bool { return tags[i].Tag < tags[j].Tag })
+	for _, tag := range tags {
 		if len(tag.Items) == 0 {
 			continue
 		}
@@ -217,6 +231,23 @@ func HashSpecTagImageDigests(is *imagev1.ImageStream) string {
 			input = latest.DockerImageReference
 		}
 		h.Write([]byte(input))
+	}
+	return fmt.Sprintf("sha256:%x", h.Sum(nil))
+}
+
+// hashReferenceSpecTags computes a hash from the spec tags of an imagestream
+// whose tags have reference: true. These tags are not imported, so status
+// fields are not populated; we hash the From reference instead.
+func hashReferenceSpecTags(is *imagev1.ImageStream) string {
+	h := sha256.New()
+	tags := make([]imagev1.TagReference, len(is.Spec.Tags))
+	copy(tags, is.Spec.Tags)
+	sort.Slice(tags, func(i, j int) bool { return tags[i].Name < tags[j].Name })
+	for _, tag := range tags {
+		if tag.From == nil {
+			continue
+		}
+		h.Write([]byte(tag.From.Name))
 	}
 	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
@@ -236,6 +267,18 @@ func Int32p(i int32) *int32 {
 func ContainsTagReference(tags []*imagev1.TagReference, name string) bool {
 	for _, tag := range tags {
 		if name == tag.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// HasReferenceSpecTags returns true if any tag in the imagestream's spec has
+// Reference set to true, indicating the payload uses external image references
+// rather than imported images.
+func HasReferenceSpecTags(is *imagev1.ImageStream) bool {
+	for _, tag := range is.Spec.Tags {
+		if tag.Reference {
 			return true
 		}
 	}
@@ -569,4 +612,53 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		}
 	}
 	return jobs, nil
+}
+
+// IsReferenceRelease returns true when the release is configured to use
+// external image references (reference: true spec tags) backed by an
+// external ReferenceRelease repository.
+func IsReferenceRelease(release *Release) bool {
+	return release.Source != nil &&
+		HasReferenceSpecTags(release.Source) &&
+		release.Config != nil &&
+		release.Config.ReferenceRelease != nil
+}
+
+// ResolveCLIImage determines the CLI image to use for job creation.
+// For reference-based releases the CLI image is taken from the mirror's spec
+// tag "cli"; for traditional releases it comes from the mirror's
+// DockerImageRepository. An explicit OverrideCLIImage always takes precedence.
+func ResolveCLIImage(release *Release, mirror *imagev1.ImageStream) (string, error) {
+	if mirror == nil {
+		return "", fmt.Errorf("unable to determine CLI image: mirror imagestream is nil")
+	}
+	if len(release.Config.OverrideCLIImage) > 0 {
+		return release.Config.OverrideCLIImage, nil
+	}
+	if IsReferenceRelease(release) {
+		if cliTag := FindSpecTag(mirror.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {
+			return cliTag.From.Name, nil
+		}
+		return "", fmt.Errorf("unable to determine CLI image for reference release: ensure a 'cli' spec tag exists in the mirror imagestream %s/%s", mirror.Namespace, mirror.Name)
+	}
+	if len(mirror.Status.DockerImageRepository) == 0 {
+		return "", fmt.Errorf("unable to determine CLI image: mirror imagestream %s/%s has no DockerImageRepository", mirror.Namespace, mirror.Name)
+	}
+	return fmt.Sprintf("%s:cli", mirror.Status.DockerImageRepository), nil
+}
+
+// ReleasePullSpec returns the correct pull spec for a release payload tag.
+// For reference-based releases the payload lives in the external ReferenceRepository;
+// for traditional releases it lives in the Target imagestream.
+func ReleasePullSpec(release *Release, tagName string) string {
+	if IsReferenceRelease(release) {
+		if release.Config.ReferenceRelease.PullRepository == "" {
+			return ""
+		}
+		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tagName))
+	}
+	if release.Target.Status.PublicDockerImageRepository == "" {
+		return ""
+	}
+	return release.Target.Status.PublicDockerImageRepository + ":" + tagName
 }
