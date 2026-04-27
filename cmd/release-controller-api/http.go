@@ -668,6 +668,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	var changeLog []byte
 	var changeLogJson releasecontroller.ChangeLog
+	var nodeImageStreams []releasecontroller.APINodeImageStream
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		var wg sync.WaitGroup
@@ -686,6 +687,48 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				c.changeLogWorker(result, tagInfo, format)
 			}()
 		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			streams, err := c.releaseInfo.ListMachineOSStreams(tagInfo.TagPullSpec)
+			if err != nil {
+				klog.V(4).Infof("Unable to list machine-OS streams for %s: %v", tagInfo.Tag, err)
+			}
+
+			if len(streams) == 0 {
+				diff, err := c.releaseInfo.RpmDiff(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec)
+				if err != nil {
+					klog.V(4).Infof("Unable to retrieve RPM diff for %s: %v", tagInfo.Tag, err)
+					return
+				}
+				nodeImageStreams = []releasecontroller.APINodeImageStream{{
+					Name:    "Red Hat Enterprise Linux CoreOS",
+					Tag:     "rhel-coreos",
+					RpmDiff: &diff,
+				}}
+				return
+			}
+
+			result := make([]releasecontroller.APINodeImageStream, 0, len(streams))
+			for _, stream := range streams {
+				entry := releasecontroller.APINodeImageStream{
+					Name: stream.DisplayName,
+					Tag:  stream.Tag,
+				}
+				if _, errFrom := c.releaseInfo.ImageReferenceForComponent(tagInfo.PreviousTagPullSpec, stream.Tag); errFrom == nil {
+					diff, err := c.releaseInfo.RpmDiffForStream(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec, stream.Tag)
+					if err != nil {
+						klog.V(4).Infof("Unable to retrieve RPM diff for stream %s in %s: %v", stream.Tag, tagInfo.Tag, err)
+					} else {
+						entry.RpmDiff = &diff
+					}
+				}
+				result = append(result, entry)
+			}
+			nodeImageStreams = result
+		}()
+
 		wg.Wait()
 
 		if renderHTML.err == nil {
@@ -706,13 +749,14 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	summary := releasecontroller.APIReleaseInfo{
-		Name:          tagInfo.Tag,
-		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:       verificationJobs,
-		UpgradesTo:    c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom:  c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:     changeLog,
-		ChangeLogJson: changeLogJson,
+		Name:            tagInfo.Tag,
+		Phase:           tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:         verificationJobs,
+		UpgradesTo:      c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:    c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:       changeLog,
+		ChangeLogJson:   changeLogJson,
+		NodeImageStreams: nodeImageStreams,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
