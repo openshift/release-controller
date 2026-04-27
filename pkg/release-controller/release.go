@@ -590,7 +590,7 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		return nil, fmt.Errorf("failed to get full stable verification jobs: %w", err)
 	}
 	isName := fmt.Sprintf("%d.%d%s", version.Major, version.Minor, artSuffix)
-	klog.Infof("Getting imagestream %s/%s", release.Target.Namespace, isName)
+	klog.V(7).Infof("Getting imagestream %s/%s", release.Target.Namespace, isName)
 	isLister := lister.ImageStreams(release.Target.Namespace)
 	if isLister == nil {
 		return nil, fmt.Errorf("failed to get imagestream %s", release.Target.Namespace)
