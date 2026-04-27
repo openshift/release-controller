@@ -90,15 +90,31 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				releasecontroller.ReleaseLabelPayload:    releaseTag.Name,
 			}
 			if verifyType.AggregatedProwJob != nil {
-				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
+				allAnalysisCreated, err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
 				if err != nil {
 					return nil, err
+				}
+				if !allAnalysisCreated {
+					// Some analysis jobs are still deferred by splay; don't
+					// launch the aggregator yet. Re-queue to check again.
+					klog.V(4).Infof("Splay: deferring aggregator for %s/%s until all analysis jobs are created", releaseTag.Name, name)
+					if retryQueueDelay == 0 || 30*time.Second < retryQueueDelay {
+						retryQueueDelay = 30 * time.Second
+					}
+					continue
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
 			job, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 			if err != nil {
 				return nil, err
+			}
+			if job == nil {
+				// Job creation was deferred by splay; re-queue to check again
+				if retryQueueDelay == 0 || 30*time.Second < retryQueueDelay {
+					retryQueueDelay = 30 * time.Second
+				}
+				continue
 			}
 			status, ok := releasecontroller.ProwJobVerificationStatus(job)
 			if !ok {

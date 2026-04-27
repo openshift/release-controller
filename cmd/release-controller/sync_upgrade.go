@@ -81,6 +81,8 @@ func (c *Controller) ensureReleaseUpgradeJobs(release *releasecontroller.Release
 		if err != nil {
 			return err
 		}
+		// nil job with nil error means splay deferred the job; the controller
+		// will re-process and create it when the delay elapses.
 	}
 	return nil
 }

@@ -130,6 +130,13 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires utils.Duration `json:"expires"`
 
+	// Splay is the maximum random offset as a golang duration applied to verification
+	// job start times. Each job is assigned a deterministic random delay in [0, splay)
+	// based on the payload tag and job name. This spreads out job launches to reduce the
+	// blast radius of transient infrastructure issues like registry outages. If unset,
+	// all jobs start immediately.
+	Splay utils.Duration `json:"splay,omitempty"`
+
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
 	// rejected.
