@@ -172,5 +172,5 @@ func ReleaseTagIsDualRHCOS(toTag string) bool {
 	if err != nil {
 		return false
 	}
-	return v.Major == 4 && v.Minor >= 21
+	return (v.Major == 4 && v.Minor >= 21) || v.Major >= 5
 }

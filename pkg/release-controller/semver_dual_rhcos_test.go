@@ -13,6 +13,10 @@ func TestReleaseTagIsDualRHCOS(t *testing.T) {
 		{"4.20.0", false},
 		{"4.20.0-ec.0", false},
 		{"not-a-version", false},
+		{"5.0.0", true},
+		{"5.0.0-ec.1", true},
+		{"5.1.0", true},
+		{"5.2.3", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tag, func(t *testing.T) {
