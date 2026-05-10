@@ -174,3 +174,19 @@ func ReleaseTagIsDualRHCOS(toTag string) bool {
 	}
 	return (v.Major == 4 && v.Minor >= 21) || v.Major >= 5
 }
+
+// PreferredMachineOSTag returns the machine-OS tag that should be displayed first
+// in the Components section based on the OpenShift major version.
+// - 4.Y releases prefer rhel-coreos (RHCOS 9)
+// - 5.Y+ releases prefer rhel-coreos-10 (RHCOS 10)
+// Returns empty string if the version can't be parsed.
+func PreferredMachineOSTag(releaseTag string) string {
+	v, err := SemverParseTolerant(releaseTag)
+	if err != nil {
+		return ""
+	}
+	if v.Major >= 5 {
+		return "rhel-coreos-10"
+	}
+	return "rhel-coreos"
+}

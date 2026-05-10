@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"sort"
@@ -59,7 +60,161 @@ var (
 	reRhelCoreOsVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)-(\d+)`)
 )
 
-func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string) (string, error) {
+// swapRHCOSComponentIfNeeded replaces the RHCOS component shown in the ### Components section
+// with the preferred version based on the OpenShift major version (4.Y prefers RHCOS 9, 5.Y+ prefers RHCOS 10).
+func swapRHCOSComponentIfNeeded(markdown, toTag, architecture, architectureExtension string, releaseInfo releasecontroller.ReleaseInfo, toImage string) (string, error) {
+	// Determine preferred machine-OS tag based on release version
+	preferredTag := releasecontroller.PreferredMachineOSTag(toTag)
+	if preferredTag == "" {
+		// Can't parse version, skip swap
+		return markdown, nil
+	}
+
+	// Query which machine-OS streams exist in the release
+	streams, err := releaseInfo.ListMachineOSStreams(toImage)
+	if err != nil || len(streams) == 0 {
+		// Can't determine streams, skip swap
+		return markdown, nil
+	}
+
+	// Check if both rhel-coreos and rhel-coreos-10 exist
+	var hasRHCOS9, hasRHCOS10 bool
+	var rhcos9Info, rhcos10Info releasecontroller.MachineOSStreamInfo
+	for _, s := range streams {
+		if s.Tag == "rhel-coreos" {
+			hasRHCOS9 = true
+			rhcos9Info = s
+		} else if s.Tag == "rhel-coreos-10" {
+			hasRHCOS10 = true
+			rhcos10Info = s
+		}
+	}
+
+	if !hasRHCOS9 || !hasRHCOS10 {
+		// Only one RHCOS version exists, no need to swap
+		return markdown, nil
+	}
+
+	// Parse the Components section to find which RHCOS is currently shown
+	reComponentsSection := regexp.MustCompile(`(?s)(### Components.*?)\n\n###`)
+	componentsMatch := reComponentsSection.FindStringSubmatch(markdown)
+	if componentsMatch == nil {
+		// Can't find Components section
+		return markdown, nil
+	}
+
+	componentsSection := componentsMatch[1]
+
+	// Determine which RHCOS is currently shown and what we want to show
+	var currentlyShown, wantToShow string
+	var desiredInfo releasecontroller.MachineOSStreamInfo
+
+	if strings.Contains(componentsSection, rhelCoreOs10) {
+		currentlyShown = "rhel-coreos-10"
+	} else if strings.Contains(componentsSection, rhelCoreOs) {
+		currentlyShown = "rhel-coreos"
+	} else {
+		// No RHCOS component found in Components section
+		return markdown, nil
+	}
+
+	// Determine what we want to show
+	if preferredTag == "rhel-coreos-10" {
+		wantToShow = "rhel-coreos-10"
+		desiredInfo = rhcos10Info
+	} else {
+		wantToShow = "rhel-coreos"
+		desiredInfo = rhcos9Info
+	}
+
+	if currentlyShown == wantToShow {
+		// Already showing the preferred version
+		return markdown, nil
+	}
+
+	// Need to swap: fetch the version info for the desired RHCOS
+	releaseJSON, err := releaseInfo.ReleaseInfo(toImage)
+	if err != nil {
+		return markdown, fmt.Errorf("failed to get release info: %w", err)
+	}
+
+	// Parse the release JSON to get the machine-os component version
+	var relInfo struct {
+		References struct {
+			Spec struct {
+				Tags []struct {
+					Name        string            `json:"name"`
+					Annotations map[string]string `json:"annotations"`
+				} `json:"tags"`
+			} `json:"spec"`
+		} `json:"references"`
+	}
+
+	if err := json.Unmarshal([]byte(releaseJSON), &relInfo); err != nil {
+		return markdown, fmt.Errorf("failed to parse release JSON: %w", err)
+	}
+
+	// Find the version annotation for the desired machine-OS tag
+	var desiredVersion string
+	for _, tag := range relInfo.References.Spec.Tags {
+		if tag.Name == wantToShow {
+			if versionAnnotation, ok := tag.Annotations["io.openshift.build.versions"]; ok {
+				// Parse the version from the annotation, format: "machine-os=X.Y.Z"
+				for _, part := range strings.Split(versionAnnotation, ",") {
+					part = strings.TrimSpace(part)
+					if strings.HasPrefix(part, "machine-os=") {
+						desiredVersion = strings.TrimPrefix(part, "machine-os=")
+						break
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if desiredVersion == "" {
+		// Couldn't find version, skip swap
+		return markdown, nil
+	}
+
+	// Build the replacement RHCOS component line with proper formatting
+	displayName := desiredInfo.DisplayName
+	if displayName == "" {
+		displayName = releasecontroller.MachineOSTitle(desiredInfo)
+	}
+
+	// Build the URL to the RHCOS release browser
+	stream, ok := getRHCoSReleaseStream(desiredVersion, architectureExtension)
+	if !ok {
+		// Can't determine stream, skip enrichment
+		return markdown, nil
+	}
+
+	rhcosURL := url.URL{
+		Scheme:   serviceScheme,
+		Host:     serviceUrl,
+		Path:     "/",
+		Fragment: desiredVersion,
+		RawQuery: (url.Values{
+			"stream":  []string{stream},
+			"arch":    []string{architecture},
+			"release": []string{desiredVersion},
+		}).Encode(),
+	}
+
+	// Create the new component line with enriched link and alert box
+	enrichedComponent := fmt.Sprintf("* %s [%s](%s) %s", displayName, desiredVersion, rhcosURL.String(), baseLayerAlertBox)
+
+	// Find and replace the old RHCOS component line in the Components section
+	reComponentLine := regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS[^\n]+`)
+
+	newComponentsSection := reComponentLine.ReplaceAllString(componentsSection, enrichedComponent)
+	markdown = strings.Replace(markdown, componentsSection, newComponentsSection, 1)
+
+	return markdown, nil
+}
+
+func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectureExtension string, releaseInfo releasecontroller.ReleaseInfo, toImage string) (string, error) {
 	// replace references to the previous version with links
 	rePrevious, err := regexp.Compile(fmt.Sprintf(`([^\w:])%s(\W)`, regexp.QuoteMeta(fromTag)))
 	if err != nil {
@@ -75,6 +230,15 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 
 	// add link to tag from which current version promoted from
 	markdown = reMdPromotedFrom.ReplaceAllString(markdown, fmt.Sprintf("Release %s was created from [$1:$2](/releasetag/$2)", toTag))
+
+	// Swap RHCOS component in Components section if needed (4.Y prefers RHCOS 9, 5.Y+ prefers RHCOS 10)
+	if releaseInfo != nil && toImage != "" {
+		markdown, err = swapRHCOSComponentIfNeeded(markdown, toTag, architecture, architectureExtension, releaseInfo, toImage)
+		if err != nil {
+			// Log but don't fail - this is a best-effort improvement
+			fmt.Fprintf(os.Stderr, "Warning: failed to swap RHCOS component: %v\n", err)
+		}
+	}
 
 	// Apply CoreOS link transforms for every matching line (OpenShift 4.21+ may list RHCOS 9 and 10 separately).
 	for {

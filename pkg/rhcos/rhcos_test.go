@@ -289,7 +289,7 @@ func TestTransformMarkDownOutputDualRHCOSLines(t *testing.T) {
 * Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260101-0 to 9.8.20260201-0
 * Red Hat Enterprise Linux CoreOS 10 10.0 upgraded from 10.0.20260101-0 to 10.0.20260201-0
 `
-	out, err := TransformMarkDownOutput(input, "4.20.0", "4.21.0", "x86_64", "")
+	out, err := TransformMarkDownOutput(input, "4.20.0", "4.21.0", "x86_64", "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestTransformMarkDownOutputRHCOS10Fallback(t *testing.T) {
 	input := `## Changes from 5.0.0-0.nightly-2026-03-01-000000
 * Red Hat Enterprise Linux CoreOS upgraded from 10.2.20260301-0 to 10.2.20260315-0
 `
-	out, err := TransformMarkDownOutput(input, "5.0.0-0.nightly-2026-03-01-000000", "5.0.0-0.nightly-2026-03-15-000000", "x86_64", "")
+	out, err := TransformMarkDownOutput(input, "5.0.0-0.nightly-2026-03-01-000000", "5.0.0-0.nightly-2026-03-15-000000", "x86_64", "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestTransformMarkDownOutputRHCOS10PeriodFormat(t *testing.T) {
 	input := `## Changes from 5.0.0
 * Red Hat Enterprise Linux CoreOS 10.2 upgraded from 10.2.20260328-0 to 10.2.20260321-0
 `
-	out, err := TransformMarkDownOutput(input, "5.0.0", "5.0.1", "x86_64", "")
+	out, err := TransformMarkDownOutput(input, "5.0.0", "5.0.1", "x86_64", "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
