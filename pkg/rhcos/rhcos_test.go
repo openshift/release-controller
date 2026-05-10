@@ -221,13 +221,66 @@ func TestRHCoSVersionRegex(t *testing.T) {
 }
 
 func TestRHCoS10DiffRegex(t *testing.T) {
-	input := "* Red Hat Enterprise Linux CoreOS 10 10.0 upgraded from 10.0.20260101-0 to 10.0.20260201-0\n"
-	m := reMdRHCoS10Diff.FindStringSubmatch(input)
-	if m == nil {
-		t.Fatal("expected match for RHEL 10 upgrade line")
+	testCases := []struct {
+		name        string
+		input       string
+		shouldMatch bool
+		fromVersion string
+		toVersion   string
+	}{
+		{
+			name:        "Space-separated RHEL version (original format)",
+			input:       "* Red Hat Enterprise Linux CoreOS 10 10.0 upgraded from 10.0.20260101-0 to 10.0.20260201-0\n",
+			shouldMatch: true,
+			fromVersion: "10.0.20260101-0",
+			toVersion:   "10.0.20260201-0",
+		},
+		{
+			name:        "Period-separated RHEL minor (CoreOS 10.2)",
+			input:       "* Red Hat Enterprise Linux CoreOS 10.2 upgraded from 10.2.20260328-0 to 10.2.20260321-0\n",
+			shouldMatch: true,
+			fromVersion: "10.2.20260328-0",
+			toVersion:   "10.2.20260321-0",
+		},
+		{
+			name:        "No RHEL minor version",
+			input:       "* Red Hat Enterprise Linux CoreOS 10 upgraded from 10.2.20260328-0 to 10.2.20260321-0\n",
+			shouldMatch: true,
+			fromVersion: "10.2.20260328-0",
+			toVersion:   "10.2.20260321-0",
+		},
+		{
+			name:        "Two-digit RHEL minor",
+			input:       "* Red Hat Enterprise Linux CoreOS 10.20 upgraded from 10.20.20270101-0 to 10.20.20270201-0\n",
+			shouldMatch: true,
+			fromVersion: "10.20.20270101-0",
+			toVersion:   "10.20.20270201-0",
+		},
+		{
+			name:        "RHCOS 9 line should NOT match RHCOS 10 regex",
+			input:       "* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260305-0 to 9.8.20260312-0\n",
+			shouldMatch: false,
+		},
 	}
-	if m[1] != "10.0.20260101-0" || m[3] != "10.0.20260201-0" {
-		t.Fatalf("unexpected submatches: %v", m)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := reMdRHCoS10Diff.FindStringSubmatch(tc.input)
+			if tc.shouldMatch {
+				if m == nil {
+					t.Fatalf("expected match but got none for input: %s", tc.input)
+				}
+				if m[1] != tc.fromVersion {
+					t.Errorf("Expected from version %q, got %q", tc.fromVersion, m[1])
+				}
+				if m[3] != tc.toVersion {
+					t.Errorf("Expected to version %q, got %q", tc.toVersion, m[3])
+				}
+			} else {
+				if m != nil {
+					t.Errorf("Expected no match but got: %v", m)
+				}
+			}
+		})
 	}
 }
 
@@ -261,5 +314,85 @@ func TestTransformJsonOutputDualCoreOS(t *testing.T) {
 	}
 	if strings.Count(out, `"versionUrl"`) < 2 {
 		t.Fatalf("expected two versionUrl fields: %s", out)
+	}
+}
+
+func TestTransformJsonOutputRHCOS10WithMinor(t *testing.T) {
+	j := `{
+  "components": [
+    {"name": "Red Hat Enterprise Linux CoreOS 10.2", "version": "10.2.20260328-0", "from": "10.2.20260321-0"}
+  ]
+}`
+	out, err := TransformJsonOutput(j, "x86_64", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"versionUrl"`) {
+		t.Fatalf("expected versionUrl in output for RHCOS 10.2 component name: %s", out)
+	}
+	if !strings.Contains(out, "rhel-10.2") {
+		t.Fatalf("expected rhel-10.2 stream in URL: %s", out)
+	}
+}
+
+func TestTransformMarkDownOutputRHCOS10Fallback(t *testing.T) {
+	input := `## Changes from 5.0.0-0.nightly-2026-03-01-000000
+* Red Hat Enterprise Linux CoreOS upgraded from 10.2.20260301-0 to 10.2.20260315-0
+`
+	out, err := TransformMarkDownOutput(input, "5.0.0-0.nightly-2026-03-01-000000", "5.0.0-0.nightly-2026-03-15-000000", "x86_64", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Red Hat Enterprise Linux CoreOS 10") {
+		t.Fatalf("expected RHCOS 10 label when version starts with 10.x, got:\n%s", out)
+	}
+}
+
+func TestTransformMarkDownOutputRHCOS10PeriodFormat(t *testing.T) {
+	input := `## Changes from 5.0.0
+* Red Hat Enterprise Linux CoreOS 10.2 upgraded from 10.2.20260328-0 to 10.2.20260321-0
+`
+	out, err := TransformMarkDownOutput(input, "5.0.0", "5.0.1", "x86_64", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Red Hat Enterprise Linux CoreOS 10") {
+		t.Fatalf("expected RHCOS 10 label for CoreOS 10.2 format, got:\n%s", out)
+	}
+	if !strings.Contains(out, "rhel-10.2") {
+		t.Fatalf("expected rhel-10.2 stream in URL, got:\n%s", out)
+	}
+}
+
+func TestGetRHCoSReleaseStreamRHCOS10(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		ok       bool
+		expected string
+	}{
+		{
+			name:     "RHCOS 10.2",
+			version:  "10.2.20260328-0",
+			ok:       true,
+			expected: "prod/streams/rhel-10.2",
+		},
+		{
+			name:     "RHCOS 10.0",
+			version:  "10.0.20260101-0",
+			ok:       true,
+			expected: "prod/streams/rhel-10.0",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, ok := getRHCoSReleaseStream(tc.version, "")
+			if ok != tc.ok {
+				t.Errorf("expected ok=%v, got %v", tc.ok, ok)
+			}
+			if result != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, result)
+			}
+		})
 	}
 }

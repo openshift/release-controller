@@ -42,8 +42,9 @@ var (
 	reMdRHCoSVersion = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS(?: \d+\.\d+)? ((\d+)\.[\w\.\-]+)\n`)
 
 	// RHEL 10 node image (rhel-coreos-10); match before generic RHCOS regex (longer prefix first).
-	reMdRHCoS10Diff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?: \d+\.\d+)? upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
-	reMdRHCoS10Version = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?: \d+\.\d+)? ((\d+)\.[\w\.\-]+)\n`)
+	// [. ] allows either "CoreOS 10.2 ..." (period) or "CoreOS 10 10.2 ..." (space) after "10".
+	reMdRHCoS10Diff    = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?:[. ]\d[\d.]*)? upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
+	reMdRHCoS10Version = regexp.MustCompile(`\* Red Hat Enterprise Linux CoreOS 10(?:[. ]\d[\d.]*)? ((\d+)\.[\w\.\-]+)\n`)
 
 	reMdCentOSCoSDiff    = regexp.MustCompile(`\* CentOS Stream CoreOS upgraded from ((\d+)\.[\w\.\-]+) to ((\d+)\.[\w\.\-]+)\n`)
 	reMdCentOSCoSVersion = regexp.MustCompile(`\* CentOS Stream CoreOS ((\d+)\.[\w\.\-]+)\n`)
@@ -85,7 +86,11 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 			name = rhelCoreOs10
 		case reMdRHCoSDiff.MatchString(markdown):
 			m = reMdRHCoSDiff.FindStringSubmatch(markdown)
-			name = rhelCoreOs
+			if fromMajor, err := strconv.Atoi(m[2]); err == nil && fromMajor >= 10 && fromMajor < 100 {
+				name = rhelCoreOs10
+			} else {
+				name = rhelCoreOs
+			}
 		case reMdCentOSCoSDiff.MatchString(markdown):
 			m = reMdCentOSCoSDiff.FindStringSubmatch(markdown)
 			name = centosStreamCoreOs
@@ -106,7 +111,11 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 			name = rhelCoreOs10
 		case reMdRHCoSVersion.MatchString(markdown):
 			m = reMdRHCoSVersion.FindStringSubmatch(markdown)
-			name = rhelCoreOs
+			if vMajor, err := strconv.Atoi(m[2]); err == nil && vMajor >= 10 && vMajor < 100 {
+				name = rhelCoreOs10
+			} else {
+				name = rhelCoreOs
+			}
 		case reMdCentOSCoSVersion.MatchString(markdown):
 			m = reMdCentOSCoSVersion.FindStringSubmatch(markdown)
 			name = centosStreamCoreOs
@@ -129,8 +138,10 @@ func TransformJsonOutput(output, architecture, architectureExtension string) (st
 	}
 
 	for i, component := range changeLogJson.Components {
-		switch component.Name {
-		case rhelCoreOs, rhelCoreOs10, centosStreamCoreOs:
+		switch {
+		case strings.HasPrefix(component.Name, rhelCoreOs10):
+			changeLogJson.Components[i] = enrichCoreOSComponentJSON(component, architecture, architectureExtension)
+		case component.Name == rhelCoreOs || component.Name == centosStreamCoreOs:
 			changeLogJson.Components[i] = enrichCoreOSComponentJSON(component, architecture, architectureExtension)
 		}
 	}
