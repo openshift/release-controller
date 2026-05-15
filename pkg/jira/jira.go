@@ -19,6 +19,12 @@ import (
 	"sigs.k8s.io/prow/pkg/plugins"
 )
 
+const (
+	// postMergeVerificationLabel is the label that is added to a JIRA issue when a PR is merged
+	// without pre-merge verification. This allows us to filter issues that need to be manually verified.
+	postMergeVerificationLabel = "post-merge-verification"
+)
+
 type githubClient interface {
 	GetIssueLabels(org, repo string, number int) ([]github.Label, error)
 	CreateComment(org, repo string, number int, comment string) error
@@ -85,6 +91,19 @@ func hasLabel(labels []github.Label, name string) bool {
 	return false
 }
 
+// hasJiraLabel checks if a JIRA issue already has the specified label
+func hasJiraLabel(issue *jiraBaseClient.Issue, labelName string) bool {
+	if issue.Fields == nil || issue.Fields.Labels == nil {
+		return false
+	}
+	for _, label := range issue.Fields.Labels {
+		if label == labelName {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 	// Get the comments from that PR
 	comments, err := c.ghClient.ListIssueComments(extPR.org, extPR.repo, extPR.prNum)
@@ -106,6 +125,35 @@ func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {
 		return err, false
 	}
 	return nil, true
+}
+
+// addJiraLabel adds a label to a JIRA issue if it doesn't already exist
+func (c *Verifier) addJiraLabel(issue *jiraBaseClient.Issue, labelName string) error {
+	if hasJiraLabel(issue, labelName) {
+		klog.V(4).Infof("Issue %s already has label '%s'; skipping", issue.Key, labelName)
+		return nil
+	}
+
+	// Create a copy of existing labels and append the new one
+	existingLabels := make([]string, len(issue.Fields.Labels))
+	copy(existingLabels, issue.Fields.Labels)
+	updatedLabels := append(existingLabels, labelName)
+
+	// Create update issue struct
+	tmpIssue := &jiraBaseClient.Issue{
+		Key: issue.Key,
+		Fields: &jiraBaseClient.IssueFields{
+			Labels: updatedLabels,
+		},
+	}
+
+	// Execute the update
+	if _, err := c.jiraClient.UpdateIssue(tmpIssue); err != nil {
+		return fmt.Errorf("failed to add label '%s' to issue %s: %w", labelName, issue.Key, err)
+	}
+
+	klog.V(4).Infof("Added label '%s' to issue %s", labelName, issue.Key)
+	return nil
 }
 
 func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *[]error, tagName string) (ticketMessage string, isSuccess, verifiedLater bool) {
@@ -176,6 +224,9 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 		if qaContact != nil && err == nil {
 			message = fmt.Sprintf("%s by %s", message, qaContact.DisplayName)
 		}
+
+		// For the legacy behaviour, a lack of qe approval is effectively verified later.
+		verifiedLater = true
 	} else {
 		success = true
 	}
@@ -354,6 +405,11 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 		} else {
 			klog.V(4).Infof("Jira issue %s (current status %s) not approved by QA contact", issue.Key, issue.Fields.Status.Name)
 			if verifyLater {
+				// Add the post-merge-verification label
+				if err := c.addJiraLabel(issue, postMergeVerificationLabel); err != nil {
+					errs = append(errs, fmt.Errorf("failed to add %s label to issue %s: %w", postMergeVerificationLabel, issue.Key, err))
+				}
+
 				// Ensure we're not duplicating messages
 				if !strings.EqualFold(issue.Fields.Status.Name, jira.StatusOnQA) {
 					klog.V(4).Infof("Updating issue %s (current status %s) to ON_QA status", issue.ID, issue.Fields.Status.Name)

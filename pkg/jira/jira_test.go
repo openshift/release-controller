@@ -12,6 +12,7 @@ import (
 
 	"github.com/andygrunwald/go-jira"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/github/fakegithub"
 	"sigs.k8s.io/prow/pkg/jira/fakejira"
@@ -31,10 +32,11 @@ type gitHubFakeClientData struct {
 }
 
 type expectedResult struct {
-	errors     []error
-	status     string
-	message    string
-	fixVersion string
+	errors                           []error
+	status                           string
+	message                          string
+	fixVersion                       string
+	expectPostMergeVerificationLabel bool
 }
 
 type fakeGHClient struct {
@@ -323,9 +325,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "",
-				message: "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				errors:                           nil,
+				status:                           "",
+				message:                          "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				expectPostMergeVerificationLabel: true,
 			},
 		},
 		{
@@ -340,9 +343,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -355,9 +359,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.10",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.10",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -370,9 +375,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.13.0-0.nightly-2022-11-12",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.13.0-0.nightly-2022-11-12",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.13.0-0.nightly-2022-11-12",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -385,9 +391,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "In Progress",
-				message: "",
+				errors:                           nil,
+				status:                           "In Progress",
+				message:                          "",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -402,9 +409,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.12",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "In Progress",
-				message: "",
+				errors:                           nil,
+				status:                           "In Progress",
+				message:                          "",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -418,9 +426,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{errors.New("internal Error on Automation")},
-				status:  "ON_QA",
-				message: "",
+				errors:                           []error{errors.New("internal Error on Automation")},
+				status:                           "ON_QA",
+				message:                          "",
+				expectPostMergeVerificationLabel: false,
 			},
 			labelsError: errors.New("injected error"),
 		},
@@ -439,9 +448,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -458,9 +468,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -475,9 +486,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify:        "OCPBUGS-123",
 			tagName:              "4.10",
 			expected: expectedResult{
-				errors:  nil,
-				status:  "Verified",
-				message: "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				errors:                           nil,
+				status:                           "Verified",
+				message:                          "Fix included in release 4.10\nAll linked GitHub PRs have been approved by a QA contact; updating bug status to VERIFIED",
+				expectPostMergeVerificationLabel: false,
 			},
 		},
 		{
@@ -495,9 +507,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{},
-				status:  "ON_QA",
-				message: "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				errors:                           []error{},
+				status:                           "ON_QA",
+				message:                          "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				expectPostMergeVerificationLabel: true,
 			},
 		},
 		{
@@ -515,9 +528,10 @@ func TestVerifyIssues(t *testing.T) {
 			issueToVerify: "OCPBUGS-123",
 			tagName:       "4.10",
 			expected: expectedResult{
-				errors:  []error{},
-				status:  "ON_QA",
-				message: "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				errors:                           []error{},
+				status:                           "ON_QA",
+				message:                          "Fix included in release 4.10\nJira issue will not be automatically moved to VERIFIED for the following reasons:\n- PR openshift/vmware-vsphere-csi-driver-operator#105 not approved by the QA Contact\n\nThis issue must now be manually moved to VERIFIED by Jack Smith",
+				expectPostMergeVerificationLabel: true,
 			},
 		},
 	}
@@ -567,6 +581,15 @@ func TestVerifyIssues(t *testing.T) {
 				if len(jc.Issues[0].Fields.Comments.Comments) > 0 {
 					t.Errorf("A comment was made when none were expected")
 				}
+			}
+
+			// Verify post-merge-verification label expectation
+			hasPostMergeLabel := slices.Contains(jc.Issues[0].Fields.Labels, "post-merge-verification")
+			if tc.expected.expectPostMergeVerificationLabel && !hasPostMergeLabel {
+				t.Errorf("Expected 'post-merge-verification' label to be present, but it was not found in labels: %v", jc.Issues[0].Fields.Labels)
+			}
+			if !tc.expected.expectPostMergeVerificationLabel && hasPostMergeLabel {
+				t.Errorf("Expected 'post-merge-verification' label to be absent, but it was found in labels: %v", jc.Issues[0].Fields.Labels)
 			}
 		})
 	}
