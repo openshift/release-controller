@@ -32,13 +32,13 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 			releasecontroller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 			releasecontroller.ReleaseAnnotationPhase:             releasecontroller.ReleasePhasePending,
 		},
-		Reference:    releasecontroller.HasReferenceSpecTags(release.Source),
+		Reference:    releasecontroller.IsReferenceRelease(release),
 		ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 	}
 	if releasecontroller.IsReferenceRelease(release) {
 		tag.From = &corev1.ObjectReference{
 			Kind: "DockerImage",
-			Name: releasecontroller.ReleasePullSpec(release, tag.Name),
+			Name: releasecontroller.ReleasePullSpec(release, &tag),
 		}
 	}
 	target.Spec.Tags = append(target.Spec.Tags, tag)
@@ -119,17 +119,27 @@ func (c *Controller) replaceReleaseTagWithNext(release *releasecontroller.Releas
 }
 
 func (c *Controller) removeReleaseTags(release *releasecontroller.Release, removeTags []*imagev1.TagReference) error {
-	if releasecontroller.IsReferenceRelease(release) {
-		allComplete, err := c.ensureReferenceRemovalTags(release, removeTags)
-		if err != nil {
-			return err
-		}
-		if !allComplete {
-			return nil
+	var referenceTags []*imagev1.TagReference
+	var tagsToDelete []*imagev1.TagReference
+	for _, tag := range removeTags {
+		if tag.Reference {
+			referenceTags = append(referenceTags, tag)
+		} else {
+			tagsToDelete = append(tagsToDelete, tag)
 		}
 	}
 
-	for _, tag := range removeTags {
+	if len(referenceTags) > 0 {
+		allComplete, err := c.ensureReferenceRemovalTags(release, referenceTags)
+		if err != nil {
+			return err
+		}
+		if allComplete {
+			tagsToDelete = append(tagsToDelete, referenceTags...)
+		}
+	}
+
+	for _, tag := range tagsToDelete {
 		ctx := context.TODO()
 		name := fmt.Sprintf("%s:%s", release.Target.Name, tag.Name)
 		if c.softDeleteReleaseTags {

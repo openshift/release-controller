@@ -624,6 +624,18 @@ func IsReferenceRelease(release *Release) bool {
 		release.Config.ReferenceRelease != nil
 }
 
+// IsReferenceReleaseTag returns true when an individual existing tag was
+// created as a reference-based tag (its own Reference field is true) and
+// the release config includes a ReferenceRelease. This should be used when
+// processing already-tagged releases to avoid misclassifying legacy tags that
+// remain in a stream after it has been converted to reference-based.
+func IsReferenceReleaseTag(release *Release, tag *imagev1.TagReference) bool {
+	return tag != nil &&
+		tag.Reference &&
+		release.Config != nil &&
+		release.Config.ReferenceRelease != nil
+}
+
 // ResolveCLIImage determines the CLI image to use for job creation.
 // For reference-based releases the CLI image is taken from the mirror's spec
 // tag "cli"; for traditional releases it comes from the mirror's
@@ -648,17 +660,23 @@ func ResolveCLIImage(release *Release, mirror *imagev1.ImageStream) (string, err
 }
 
 // ReleasePullSpec returns the correct pull spec for a release payload tag.
-// For reference-based releases the payload lives in the external ReferenceRepository;
-// for traditional releases it lives in the Target imagestream.
-func ReleasePullSpec(release *Release, tagName string) string {
-	if IsReferenceRelease(release) {
+// For reference-based tags the payload lives in the external ReferenceRepository;
+// for traditional tags it lives in the Target imagestream.
+// Pass the actual tag reference so that legacy tags in a transitioning stream
+// are resolved against the local Target rather than the external repository.
+// Returns an empty string if tag is nil.
+func ReleasePullSpec(release *Release, tag *imagev1.TagReference) string {
+	if tag == nil {
+		return ""
+	}
+	if IsReferenceReleaseTag(release, tag) {
 		if release.Config.ReferenceRelease.PullRepository == "" {
 			return ""
 		}
-		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tagName))
+		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tag.Name))
 	}
 	if release.Target.Status.PublicDockerImageRepository == "" {
 		return ""
 	}
-	return release.Target.Status.PublicDockerImageRepository + ":" + tagName
+	return release.Target.Status.PublicDockerImageRepository + ":" + tag.Name
 }

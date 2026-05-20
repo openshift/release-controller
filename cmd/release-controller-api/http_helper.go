@@ -108,12 +108,13 @@ func pullSpecFromCoordinates(coords []v1alpha1.ReleaseCoordinates) string {
 }
 
 // resolveReleasePullSpec returns the pull spec for the given tag within the
-// release. For reference-based releases (external repo) it uses ReleasePullSpec;
-// for local releases it falls back to FindPublicImagePullSpec which handles
-// digest resolution and status-tag checking.
+// release. For reference-based tags (external repo) it uses ReleasePullSpec;
+// for local or legacy tags it falls back to FindPublicImagePullSpec which
+// handles digest resolution and status-tag checking.
 func resolveReleasePullSpec(release *releasecontroller.Release, tagName string) string {
-	if releasecontroller.IsReferenceRelease(release) {
-		return releasecontroller.ReleasePullSpec(release, tagName)
+	tag := releasecontroller.FindTagReference(release.Target, tagName)
+	if releasecontroller.IsReferenceReleaseTag(release, tag) {
+		return releasecontroller.ReleasePullSpec(release, tag)
 	}
 	return releasecontroller.FindPublicImagePullSpec(release.Target, tagName)
 }

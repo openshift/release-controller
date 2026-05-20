@@ -19,10 +19,10 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 		return nil, err
 	}
 	payloadType := v1alpha1.PayloadTypeLocal
-	if releasecontroller.IsReferenceRelease(release) {
+	if releasecontroller.IsReferenceReleaseTag(release, releaseTag) {
 		payloadType = v1alpha1.PayloadTypeReference
 	}
-	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm, payloadType), metav1.CreateOptions{})
+	payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Create(context.TODO(), newReleasePayload(release, releaseTag, releaseTag.Name, c.jobNamespace, c.prowNamespace, verificationJobs, release.Config.Upgrade, v1alpha1.PayloadVerificationDataSourceBuildFarm, payloadType), metav1.CreateOptions{})
 	if err == nil {
 		klog.V(4).Infof("ReleasePayload: %s/%s created", payload.Namespace, payload.Name)
 		return payload, nil
@@ -33,7 +33,7 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 	return nil, err
 }
 
-func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource, payloadType v1alpha1.PayloadType) *v1alpha1.ReleasePayload {
+func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagReference, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource, payloadType v1alpha1.PayloadType) *v1alpha1.ReleasePayload {
 	payload := v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -66,7 +66,7 @@ func newReleasePayload(release *releasecontroller.Release, name, jobNamespace, p
 		},
 	}
 
-	if releasecontroller.IsReferenceRelease(release) {
+	if releasecontroller.IsReferenceReleaseTag(release, tag) {
 		payload.Spec.ReleaseCoordinates = []v1alpha1.ReleaseCoordinates{{
 			Repository: release.Config.ReferenceRelease.PullRepository,
 			Tag:        releasecontroller.ReferencePayloadTag(name),

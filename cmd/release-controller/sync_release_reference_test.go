@@ -178,13 +178,13 @@ func TestReleaseTagFromForReferenceRelease(t *testing.T) {
 
 			tag := imagev1.TagReference{
 				Name:         tagName,
-				Reference:    releasecontroller.HasReferenceSpecTags(tc.release.Source),
+				Reference:    releasecontroller.IsReferenceRelease(tc.release),
 				ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 			}
 			if releasecontroller.IsReferenceRelease(tc.release) {
 				tag.From = &corev1.ObjectReference{
 					Kind: "DockerImage",
-					Name: releasecontroller.ReleasePullSpec(tc.release, tag.Name),
+					Name: releasecontroller.ReleasePullSpec(tc.release, &tag),
 				}
 			}
 

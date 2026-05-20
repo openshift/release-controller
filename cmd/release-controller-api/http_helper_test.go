@@ -313,7 +313,7 @@ func TestResolveReleasePullSpec(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "reference release with ReferenceRelease",
+			name: "reference tag in Target resolves to external repo",
 			release: &releasecontroller.Release{
 				Source: &imagev1.ImageStream{
 					Spec: imagev1.ImageStreamSpec{
@@ -323,6 +323,11 @@ func TestResolveReleasePullSpec(t *testing.T) {
 					},
 				},
 				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "4.18.0-0.nightly-2025-01-01-000000", Reference: true},
+						},
+					},
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
 					},
@@ -338,7 +343,7 @@ func TestResolveReleasePullSpec(t *testing.T) {
 			want: "quay.io/openshift-release-dev/ocp-release:rc_payload__4.18.0-0.nightly-2025-01-01-000000",
 		},
 		{
-			name: "reference release without ReferenceRelease falls back to FindPublicImagePullSpec",
+			name: "reference source but tag not in Target falls back to FindPublicImagePullSpec",
 			release: &releasecontroller.Release{
 				Source: &imagev1.ImageStream{
 					Spec: imagev1.ImageStreamSpec{
@@ -358,7 +363,48 @@ func TestResolveReleasePullSpec(t *testing.T) {
 						},
 					},
 				},
-				Config: &releasecontroller.ReleaseConfig{},
+				Config: &releasecontroller.ReleaseConfig{
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release",
+						PullRepository: "quay.io/openshift-release-dev/ocp-release",
+					},
+				},
+			},
+			tag:  "4.18.0-0.nightly-2025-01-01-000000",
+			want: "registry.ci.openshift.org/ocp/release:4.18.0-0.nightly-2025-01-01-000000",
+		},
+		{
+			name: "transitional: reference source but legacy tag (Reference false) resolves to local Target",
+			release: &releasecontroller.Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "cli", Reference: true},
+						},
+					},
+				},
+				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{Name: "4.18.0-0.nightly-2025-01-01-000000", Reference: false},
+						},
+					},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+						Tags: []imagev1.NamedTagEventList{
+							{
+								Tag:   "4.18.0-0.nightly-2025-01-01-000000",
+								Items: []imagev1.TagEvent{{DockerImageReference: "sha256:abc123", Generation: 1}},
+							},
+						},
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PushRepository: "quay.io/openshift-release-dev/ocp-release",
+						PullRepository: "quay.io/openshift-release-dev/ocp-release",
+					},
+				},
 			},
 			tag:  "4.18.0-0.nightly-2025-01-01-000000",
 			want: "registry.ci.openshift.org/ocp/release:4.18.0-0.nightly-2025-01-01-000000",

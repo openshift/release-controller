@@ -254,45 +254,113 @@ func TestResolveCLIImage(t *testing.T) {
 	}
 }
 
+func TestIsReferenceReleaseTag(t *testing.T) {
+	testCases := []struct {
+		name     string
+		release  *Release
+		tag      *imagev1.TagReference
+		expected bool
+	}{
+		{
+			name: "nil tag returns false",
+			release: &Release{
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{PullRepository: "quay.io/openshift-release-dev/ocp-release"},
+				},
+			},
+			tag:      nil,
+			expected: false,
+		},
+		{
+			name: "tag with Reference false returns false even in reference stream",
+			release: &Release{
+				Source: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{{Name: "cli", Reference: true}},
+					},
+				},
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{PullRepository: "quay.io/openshift-release-dev/ocp-release"},
+				},
+			},
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: false},
+			expected: false,
+		},
+		{
+			name: "tag with Reference true but nil ReferenceRelease config returns false",
+			release: &Release{
+				Config: &ReleaseConfig{},
+			},
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
+			expected: false,
+		},
+		{
+			name: "tag with Reference true and valid ReferenceRelease returns true",
+			release: &Release{
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{PullRepository: "quay.io/openshift-release-dev/ocp-release"},
+				},
+			},
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
+			expected: true,
+		},
+		{
+			name: "nil Config returns false",
+			release: &Release{
+				Config: nil,
+			},
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
+			expected: false,
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := IsReferenceReleaseTag(tc.release, tc.tag)
+			if actual != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, actual)
+			}
+		})
+	}
+}
+
 func TestReleasePullSpec(t *testing.T) {
 	testCases := []struct {
 		name     string
 		release  *Release
-		tagName  string
+		tag      *imagev1.TagReference
 		expected string
 	}{
 		{
-			name: "non-reference release uses Target pull spec",
+			name: "nil tag returns empty string",
 			release: &Release{
-				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{
-						Tags: []imagev1.TagReference{
-							{Name: "cli"},
-						},
-					},
-				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
 					},
 				},
-				Config: &ReleaseConfig{
-					Name: "4.17.0-0.nightly",
-				},
+				Config: &ReleaseConfig{Name: "4.17.0-0.nightly"},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      nil,
+			expected: "",
+		},
+		{
+			name: "tag with Reference false uses Target pull spec",
+			release: &Release{
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+					},
+				},
+				Config: &ReleaseConfig{Name: "4.17.0-0.nightly"},
+			},
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: false},
 			expected: "registry.ci.openshift.org/ocp/release:4.17.0-0.nightly-2025-01-01-000000",
 		},
 		{
-			name: "reference release uses ReferenceRelease with payload tag prefix",
+			name: "tag with Reference true and ReferenceRelease uses external repo",
 			release: &Release{
-				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{
-						Tags: []imagev1.TagReference{
-							{Name: "cli", Reference: true},
-						},
-					},
-				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
@@ -306,41 +374,25 @@ func TestReleasePullSpec(t *testing.T) {
 					},
 				},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
 			expected: "quay.io/openshift-release-dev/ocp-release:rc_payload__4.17.0-0.nightly-2025-01-01-000000",
 		},
 		{
-			name: "reference tags but nil ReferenceRelease falls back to Target",
+			name: "tag with Reference true but nil ReferenceRelease config falls back to Target",
 			release: &Release{
-				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{
-						Tags: []imagev1.TagReference{
-							{Name: "cli", Reference: true},
-						},
-					},
-				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
 					},
 				},
-				Config: &ReleaseConfig{
-					Name: "4.17.0-0.nightly",
-				},
+				Config: &ReleaseConfig{Name: "4.17.0-0.nightly"},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
 			expected: "registry.ci.openshift.org/ocp/release:4.17.0-0.nightly-2025-01-01-000000",
 		},
 		{
-			name: "reference release with empty PullRepository returns empty string",
+			name: "tag with Reference true and empty PullRepository returns empty string",
 			release: &Release{
-				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{
-						Tags: []imagev1.TagReference{
-							{Name: "cli", Reference: true},
-						},
-					},
-				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
@@ -354,36 +406,29 @@ func TestReleasePullSpec(t *testing.T) {
 					},
 				},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true},
 			expected: "",
 		},
 		{
-			name: "non-reference release with empty PublicDockerImageRepository returns empty string",
+			name: "tag with Reference false and empty PublicDockerImageRepository returns empty string",
 			release: &Release{
-				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{
-						Tags: []imagev1.TagReference{
-							{Name: "cli"},
-						},
-					},
-				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
 						PublicDockerImageRepository: "",
 					},
 				},
-				Config: &ReleaseConfig{
-					Name: "4.17.0-0.nightly",
-				},
+				Config: &ReleaseConfig{Name: "4.17.0-0.nightly"},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: false},
 			expected: "",
 		},
 		{
-			name: "no spec tags means non-reference",
+			name: "transitional: reference source but legacy tag (Reference false) resolves to local Target",
 			release: &Release{
 				Source: &imagev1.ImageStream{
-					Spec: imagev1.ImageStreamSpec{},
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{{Name: "cli", Reference: true}},
+					},
 				},
 				Target: &imagev1.ImageStream{
 					Status: imagev1.ImageStreamStatus{
@@ -398,7 +443,7 @@ func TestReleasePullSpec(t *testing.T) {
 					},
 				},
 			},
-			tagName:  "4.17.0-0.nightly-2025-01-01-000000",
+			tag:      &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: false},
 			expected: "registry.ci.openshift.org/ocp/release:4.17.0-0.nightly-2025-01-01-000000",
 		},
 	}
@@ -406,7 +451,7 @@ func TestReleasePullSpec(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := ReleasePullSpec(tc.release, tc.tagName)
+			actual := ReleasePullSpec(tc.release, tc.tag)
 			if actual != tc.expected {
 				t.Errorf("expected %q, got %q", tc.expected, actual)
 			}

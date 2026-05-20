@@ -360,7 +360,7 @@ func (a *AuditTracker) Sync(release *releasecontroller.Release) {
 
 		id := releasecontroller.FindImageIDForTag(from, tag.Name)
 		// TODO: this should really be the digest
-		location := releasecontroller.ReleasePullSpec(release, tag.Name)
+		location := releasecontroller.ReleasePullSpec(release, &tag)
 		existing, ok := a.records[tag.Name]
 		if !ok {
 			a.records[tag.Name] = &AuditRecord{
