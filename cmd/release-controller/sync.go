@@ -382,7 +382,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				}
 				if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 					go func() {
-						fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0].Name)
+						fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
 						if len(fromPullSpec) == 0 {
 							klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
 							return
@@ -393,7 +393,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 							return
 						}
 
-						toPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
+						toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
 						if len(toPullSpec) == 0 {
 							klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
 							return
@@ -435,7 +435,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 		}
 
 		var job *batchv1.Job
-		if releasecontroller.IsReferenceRelease(release) {
+		if releasecontroller.IsReferenceReleaseTag(release, tag) {
 			job, err = c.ensureReferenceReleaseJob(release, tag.Name, mirror)
 		} else {
 			job, err = c.ensureReleaseJob(release, tag.Name, mirror)
@@ -460,7 +460,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			}
 			if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 				go func() {
-					fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0].Name)
+					fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
 					if len(fromPullSpec) == 0 {
 						klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
 						return
@@ -471,7 +471,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 						return
 					}
 
-					toPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
+					toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
 					if len(toPullSpec) == 0 {
 						klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
 						return

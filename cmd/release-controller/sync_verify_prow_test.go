@@ -201,7 +201,7 @@ func TestAddReleaseEnvToProwJobSpec_NonReference(t *testing.T) {
 
 func TestAddReleaseEnvToProwJobSpec_Reference(t *testing.T) {
 	release := newRelease(true, "quay.io/openshift-release-dev/ocp-release")
-	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000"}
+	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true}
 	spec := prowjobv1.ProwJobSpec{
 		PodSpec: &corev1.PodSpec{
 			Containers: []corev1.Container{{Name: "test"}},
@@ -228,7 +228,7 @@ func TestAddReleaseEnvToProwJobSpec_Reference(t *testing.T) {
 
 func TestAddReleaseEnvToProwJobSpec_ReferenceUpgrade(t *testing.T) {
 	release := newRelease(true, "quay.io/openshift-release-dev/ocp-release")
-	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000"}
+	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true}
 	prevPullSpec := "quay.io/openshift-release-dev/ocp-release:rc_payload__4.17.0-0.nightly-2024-12-31-000000"
 	spec := prowjobv1.ProwJobSpec{
 		PodSpec: &corev1.PodSpec{
@@ -295,7 +295,7 @@ func TestAddReleaseEnvToProwJobSpec_ArchVariants(t *testing.T) {
 					refRepo = "quay.io/openshift-release-dev/ocp-release"
 				}
 				release := newRelease(isRef, refRepo)
-				tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000"}
+				tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: isRef}
 				spec := prowjobv1.ProwJobSpec{
 					PodSpec: &corev1.PodSpec{
 						Containers: []corev1.Container{{Name: "test"}},
@@ -341,7 +341,7 @@ func TestAddReleaseEnvToProwJobSpec_ArchVariants(t *testing.T) {
 
 func TestAddReleaseEnvToProwJobSpec_ExistingEnvVar(t *testing.T) {
 	release := newRelease(true, "quay.io/openshift-release-dev/ocp-release")
-	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000"}
+	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true}
 	spec := prowjobv1.ProwJobSpec{
 		PodSpec: &corev1.PodSpec{
 			Containers: []corev1.Container{{

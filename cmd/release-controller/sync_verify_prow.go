@@ -174,7 +174,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			switch name := c.Env[j].Name; {
 			case name == "RELEASE_IMAGE_LATEST":
 				hasReleaseImage = true
-				c.Env[j].Value = releasecontroller.ReleasePullSpec(release, releaseTag.Name)
+				c.Env[j].Value = releasecontroller.ReleasePullSpec(release, releaseTag)
 			case name == "RELEASE_IMAGE_INITIAL":
 				if len(previousReleasePullSpec) == 0 {
 					return false, nil
@@ -205,7 +205,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			}
 		}
 		if !hasReleaseImage {
-			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag.Name)
+			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag)
 			switch architecture {
 			case "arm64":
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_LATEST", Value: pullSpec})
@@ -224,7 +224,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 			// If an initial release is specified in the ci-operator config, ci-operator will always try to pull it. This can cause jobs to fail
 			// if there are not at least 2 accepted releases for the release being tested. To prevent this issue, always set RELEASE_IMAGE_INITIAL,
 			// even for non-upgrade jobs
-			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag.Name)
+			pullSpec := releasecontroller.ReleasePullSpec(release, releaseTag)
 			switch architecture {
 			case "arm64":
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_ARM64_INITIAL", Value: pullSpec})

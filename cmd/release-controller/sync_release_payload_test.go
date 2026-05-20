@@ -25,6 +25,7 @@ func TestNewReleasePayload(t *testing.T) {
 	testCases := []struct {
 		name             string
 		release          *releasecontroller.Release
+		releaseTag       *imagev1.TagReference
 		payloadName      string
 		jobNamespace     string
 		prowNamespace    string
@@ -898,6 +899,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 				},
 			},
+			releaseTag:       &imagev1.TagReference{Name: "4.18.0-0.nightly-2025-01-01-000000", Reference: true},
 			payloadName:      "4.18.0-0.nightly-2025-01-01-000000",
 			jobNamespace:     "ci-release",
 			prowNamespace:    "ci",
@@ -1013,7 +1015,7 @@ func TestNewReleasePayload(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := newReleasePayload(tc.release, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource, tc.payloadType)
+			payload := newReleasePayload(tc.release, tc.releaseTag, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource, tc.payloadType)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
 			}

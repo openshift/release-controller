@@ -256,8 +256,8 @@ func (c *Controller) syncJira(key queueKey) error {
 	// and it also allows us to handle the case where the imagestream fails to update below.
 	defer c.queue.AddAfter(key, time.Second)
 
-	prevPullSpec := releasecontroller.ReleasePullSpec(prevReleaseForPullSpec, prevTag.Name)
-	curPullSpec := releasecontroller.ReleasePullSpec(release, tag.Name)
+	prevPullSpec := releasecontroller.ReleasePullSpec(prevReleaseForPullSpec, prevTag)
+	curPullSpec := releasecontroller.ReleasePullSpec(release, tag)
 	if len(prevPullSpec) == 0 || len(curPullSpec) == 0 ||
 		strings.HasPrefix(prevPullSpec, ":") || strings.HasPrefix(curPullSpec, ":") {
 		klog.V(4).Infof("jira: release target %s does not have a configured registry", release.Target.Name)

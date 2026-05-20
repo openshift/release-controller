@@ -466,7 +466,11 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 		return nil, nil
 	}
 	return c.ensureJob(releaseMirrorJobName(name), nil, func() (*batchv1.Job, error) {
-		fromImage := releasecontroller.ReleasePullSpec(release, name)
+		tag := releasecontroller.FindTagReference(release.Target, name)
+		if tag == nil {
+			return nil, fmt.Errorf("tag %q not found in target imagestream %s/%s", name, release.Target.Namespace, release.Target.Name)
+		}
+		fromImage := releasecontroller.ReleasePullSpec(release, tag)
 		toImage := fmt.Sprintf("%s:%s", release.Config.AlternateImageRepository, name)
 
 		cliImage, err := releasecontroller.ResolveCLIImage(release, mirror)

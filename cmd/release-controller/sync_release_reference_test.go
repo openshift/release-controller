@@ -184,7 +184,7 @@ func TestReleaseTagFromForReferenceRelease(t *testing.T) {
 			if releasecontroller.IsReferenceRelease(tc.release) {
 				tag.From = &corev1.ObjectReference{
 					Kind: "DockerImage",
-					Name: releasecontroller.ReleasePullSpec(tc.release, tag.Name),
+					Name: releasecontroller.ReleasePullSpec(tc.release, &tag),
 				}
 			}
 
