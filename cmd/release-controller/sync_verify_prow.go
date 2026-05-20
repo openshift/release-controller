@@ -182,7 +182,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				hasUpgradeImage = true
 				c.Env[j].Value = previousReleasePullSpec
 			case name == "IMAGE_FORMAT":
-				if releasecontroller.HasReferenceSpecTags(release.Source) {
+				if releasecontroller.IsReferenceReleaseTag(release, releaseTag) {
 					break
 				}
 				if mirror == nil {
@@ -194,7 +194,7 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				if len(suffix) == 0 {
 					break
 				}
-				if releasecontroller.HasReferenceSpecTags(release.Source) {
+				if releasecontroller.IsReferenceReleaseTag(release, releaseTag) {
 					break
 				}
 				if mirror == nil {

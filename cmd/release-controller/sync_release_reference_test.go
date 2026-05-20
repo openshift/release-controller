@@ -178,7 +178,7 @@ func TestReleaseTagFromForReferenceRelease(t *testing.T) {
 
 			tag := imagev1.TagReference{
 				Name:         tagName,
-				Reference:    releasecontroller.HasReferenceSpecTags(tc.release.Source),
+				Reference:    releasecontroller.IsReferenceRelease(tc.release),
 				ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 			}
 			if releasecontroller.IsReferenceRelease(tc.release) {

@@ -61,7 +61,7 @@ func (c *Controller) ensureReleaseMirror(release *releasecontroller.Release, rel
 	switch {
 	case release.Config.As == releasecontroller.ReleaseConfigModeStable:
 		// stream will be populated later
-	case releasecontroller.HasReferenceSpecTags(release.Source):
+	case releasecontroller.IsReferenceRelease(release):
 		if err := calculateReferenceMirrorImageStream(release, is); err != nil {
 			return nil, err
 		}

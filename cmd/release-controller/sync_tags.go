@@ -32,7 +32,7 @@ func (c *Controller) createReleaseTag(release *releasecontroller.Release, now ti
 			releasecontroller.ReleaseAnnotationCreationTimestamp: now.Format(time.RFC3339),
 			releasecontroller.ReleaseAnnotationPhase:             releasecontroller.ReleasePhasePending,
 		},
-		Reference:    releasecontroller.HasReferenceSpecTags(release.Source),
+		Reference:    releasecontroller.IsReferenceRelease(release),
 		ImportPolicy: imagev1.TagImportPolicy{ImportMode: imagev1.ImportModePreserveOriginal},
 	}
 	if releasecontroller.IsReferenceRelease(release) {
