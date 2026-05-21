@@ -1282,6 +1282,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h3 { font-size: 1.35rem; margin-top: 2rem; margin-bottom: 1rem  }
 			h4 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 1rem  }
+			.alert h4.alert-heading { margin-top: 0; }
 			h3 a { text-transform: uppercase; font-size: 1rem; }
 			.mb-custom {
 			  margin-bottom: 0.5rem !important; /* use !important to override other margin-bottom styles */
@@ -1303,6 +1304,17 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		"</div>"+
 		"</div>"+
 		"</div>", template.HTMLEscapeString(tagInfo.Tag))
+
+	if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
+		override := payload.Spec.PayloadOverride
+		fmt.Fprintf(w, `<div class="alert alert-warning">`+
+			`<h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Manual Override Applied</h4>`+
+			`<p>This release was manually <strong>%s</strong>.</p>`+
+			`<hr><p class="mb-0"><strong>Reason:</strong> %s</p>`+
+			`</div>`,
+			template.HTMLEscapeString(string(override.Override)),
+			linkifyURLs(override.Reason))
+	}
 
 	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
 	case releasecontroller.ReleasePhaseFailed:
@@ -1647,7 +1659,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"tableLink":               c.tableLink,
 			"versionGrouping":         versionGrouping,
 			"streamNames":             streamNames,
-			"phaseCell":               phaseCell,
+			"phaseCell":               c.phaseCell,
 			"phaseAlert":              phaseAlert,
 			"alerts":                  renderAlerts,
 			"links":                   c.links,
@@ -1887,7 +1899,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 			"tableLink":               c.tableLink,
 			"versionGrouping":         versionGrouping,
 			"streamNames":             streamNames,
-			"phaseCell":               phaseCell,
+			"phaseCell":               c.phaseCell,
 			"phaseAlert":              phaseAlert,
 			"alerts":                  renderAlerts,
 			"links":                   c.links,
@@ -2035,7 +2047,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				return ""
 			},
 			"tableLink":      c.tableLink,
-			"phaseCell":      phaseCell,
+			"phaseCell":      c.phaseCell,
 			"phaseAlert":     phaseAlert,
 			"inc":            func(i int) int { return i + 1 },
 			"upgradeJobs":    upgradeJobs,
