@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -25,6 +26,16 @@ import (
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
+
+var urlRegexp = regexp.MustCompile(`https?://[^\s<>"]*[^\s<>").,:;!?]`)
+
+// linkifyURLs HTML-escapes the input text, then converts any URLs into clickable links.
+func linkifyURLs(s string) string {
+	escaped := template.HTMLEscapeString(s)
+	return urlRegexp.ReplaceAllStringFunc(escaped, func(u string) string {
+		return fmt.Sprintf(`<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>`, u, u)
+	})
+}
 
 type ReleasePage struct {
 	BaseURL      string
@@ -119,17 +130,32 @@ func resolveReleasePullSpec(release *releasecontroller.Release, tagName string) 
 	return releasecontroller.FindPublicImagePullSpec(release.Target, tagName)
 }
 
-func phaseCell(tag imagev1.TagReference) string {
+func (c *Controller) phaseCell(tag imagev1.TagReference) string {
 	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-	switch phase {
-	case releasecontroller.ReleasePhaseRejected:
+	alert := phaseAlert(tag)
+
+	var title string
+	var overridden bool
+	if payload := c.GetReleasePayload(tag.Name); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
+		title = payload.Spec.PayloadOverride.Reason
+		overridden = true
+	} else if phase == releasecontroller.ReleasePhaseRejected {
+		title = tag.Annotations[releasecontroller.ReleaseAnnotationMessage]
+	}
+
+	display := template.HTMLEscapeString(phase)
+	if overridden {
+		display += "*"
+	}
+
+	if title != "" {
 		return fmt.Sprintf("<td class=\"%s\" title=\"%s\">%s</td>",
-			phaseAlert(tag),
-			template.HTMLEscapeString(tag.Annotations[releasecontroller.ReleaseAnnotationMessage]),
-			template.HTMLEscapeString(phase),
+			alert,
+			template.HTMLEscapeString(title),
+			display,
 		)
 	}
-	return fmt.Sprintf("<td class=\"%s\">", phaseAlert(tag)) + template.HTMLEscapeString(phase) + "</td>"
+	return fmt.Sprintf("<td class=\"%s\">%s</td>", alert, display)
 }
 
 func phaseAlert(tag imagev1.TagReference) string {
