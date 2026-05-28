@@ -240,7 +240,11 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 		inputImageHash = ""
 		removeTags = nil
 	default:
-		// gate creating new releases when we already are at max unready or in the cooldown interval
+		// gate creating new releases when end of support, at max unready, or in the cooldown interval
+		if release.Config.EndOfSupport {
+			klog.V(2).Infof("Release %s has reached end of support, will not launch new tags", release.Config.Name)
+			hasNewImages = false
+		}
 		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount >= release.Config.MaxUnreadyReleases {
 			klog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			hasNewImages = false
