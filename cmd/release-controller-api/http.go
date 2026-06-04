@@ -460,6 +460,17 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 //	return status
 //}
 
+type httpError struct {
+	status int
+	err    error
+}
+
+func (e *httpError) Error() string { return e.err.Error() }
+
+func newHTTPError(status int, format string, args ...any) *httpError {
+	return &httpError{status: status, err: fmt.Errorf(format, args...)}
+}
+
 type FeatureTree struct {
 	IssueKey        string         `json:"key"`
 	Summary         string         `json:"summary"`
@@ -668,6 +679,8 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	var changeLog []byte
 	var changeLogJson releasecontroller.ChangeLog
+	var nodeImageStreams []releasecontroller.APINodeImageStream
+	var nodeImageErr *httpError
 
 	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 		var wg sync.WaitGroup
@@ -686,7 +699,78 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				c.changeLogWorker(result, tagInfo, format)
 			}()
 		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			streams, err := c.releaseInfo.ListMachineOSStreams(tagInfo.TagPullSpec)
+			if err != nil {
+				nodeImageErr = newHTTPError(http.StatusInternalServerError, "listing machine-OS streams for %s: %w", tagInfo.Tag, err)
+				return
+			}
+
+			if len(streams) == 0 {
+				diff, err := c.releaseInfo.RpmDiff(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec)
+				if err != nil {
+					nodeImageErr = newHTTPError(http.StatusInternalServerError, "RPM diff for %s: %w", tagInfo.Tag, err)
+					return
+				}
+				nodeImageStreams = []releasecontroller.APINodeImageStream{{
+					Name:    "Red Hat Enterprise Linux CoreOS",
+					Tag:     "rhel-coreos",
+					RpmDiff: &diff,
+				}}
+				return
+			}
+
+			// Acquire a single semaphore slot for all stream operations,
+			// matching the HTML path (pkg/rhcos/node_image.go).
+			// RpmDiffForStream with a non-empty tag uses ocCmd (no
+			// semaphore), so without this guard concurrent API requests
+			// could spawn unbounded oc processes.
+			select {
+			case releasecontroller.RpmdbOCSlots <- struct{}{}:
+			default:
+				nodeImageErr = newHTTPError(http.StatusTooManyRequests,
+					"too many concurrent rpmdb operations (limit %d)",
+					releasecontroller.MaxConcurrentRpmdbOCCalls,
+				)
+				return
+			}
+			defer func() { <-releasecontroller.RpmdbOCSlots }()
+
+			result := make([]releasecontroller.APINodeImageStream, 0, len(streams))
+			for _, stream := range streams {
+				if req.Context().Err() != nil {
+					return
+				}
+				entry := releasecontroller.APINodeImageStream{
+					Name: stream.DisplayName,
+					Tag:  stream.Tag,
+				}
+				if _, errFrom := c.releaseInfo.ImageReferenceForComponent(tagInfo.PreviousTagPullSpec, stream.Tag); errFrom == nil {
+					diff, err := c.releaseInfo.RpmDiffForStream(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec, stream.Tag)
+					if err != nil {
+						klog.V(4).Infof("Unable to retrieve RPM diff for stream %s in %s: %v", stream.Tag, tagInfo.Tag, err)
+					} else {
+						entry.RpmDiff = &diff
+					}
+				}
+				result = append(result, entry)
+			}
+			nodeImageStreams = result
+		}()
+
 		wg.Wait()
+
+		if nodeImageErr != nil {
+			klog.V(2).Infof("Node image RPM diff failed: %v", nodeImageErr)
+			if nodeImageErr.status == http.StatusTooManyRequests {
+				w.Header().Set("Retry-After", "60")
+			}
+			http.Error(w, nodeImageErr.Error(), nodeImageErr.status)
+			return
+		}
 
 		if renderHTML.err == nil {
 			result := blackfriday.Run([]byte(renderHTML.out))
@@ -706,13 +790,14 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	summary := releasecontroller.APIReleaseInfo{
-		Name:          tagInfo.Tag,
-		Phase:         tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:       verificationJobs,
-		UpgradesTo:    c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom:  c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:     changeLog,
-		ChangeLogJson: changeLogJson,
+		Name:            tagInfo.Tag,
+		Phase:           tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:         verificationJobs,
+		UpgradesTo:      c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:    c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:       changeLog,
+		ChangeLogJson:   changeLogJson,
+		NodeImageStreams: nodeImageStreams,
 	}
 
 	data, err := json.MarshalIndent(&summary, "", "  ")
