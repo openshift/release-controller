@@ -64,7 +64,8 @@ type CachingReleaseInfo struct {
 }
 
 func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) ReleaseInfo {
-	cache := groupcache.NewGroup("release", size, groupcache.GetterFunc(func(ctx context.Context, key string, sink groupcache.Sink) error {
+	var cache *groupcache.Group
+	cache = groupcache.NewGroup("release", size, groupcache.GetterFunc(func(ctx context.Context, key string, sink groupcache.Sink) error {
 		var s string
 		var err error
 		parts := strings.Split(key, "\x00")
@@ -149,21 +150,31 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 			if len(parts) != 3 {
 				s, err = "", fmt.Errorf("invalid imagefor key")
 			} else {
-				s, err = info.ImageReferenceForComponent(parts[1], parts[2])
+				var raw string
+				if getErr := cache.Get(ctx, strings.Join([]string{"releaseinfo", parts[1]}, "\x00"), groupcache.StringSink(&raw)); getErr != nil {
+					err = getErr
+				} else {
+					s, err = imageRefFromReleaseJSON(raw, parts[2])
+				}
 			}
 		case "machineosstreams":
 			if len(parts) != 2 {
 				s, err = "", fmt.Errorf("invalid machineosstreams key")
 			} else {
-				var streams []MachineOSStreamInfo
-				streams, err = info.ListMachineOSStreams(parts[1])
-				if err == nil {
-					var b []byte
-					b, err = json.Marshal(streams)
-					if err != nil {
-						klog.V(4).Infof("Failed to Marshal machine OS streams for %s; %s", parts[1], err)
-					} else {
-						s = string(b)
+				var raw string
+				if getErr := cache.Get(ctx, strings.Join([]string{"releaseinfo", parts[1]}, "\x00"), groupcache.StringSink(&raw)); getErr != nil {
+					err = getErr
+				} else {
+					var streams []MachineOSStreamInfo
+					streams, err = machineOSStreamsFromReleaseJSON(raw)
+					if err == nil {
+						var b []byte
+						b, err = json.Marshal(streams)
+						if err != nil {
+							klog.V(4).Infof("Failed to Marshal machine OS streams for %s; %s", parts[1], err)
+						} else {
+							s = string(b)
+						}
 					}
 				}
 			}
@@ -617,8 +628,8 @@ func (r *ExecReleaseInfo) RpmList(image string) (RpmList, error) {
 }
 
 // ImageReferenceForComponent resolves the full image reference (pullspec) for a named component
-// within a release image using oc adm release info --image-for. Returns the complete image reference
-// including registry, repository, and digest.
+// within a release image. It reuses the JSON from ReleaseInfo (already fetched for
+// ListMachineOSStreams) instead of making a separate oc --image-for invocation.
 func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName string) (string, error) {
 	if _, err := imagereference.Parse(releaseImage); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", releaseImage, err)
@@ -626,15 +637,11 @@ func (r *ExecReleaseInfo) ImageReferenceForComponent(releaseImage, componentName
 	if strings.HasPrefix(releaseImage, "-") {
 		return "", fmt.Errorf("not a valid reference")
 	}
-	out, _, err := ocCmd("adm", "release", "info", "--image-for", componentName, releaseImage)
+	raw, err := r.ReleaseInfo(releaseImage)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve image for component %q in %s: %w", componentName, releaseImage, err)
+		return "", fmt.Errorf("failed to get release info for %s: %w", releaseImage, err)
 	}
-	ref := strings.TrimSpace(string(out))
-	if ref == "" {
-		return "", fmt.Errorf("empty image reference for component %q in %s", componentName, releaseImage)
-	}
-	return ref, nil
+	return imageRefFromReleaseJSON(raw, componentName)
 }
 
 // RpmListForStream loads the RPM database for a machine-os component inside the release payload
