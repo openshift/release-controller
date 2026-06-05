@@ -723,11 +723,24 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			// Acquire a single semaphore slot for all stream operations,
-			// matching the HTML path (pkg/rhcos/node_image.go).
-			// RpmDiffForStream with a non-empty tag uses ocCmd (no
-			// semaphore), so without this guard concurrent API requests
-			// could spawn unbounded oc processes.
+			// Pre-resolve which streams exist in the from-release before
+			// acquiring the semaphore. ImageReferenceForComponent resolves
+			// from groupcache (JSON parse, no oc subprocess).
+			type streamEntry struct {
+				releasecontroller.APINodeImageStream
+				hasFrom bool
+			}
+			entries := make([]streamEntry, len(streams))
+			for i, stream := range streams {
+				entries[i].Name = stream.DisplayName
+				entries[i].Tag = stream.Tag
+				if _, errFrom := c.releaseInfo.ImageReferenceForComponent(tagInfo.PreviousTagPullSpec, stream.Tag); errFrom == nil {
+					entries[i].hasFrom = true
+				}
+			}
+
+			// Acquire a semaphore slot only for the rpmdb operations
+			// (RpmDiffForStream) which spawn oc subprocesses.
 			select {
 			case releasecontroller.RpmdbOCSlots <- struct{}{}:
 			default:
@@ -739,24 +752,20 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			}
 			defer func() { <-releasecontroller.RpmdbOCSlots }()
 
-			result := make([]releasecontroller.APINodeImageStream, 0, len(streams))
-			for _, stream := range streams {
+			result := make([]releasecontroller.APINodeImageStream, 0, len(entries))
+			for _, e := range entries {
 				if req.Context().Err() != nil {
 					return
 				}
-				entry := releasecontroller.APINodeImageStream{
-					Name: stream.DisplayName,
-					Tag:  stream.Tag,
-				}
-				if _, errFrom := c.releaseInfo.ImageReferenceForComponent(tagInfo.PreviousTagPullSpec, stream.Tag); errFrom == nil {
-					diff, err := c.releaseInfo.RpmDiffForStream(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec, stream.Tag)
+				if e.hasFrom {
+					diff, err := c.releaseInfo.RpmDiffForStream(tagInfo.PreviousTagPullSpec, tagInfo.TagPullSpec, e.Tag)
 					if err != nil {
-						klog.V(4).Infof("Unable to retrieve RPM diff for stream %s in %s: %v", stream.Tag, tagInfo.Tag, err)
+						klog.V(4).Infof("Unable to retrieve RPM diff for stream %s in %s: %v", e.Tag, tagInfo.Tag, err)
 					} else {
-						entry.RpmDiff = &diff
+						e.RpmDiff = &diff
 					}
 				}
-				result = append(result, entry)
+				result = append(result, e.APINodeImageStream)
 			}
 			nodeImageStreams = result
 		}()
