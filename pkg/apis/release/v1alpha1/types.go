@@ -1,12 +1,14 @@
 package v1alpha1
 
 import (
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=rp
 
 // ReleasePayload encapsulates the information for the creation of a ReleasePayload
 // and aggregates the results of its respective verification tests.
@@ -153,6 +155,9 @@ type PayloadCoordinates struct {
 	// Namespace must match that of the ReleasePayload
 	Namespace string `json:"namespace,omitempty"`
 
+	// StreamName is the name of the release stream this payload belongs to (e.g. "4.19.0-0.nightly")
+	StreamName string `json:"streamName,omitempty"`
+
 	// ImagestreamName is the location of the configured "release" imagestream
 	//   - This is a configurable parameter ("to") passed into the release-controller via the ReleaseConfig's defined here:
 	//     https://github.com/openshift/release/blob/master/core-services/release-controller/_releases
@@ -296,6 +301,10 @@ type CIConfiguration struct {
 	MaxRetries int `json:"maxRetries,omitempty"`
 	// AnalysisJobCount Number of asynchronous jobs to execute for release analysis.
 	AnalysisJobCount int `json:"analysisJobCount,omitempty"`
+	// Qualifiers holds the releasequalifiers.ReleaseQualifiers definitions that enable,
+	// and override (if specified), any settings defined in:
+	// https://github.com/openshift/release/blob/master/core-services/release-controller/release-qualifiers.yaml
+	Qualifiers releasequalifiers.ReleaseQualifiers `json:"qualifiers,omitempty"`
 }
 
 // ReleasePayloadStatus the status of all the promotion test jobs
@@ -327,6 +336,24 @@ type ReleasePayloadStatus struct {
 
 	// UpgradeJobResults stores the results of generated upgrade jobs
 	UpgradeJobResults []JobStatus `json:"upgradeJobResults,omitempty"`
+
+	// QualifiersSummary aggregates all qualifier-related information for this payload.
+	// Contains payload-level qualifier metadata (e.g., failure labels) and a map of
+	// per-qualifier summaries.
+	QualifiersSummary *QualifiersSummary `json:"qualifiersSummary,omitempty"`
+}
+
+// QualifiersSummary aggregates all qualifier-related information for a ReleasePayload.
+type QualifiersSummary struct {
+	// FailureLabels are labels to apply to the payload when any qualifying jobs fail.
+	// Aggregated from the merged qualifier config for all qualifiers referenced by this payload.
+	FailureLabels []string `json:"failureLabels,omitempty"`
+
+	// Qualifiers maps each QualifierId to summary information about that qualifier,
+	// including the list of jobs that reference it, aggregate state, and badge status.
+	// This field is computed from the Spec and provides a convenient lookup for
+	// UI and reporting purposes.
+	Qualifiers map[releasequalifiers.QualifierId]ReleaseQualifierSummary `json:"qualifiers,omitempty"`
 }
 
 // These are valid condition types for ReleasePayloadStatus.
@@ -530,6 +557,72 @@ type JobRunResult struct {
 
 	// UpgradeType the type of upgrade performed via this job
 	UpgradeType JobRunUpgradeType `json:"upgradeType,omitempty"`
+}
+
+// ReleaseQualifierJobReference represents a job that has been tagged with a specific qualifier
+type ReleaseQualifierJobReference struct {
+	// CIConfigurationName the unique name given to a verification test
+	CIConfigurationName string `json:"ciConfigurationName"`
+
+	// CIConfigurationJobName is the name of the prowjob definition as stored in the CI Job Configuration
+	CIConfigurationJobName string `json:"ciConfigurationJobName"`
+}
+
+// ReleaseQualifierSummary contains summary information about a specific release qualifier
+// including which jobs reference it, aggregate state, and badge status.
+type ReleaseQualifierSummary struct {
+	// Jobs lists all jobs that reference this qualifier
+	Jobs []ReleaseQualifierJobReference `json:"jobs"`
+
+	// AggregateState represents the overall state of all jobs for this qualifier
+	// Computed using the same logic as ComputeJobState
+	AggregateState JobState `json:"aggregateState,omitempty"`
+
+	// BadgeName is the display name for the badge from the global config
+	// Empty if no badge is configured for this qualifier
+	BadgeName string `json:"badgeName,omitempty"`
+
+	// BadgeEarned indicates whether this qualifier badge has been earned
+	// Badges are earned when: qualifier.Enabled == true AND AggregateState == JobStateSuccess
+	BadgeEarned bool `json:"badgeEarned,omitempty"`
+
+	// BadgePropagated indicates whether the earned badge should be displayed at payload level
+	// Computed from: BadgeEarned AND PayloadBadgeStatus rules
+	// Only true if badge is earned AND PayloadBadgeStatus allows propagation
+	BadgePropagated bool `json:"badgePropagated,omitempty"`
+
+	// Approval indicates this qualifier is approval-based (label-driven) rather than job-based.
+	Approval bool `json:"approval,omitempty"`
+
+	// FailureLabels are labels to apply when this qualifier's jobs fail.
+	// Computed from the merged global and per-job qualifier config.
+	FailureLabels []string `json:"failureLabels,omitempty"`
+
+	// JiraNotifications tracks per-thread Jira escalation notification state.
+	// The map key is the thread ID (format: <stream>-<qualifierID>-<project>-<component>-<thread>).
+	JiraNotifications map[string]JiraNotificationState `json:"jiraNotifications,omitempty"`
+}
+
+// JiraNotificationState tracks the notification state for a specific Jira escalation thread.
+// This state is used to prevent duplicate notifications and detect when conditions abate.
+// +k8s:deepcopy-gen=true
+type JiraNotificationState struct {
+	// IssueKey is the Jira issue key (e.g., "OCPBUGS-123") created for this thread
+	IssueKey string `json:"issueKey,omitempty"`
+
+	// ActiveEscalation is the name of the highest escalation level that has been notified
+	ActiveEscalation string `json:"activeEscalation,omitempty"`
+
+	// ActivePriority is the Jira priority of the active escalation
+	ActivePriority string `json:"activePriority,omitempty"`
+
+	// Abated indicates conditions have improved since the last escalation.
+	// When true, an abatement comment has been left on the Jira ticket.
+	// Cleared when conditions worsen again and a new escalation triggers.
+	Abated bool `json:"abated,omitempty"`
+
+	// LastTransitionTime is when the notification state last changed
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

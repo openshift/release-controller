@@ -82,12 +82,6 @@ deepcopy-gen \
     --output-file zz_generated.deepcopy.go \
     github.com/openshift/release-controller/pkg/releasequalifiers/notifications/jira
 
-echo "Generating deepcopy for pkg/releasequalifiers/notifications/slack..."
-deepcopy-gen \
-    --go-header-file "${BOILERPLATE}" \
-    --output-file zz_generated.deepcopy.go \
-    github.com/openshift/release-controller/pkg/releasequalifiers/notifications/slack
-
 # Generate typed clients (clientset, listers, informers)
 echo "Generating clientset..."
 client-gen \

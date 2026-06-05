@@ -22,6 +22,10 @@ type ReleaseQualifier struct {
 	// Using a pointer to distinguish between "not set" and "set to false"
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 
+	// Approval indicates whether this qualifier is earned via Team Approval
+	// Using a pointer to distinguish between "not set" and "set to false"
+	Approval *bool `json:"approval,omitempty" yaml:"approval,omitempty"`
+
 	// BadgeName short name displayed, as UI badges, in job level summaries
 	BadgeName string `json:"badgeName,omitempty" yaml:"badgeName,omitempty"`
 
@@ -34,8 +38,8 @@ type ReleaseQualifier struct {
 	// PayloadBadgeStatus indicates if/when the qualifier's BadgeName should be displayed at the ReleasePayload level
 	PayloadBadgeStatus BadgeStatus `json:"payloadBadgeStatus,omitempty" yaml:"payloadBadgeStatus,omitempty"`
 
-	// Labels the labels to apply when qualifying jobs fail
-	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	// FailureLabels labels to apply when qualifying jobs fail
+	FailureLabels []string `json:"failureLabels,omitempty" yaml:"failureLabels,omitempty"`
 
 	// Notifications contains configuration for notification channels
 	Notifications *notifications.Notifications `json:"notifications,omitempty" yaml:"notifications,omitempty"`

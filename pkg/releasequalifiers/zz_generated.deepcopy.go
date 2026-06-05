@@ -17,8 +17,13 @@ func (in *ReleaseQualifier) DeepCopyInto(out *ReleaseQualifier) {
 		*out = new(bool)
 		**out = **in
 	}
-	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
+	if in.Approval != nil {
+		in, out := &in.Approval, &out.Approval
+		*out = new(bool)
+		**out = **in
+	}
+	if in.FailureLabels != nil {
+		in, out := &in.FailureLabels, &out.FailureLabels
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
