@@ -666,6 +666,12 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
 
+	generateChangelog := false
+	format := req.URL.Query().Get("format")
+	if strings.ToLower(format) != "short" {
+		generateChangelog = true
+	}
+
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -682,7 +688,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	var nodeImageStreams []releasecontroller.APINodeImageStream
 	var nodeImageErr *httpError
 
-	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
+	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 && generateChangelog {
 		var wg sync.WaitGroup
 		renderHTML := renderResult{}
 		renderJSON := renderResult{}
@@ -790,13 +796,13 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	summary := releasecontroller.APIReleaseInfo{
-		Name:            tagInfo.Tag,
-		Phase:           tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
-		Results:         verificationJobs,
-		UpgradesTo:      c.graph.UpgradesTo(tagInfo.Tag),
-		UpgradesFrom:    c.graph.UpgradesFrom(tagInfo.Tag),
-		ChangeLog:       changeLog,
-		ChangeLogJson:   changeLogJson,
+		Name:             tagInfo.Tag,
+		Phase:            tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Results:          verificationJobs,
+		UpgradesTo:       c.graph.UpgradesTo(tagInfo.Tag),
+		UpgradesFrom:     c.graph.UpgradesFrom(tagInfo.Tag),
+		ChangeLog:        changeLog,
+		ChangeLogJson:    changeLogJson,
 		NodeImageStreams: nodeImageStreams,
 	}
 
