@@ -12,18 +12,18 @@
 # extracts the coreos and extensions image digests, and hardlinks them to the
 # existing x86_64 cache files.
 #
-# Requirements: oc, skopeo, jq, python3
+# Requirements: oc, skopeo, jq, python3, zstd
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE_DIR="${REPO_ROOT}/rpmdb-cache/data"
 METADATA="${REPO_ROOT}/rpmdb-cache/metadata.json"
-TARBALL="${REPO_ROOT}/rpmdb-cache/rpmdb-cache.tar.gz"
+TARBALL="${REPO_ROOT}/rpmdb-cache/rpmdb-cache.tar.zst"
 REGISTRY="quay.io/openshift-release-dev/ocp-release"
 OTHER_ARCHES="aarch64 s390x ppc64le"
 
-for cmd in oc skopeo jq python3; do
+for cmd in oc skopeo jq python3 zstd; do
     if ! command -v "${cmd}" &>/dev/null; then
         echo "ERROR: ${cmd} is required but not found in PATH" >&2
         exit 1
@@ -141,12 +141,12 @@ echo ""
 
 if [[ ${sym_count} -gt 0 ]]; then
     echo "Rebuilding ${TARBALL}..."
-    tar czf "${TARBALL}" -C "${CACHE_DIR}" .
+    tar -C "${CACHE_DIR}" -cf - . | zstd -o "${TARBALL}"
     tarball_size=$(du -h "${TARBALL}" | cut -f1)
     echo "  Tarball size: ${tarball_size}"
     echo ""
     echo "To pre-populate the controller cache:"
-    echo "  mkdir -p /tmp/rpmdb && tar xzf rpmdb-cache/rpmdb-cache.tar.gz -C /tmp/rpmdb/"
+    echo "  mkdir -p /tmp/rpmdb && tar --zstd -xf rpmdb-cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/"
 else
     echo "No new hardlinks needed — cache is already up to date."
 fi

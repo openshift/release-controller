@@ -11,16 +11,16 @@
 #   1. Enumerates GA z-stream tags from quay.io/openshift-release-dev/ocp-release
 #   2. Skips versions already recorded in rpmdb-cache/metadata.json
 #   3. For each new version, extracts rpmdb + extensions data into rpmdb-cache/data/
-#   4. Updates metadata.json and rebuilds rpmdb-cache/rpmdb-cache.tar.gz
+#   4. Updates metadata.json and rebuilds rpmdb-cache/rpmdb-cache.tar.zst
 #
-# Requirements: oc, skopeo, jq, python3
+# Requirements: oc, skopeo, jq, python3, zstd
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE_DIR="${REPO_ROOT}/rpmdb-cache/data"
 METADATA="${REPO_ROOT}/rpmdb-cache/metadata.json"
-TARBALL="${REPO_ROOT}/rpmdb-cache/rpmdb-cache.tar.gz"
+TARBALL="${REPO_ROOT}/rpmdb-cache/rpmdb-cache.tar.zst"
 REGISTRY="quay.io/openshift-release-dev/ocp-release"
 EXTENSIONS_PATH="usr/share/rpm-ostree/extensions/extensions.json"
 
@@ -56,7 +56,7 @@ fi
 # Parse arguments
 MINORS="${*:-${DEFAULT_MINORS}}"
 
-for cmd in oc skopeo jq python3; do
+for cmd in oc skopeo jq python3 zstd; do
     if ! command -v "${cmd}" &>/dev/null; then
         echo "ERROR: ${cmd} is required but not found in PATH" >&2
         exit 1
@@ -244,9 +244,9 @@ echo ""
 
 # Build tarball
 echo "Building ${TARBALL}..."
-tar czf "${TARBALL}" -C "${CACHE_DIR}" .
+tar -C "${CACHE_DIR}" -cf - . | zstd -o "${TARBALL}"
 tarball_size=$(du -h "${TARBALL}" | cut -f1)
 echo "  Tarball size: ${tarball_size}"
 echo ""
 echo "To pre-populate the controller cache:"
-echo "  mkdir -p /tmp/rpmdb && tar xzf rpmdb-cache/rpmdb-cache.tar.gz -C /tmp/rpmdb/"
+echo "  mkdir -p /tmp/rpmdb && tar --zstd -xf rpmdb-cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/"

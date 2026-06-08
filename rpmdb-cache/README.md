@@ -4,7 +4,7 @@ This directory contains a pre-populated cache of rpmdb and extensions metadata f
 
 ## Contents
 
-- `rpmdb-cache.tar.gz` — Compressed tarball of cached data files
+- `rpmdb-cache.tar.zst` — Compressed tarball of cached data files
 - `metadata.json` — Tracking file recording which versions have been cached
 - `data/` — Working directory where cache files are populated
 
@@ -26,7 +26,7 @@ Different architectures (x86_64, aarch64, s390x, ppc64le) use different image di
 Extract the cache on controller startup:
 
 ```bash
-mkdir -p /tmp/rpmdb && tar xzf rpmdb-cache/rpmdb-cache.tar.gz -C /tmp/rpmdb/
+mkdir -p /tmp/rpmdb && tar --zstd -xf rpmdb-cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/
 # Then start the release-controller
 ```
 
@@ -46,7 +46,7 @@ initContainers:
   - -c
   - |
     mkdir -p /tmp/rpmdb
-    tar xzf /cache/rpmdb-cache.tar.gz -C /tmp/rpmdb/
+    tar xzf /cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/
 ```
 
 ## Generating / Updating the Cache
