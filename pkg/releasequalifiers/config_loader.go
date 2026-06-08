@@ -56,10 +56,10 @@ func (cl *ConfigLoader) Get() ReleaseQualifiers {
 	cl.mu.RLock()
 	defer cl.mu.RUnlock()
 
-	// Return a copy to prevent external modification
+	// Return a deep copy to prevent external modification of pointer-backed fields
 	result := make(ReleaseQualifiers, len(cl.config))
 	for k, v := range cl.config {
-		result[k] = v
+		result[k] = *v.DeepCopy()
 	}
 	return result
 }
