@@ -63,9 +63,15 @@ func (c *CachedClient) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context
 	copy(cached, results)
 
 	c.mu.Lock()
+	now := time.Now()
+	for k, entry := range c.cache {
+		if now.After(entry.expiresAt) {
+			delete(c.cache, k)
+		}
+	}
 	c.cache[key] = cachedEntry{
 		results:   cached,
-		expiresAt: time.Now().Add(c.ttl),
+		expiresAt: now.Add(c.ttl),
 	}
 	c.mu.Unlock()
 
