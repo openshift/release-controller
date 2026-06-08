@@ -30,8 +30,10 @@ OTHER_ARCHES="aarch64 s390x ppc64le"
 # extract_digest <tagname>
 # Reads a release JSON from stdin and prints the sha256 hex digest for the
 # named component image tag, or nothing if the tag is absent.
+# NOTE: uses -c so that stdin remains available for the piped JSON; a heredoc
+# with `python3 -` would consume stdin for the script itself.
 extract_digest() {
-    python3 - "$1" <<'PYEOF'
+    python3 -c "$(cat <<'PYEOF'
 import sys, json
 tagname = sys.argv[1]
 data = json.load(sys.stdin)
@@ -42,6 +44,7 @@ for t in data['references']['spec']['tags']:
             print(ref.split('@sha256:')[1])
         break
 PYEOF
+)" "$1"
 }
 
 mkdir -p "${CACHE_DIR}"
