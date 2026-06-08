@@ -163,7 +163,7 @@ func (c *JiraEscalationsController) sync(ctx context.Context, key string) error 
 }
 
 // collectJobNamesWithEscalations collects all job names that have Jira escalations configured.
-// It returns two slices: defaultJobs (quoted for SQL IN clause, using the 14-day default) and
+// It returns two slices: defaultJobs (using the 14-day default) and
 // filteredJobs (with custom OverPeriod intervals). For a job with multiple escalations, the
 // last escalation's OverPeriod determines whether the job uses a custom interval.
 func (c *JiraEscalationsController) collectJobNamesWithEscalations(
@@ -201,7 +201,7 @@ func (c *JiraEscalationsController) collectJobNamesWithEscalations(
 					if err != nil {
 						klog.Warningf("Invalid OverPeriod %q for job %s, using default 14-day window: %v",
 							lastEscalation.OverPeriod, job.CIConfigurationJobName, err)
-						defaultJobs = append(defaultJobs, fmt.Sprintf("'%s'", job.CIConfigurationJobName))
+						defaultJobs = append(defaultJobs, job.CIConfigurationJobName)
 					} else {
 						filteredJobs = append(filteredJobs, bigquery.ProwjobQueryFilter{
 							Name:     job.CIConfigurationJobName,
@@ -209,7 +209,7 @@ func (c *JiraEscalationsController) collectJobNamesWithEscalations(
 						})
 					}
 				} else {
-					defaultJobs = append(defaultJobs, fmt.Sprintf("'%s'", job.CIConfigurationJobName))
+					defaultJobs = append(defaultJobs, job.CIConfigurationJobName)
 				}
 				break
 			}

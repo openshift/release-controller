@@ -693,7 +693,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 					},
 				},
 			},
-			wantDefault:  []string{"'periodic-ci-rosa-hcp'", "'periodic-ci-osd-aws'"},
+			wantDefault:  []string{"periodic-ci-rosa-hcp", "periodic-ci-osd-aws"},
 			wantFiltered: nil,
 		},
 		{
@@ -779,7 +779,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 					BadgeName: "Test",
 				},
 			},
-			wantDefault: []string{"'periodic-ci-rosa-hcp'"},
+			wantDefault: []string{"periodic-ci-rosa-hcp"},
 			wantFiltered: []bigquery.ProwjobQueryFilter{
 				{Name: "periodic-ci-osd-aws", Interval: "2 DAY"},
 			},
@@ -2991,7 +2991,7 @@ func TestGetJobHistory(t *testing.T) {
 		{
 			name:         "NilBigQueryClient",
 			useNilClient: true,
-			defaultJobs:  []string{"'job-1'"},
+			defaultJobs:  []string{"job-1"},
 			wantLen:      0,
 		},
 		{
@@ -3001,7 +3001,7 @@ func TestGetJobHistory(t *testing.T) {
 				c.SummaryError = fmt.Errorf("connection refused")
 				return c
 			},
-			defaultJobs: []string{"'job-1'"},
+			defaultJobs: []string{"job-1"},
 			wantErr:     "failed to query BigQuery for jobs",
 		},
 		{
@@ -3018,7 +3018,7 @@ func TestGetJobHistory(t *testing.T) {
 				}
 				return c
 			},
-			defaultJobs: []string{"'job-1'"},
+			defaultJobs: []string{"job-1"},
 			wantLen:     2,
 		},
 		{

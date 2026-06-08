@@ -251,8 +251,8 @@ func TestGetReleaseQualifiersProwjobSummary_WithMapResults(t *testing.T) {
 func TestBuildProwjobSummaryQuery(t *testing.T) {
 	t.Parallel()
 
-	t.Run("default jobs only - matches legacy format", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("proj", []string{"'job-a'", "'job-b'"}, nil)
+	t.Run("default jobs only", func(t *testing.T) {
+		query := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, nil)
 
 		if !strings.Contains(query, "prowjob_job_name IN ('job-a','job-b')") {
 			t.Errorf("expected IN clause with both jobs, got:\n%s", query)
@@ -283,7 +283,7 @@ func TestBuildProwjobSummaryQuery(t *testing.T) {
 	})
 
 	t.Run("hybrid - default and filtered jobs", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("proj", []string{"'job-a'", "'job-b'"}, []ProwjobQueryFilter{
+		query := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, []ProwjobQueryFilter{
 			{Name: "job-c", Interval: "2 DAY"},
 		})
 
@@ -302,7 +302,7 @@ func TestBuildProwjobSummaryQuery(t *testing.T) {
 	})
 
 	t.Run("query structure", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("openshift-gce-devel", []string{"'job-a'"}, nil)
+		query := BuildProwjobSummaryQuery("openshift-gce-devel", []string{"job-a"}, nil)
 
 		if !strings.Contains(query, "manager = 'release-controller'") {
 			t.Error("expected manager filter")

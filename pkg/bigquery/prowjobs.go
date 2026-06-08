@@ -58,20 +58,25 @@ func (c *Client) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Conte
 // BuildProwjobSummaryQuery constructs the SQL query for prowjob summaries.
 // It builds a hybrid WHERE clause: default jobs share a single IN clause with a 14-day window,
 // while filtered jobs each get their own condition with a custom interval.
+// Job names are passed unquoted; this function handles SQL quoting and escaping.
 func BuildProwjobSummaryQuery(project string, defaultJobs []string, filteredJobs []ProwjobQueryFilter) string {
 	var conditions []string
 
 	if len(defaultJobs) > 0 {
+		quoted := make([]string, len(defaultJobs))
+		for i, name := range defaultJobs {
+			quoted[i] = "'" + escapeSQLString(name) + "'"
+		}
 		conditions = append(conditions, fmt.Sprintf(
 			"(prowjob_job_name IN (%s) AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY))",
-			strings.Join(defaultJobs, ","),
+			strings.Join(quoted, ","),
 		))
 	}
 
 	for _, f := range filteredJobs {
 		conditions = append(conditions, fmt.Sprintf(
 			"(prowjob_job_name = '%s' AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL %s))",
-			f.Name,
+			escapeSQLString(f.Name),
 			f.Interval,
 		))
 	}
@@ -91,6 +96,10 @@ func BuildProwjobSummaryQuery(project string, defaultJobs []string, filteredJobs
 
 	klog.V(5).Infof("Prowjob Summary Query: %s", query)
 	return query
+}
+
+func escapeSQLString(s string) string {
+	return strings.ReplaceAll(s, "'", "\\'")
 }
 
 // SELECT release_verify_tag, prowjob_state, prowjob_url, prowjob_completion FROM `openshift-gce-devel.ci_analysis_us.jobs` WHERE manager = 'release-controller' AND is_release_verify = TRUE AND prowjob_job_name = 'periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance' AND prowjob_completion >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY) ORDER BY prowjob_completion DESC
