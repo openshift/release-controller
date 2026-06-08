@@ -13,6 +13,7 @@ import (
 
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned"
 	releasepayloadinformers "github.com/openshift/release-controller/pkg/client/informers/externalversions"
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"sigs.k8s.io/prow/pkg/jira"
@@ -68,6 +69,8 @@ type options struct {
 
 	jira       flagutil.JiraOptions
 	enableJira bool
+
+	ReleaseQualifiersConfigPath string
 }
 
 func main() {
@@ -123,6 +126,7 @@ func main() {
 
 	flagset.AddGoFlag(original.Lookup("v"))
 	flagset.BoolVar(&opt.enableJira, "enable-jira", opt.enableJira, "Enable Jira issue fetching")
+	flagset.StringVar(&opt.ReleaseQualifiersConfigPath, "release-qualifiers-config-path", "", "Path to release qualifiers config file (optional, supports live reloading)")
 
 	goFlagSet := flag.NewFlagSet("prowflags", flag.ContinueOnError)
 	opt.jira.AddFlags(goFlagSet)
@@ -235,6 +239,24 @@ func (o *options) Run() error {
 	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, 24*time.Hour)
 	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
+	// Initialize release qualifiers config accessor (optional)
+	var configAccessor releasequalifiers.ConfigAccessor
+	if o.ReleaseQualifiersConfigPath != "" {
+		configLoader, err := releasequalifiers.NewConfigLoader(o.ReleaseQualifiersConfigPath)
+		if err != nil {
+			klog.Warningf("Failed to create release qualifiers config loader: %v", err)
+		} else {
+			configAccessor = configLoader
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go func() {
+				if err := configLoader.StartWatching(ctx); err != nil {
+					klog.Warningf("Failed to start watching release qualifiers config: %v", err)
+				}
+			}()
+		}
+	}
+
 	c := NewController(
 		client.CoreV1(),
 		o.ArtifactsHost,
@@ -245,6 +267,7 @@ func (o *options) Run() error {
 		o.ARTSuffix,
 		releaseNamespace,
 		releasePayloadInformer.Lister(),
+		configAccessor,
 	)
 
 	var hasSynced []cache.InformerSynced

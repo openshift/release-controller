@@ -215,3 +215,126 @@ func TestCanonicalize(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalizeEdgeCases(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    *v1alpha1.ReleasePayload
+		expected *v1alpha1.ReleasePayload
+	}{
+		{
+			name: "AllEmptySlices",
+			input: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults:  []v1alpha1.JobStatus{},
+					InformingJobResults: []v1alpha1.JobStatus{},
+					UpgradeJobResults:   []v1alpha1.JobStatus{},
+					Conditions:          []metav1.Condition{},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults:  []v1alpha1.JobStatus{},
+					InformingJobResults: []v1alpha1.JobStatus{},
+					UpgradeJobResults:   []v1alpha1.JobStatus{},
+					Conditions:          []metav1.Condition{},
+				},
+			},
+		},
+		{
+			name:     "NilSlices",
+			input:    &v1alpha1.ReleasePayload{},
+			expected: &v1alpha1.ReleasePayload{},
+		},
+		{
+			name: "AlreadySorted",
+			input: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "Alpha", CIConfigurationJobName: "job-1"},
+						{CIConfigurationName: "Beta", CIConfigurationJobName: "job-2"},
+						{CIConfigurationName: "Gamma", CIConfigurationJobName: "job-3"},
+					},
+					Conditions: []metav1.Condition{
+						{Type: v1alpha1.ConditionPayloadAccepted},
+						{Type: v1alpha1.ConditionPayloadCreated},
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "Alpha", CIConfigurationJobName: "job-1"},
+						{CIConfigurationName: "Beta", CIConfigurationJobName: "job-2"},
+						{CIConfigurationName: "Gamma", CIConfigurationJobName: "job-3"},
+					},
+					Conditions: []metav1.Condition{
+						{Type: v1alpha1.ConditionPayloadAccepted},
+						{Type: v1alpha1.ConditionPayloadCreated},
+					},
+				},
+			},
+		},
+		{
+			name: "SingleElementArrays",
+			input: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults:  []v1alpha1.JobStatus{{CIConfigurationName: "Only", CIConfigurationJobName: "job-1"}},
+					InformingJobResults: []v1alpha1.JobStatus{{CIConfigurationName: "Solo", CIConfigurationJobName: "job-2"}},
+					UpgradeJobResults:   []v1alpha1.JobStatus{{CIConfigurationName: "Lone", CIConfigurationJobName: "job-3"}},
+					Conditions:          []metav1.Condition{{Type: v1alpha1.ConditionPayloadCreated}},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults:  []v1alpha1.JobStatus{{CIConfigurationName: "Only", CIConfigurationJobName: "job-1"}},
+					InformingJobResults: []v1alpha1.JobStatus{{CIConfigurationName: "Solo", CIConfigurationJobName: "job-2"}},
+					UpgradeJobResults:   []v1alpha1.JobStatus{{CIConfigurationName: "Lone", CIConfigurationJobName: "job-3"}},
+					Conditions:          []metav1.Condition{{Type: v1alpha1.ConditionPayloadCreated}},
+				},
+			},
+		},
+		{
+			name: "DuplicateCIConfigurationNames",
+			input: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "Foxtrot", CIConfigurationJobName: "job-2"},
+						{CIConfigurationName: "Alpha", CIConfigurationJobName: "job-3"},
+						{CIConfigurationName: "Foxtrot", CIConfigurationJobName: "job-1"},
+					},
+				},
+			},
+			// sort.Sort is not stable, so we only verify Alpha comes first
+			// and both Foxtrot entries are preserved. Expected is set to nil
+			// to use custom validation below.
+			expected: nil,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			copied := testCase.input.DeepCopy()
+			CanonicalizeReleasePayloadStatus(copied)
+
+			if testCase.name == "DuplicateCIConfigurationNames" {
+				results := copied.Status.BlockingJobResults
+				if len(results) != 3 {
+					t.Fatalf("Expected 3 results, got %d", len(results))
+				}
+				if results[0].CIConfigurationName != "Alpha" {
+					t.Errorf("Expected first result to be Alpha, got %s", results[0].CIConfigurationName)
+				}
+				if results[1].CIConfigurationName != "Foxtrot" || results[2].CIConfigurationName != "Foxtrot" {
+					t.Errorf("Expected both remaining results to be Foxtrot, got %s and %s",
+						results[1].CIConfigurationName, results[2].CIConfigurationName)
+				}
+				return
+			}
+
+			if !reflect.DeepEqual(copied, testCase.expected) {
+				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, copied)
+			}
+		})
+	}
+}

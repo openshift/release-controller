@@ -21,7 +21,7 @@ import (
 )
 
 // JobStateController is responsible for updating the JobState for every entry in the
-// BlockingJobResults and InformingJobResults lists.
+// BlockingJobResults, InformingJobResults, and UpgradeJobResults lists.
 // The JobStateController reads the following pieces of information:
 //   - .status.blockingJobResults[] | .results[]
 //   - .status.informingJobResults[] | .results[]
@@ -87,22 +87,16 @@ func (c *JobStateController) sync(ctx context.Context, key string) error {
 	// TODO: at larger scales, we need to figure out if we need to change a value before the deepcopy
 	releasePayload := originalReleasePayload.DeepCopy()
 
-	// Update the BlockingJobResults
-	for _, job := range releasePayload.Status.BlockingJobResults {
-		job.AggregateState = computeJobState(job)
-		jobstatus.SetJobStatus(&releasePayload.Status.BlockingJobResults, job)
-	}
-
-	// Update the InformingJobResults
-	for _, job := range releasePayload.Status.InformingJobResults {
-		job.AggregateState = computeJobState(job)
-		jobstatus.SetJobStatus(&releasePayload.Status.InformingJobResults, job)
-	}
-
-	// Update the UpgradeJobResults
-	for _, job := range releasePayload.Status.UpgradeJobResults {
-		job.AggregateState = computeJobState(job)
-		jobstatus.SetJobStatus(&releasePayload.Status.UpgradeJobResults, job)
+	// Update the Job.AggregateState
+	for _, jobResults := range [][]v1alpha1.JobStatus{
+		releasePayload.Status.BlockingJobResults,
+		releasePayload.Status.InformingJobResults,
+		releasePayload.Status.UpgradeJobResults,
+	} {
+		for _, job := range jobResults {
+			job.AggregateState = computeJobState(job)
+			jobstatus.SetJobStatus(&jobResults, job)
+		}
 	}
 
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)

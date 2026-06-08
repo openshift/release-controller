@@ -14,6 +14,11 @@ type QualifierId string
 // Each qualifier defines configuration for a specific component or feature
 type ReleaseQualifiers map[QualifierId]ReleaseQualifier
 
+// ConfigFile represents the top-level structure of the release-qualifiers.yaml file
+type ConfigFile struct {
+	Qualifiers ReleaseQualifiers `yaml:"qualifiers"`
+}
+
 // ReleaseQualifier defines the configuration for a single release qualifier
 // It contains metadata about the qualifier and its notification settings
 // +k8s:deepcopy-gen=true

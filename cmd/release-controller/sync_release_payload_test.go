@@ -12,6 +12,9 @@ import (
 
 var (
 	release = &releasecontroller.Release{
+		Config: &releasecontroller.ReleaseConfig{
+			Name: "InboundImageStreamName",
+		},
 		Target: &imagev1.ImageStream{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "release",
@@ -59,6 +62,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -109,6 +113,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -164,6 +169,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -220,6 +226,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -277,6 +284,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -334,6 +342,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -400,6 +409,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.12.11",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -474,6 +484,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.12.11",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -537,6 +548,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -605,6 +617,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -642,7 +655,17 @@ func TestNewReleasePayload(t *testing.T) {
 		},
 		{
 			name:          "RealWorldExample",
-			release:       release,
+			release:       &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "4.11-art-latest",
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "release",
+						Namespace: "ocp",
+					},
+				},
+			},
 			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
 			jobNamespace:  "ci-release",
 			prowNamespace: "ci",
@@ -735,6 +758,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "4.11-art-latest",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -844,6 +868,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
