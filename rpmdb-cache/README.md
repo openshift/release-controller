@@ -23,31 +23,37 @@ Different architectures (x86_64, aarch64, s390x, ppc64le) use different image di
 
 ## Usage
 
-Extract the cache on controller startup:
-
-```bash
-mkdir -p /tmp/rpmdb && tar --zstd -xf rpmdb-cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/
-# Then start the release-controller
-```
-
-This can be done in a Kubernetes init container:
+The archive is baked into the release-controller image at
+`/usr/share/release-controller/rpmdb-cache.tar.zst`. A Kubernetes init
+container extracts it into a shared `emptyDir` volume before the controller
+starts. Add the following to the release-controller Deployment/StatefulSet:
 
 ```yaml
 initContainers:
 - name: populate-rpmdb-cache
-  image: busybox:latest
-  volumeMounts:
-  - name: rpmdb-cache-volume
-    mountPath: /cache
-  - name: tmp-rpmdb
-    mountPath: /tmp/rpmdb
+  image: release-controller:latest   # same image as the main container
   command:
-  - sh
+  - /bin/bash
   - -c
   - |
     mkdir -p /tmp/rpmdb
-    tar xzf /cache/rpmdb-cache.tar.zst -C /tmp/rpmdb/
+    tar --zstd -xf /usr/share/release-controller/rpmdb-cache.tar.zst -C /tmp/rpmdb/
+  volumeMounts:
+  - name: rpmdb-cache
+    mountPath: /tmp/rpmdb
+
+# In the main release-controller container, add:
+#   volumeMounts:
+#   - name: rpmdb-cache
+#     mountPath: /tmp/rpmdb
+
+# In spec.volumes, add:
+#   - name: rpmdb-cache
+#     emptyDir: {}
 ```
+
+The init container uses the same image, so no separate image is needed.
+`--zstd` is supported natively by GNU tar 1.31+ (RHEL 9 ships 1.34).
 
 ## Generating / Updating the Cache
 
@@ -73,7 +79,7 @@ The script reads `metadata.json` to skip versions already cached, so re-runs onl
 
 ## Implementation Details
 
-- **Architecture**: x86_64 only
+- **Architectures**: x86_64 (primary); aarch64, s390x, ppc64le covered via hardlinks
 - **Versions covered**: Typically 4.12.0 through current (configurable in the script)
 - **Stream discovery**: The script discovers machine-OS streams by finding `*coreos*-extensions` tags paired with their base tags in each release's component manifest.
 - **4.12 special case**: Uses `rhel-coreos-8` / `rhel-coreos-8-extensions` instead of `rhel-coreos`
