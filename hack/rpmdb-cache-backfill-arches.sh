@@ -89,7 +89,7 @@ for version in ${versions}; do
 
     for arch in ${OTHER_ARCHES}; do
         arch_tag="${version}-${arch}"
-        if ! echo "${ALL_TAGS}" | grep -qFx "${arch_tag}"; then
+        if ! grep -qFx "${arch_tag}" <<< "${ALL_TAGS}"; then
             continue
         fi
 

@@ -178,7 +178,7 @@ for t in data['references']['spec']['tags']:
         # cache files.  Hardlinks survive tarball round-trips without dangling refs.
         for arch in ${OTHER_ARCHES}; do
             arch_tag="${version}-${arch}"
-            if ! echo "${ALL_TAGS}" | grep -qFx "${arch_tag}"; then
+            if ! grep -qFx "${arch_tag}" <<< "${ALL_TAGS}"; then
                 continue
             fi
             arch_json=$(oc adm release info -o json "${REGISTRY}:${arch_tag}" 2>/dev/null) || {
