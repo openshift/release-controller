@@ -25,6 +25,24 @@ REGISTRY="quay.io/openshift-release-dev/ocp-release"
 EXTENSIONS_PATH="usr/share/rpm-ostree/extensions/extensions.json"
 
 DEFAULT_MINORS="4.12 4.13 4.14 4.15 4.16 4.17 4.18 4.19 4.20 4.21 4.22"
+OTHER_ARCHES="aarch64 s390x ppc64le"
+
+# extract_digest <tagname>
+# Reads a release JSON from stdin and prints the sha256 hex digest for the
+# named component image tag, or nothing if the tag is absent.
+extract_digest() {
+    python3 - "$1" <<'PYEOF'
+import sys, json
+tagname = sys.argv[1]
+data = json.load(sys.stdin)
+for t in data['references']['spec']['tags']:
+    if t['name'] == tagname:
+        ref = t.get('from', {}).get('name', '')
+        if '@sha256:' in ref:
+            print(ref.split('@sha256:')[1])
+        break
+PYEOF
+}
 
 mkdir -p "${CACHE_DIR}"
 
@@ -49,6 +67,7 @@ ALL_TAGS=$(skopeo list-tags "docker://${REGISTRY}" 2>/dev/null | jq -r '.Tags[]'
 cached_count=0
 new_count=0
 error_count=0
+symlink_count=0
 
 for minor in ${MINORS}; do
     # Filter to GA tags: 4.Y.Z-x86_64 (no rc, ec, multi)
@@ -151,6 +170,46 @@ for t in data['references']['spec']['tags']:
             stream_list_json=$(echo "${stream_list_json}" | jq --arg s "${stream}" '. + [$s]')
         done
 
+        # Create cross-arch hardlinks: other arches reference different image digests
+        # for the same content, so we hardlink arch-specific filenames to the x86_64
+        # cache files.  Hardlinks survive tarball round-trips without dangling refs.
+        for arch in ${OTHER_ARCHES}; do
+            arch_tag="${version}-${arch}"
+            if ! echo "${ALL_TAGS}" | grep -qFx "${arch_tag}"; then
+                continue
+            fi
+            arch_json=$(oc adm release info -o json "${REGISTRY}:${arch_tag}" 2>/dev/null) || {
+                echo -n "(${arch}:FAIL) "
+                continue
+            }
+
+            for stream in ${streams}; do
+                ext_tag="${stream}-extensions"
+
+                x86_sha=$(echo "${release_json}" | extract_digest "${stream}" 2>/dev/null) || true
+                arch_sha=$(echo "${arch_json}" | extract_digest "${stream}" 2>/dev/null) || true
+                if [[ -n "${x86_sha}" && -n "${arch_sha}" && "${x86_sha}" != "${arch_sha}" ]]; then
+                    src="${CACHE_DIR}/sha256_${x86_sha}"
+                    dst="${CACHE_DIR}/sha256_${arch_sha}"
+                    if [[ -f "${src}" && ! -e "${dst}" ]]; then
+                        ln "${src}" "${dst}"
+                        symlink_count=$((symlink_count + 1))
+                    fi
+                fi
+
+                x86_ext=$(echo "${release_json}" | extract_digest "${ext_tag}" 2>/dev/null) || true
+                arch_ext=$(echo "${arch_json}" | extract_digest "${ext_tag}" 2>/dev/null) || true
+                if [[ -n "${x86_ext}" && -n "${arch_ext}" && "${x86_ext}" != "${arch_ext}" ]]; then
+                    src="${CACHE_DIR}/extensions-${x86_ext}"
+                    dst="${CACHE_DIR}/extensions-${arch_ext}"
+                    if [[ -f "${src}" && ! -e "${dst}" ]]; then
+                        ln "${src}" "${dst}"
+                        symlink_count=$((symlink_count + 1))
+                    fi
+                fi
+            done
+        done
+
         # Record in metadata
         jq --arg v "${version}" --argjson s "${stream_list_json}" \
             '.versions[$v] = {"streams": $s}' "${METADATA}" > "${METADATA}.tmp"
@@ -172,11 +231,12 @@ ext_count=$(find "${CACHE_DIR}" -name 'extensions-*' | wc -l)
 echo ""
 echo "════════════════════════════════════════"
 echo "Cache generation complete"
-echo "  New versions:     ${new_count}"
+echo "  New versions:      ${new_count}"
 echo "  Already cached:   ${cached_count}"
-echo "  Errors:           ${error_count}"
-echo "  Unique sha256_* files:    ${sha_count}"
+echo "  Errors:            ${error_count}"
+echo "  Unique sha256_* files:     ${sha_count}"
 echo "  Unique extensions-* files: ${ext_count}"
+echo "  Cross-arch hardlinks:      ${symlink_count}"
 echo ""
 
 # Build tarball

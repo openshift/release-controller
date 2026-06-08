@@ -10,12 +10,16 @@ This directory contains a pre-populated cache of rpmdb and extensions metadata f
 
 ## Cache Files
 
-The tarball contains two types of JSON files:
+The tarball contains two types of JSON files, keyed by image digest:
 
 - `sha256_<digest>` — RPM package list from `oc adm release info --rpmdb`, keyed by the coreos image digest. Multiple z-streams can share the same coreos image, so deduplication happens automatically.
 - `extensions-<digest>` — Extensions metadata extracted from the `*-extensions` image, keyed by the extensions image digest.
 
 Each file is ~25–30 KB uncompressed; the compressed tarball is typically 5–20 MB depending on the version range covered.
+
+### Cross-architecture coverage
+
+Different architectures (x86_64, aarch64, s390x, ppc64le) use different image digests for the same RHEL CoreOS content. The generation script fetches the release manifest for each additional arch and creates hardlinks so that arch-specific digest lookups hit the cache without pulling those images. Hardlinks preserve correctness across tarball round-trips (no dangling references).
 
 ## Usage
 
