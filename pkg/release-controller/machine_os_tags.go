@@ -13,16 +13,40 @@ type MachineOSStreamInfo struct {
 	DisplayName string `json:"displayName,omitempty"`
 }
 
-// releaseInfoImageRefs is the subset of `oc adm release info -o json` needed to list payload tags.
+// releaseInfoImageRefs is the subset of `oc adm release info -o json` needed to list payload tags
+// and resolve component image references.
 type releaseInfoImageRefs struct {
 	References struct {
 		Spec struct {
 			Tags []struct {
 				Name        string            `json:"name"`
 				Annotations map[string]string `json:"annotations"`
+				From        struct {
+					Name string `json:"name"`
+				} `json:"from"`
 			} `json:"tags"`
 		} `json:"spec"`
 	} `json:"references"`
+}
+
+// imageRefFromReleaseJSON returns the image pull spec for componentName from the JSON produced
+// by `oc adm release info -o json`. This avoids a separate `oc adm release info --image-for`
+// call when the release JSON is already available (e.g. cached via ReleaseInfo).
+func imageRefFromReleaseJSON(raw, componentName string) (string, error) {
+	var ri releaseInfoImageRefs
+	if err := json.Unmarshal([]byte(raw), &ri); err != nil {
+		return "", err
+	}
+	for _, t := range ri.References.Spec.Tags {
+		if t.Name == componentName {
+			ref := strings.TrimSpace(t.From.Name)
+			if ref == "" {
+				return "", fmt.Errorf("empty image reference for component %q", componentName)
+			}
+			return ref, nil
+		}
+	}
+	return "", fmt.Errorf("component %q not found in release", componentName)
 }
 
 const versionDisplayNamesKey = "io.openshift.build.version-display-names"

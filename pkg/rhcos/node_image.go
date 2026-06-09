@@ -41,10 +41,18 @@ func NodeImageSectionMarkdown(ctx context.Context, info releasecontroller.Releas
 		return RenderNodeImageInfo(changelogMarkdown, rpmlist, rpmdiff), nil
 	}
 
-	// Acquire single semaphore slot for all stream operations.
-	// Respect context cancellation so orphaned goroutines from timed-out HTTP
-	// handlers release their slot promptly instead of holding it until all
-	// streams are processed.
+	// Pre-resolve which streams exist in the from-release before acquiring
+	// the semaphore. ImageReferenceForComponent resolves from groupcache
+	// (JSON parse only, no oc subprocess) and does not need the slot.
+	streamHasFrom := make([]bool, len(streams))
+	for i, stream := range streams {
+		if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, stream.Tag); errFrom == nil {
+			streamHasFrom[i] = true
+		}
+	}
+
+	// Acquire a semaphore slot only for the rpmdb operations (RpmListForStream,
+	// RpmDiffForStream) which spawn oc subprocesses and write to /tmp/rpmdb/.
 	select {
 	case releasecontroller.RpmdbOCSlots <- struct{}{}:
 	case <-ctx.Done():
@@ -55,13 +63,9 @@ func NodeImageSectionMarkdown(ctx context.Context, info releasecontroller.Releas
 	}
 	defer func() { <-releasecontroller.RpmdbOCSlots }()
 
-	// Process all streams sequentially to avoid cache stomping
 	nodeStreams := make([]CoreOSNodeStream, len(streams))
 
 	for i, stream := range streams {
-		// Between stream iterations, check if the caller gave up (e.g. HTTP
-		// handler timed out). This releases the semaphore slot without waiting
-		// for remaining streams to finish.
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
@@ -73,7 +77,7 @@ func NodeImageSectionMarkdown(ctx context.Context, info releasecontroller.Releas
 		}
 
 		var diff releasecontroller.RpmDiff
-		if _, errFrom := info.ImageReferenceForComponent(fromReleasePullSpec, stream.Tag); errFrom == nil {
+		if streamHasFrom[i] {
 			diff, err = info.RpmDiffForStream(fromReleasePullSpec, toReleasePullSpec, stream.Tag)
 			if err != nil {
 				return "", fmt.Errorf("failed to fetch RPM diff for stream %s: %w", stream.Tag, err)
