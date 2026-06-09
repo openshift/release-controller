@@ -7,9 +7,9 @@ import (
 	"github.com/openshift/release-controller/pkg/releasequalifiers/notifications/jira"
 )
 
-// Merge takes a ReleaseQualifiers object and returns a new ReleaseQualifiers containing the union of both
-// Override values take precedence when both are defined
-// Deep merge is performed for nested structures
+// Merge returns a new ReleaseQualifiers by selecting global qualifiers that have a matching
+// override entry. Each override opts in to a global qualifier; override values take precedence
+// via mergeQualifier deep merge. Qualifiers not present in overrides are excluded from the result.
 func (rqs ReleaseQualifiers) Merge(overrides ReleaseQualifiers) ReleaseQualifiers {
 	result := make(ReleaseQualifiers)
 	for qualifierId, qualifier := range rqs {
