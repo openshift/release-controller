@@ -19,7 +19,7 @@ type ClientInterface interface {
 
 // RowIteratorInterface defines the interface for iterating over query results
 type RowIteratorInterface interface {
-	Next(dst interface{}) error
+	Next(dst any) error
 }
 
 type Client struct {
@@ -32,7 +32,7 @@ type rowIteratorWrapper struct {
 	*bigquery.RowIterator
 }
 
-func (w *rowIteratorWrapper) Next(dst interface{}) error {
+func (w *rowIteratorWrapper) Next(dst any) error {
 	err := w.RowIterator.Next(dst)
 	if errors.Is(err, iterator.Done) {
 		return iterator.Done

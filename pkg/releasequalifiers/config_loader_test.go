@@ -1,7 +1,6 @@
 package releasequalifiers
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -216,17 +215,15 @@ func TestConfigLoaderConcurrency(t *testing.T) {
 	numReaders := 10
 	iterations := 100
 
-	for i := 0; i < numReaders; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+	for range numReaders {
+		wg.Go(func() {
+			for range iterations {
 				config := loader.Get()
 				if len(config) != 1 {
 					t.Errorf("Expected 1 qualifier, got %d", len(config))
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -256,8 +253,7 @@ func TestConfigLoaderStartWatching(t *testing.T) {
 		t.Fatalf("NewConfigLoader() error = %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Start watching
 	if err := loader.StartWatching(ctx); err != nil {
@@ -314,8 +310,7 @@ func TestConfigLoaderStartWatchingInvalidUpdate(t *testing.T) {
 		t.Fatalf("NewConfigLoader() error = %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Start watching
 	if err := loader.StartWatching(ctx); err != nil {
@@ -385,8 +380,7 @@ func TestConfigLoaderConfigMapSimulation(t *testing.T) {
 		t.Fatalf("NewConfigLoader() error = %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Start watching
 	if err := loader.StartWatching(ctx); err != nil {
@@ -462,8 +456,7 @@ func TestConfigLoaderSubscribe(t *testing.T) {
 		callbackInvoked <- config
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Start watching
 	if err := loader.StartWatching(ctx); err != nil {
@@ -505,8 +498,7 @@ func TestConfigLoaderEmptyPath(t *testing.T) {
 	}
 
 	// StartWatching should not fail with empty path
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	if err := loader.StartWatching(ctx); err != nil {
 		t.Errorf("StartWatching() with empty path should not fail, got error: %v", err)

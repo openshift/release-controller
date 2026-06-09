@@ -24,7 +24,7 @@ func TestClient_GetReleaseQualifiersProwjobSummary(t *testing.T) {
 			jobNames: []string{"periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance"},
 			setupFake: func(fc *FakeClient, project string, jobNames []string) {
 				query := buildExpectedQuery(project, jobNames)
-				fc.SetQueryResult(query, []interface{}{
+				fc.SetQueryResult(query, []any{
 					ReleaseQualifiersProwjobSummaryResult{
 						Release: "4.22.0-0.nightly-2026-04-06-112110",
 						Name:    "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance",
@@ -74,7 +74,7 @@ func TestClient_GetReleaseQualifiersProwjobSummary(t *testing.T) {
 			jobNames: []string{"nonexistent-job"},
 			setupFake: func(fc *FakeClient, project string, jobNames []string) {
 				query := buildExpectedQuery(project, jobNames)
-				fc.SetQueryResult(query, []interface{}{})
+				fc.SetQueryResult(query, []any{})
 			},
 			wantResults: 0,
 			wantErr:     false,
@@ -137,7 +137,7 @@ func TestGetReleaseQualifiersProwjobSummary_ResultStructure(t *testing.T) {
 	jobNames := []string{"periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance"}
 
 	query := buildExpectedQuery(project, jobNames)
-	fc.SetQueryResult(query, []interface{}{
+	fc.SetQueryResult(query, []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "4.22.0-0.nightly-2026-04-06-112110",
 			Name:    "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance",
@@ -203,14 +203,14 @@ func TestGetReleaseQualifiersProwjobSummary_WithMapResults(t *testing.T) {
 
 	query := buildExpectedQuery(project, jobNames)
 	// Test with map results instead of struct results
-	fc.SetQueryResult(query, []interface{}{
-		map[string]interface{}{
+	fc.SetQueryResult(query, []any{
+		map[string]any{
 			"release_verify_tag": "4.22.0-0.nightly-2026-04-06-112110",
 			"prowjob_job_name":   "test-job",
 			"prowjob_state":      "success",
 			"prowjob_url":        "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/test-job/1",
 		},
-		map[string]interface{}{
+		map[string]any{
 			"release_verify_tag": "4.22.0-0.nightly-2026-04-05-230815",
 			"prowjob_job_name":   "test-job",
 			"prowjob_state":      "failure",

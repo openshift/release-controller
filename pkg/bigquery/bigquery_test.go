@@ -22,8 +22,8 @@ func TestFakeClient_Query(t *testing.T) {
 			name:  "successful query execution",
 			query: "SELECT * FROM table",
 			setupFake: func(fc *FakeClient) {
-				fc.SetQueryResult("SELECT * FROM table", []interface{}{
-					map[string]interface{}{"col1": "value1", "col2": 123},
+				fc.SetQueryResult("SELECT * FROM table", []any{
+					map[string]any{"col1": "value1", "col2": 123},
 				})
 			},
 			wantErr:     false,
@@ -51,8 +51,8 @@ func TestFakeClient_Query(t *testing.T) {
 			name:  "query with default results",
 			query: "SELECT COUNT(*) FROM table",
 			setupFake: func(fc *FakeClient) {
-				fc.DefaultResult = []interface{}{
-					map[string]interface{}{"count": 42},
+				fc.DefaultResult = []any{
+					map[string]any{"count": 42},
 				}
 			},
 			wantErr:     false,
@@ -93,9 +93,9 @@ func TestFakeClient_Query(t *testing.T) {
 
 func TestFakeClient_IteratorNext(t *testing.T) {
 	fc := NewFakeClient()
-	fc.SetQueryResult("SELECT * FROM table", []interface{}{
-		map[string]interface{}{"id": 1, "name": "first"},
-		map[string]interface{}{"id": 2, "name": "second"},
+	fc.SetQueryResult("SELECT * FROM table", []any{
+		map[string]any{"id": 1, "name": "first"},
+		map[string]any{"id": 2, "name": "second"},
 	})
 
 	ctx := context.Background()
@@ -105,7 +105,7 @@ func TestFakeClient_IteratorNext(t *testing.T) {
 	}
 
 	// Read first row
-	var row1 map[string]interface{}
+	var row1 map[string]any
 	err = iter.Next(&row1)
 	if err != nil {
 		t.Fatalf("Next() failed on first row: %v", err)
@@ -115,7 +115,7 @@ func TestFakeClient_IteratorNext(t *testing.T) {
 	}
 
 	// Read second row
-	var row2 map[string]interface{}
+	var row2 map[string]any
 	err = iter.Next(&row2)
 	if err != nil {
 		t.Fatalf("Next() failed on second row: %v", err)
@@ -125,7 +125,7 @@ func TestFakeClient_IteratorNext(t *testing.T) {
 	}
 
 	// Reading beyond results should return iterator.Done
-	var row3 map[string]interface{}
+	var row3 map[string]any
 	err = iter.Next(&row3)
 	if err != iterator.Done {
 		t.Errorf("expected iterator.Done, got %v", err)
@@ -134,11 +134,11 @@ func TestFakeClient_IteratorNext(t *testing.T) {
 
 func TestFakeClient_MultipleQueries(t *testing.T) {
 	fc := NewFakeClient()
-	fc.SetQueryResult("SELECT * FROM table1", []interface{}{
-		map[string]interface{}{"table": "table1"},
+	fc.SetQueryResult("SELECT * FROM table1", []any{
+		map[string]any{"table": "table1"},
 	})
-	fc.SetQueryResult("SELECT * FROM table2", []interface{}{
-		map[string]interface{}{"table": "table2"},
+	fc.SetQueryResult("SELECT * FROM table2", []any{
+		map[string]any{"table": "table2"},
 	})
 
 	ctx := context.Background()
@@ -163,8 +163,8 @@ func TestFakeClient_MultipleQueries(t *testing.T) {
 
 func TestFakeClient_Reset(t *testing.T) {
 	fc := NewFakeClient()
-	fc.SetQueryResult("SELECT * FROM table", []interface{}{
-		map[string]interface{}{"col": "value"},
+	fc.SetQueryResult("SELECT * FROM table", []any{
+		map[string]any{"col": "value"},
 	})
 
 	ctx := context.Background()
@@ -212,10 +212,10 @@ func TestQueryInto(t *testing.T) {
 			name:  "successful query with results",
 			query: "SELECT id, name FROM table",
 			setupFake: func(fc *FakeClient, query string) {
-				fc.SetQueryResult(query, []interface{}{
-					map[string]interface{}{"id": 1, "name": "first"},
-					map[string]interface{}{"id": 2, "name": "second"},
-					map[string]interface{}{"id": 3, "name": "third"},
+				fc.SetQueryResult(query, []any{
+					map[string]any{"id": 1, "name": "first"},
+					map[string]any{"id": 2, "name": "second"},
+					map[string]any{"id": 3, "name": "third"},
 				})
 			},
 			wantCount: 3,
@@ -233,7 +233,7 @@ func TestQueryInto(t *testing.T) {
 			name:  "empty results",
 			query: "SELECT id, name FROM empty_table",
 			setupFake: func(fc *FakeClient, query string) {
-				fc.SetQueryResult(query, []interface{}{})
+				fc.SetQueryResult(query, []any{})
 			},
 			wantCount: 0,
 			wantErr:   false,

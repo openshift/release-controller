@@ -384,7 +384,7 @@ func TestGetJobQualifiers(t *testing.T) {
 
 	releasePayload := &v1alpha1.ReleasePayload{
 		Spec: v1alpha1.ReleasePayloadSpec{
-			PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				BlockingJobs: []v1alpha1.CIConfiguration{
 					{
@@ -648,7 +648,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 			name: "Jobs with Jira escalations - no OverPeriod",
 			releasePayload: &v1alpha1.ReleasePayload{
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -700,7 +700,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 			name: "Jobs without Jira escalations",
 			releasePayload: &v1alpha1.ReleasePayload{
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -726,7 +726,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 			name: "Mixed - default and filtered jobs",
 			releasePayload: &v1alpha1.ReleasePayload{
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -788,7 +788,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 			name: "Job with OverPeriod in weeks",
 			releasePayload: &v1alpha1.ReleasePayload{
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -951,7 +951,7 @@ func TestSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -1007,7 +1007,7 @@ func TestSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -1063,7 +1063,7 @@ func TestSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						InformingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -1127,7 +1127,7 @@ func TestSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Spec: v1alpha1.ReleasePayloadSpec{
-					PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs: []v1alpha1.CIConfiguration{
 							{
@@ -1198,7 +1198,7 @@ func TestSync(t *testing.T) {
 			bqClient := bigquery.NewFakeClient()
 
 			// Convert test results to interface{} slice for the fake client
-			var defaultResults []interface{}
+			var defaultResults []any
 			for _, result := range tt.bigQueryResults {
 				defaultResults = append(defaultResults, result)
 			}
@@ -1218,8 +1218,7 @@ func TestSync(t *testing.T) {
 			}
 
 			// Start informer and wait for cache sync
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			informerFactory.Start(ctx.Done())
 			if !cache.WaitForCacheSync(ctx.Done(), releasePayloadInformer.Informer().HasSynced) {
@@ -2081,7 +2080,7 @@ func TestDuplicatePrevention(t *testing.T) {
 	releasePayload := &v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
 		Spec: v1alpha1.ReleasePayloadSpec{
-			PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				InformingJobs: []v1alpha1.CIConfiguration{
 					{
@@ -2185,7 +2184,7 @@ func TestAbatement(t *testing.T) {
 	releasePayload := &v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
 		Spec: v1alpha1.ReleasePayloadSpec{
-			PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				InformingJobs: []v1alpha1.CIConfiguration{
 					{
@@ -2295,7 +2294,7 @@ func TestReEscalationAfterAbatement(t *testing.T) {
 	releasePayload := &v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
 		Spec: v1alpha1.ReleasePayloadSpec{
-			PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				InformingJobs: []v1alpha1.CIConfiguration{
 					{
@@ -2389,7 +2388,7 @@ func TestEscalationUpgradeUpdatesState(t *testing.T) {
 	releasePayload := &v1alpha1.ReleasePayload{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
 		Spec: v1alpha1.ReleasePayloadSpec{
-			PayloadCoordinates:        v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 				InformingJobs: []v1alpha1.CIConfiguration{
 					{
@@ -2503,8 +2502,8 @@ func TestGetRelevantResults(t *testing.T) {
 		{Release: "4.19.0-0.nightly-1", Name: "test-job", State: "failure", URL: "https://prow.ci/1", CompletionTime: completionTimeMinutesAgo(10)},
 		{Release: "4.19.0-0.nightly-2", Name: "test-job", State: "failure", URL: "https://prow.ci/2", CompletionTime: completionTimeMinutesAgo(20)},
 		{Release: "4.19.0-0.nightly-3", Name: "test-job", State: "success", URL: "https://prow.ci/3", CompletionTime: completionTimeMinutesAgo(30)},
-		{Release: "4.19.0-0.nightly-4", Name: "test-job", State: "failure", URL: "https://prow.ci/4", CompletionTime: completionTimeMinutesAgo(60 * 24 * 3)},     // 3 days ago
-		{Release: "4.19.0-0.nightly-5", Name: "test-job", State: "failure", URL: "https://prow.ci/5", CompletionTime: completionTimeMinutesAgo(60 * 24 * 3 + 60)}, // 3 days + 1 hour ago
+		{Release: "4.19.0-0.nightly-4", Name: "test-job", State: "failure", URL: "https://prow.ci/4", CompletionTime: completionTimeMinutesAgo(60 * 24 * 3)},  // 3 days ago
+		{Release: "4.19.0-0.nightly-5", Name: "test-job", State: "failure", URL: "https://prow.ci/5", CompletionTime: completionTimeMinutesAgo(60*24*3 + 60)}, // 3 days + 1 hour ago
 	}
 
 	tests := []struct {
@@ -3008,7 +3007,7 @@ func TestGetJobHistory(t *testing.T) {
 			name: "SuccessfulQuery with default jobs",
 			setupClient: func() *bigquery.FakeClient {
 				c := bigquery.NewFakeClient()
-				c.DefaultResult = []interface{}{
+				c.DefaultResult = []any{
 					bigquery.ReleaseQualifiersProwjobSummaryResult{
 						Release: "4.19.0-0.nightly-1", Name: "job-1", State: "success", URL: "https://prow.ci/1",
 					},
@@ -3025,7 +3024,7 @@ func TestGetJobHistory(t *testing.T) {
 			name: "SuccessfulQuery with filtered jobs",
 			setupClient: func() *bigquery.FakeClient {
 				c := bigquery.NewFakeClient()
-				c.DefaultResult = []interface{}{
+				c.DefaultResult = []any{
 					bigquery.ReleaseQualifiersProwjobSummaryResult{
 						Release: "4.19.0-0.nightly-1", Name: "job-1", State: "success", URL: "https://prow.ci/1",
 					},

@@ -15,7 +15,7 @@ func TestCachedClient_InterfaceCompliance(t *testing.T) {
 
 func TestCachedClient_CacheMiss(t *testing.T) {
 	fake := NewFakeClient()
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "4.22.0-0.nightly-2026-04-06-112110",
 			Name:    "job-a",
@@ -38,7 +38,7 @@ func TestCachedClient_CacheMiss(t *testing.T) {
 
 func TestCachedClient_CacheHit(t *testing.T) {
 	fake := NewFakeClient()
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "4.22.0-0.nightly-2026-04-06-112110",
 			Name:    "job-a",
@@ -56,7 +56,7 @@ func TestCachedClient_CacheHit(t *testing.T) {
 	}
 
 	// Change the fake's results to verify the cache is used
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "different-release",
 			Name:    "job-a",
@@ -76,7 +76,7 @@ func TestCachedClient_CacheHit(t *testing.T) {
 
 func TestCachedClient_CacheExpiry(t *testing.T) {
 	fake := NewFakeClient()
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "original",
 			Name:    "job-a",
@@ -97,7 +97,7 @@ func TestCachedClient_CacheExpiry(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	// Update fake results
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "refreshed",
 			Name:    "job-a",
@@ -130,7 +130,7 @@ func TestCachedClient_ErrorNotCached(t *testing.T) {
 
 	// Clear the error and set results
 	fake.SummaryError = nil
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "recovered",
 			Name:    "job-a",
@@ -150,7 +150,7 @@ func TestCachedClient_ErrorNotCached(t *testing.T) {
 
 func TestCachedClient_DifferentParams(t *testing.T) {
 	fake := NewFakeClient()
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "shared",
 			Name:    "job-a",
@@ -168,7 +168,7 @@ func TestCachedClient_DifferentParams(t *testing.T) {
 	}
 
 	// Change fake results
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "different",
 			Name:    "job-b",
@@ -192,7 +192,7 @@ func TestCachedClient_DifferentParams(t *testing.T) {
 
 func TestCachedClient_WithFilters(t *testing.T) {
 	fake := NewFakeClient()
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "filtered-result",
 			Name:    "job-c",
@@ -220,7 +220,7 @@ func TestCachedClient_WithFilters(t *testing.T) {
 	}
 
 	// Second call with same filters should be cached
-	fake.DefaultResult = []interface{}{
+	fake.DefaultResult = []any{
 		ReleaseQualifiersProwjobSummaryResult{
 			Release: "should-not-see-this",
 			Name:    "job-c",
@@ -239,8 +239,8 @@ func TestCachedClient_WithFilters(t *testing.T) {
 
 func TestCachedClient_QueryPassthrough(t *testing.T) {
 	fake := NewFakeClient()
-	fake.SetQueryResult("SELECT 1", []interface{}{
-		map[string]interface{}{"col": 1},
+	fake.SetQueryResult("SELECT 1", []any{
+		map[string]any{"col": 1},
 	})
 
 	cached := NewCachedClient(fake, 5*time.Minute)

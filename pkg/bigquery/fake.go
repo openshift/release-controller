@@ -13,19 +13,19 @@ import (
 type FakeClient struct {
 	mu            sync.Mutex
 	Queries       []string
-	Results       map[string][]interface{}
+	Results       map[string][]any
 	QueryErrors   map[string]error
-	DefaultResult []interface{}
+	DefaultResult []any
 	SummaryError  error
 }
 
 // fakeRowIterator implements RowIteratorInterface for testing
 type fakeRowIterator struct {
-	results []interface{}
+	results []any
 	index   int
 }
 
-func (f *fakeRowIterator) Next(dst interface{}) error {
+func (f *fakeRowIterator) Next(dst any) error {
 	if f.index >= len(f.results) {
 		return iterator.Done
 	}
@@ -35,8 +35,8 @@ func (f *fakeRowIterator) Next(dst interface{}) error {
 
 	// Handle different destination types
 	switch d := dst.(type) {
-	case *map[string]interface{}:
-		if m, ok := result.(map[string]interface{}); ok {
+	case *map[string]any:
+		if m, ok := result.(map[string]any); ok {
 			*d = m
 		}
 	default:
@@ -50,12 +50,12 @@ func (f *fakeRowIterator) Next(dst interface{}) error {
 }
 
 // copyToStruct copies data from source to destination struct using reflection
-func copyToStruct(src, dst interface{}) error {
+func copyToStruct(src, dst any) error {
 	// If source is already the same type as destination, just copy it
 	srcVal := reflect.ValueOf(src)
 	dstVal := reflect.ValueOf(dst)
 
-	if dstVal.Kind() != reflect.Ptr {
+	if dstVal.Kind() != reflect.Pointer {
 		return fmt.Errorf("destination must be a pointer")
 	}
 
@@ -69,7 +69,7 @@ func copyToStruct(src, dst interface{}) error {
 
 	// If source is a map, copy fields by name
 	if srcVal.Kind() == reflect.Map {
-		srcMap, ok := src.(map[string]interface{})
+		srcMap, ok := src.(map[string]any)
 		if !ok {
 			return fmt.Errorf("source map is not map[string]interface{}")
 		}
@@ -101,7 +101,7 @@ func copyToStruct(src, dst interface{}) error {
 func NewFakeClient() *FakeClient {
 	return &FakeClient{
 		Queries:     []string{},
-		Results:     make(map[string][]interface{}),
+		Results:     make(map[string][]any),
 		QueryErrors: make(map[string]error),
 	}
 }
@@ -120,7 +120,7 @@ func (f *FakeClient) Query(ctx context.Context, query string) (RowIteratorInterf
 	}
 
 	// Return configured results for this query, or default results
-	var results []interface{}
+	var results []any
 	if queryResults, ok := f.Results[query]; ok {
 		results = queryResults
 	} else {
@@ -131,7 +131,7 @@ func (f *FakeClient) Query(ctx context.Context, query string) (RowIteratorInterf
 }
 
 // SetQueryResult configures the fake to return specific results for a query
-func (f *FakeClient) SetQueryResult(query string, results []interface{}) {
+func (f *FakeClient) SetQueryResult(query string, results []any) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Results[query] = results
@@ -156,7 +156,7 @@ func (f *FakeClient) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Queries = []string{}
-	f.Results = make(map[string][]interface{})
+	f.Results = make(map[string][]any)
 	f.QueryErrors = make(map[string]error)
 	f.DefaultResult = nil
 	f.SummaryError = nil

@@ -510,10 +510,7 @@ func (c *JiraEscalationsController) getRelevantResults(
 	}
 
 	// Count-based window
-	countWindow := windowSize
-	if countWindow > len(jobHistory) {
-		countWindow = len(jobHistory)
-	}
+	countWindow := min(windowSize, len(jobHistory))
 
 	if overPeriod == "" {
 		return jobHistory[:countWindow]
@@ -540,13 +537,7 @@ func (c *JiraEscalationsController) getRelevantResults(
 	}
 
 	// Use whichever provides more samples
-	effectiveWindow := countWindow
-	if timeWindowCount > effectiveWindow {
-		effectiveWindow = timeWindowCount
-	}
-	if effectiveWindow > len(jobHistory) {
-		effectiveWindow = len(jobHistory)
-	}
+	effectiveWindow := min(max(timeWindowCount, countWindow), len(jobHistory))
 
 	return jobHistory[:effectiveWindow]
 }
@@ -951,4 +942,3 @@ func (c *JiraEscalationsController) buildThreadID(
 		jiraConfig.Thread,
 	)
 }
-

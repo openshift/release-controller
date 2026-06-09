@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -537,7 +538,7 @@ func (c *Controller) getJobQualifierMap(tagName string) map[string][]releasequal
 	}
 	// Sort qualifier IDs for deterministic display
 	for _, qIDs := range result {
-		sort.Slice(qIDs, func(i, j int) bool { return qIDs[i] < qIDs[j] })
+		slices.Sort(qIDs)
 	}
 	return result
 }

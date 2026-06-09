@@ -127,7 +127,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			}
 
 			// Verify that the JSON is valid
-			var parsed map[string]interface{}
+			var parsed map[string]any
 			if err := json.Unmarshal([]byte(prettyJSON), &parsed); err != nil {
 				t.Errorf("Generated JSON is not valid: %v", err)
 			}
@@ -176,7 +176,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				}
 
 				// Verify that the alpha qualifier has notifications with sorted escalations
-				alphaQualifier, ok := parsed["alpha"].(map[string]interface{})
+				alphaQualifier, ok := parsed["alpha"].(map[string]any)
 				if !ok {
 					t.Error("Expected alpha qualifier to be a map")
 					return
@@ -187,14 +187,14 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 					t.Error("Expected alpha to have description field")
 				}
 
-				n, ok := alphaQualifier["notifications"].(map[string]interface{})
+				n, ok := alphaQualifier["notifications"].(map[string]any)
 				if !ok {
 					t.Error("Expected notifications to be a map")
 					return
 				}
 
 				// Check Jira escalations are sorted by name and have all fields
-				if j, ok := n["jira"].(map[string]interface{}); ok {
+				if j, ok := n["jira"].(map[string]any); ok {
 					// Check Jira fields
 					if _, ok := j["component"].(string); !ok {
 						t.Error("Expected component field in Jira")
@@ -209,10 +209,10 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 						t.Error("Expected assignee field in Jira")
 					}
 
-					if escalations, ok := j["escalations"].([]interface{}); ok {
+					if escalations, ok := j["escalations"].([]any); ok {
 						if len(escalations) >= 2 {
-							firstEsc := escalations[0].(map[string]interface{})
-							secondEsc := escalations[1].(map[string]interface{})
+							firstEsc := escalations[0].(map[string]any)
+							secondEsc := escalations[1].(map[string]any)
 
 							if firstEsc["name"] != "alpha" || secondEsc["name"] != "zulu" {
 								t.Errorf("Expected escalations to be sorted by name. Got: %v, %v", firstEsc["name"], secondEsc["name"])
@@ -222,7 +222,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				}
 
 				// Verify zebra has badge and description
-				zebraQualifier, ok := parsed["zebra"].(map[string]interface{})
+				zebraQualifier, ok := parsed["zebra"].(map[string]any)
 				if !ok {
 					t.Error("Expected zebra qualifier to be a map")
 					return
@@ -235,7 +235,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				}
 
 			case "single qualifier with all fields":
-				comp, ok := parsed["comprehensive"].(map[string]interface{})
+				comp, ok := parsed["comprehensive"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected comprehensive qualifier to be a map")
 				}
@@ -258,7 +258,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				}
 
 				// Verify notifications with Jira escalations
-				n, ok := comp["notifications"].(map[string]interface{})
+				n, ok := comp["notifications"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected notifications to be a map")
 				}
@@ -269,7 +269,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 
 			case "multiple qualifiers with varying complexity":
 				// Verify simple qualifier
-				if simple, ok := parsed["simple"].(map[string]interface{}); ok {
+				if simple, ok := parsed["simple"].(map[string]any); ok {
 					if enabled, ok := simple["enabled"].(bool); !ok || enabled {
 						t.Error("Expected simple qualifier to have enabled=false")
 					}
@@ -281,7 +281,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 				}
 
 				// Verify with-payload qualifier has badge
-				if withPayload, ok := parsed["with-payload"].(map[string]interface{}); ok {
+				if withPayload, ok := parsed["with-payload"].(map[string]any); ok {
 					if badge, ok := withPayload["payloadBadgeStatus"].(string); !ok || badge != string(BadgeStatusOnFailure) {
 						t.Error("Expected with-payload qualifier to have payloadBadgeStatus=OnFailure")
 					}
@@ -298,8 +298,8 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 
 			case "qualifier with jira notifications":
 				// Verify jira-only has jira notifications
-				if jiraOnly, ok := parsed["jira-only"].(map[string]interface{}); ok {
-					if n, ok := jiraOnly["notifications"].(map[string]interface{}); ok {
+				if jiraOnly, ok := parsed["jira-only"].(map[string]any); ok {
+					if n, ok := jiraOnly["notifications"].(map[string]any); ok {
 						if _, ok := n["jira"]; !ok {
 							t.Error("Expected jira-only to have jira notifications")
 						}
@@ -324,7 +324,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
@@ -361,7 +361,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
@@ -412,12 +412,12 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				n, ok := parsed["notifications"].(map[string]interface{})
+				n, ok := parsed["notifications"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected notifications to be a map")
 				}
@@ -436,7 +436,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
@@ -468,21 +468,21 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				n, ok := parsed["notifications"].(map[string]interface{})
+				n, ok := parsed["notifications"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected notifications to be a map")
 				}
 
 				// Check Jira mentions
-				if jiraMap, ok := n["jira"].(map[string]interface{}); ok {
-					if escalations, ok := jiraMap["escalations"].([]interface{}); ok && len(escalations) > 0 {
-						esc := escalations[0].(map[string]interface{})
-						if mentions, ok := esc["mentions"].([]interface{}); !ok || len(mentions) != 2 {
+				if jiraMap, ok := n["jira"].(map[string]any); ok {
+					if escalations, ok := jiraMap["escalations"].([]any); ok && len(escalations) > 0 {
+						esc := escalations[0].(map[string]any)
+						if mentions, ok := esc["mentions"].([]any); !ok || len(mentions) != 2 {
 							t.Error("Expected Jira escalation to have 2 mentions")
 						}
 					}
@@ -499,7 +499,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
@@ -518,7 +518,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
@@ -552,17 +552,17 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				n, ok := parsed["notifications"].(map[string]interface{})
+				n, ok := parsed["notifications"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected notifications to be a map")
 				}
 
-				jiraMap, ok := n["jira"].(map[string]interface{})
+				jiraMap, ok := n["jira"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected jira to be a map")
 				}
@@ -585,8 +585,8 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 				}
 
 				// Check escalations without mentions
-				if escalations, ok := jiraMap["escalations"].([]interface{}); ok && len(escalations) > 0 {
-					esc := escalations[0].(map[string]interface{})
+				if escalations, ok := jiraMap["escalations"].([]any); ok && len(escalations) > 0 {
+					esc := escalations[0].(map[string]any)
 					if _, ok := esc["mentions"]; ok {
 						t.Error("Did not expect mentions field in escalation without mentions")
 					}
@@ -605,12 +605,12 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				if labels, ok := parsed["failureLabels"].([]interface{}); !ok || len(labels) != 3 {
+				if labels, ok := parsed["failureLabels"].([]any); !ok || len(labels) != 3 {
 					t.Errorf("Expected labels field with 3 items, got: %v", parsed["labels"])
 				}
 			},
@@ -635,27 +635,27 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				var parsed map[string]interface{}
+				var parsed map[string]any
 				if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 					t.Errorf("Failed to parse JSON: %v", err)
 				}
 
-				n, ok := parsed["notifications"].(map[string]interface{})
+				n, ok := parsed["notifications"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected notifications to be a map")
 				}
 
-				jiraMap, ok := n["jira"].(map[string]interface{})
+				jiraMap, ok := n["jira"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected jira to be a map")
 				}
 
-				escalations, ok := jiraMap["escalations"].([]interface{})
+				escalations, ok := jiraMap["escalations"].([]any)
 				if !ok || len(escalations) == 0 {
 					t.Fatal("Expected escalations array")
 				}
 
-				esc := escalations[0].(map[string]interface{})
+				esc := escalations[0].(map[string]any)
 				if _, ok := esc["mentions"]; ok {
 					t.Error("Did not expect mentions field in escalation without mentions")
 				}

@@ -1896,13 +1896,11 @@ func (c *Controller) renderQualifierBadges(tag string, showAll bool) string {
 	for qID := range payload.Status.QualifiersSummary.Qualifiers {
 		qualifierIDs = append(qualifierIDs, qID)
 	}
-	sort.Slice(qualifierIDs, func(i, j int) bool {
-		return qualifierIDs[i] < qualifierIDs[j]
-	})
+	slices.Sort(qualifierIDs)
 
 	streamName := payload.Spec.PayloadCoordinates.StreamName
 
-	var badges string
+	var badges strings.Builder
 	for _, qID := range qualifierIDs {
 		summary := payload.Status.QualifiersSummary.Qualifiers[qID]
 		if !showAll && !summary.BadgePropagated {
@@ -1928,10 +1926,10 @@ func (c *Controller) renderQualifierBadges(tag string, showAll bool) string {
 		stateText := qualifierStateText(summary)
 		linkURL := fmt.Sprintf("/releasestream/%s/qualifier/%s",
 			url.PathEscape(streamName), url.PathEscape(string(qID)))
-		badges += fmt.Sprintf(`<a href="%s" title="%s: %s"><span class="badge %s qualifier-badge">%s</span></a> `,
+		fmt.Fprintf(&badges, `<a href="%s" title="%s: %s"><span class="badge %s qualifier-badge">%s</span></a> `,
 			linkURL, escapedBadgeName, stateText, badgeClass, escapedBadgeName)
 	}
-	return badges
+	return badges.String()
 }
 
 func (c *Controller) httpQualifierStatus(w http.ResponseWriter, req *http.Request) {
