@@ -52,11 +52,11 @@ func (c *ImageReimportController) sync() {
 	if err != nil {
 		klog.Errorf("Failed to list releases: %s", err)
 	}
-	isNames := ""
+	var isNames strings.Builder
 	for _, stream := range streams {
-		isNames += stream.Name + ", "
+		isNames.WriteString(stream.Name + ", ")
 	}
-	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames, ", "))
+	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames.String(), ", "))
 	for _, stream := range streams {
 		// only handle release imagestreams
 		if _, ok := stream.Annotations[releasecontroller.ReleaseAnnotationConfig]; !ok {

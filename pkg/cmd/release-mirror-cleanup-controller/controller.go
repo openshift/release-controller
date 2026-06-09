@@ -66,11 +66,11 @@ func (c *MirrorCleanupController) sync(ctx context.Context) {
 	if err != nil {
 		klog.Errorf("Failed to list releases: %s", err)
 	}
-	isNames := ""
+	var isNames strings.Builder
 	for _, stream := range streams {
-		isNames += stream.Name + ", "
+		isNames.WriteString(stream.Name + ", ")
 	}
-	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames, ", "))
+	klog.V(3).Infof("List of imagestreams being checked: %s", strings.TrimSuffix(isNames.String(), ", "))
 	klog.V(3).Infof("Identifying release tags and alternate repos")
 	alternateRepos := sets.New[string]()
 	validTags := sets.New[string]()

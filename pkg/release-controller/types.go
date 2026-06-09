@@ -53,7 +53,7 @@ type APIReleaseInfo struct {
 	//ChangeLog is the html representation of the changes included in this release tag
 	ChangeLog []byte `json:"changeLog,omitempty"`
 	//ChangeLogJson is the json representation of the changes included in this release tag
-	ChangeLogJson ChangeLog `json:"changeLogJson,omitempty"`
+	ChangeLogJson ChangeLog `json:"changeLogJson"`
 	// NodeImageStreams contains per-stream RPM diffs for each machine-OS image (e.g. rhel-coreos, rhel-coreos-10).
 	NodeImageStreams []APINodeImageStream `json:"nodeImageStreams,omitempty"`
 }
