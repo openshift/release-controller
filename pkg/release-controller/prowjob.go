@@ -49,8 +49,8 @@ func truncateProwJobResultsURL(url string) string {
 	if len(url) == 0 {
 		return url
 	}
-	if strings.HasPrefix(url, ProwJobResultsURLPrefix) {
-		return strings.TrimPrefix(url, ProwJobResultsURLPrefix)
+	if after, ok := strings.CutPrefix(url, ProwJobResultsURLPrefix); ok {
+		return after
 	}
 	klog.Warningf("Unknown prowjob result URL prefix: %s", url)
 	return url

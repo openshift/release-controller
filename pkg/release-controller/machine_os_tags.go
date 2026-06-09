@@ -97,11 +97,11 @@ func machineOSDisplayNameFromAnnotations(annotations map[string]string) string {
 		return ""
 	}
 	// Typical: "machine-os=Red Hat Enterprise Linux CoreOS" (single pair).
-	for _, part := range strings.Split(v, ",") {
+	for part := range strings.SplitSeq(v, ",") {
 		part = strings.TrimSpace(part)
 		const prefix = "machine-os="
-		if strings.HasPrefix(part, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(part, prefix))
+		if after, ok := strings.CutPrefix(part, prefix); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	return ""

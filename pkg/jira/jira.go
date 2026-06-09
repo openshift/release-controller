@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
-	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/jira"
 	"sigs.k8s.io/prow/pkg/plugins"
@@ -96,12 +96,7 @@ func hasJiraLabel(issue *jiraBaseClient.Issue, labelName string) bool {
 	if issue.Fields == nil || issue.Fields.Labels == nil {
 		return false
 	}
-	for _, label := range issue.Fields.Labels {
-		if label == labelName {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(issue.Fields.Labels, labelName)
 }
 
 func (c *Verifier) commentOnPR(extPR pr, message string) (error, bool) {

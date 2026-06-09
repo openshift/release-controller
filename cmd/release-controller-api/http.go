@@ -697,18 +697,14 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			"html": &renderHTML,
 			"json": &renderJSON,
 		} {
-			wg.Add(1)
 			format := k
 			result := v
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				c.changeLogWorker(result, tagInfo, format)
-			}()
+			})
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			streams, err := c.releaseInfo.ListMachineOSStreams(tagInfo.TagPullSpec)
 			if err != nil {
 				nodeImageErr = newHTTPError(http.StatusInternalServerError, "listing machine-OS streams for %s: %w", tagInfo.Tag, err)
@@ -765,7 +761,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				result = append(result, entry)
 			}
 			nodeImageStreams = result
-		}()
+		})
 
 		wg.Wait()
 
@@ -1851,40 +1847,40 @@ func (c *Controller) renderTeamApprovals(tag string, asList bool) string {
 	teamName := func(fullLabel string) string {
 		return strings.ToUpper(strings.Split(strings.TrimSuffix(fullLabel, "_state"), "/")[1])
 	}
-	var approvals string
+	var approvals strings.Builder
 	if asList {
-		approvals += "<ul>"
+		approvals.WriteString("<ul>")
 	}
 	if len(acceptedLabels) > 0 {
 		if asList {
-			approvals += "<li>"
+			approvals.WriteString("<li>")
 		}
-		approvals += "<span class=\"text-success\">Accepted</span><ul>"
+		approvals.WriteString("<span class=\"text-success\">Accepted</span><ul>")
 		for _, anno := range acceptedLabels {
-			approvals += "<li>" + teamName(anno) + "</li>"
+			approvals.WriteString("<li>" + teamName(anno) + "</li>")
 		}
-		approvals += "</ul>"
+		approvals.WriteString("</ul>")
 		if asList {
-			approvals += "</li>"
+			approvals.WriteString("</li>")
 		}
 	}
 	if len(rejectedLabels) > 0 {
 		if asList {
-			approvals += "<li>"
+			approvals.WriteString("<li>")
 		}
-		approvals += "<span class=\"text-danger\">Rejected</span><ul>"
+		approvals.WriteString("<span class=\"text-danger\">Rejected</span><ul>")
 		for _, anno := range rejectedLabels {
-			approvals += "<li>" + teamName(anno) + "</li>"
+			approvals.WriteString("<li>" + teamName(anno) + "</li>")
 		}
-		approvals += "</ul>"
+		approvals.WriteString("</ul>")
 		if asList {
-			approvals += "</li>"
+			approvals.WriteString("</li>")
 		}
 	}
 	if asList {
-		approvals += "</ul>"
+		approvals.WriteString("</ul>")
 	}
-	return approvals
+	return approvals.String()
 }
 
 func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Request) {

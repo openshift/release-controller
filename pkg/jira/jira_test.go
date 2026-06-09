@@ -1241,13 +1241,10 @@ func TestSumMapValues(t *testing.T) {
 func TestSimpleBackoff(t *testing.T) {
 	retryWaitMin := 1 * time.Second
 	retryWaitMax := 30 * time.Second
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		t.Run(fmt.Sprintf("Attempt-%d", i), func(t *testing.T) {
 			got := simpleBackOff(retryWaitMin, retryWaitMax, i)
-			expect := time.Duration(math.Pow(2, float64(i)) * float64(retryWaitMin))
-			if expect >= retryWaitMax {
-				expect = retryWaitMax
-			}
+			expect := min(time.Duration(math.Pow(2, float64(i))*float64(retryWaitMin)), retryWaitMax)
 			if got != expect {
 				t.Errorf("expect: %s, but got: %s", expect, got)
 			}
