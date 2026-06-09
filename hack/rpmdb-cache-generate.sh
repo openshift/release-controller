@@ -49,6 +49,13 @@ PYEOF
 
 mkdir -p "${CACHE_DIR}"
 
+# On a fresh checkout, data/ is gitignored but the tarball is committed.
+# Extract it so the rebuild at the end doesn't drop previously cached entries.
+if [[ -f "${TARBALL}" && -z "$(ls -A "${CACHE_DIR}")" ]]; then
+    echo "Bootstrapping cache from existing tarball..."
+    tar --zstd -xf "${TARBALL}" -C "${CACHE_DIR}"
+fi
+
 if [[ ! -f "${METADATA}" ]]; then
     echo '{"generated":"","versions":{}}' > "${METADATA}"
 fi
