@@ -58,6 +58,17 @@ func (c *Client) Query(ctx context.Context, query string) (RowIteratorInterface,
 	return &rowIteratorWrapper{it}, nil
 }
 
+// QueryWithParams executes a parameterized SQL query against BigQuery and returns a row iterator
+func (c *Client) QueryWithParams(ctx context.Context, query string, params []bigquery.QueryParameter) (RowIteratorInterface, error) {
+	q := c.Client.Query(query)
+	q.Parameters = params
+	it, err := q.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %v", err)
+	}
+	return &rowIteratorWrapper{it}, nil
+}
+
 // QueryInto executes a SQL query and populates the provided slice with results.
 // The results parameter must be a pointer to a slice of the desired type.
 //
@@ -66,12 +77,22 @@ func (c *Client) Query(ctx context.Context, query string) (RowIteratorInterface,
 //	var results []MyStruct
 //	err := QueryInto(client, ctx, "SELECT * FROM table", &results)
 func QueryInto[T any](c *Client, ctx context.Context, query string, results *[]T) error {
-	iter, err := c.Query(ctx, query)
+	return QueryParamsInto(c, ctx, query, nil, results)
+}
+
+// QueryParamsInto executes a parameterized SQL query and populates the provided slice with results.
+func QueryParamsInto[T any](c *Client, ctx context.Context, query string, params []bigquery.QueryParameter, results *[]T) error {
+	var iter RowIteratorInterface
+	var err error
+	if len(params) > 0 {
+		iter, err = c.QueryWithParams(ctx, query, params)
+	} else {
+		iter, err = c.Query(ctx, query)
+	}
 	if err != nil {
 		return err
 	}
 
-	// Clear the slice
 	*results = (*results)[:0]
 
 	for {

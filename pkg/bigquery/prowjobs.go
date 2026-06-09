@@ -3,8 +3,10 @@ package bigquery
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
+	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
 	"k8s.io/klog/v2"
 )
@@ -34,6 +36,8 @@ type ProwjobQueryFilter struct {
 	Interval string // SQL interval value, e.g. "2 DAY", "7 DAY", "24 HOUR"
 }
 
+var validSQLInterval = regexp.MustCompile(`^\d+ (DAY|HOUR|MINUTE)$`)
+
 // GetReleaseQualifiersProwjobSummary queries BigQuery for prowjob summaries across all jobs defined as release qualifiers.
 // All jobs use the default 14-day lookback window.
 func (c *Client) GetReleaseQualifiersProwjobSummary(ctx context.Context, prowjobs []string) ([]ReleaseQualifiersProwjobSummaryResult, error) {
@@ -45,40 +49,51 @@ func (c *Client) GetReleaseQualifiersProwjobSummary(ctx context.Context, prowjob
 // filteredJobs each specify their own interval (derived from escalation OverPeriod settings).
 // The resulting query uses an OR structure to combine both groups efficiently.
 func (c *Client) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Context, defaultJobs []string, filteredJobs []ProwjobQueryFilter) ([]ReleaseQualifiersProwjobSummaryResult, error) {
-	query := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
+	query, params, err := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowjob summary query: %w", err)
+	}
 
 	var results []ReleaseQualifiersProwjobSummaryResult
-	if err := QueryInto(c, ctx, query, &results); err != nil {
+	if err := QueryParamsInto(c, ctx, query, params, &results); err != nil {
 		return nil, fmt.Errorf("failed to query release verify jobs: %w", err)
 	}
 
 	return results, nil
 }
 
-// BuildProwjobSummaryQuery constructs the SQL query for prowjob summaries.
-// It builds a hybrid WHERE clause: default jobs share a single IN clause with a 14-day window,
+// BuildProwjobSummaryQuery constructs a parameterized SQL query for prowjob summaries.
+// It builds a hybrid WHERE clause: default jobs share a single IN UNNEST clause with a 14-day window,
 // while filtered jobs each get their own condition with a custom interval.
-// Job names are passed unquoted; this function handles SQL quoting and escaping.
-func BuildProwjobSummaryQuery(project string, defaultJobs []string, filteredJobs []ProwjobQueryFilter) string {
+// Job names are passed as BigQuery query parameters to prevent SQL injection.
+// Intervals are validated against a strict allowlist of safe patterns.
+func BuildProwjobSummaryQuery(project string, defaultJobs []string, filteredJobs []ProwjobQueryFilter) (string, []bigquery.QueryParameter, error) {
 	var conditions []string
+	var params []bigquery.QueryParameter
 
 	if len(defaultJobs) > 0 {
-		quoted := make([]string, len(defaultJobs))
-		for i, name := range defaultJobs {
-			quoted[i] = "'" + escapeSQLString(name) + "'"
-		}
-		conditions = append(conditions, fmt.Sprintf(
-			"(prowjob_job_name IN (%s) AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY))",
-			strings.Join(quoted, ","),
-		))
+		conditions = append(conditions,
+			"(prowjob_job_name IN UNNEST(@default_jobs) AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY))")
+		params = append(params, bigquery.QueryParameter{
+			Name:  "default_jobs",
+			Value: defaultJobs,
+		})
 	}
 
-	for _, f := range filteredJobs {
+	for i, f := range filteredJobs {
+		if !validSQLInterval.MatchString(f.Interval) {
+			return "", nil, fmt.Errorf("invalid SQL interval %q for job %q", f.Interval, f.Name)
+		}
+		paramName := fmt.Sprintf("filtered_name_%d", i)
 		conditions = append(conditions, fmt.Sprintf(
-			"(prowjob_job_name = '%s' AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL %s))",
-			escapeSQLString(f.Name),
+			"(prowjob_job_name = @%s AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL %s))",
+			paramName,
 			f.Interval,
 		))
+		params = append(params, bigquery.QueryParameter{
+			Name:  paramName,
+			Value: f.Name,
+		})
 	}
 
 	query := fmt.Sprintf(`
@@ -95,11 +110,7 @@ func BuildProwjobSummaryQuery(project string, defaultJobs []string, filteredJobs
 	)
 
 	klog.V(5).Infof("Prowjob Summary Query: %s", query)
-	return query
-}
-
-func escapeSQLString(s string) string {
-	return strings.ReplaceAll(s, "'", "\\'")
+	return query, params, nil
 }
 
 // SELECT release_verify_tag, prowjob_state, prowjob_url, prowjob_completion FROM `openshift-gce-devel.ci_analysis_us.jobs` WHERE manager = 'release-controller' AND is_release_verify = TRUE AND prowjob_job_name = 'periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-upgrade-fips-no-nat-instance' AND prowjob_completion >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 14 DAY) ORDER BY prowjob_completion DESC

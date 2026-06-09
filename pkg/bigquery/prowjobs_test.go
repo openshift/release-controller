@@ -252,10 +252,16 @@ func TestBuildProwjobSummaryQuery(t *testing.T) {
 	t.Parallel()
 
 	t.Run("default jobs only", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, nil)
+		query, params, err := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-		if !strings.Contains(query, "prowjob_job_name IN ('job-a','job-b')") {
-			t.Errorf("expected IN clause with both jobs, got:\n%s", query)
+		if !strings.Contains(query, "prowjob_job_name IN UNNEST(@default_jobs)") {
+			t.Errorf("expected parameterized IN UNNEST clause, got:\n%s", query)
+		}
+		if strings.Contains(query, "'job-a'") || strings.Contains(query, "'job-b'") {
+			t.Error("job names should not appear as string literals in the query")
 		}
 		if !strings.Contains(query, "INTERVAL 14 DAY") {
 			t.Error("expected 14 DAY default interval")
@@ -263,46 +269,79 @@ func TestBuildProwjobSummaryQuery(t *testing.T) {
 		if !strings.Contains(query, "prowjob_completion") {
 			t.Error("expected prowjob_completion in SELECT")
 		}
+		if len(params) != 1 {
+			t.Fatalf("expected 1 parameter, got %d", len(params))
+		}
+		if params[0].Name != "default_jobs" {
+			t.Errorf("expected parameter name 'default_jobs', got %q", params[0].Name)
+		}
+		if jobs, ok := params[0].Value.([]string); !ok || len(jobs) != 2 || jobs[0] != "job-a" || jobs[1] != "job-b" {
+			t.Errorf("expected default_jobs parameter with [job-a, job-b], got %v", params[0].Value)
+		}
 	})
 
 	t.Run("filtered jobs only", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("proj", nil, []ProwjobQueryFilter{
+		query, params, err := BuildProwjobSummaryQuery("proj", nil, []ProwjobQueryFilter{
 			{Name: "job-c", Interval: "2 DAY"},
 			{Name: "job-d", Interval: "7 DAY"},
 		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-		if strings.Contains(query, "IN (") {
-			t.Error("expected no IN clause when defaultJobs is empty")
+		if strings.Contains(query, "UNNEST") {
+			t.Error("expected no UNNEST clause when defaultJobs is empty")
 		}
-		if !strings.Contains(query, "prowjob_job_name = 'job-c' AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 2 DAY)") {
-			t.Errorf("expected job-c with 2 DAY interval, got:\n%s", query)
+		if !strings.Contains(query, "prowjob_job_name = @filtered_name_0 AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 2 DAY)") {
+			t.Errorf("expected parameterized job-c condition, got:\n%s", query)
 		}
-		if !strings.Contains(query, "prowjob_job_name = 'job-d' AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)") {
-			t.Errorf("expected job-d with 7 DAY interval, got:\n%s", query)
+		if !strings.Contains(query, "prowjob_job_name = @filtered_name_1 AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY)") {
+			t.Errorf("expected parameterized job-d condition, got:\n%s", query)
+		}
+		if strings.Contains(query, "'job-c'") || strings.Contains(query, "'job-d'") {
+			t.Error("job names should not appear as string literals in the query")
+		}
+		if len(params) != 2 {
+			t.Fatalf("expected 2 parameters, got %d", len(params))
+		}
+		if params[0].Name != "filtered_name_0" || params[0].Value != "job-c" {
+			t.Errorf("expected filtered_name_0=job-c, got %s=%v", params[0].Name, params[0].Value)
+		}
+		if params[1].Name != "filtered_name_1" || params[1].Value != "job-d" {
+			t.Errorf("expected filtered_name_1=job-d, got %s=%v", params[1].Name, params[1].Value)
 		}
 	})
 
 	t.Run("hybrid - default and filtered jobs", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, []ProwjobQueryFilter{
+		query, params, err := BuildProwjobSummaryQuery("proj", []string{"job-a", "job-b"}, []ProwjobQueryFilter{
 			{Name: "job-c", Interval: "2 DAY"},
 		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-		if !strings.Contains(query, "prowjob_job_name IN ('job-a','job-b')") {
-			t.Errorf("expected IN clause for default jobs, got:\n%s", query)
+		if !strings.Contains(query, "prowjob_job_name IN UNNEST(@default_jobs)") {
+			t.Errorf("expected parameterized IN UNNEST for default jobs, got:\n%s", query)
 		}
 		if !strings.Contains(query, "INTERVAL 14 DAY") {
 			t.Error("expected 14 DAY default interval for default jobs")
 		}
-		if !strings.Contains(query, "prowjob_job_name = 'job-c' AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 2 DAY)") {
-			t.Errorf("expected job-c with custom interval, got:\n%s", query)
+		if !strings.Contains(query, "prowjob_job_name = @filtered_name_0 AND prowjob_start >= DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 2 DAY)") {
+			t.Errorf("expected parameterized job-c condition, got:\n%s", query)
 		}
 		if !strings.Contains(query, " OR ") {
 			t.Error("expected OR between default and filtered conditions")
 		}
+		if len(params) != 2 {
+			t.Fatalf("expected 2 parameters, got %d", len(params))
+		}
 	})
 
 	t.Run("query structure", func(t *testing.T) {
-		query := BuildProwjobSummaryQuery("openshift-gce-devel", []string{"job-a"}, nil)
+		query, _, err := BuildProwjobSummaryQuery("openshift-gce-devel", []string{"job-a"}, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
 		if !strings.Contains(query, "manager = 'release-controller'") {
 			t.Error("expected manager filter")
@@ -320,11 +359,24 @@ func TestBuildProwjobSummaryQuery(t *testing.T) {
 			t.Error("expected prowjob_completion in SELECT")
 		}
 	})
+
+	t.Run("invalid interval rejected", func(t *testing.T) {
+		_, _, err := BuildProwjobSummaryQuery("proj", nil, []ProwjobQueryFilter{
+			{Name: "job-x", Interval: "1 DAY; DROP TABLE jobs--"},
+		})
+		if err == nil {
+			t.Fatal("expected error for malicious interval, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid SQL interval") {
+			t.Errorf("expected 'invalid SQL interval' error, got: %v", err)
+		}
+	})
 }
 
 // buildExpectedQuery constructs the expected query string for testing using the production query builder.
 func buildExpectedQuery(project string, prowjobs []string) string {
-	return BuildProwjobSummaryQuery(project, prowjobs, nil)
+	query, _, _ := BuildProwjobSummaryQuery(project, prowjobs, nil)
+	return query
 }
 
 // clientWrapper wraps FakeClient to provide the GetReleaseQualifiersProwjobSummary method
@@ -338,7 +390,10 @@ func (c *clientWrapper) GetReleaseQualifiersProwjobSummary(ctx context.Context, 
 }
 
 func (c *clientWrapper) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Context, defaultJobs []string, filteredJobs []ProwjobQueryFilter) ([]ReleaseQualifiersProwjobSummaryResult, error) {
-	query := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
+	query, _, err := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowjob summary query: %w", err)
+	}
 
 	iter, err := c.Query(ctx, query)
 	if err != nil {
