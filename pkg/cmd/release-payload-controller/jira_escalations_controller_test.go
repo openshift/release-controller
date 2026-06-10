@@ -819,6 +819,52 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 				{Name: "periodic-ci-rosa-hcp", Interval: "7 DAY"},
 			},
 		},
+		{
+			name: "Job with multiple qualifiers uses largest interval",
+			releasePayload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "multi-qual",
+								CIConfigurationJobName: "periodic-ci-multi-qual",
+								Qualifiers: releasequalifierslib.ReleaseQualifiers{
+									"short": releasequalifierslib.ReleaseQualifier{},
+									"long":  releasequalifierslib.ReleaseQualifier{},
+								},
+							},
+						},
+					},
+				},
+			},
+			qualifiersConfig: releasequalifierslib.ReleaseQualifiers{
+				"short": releasequalifierslib.ReleaseQualifier{
+					Notifications: &notifications.Notifications{
+						Jira: &jira.Notification{
+							Project: "OCPBUGS",
+							Escalations: []jira.Escalation{
+								{Name: "quick", Failures: 2, OverPeriod: "2d", Priority: "Low"},
+							},
+						},
+					},
+				},
+				"long": releasequalifierslib.ReleaseQualifier{
+					Notifications: &notifications.Notifications{
+						Jira: &jira.Notification{
+							Project: "OCPBUGS",
+							Escalations: []jira.Escalation{
+								{Name: "weekly", Failures: 5, OverPeriod: "1w", Priority: "Major"},
+							},
+						},
+					},
+				},
+			},
+			wantDefault: nil,
+			wantFiltered: []bigquery.ProwjobQueryFilter{
+				{Name: "periodic-ci-multi-qual", Interval: "7 DAY"},
+			},
+		},
 	}
 
 	controller := &JiraEscalationsController{}

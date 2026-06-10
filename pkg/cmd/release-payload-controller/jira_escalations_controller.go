@@ -164,8 +164,8 @@ func (c *JiraEscalationsController) sync(ctx context.Context, key string) error 
 
 // collectJobNamesWithEscalations collects all job names that have Jira escalations configured.
 // It returns two slices: defaultJobs (using the 14-day default) and
-// filteredJobs (with custom OverPeriod intervals). For a job with multiple escalations, the
-// last escalation's OverPeriod determines whether the job uses a custom interval.
+// filteredJobs (with custom OverPeriod intervals). For a job with multiple qualifiers or
+// escalations, the largest OverPeriod across all of them determines the query interval.
 func (c *JiraEscalationsController) collectJobNamesWithEscalations(
 	releasePayload *v1alpha1.ReleasePayload,
 	qualifiersConfig releasequalifierslib.ReleaseQualifiers,
@@ -179,39 +179,60 @@ func (c *JiraEscalationsController) collectJobNamesWithEscalations(
 				continue
 			}
 
-			for qualifierID := range job.Qualifiers {
+			var maxDuration time.Duration
+			var maxInterval string
+			hasJiraEscalation := false
+
+			for qualifierID, jobQualifierConfig := range job.Qualifiers {
 				globalConfig, exists := qualifiersConfig[qualifierID]
 				if !exists {
 					continue
 				}
 
-				jobQualifierConfig := job.Qualifiers[qualifierID]
 				merged := globalConfig.Merge(jobQualifierConfig)
 
 				if merged.Notifications == nil || merged.Notifications.Jira == nil || len(merged.Notifications.Jira.Escalations) == 0 {
 					continue
 				}
 
-				seen[job.CIConfigurationJobName] = true
+				hasJiraEscalation = true
 
-				// Use the last escalation's OverPeriod to determine the query interval
-				lastEscalation := merged.Notifications.Jira.Escalations[len(merged.Notifications.Jira.Escalations)-1]
-				if lastEscalation.OverPeriod != "" {
-					interval, err := parsePeriodToSQLInterval(lastEscalation.OverPeriod)
-					if err != nil {
-						klog.Warningf("Invalid OverPeriod %q for job %s, using default 14-day window: %v",
-							lastEscalation.OverPeriod, job.CIConfigurationJobName, err)
-						defaultJobs = append(defaultJobs, job.CIConfigurationJobName)
-					} else {
-						filteredJobs = append(filteredJobs, bigquery.ProwjobQueryFilter{
-							Name:     job.CIConfigurationJobName,
-							Interval: interval,
-						})
+				for _, escalation := range merged.Notifications.Jira.Escalations {
+					if escalation.OverPeriod == "" {
+						continue
 					}
-				} else {
-					defaultJobs = append(defaultJobs, job.CIConfigurationJobName)
+					dur, err := parsePeriod(escalation.OverPeriod)
+					if err != nil {
+						klog.Warningf("Invalid OverPeriod %q for job %s qualifier %s: %v",
+							escalation.OverPeriod, job.CIConfigurationJobName, qualifierID, err)
+						continue
+					}
+					interval, err := parsePeriodToSQLInterval(escalation.OverPeriod)
+					if err != nil {
+						klog.Warningf("Invalid OverPeriod %q for job %s qualifier %s: %v",
+							escalation.OverPeriod, job.CIConfigurationJobName, qualifierID, err)
+						continue
+					}
+					if dur > maxDuration {
+						maxDuration = dur
+						maxInterval = interval
+					}
 				}
-				break
+			}
+
+			if !hasJiraEscalation {
+				continue
+			}
+
+			seen[job.CIConfigurationJobName] = true
+
+			if maxInterval != "" {
+				filteredJobs = append(filteredJobs, bigquery.ProwjobQueryFilter{
+					Name:     job.CIConfigurationJobName,
+					Interval: maxInterval,
+				})
+			} else {
+				defaultJobs = append(defaultJobs, job.CIConfigurationJobName)
 			}
 		}
 	}
