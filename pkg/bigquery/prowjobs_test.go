@@ -78,6 +78,14 @@ func TestClient_GetReleaseQualifiersProwjobSummary(t *testing.T) {
 			},
 			wantResults: 0,
 			wantErr:     false,
+			validateQuery: func(t *testing.T, query string) {},
+		},
+		{
+			name:        "empty jobs returns no results without querying",
+			project:     "test-project",
+			jobNames:    nil,
+			wantResults: 0,
+			wantErr:     false,
 		},
 		{
 			name:     "query execution error",
@@ -118,13 +126,14 @@ func TestClient_GetReleaseQualifiersProwjobSummary(t *testing.T) {
 				}
 
 				queries := fc.GetQueries()
-				if len(queries) != 1 {
-					t.Errorf("expected 1 query to be executed, got %d", len(queries))
-					return
-				}
-
 				if tt.validateQuery != nil {
+					if len(queries) != 1 {
+						t.Errorf("expected 1 query to be executed, got %d", len(queries))
+						return
+					}
 					tt.validateQuery(t, queries[0])
+				} else if len(queries) != 0 {
+					t.Errorf("expected no queries to be executed, got %d", len(queries))
 				}
 			}
 		})
@@ -390,6 +399,10 @@ func (c *clientWrapper) GetReleaseQualifiersProwjobSummary(ctx context.Context, 
 }
 
 func (c *clientWrapper) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Context, defaultJobs []string, filteredJobs []ProwjobQueryFilter) ([]ReleaseQualifiersProwjobSummaryResult, error) {
+	if len(defaultJobs) == 0 && len(filteredJobs) == 0 {
+		return nil, nil
+	}
+
 	query, _, err := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prowjob summary query: %w", err)

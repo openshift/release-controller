@@ -49,6 +49,10 @@ func (c *Client) GetReleaseQualifiersProwjobSummary(ctx context.Context, prowjob
 // filteredJobs each specify their own interval (derived from escalation OverPeriod settings).
 // The resulting query uses an OR structure to combine both groups efficiently.
 func (c *Client) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Context, defaultJobs []string, filteredJobs []ProwjobQueryFilter) ([]ReleaseQualifiersProwjobSummaryResult, error) {
+	if len(defaultJobs) == 0 && len(filteredJobs) == 0 {
+		return nil, nil
+	}
+
 	query, params, err := BuildProwjobSummaryQuery(c.project, defaultJobs, filteredJobs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prowjob summary query: %w", err)
