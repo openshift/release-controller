@@ -2189,6 +2189,103 @@ func TestDuplicatePrevention(t *testing.T) {
 	}
 }
 
+func TestFailedEscalationDoesNotSuppressRetry(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockJiraClient{
+		FakeClient:  fakejira.FakeClient{},
+		searchError: fmt.Errorf("jira unavailable"),
+	}
+	controller := &JiraEscalationsController{
+		ReleasePayloadController: &ReleasePayloadController{},
+		jiraClient:               mock,
+		configAccessor: &mockConfigAccessor{
+			config: releasequalifierslib.ReleaseQualifiers{
+				"rosa": {
+					Enabled: releasequalifierslib.BoolPtr(true),
+					Notifications: &notifications.Notifications{
+						Jira: &jira.Notification{
+							Project: "OCPBUGS",
+							Escalations: []jira.Escalation{
+								{Name: "critical", Failures: 2, Priority: "Critical"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	releasePayload := &v1alpha1.ReleasePayload{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
+		Spec: v1alpha1.ReleasePayloadSpec{
+			PayloadCoordinates: v1alpha1.PayloadCoordinates{StreamName: "4.19.0-0.nightly"},
+			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+				InformingJobs: []v1alpha1.CIConfiguration{
+					{
+						CIConfigurationName:    "rosa-hcp",
+						CIConfigurationJobName: "periodic-ci-rosa-hcp",
+						Qualifiers: releasequalifierslib.ReleaseQualifiers{
+							"rosa": {},
+						},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.ReleasePayloadStatus{
+			InformingJobResults: []v1alpha1.JobStatus{
+				{CIConfigurationName: "rosa-hcp", CIConfigurationJobName: "periodic-ci-rosa-hcp"},
+			},
+		},
+	}
+
+	jobHistory := map[string][]bigquery.ReleaseQualifiersProwjobSummaryResult{
+		"periodic-ci-rosa-hcp": {
+			{Name: "periodic-ci-rosa-hcp", State: "failure"},
+			{Name: "periodic-ci-rosa-hcp", State: "failure"},
+			{Name: "periodic-ci-rosa-hcp", State: "failure"},
+		},
+	}
+
+	// First call: Jira search fails so triggerJiraEscalation returns ""
+	err := controller.processJobsForEscalations(
+		context.Background(), releasePayload, releasePayload.Status.InformingJobResults,
+		controller.configAccessor.Get(), jobHistory,
+	)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	// Notification state should NOT be updated on failure
+	threadID := "4.19.0-0.nightly-rosa-OCPBUGS--"
+	state := controller.getNotificationState(releasePayload, "rosa", threadID)
+	if state.ActiveEscalation != "" {
+		t.Errorf("Expected empty ActiveEscalation after failed Jira call, got %q", state.ActiveEscalation)
+	}
+
+	// Fix the mock so Jira works on retry
+	mock.searchError = nil
+
+	// Second call should succeed and create an issue
+	err = controller.processJobsForEscalations(
+		context.Background(), releasePayload, releasePayload.Status.InformingJobResults,
+		controller.configAccessor.Get(), jobHistory,
+	)
+	if err != nil {
+		t.Fatalf("Unexpected error on retry: %v", err)
+	}
+	if len(mock.Issues) != 1 {
+		t.Fatalf("Expected 1 issue after retry, got %d", len(mock.Issues))
+	}
+	state = controller.getNotificationState(releasePayload, "rosa", threadID)
+	if state.ActiveEscalation != "critical" {
+		t.Errorf("Expected ActiveEscalation=critical after successful retry, got %q", state.ActiveEscalation)
+	}
+	if state.IssueKey == "" {
+		t.Error("Expected IssueKey to be set after successful retry")
+	}
+}
+
 func TestAbatement(t *testing.T) {
 	t.Parallel()
 

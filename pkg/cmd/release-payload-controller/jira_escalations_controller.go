@@ -317,15 +317,17 @@ func (c *JiraEscalationsController) processJobsForEscalations(
 				}
 
 				issueKey := c.triggerJiraEscalation(ctx, releasePayload, job, qualifierID, jiraConfig, *highestEscalation)
+				if issueKey == "" {
+					klog.Warningf("Failed to create/update Jira escalation '%s' for thread %s, will retry on next reconcile", highestEscalation.Name, threadID)
+					continue
+				}
 
-				// Update notification state
+				// Update notification state only after successful Jira escalation
 				notifState.ActiveEscalation = highestEscalation.Name
 				notifState.ActivePriority = highestEscalation.Priority
 				notifState.Abated = false
 				notifState.LastTransitionTime = metav1.NewTime(time.Now())
-				if issueKey != "" {
-					notifState.IssueKey = issueKey
-				}
+				notifState.IssueKey = issueKey
 				c.setNotificationState(releasePayload, qualifierID, threadID, notifState)
 			} else if notifState.ActiveEscalation != "" && !notifState.Abated {
 				// Abatement: conditions improved, leave comment on open Jira ticket
