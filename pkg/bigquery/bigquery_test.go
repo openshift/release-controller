@@ -244,6 +244,19 @@ func TestClientInterface(t *testing.T) {
 	var _ ClientInterface = (*FakeClient)(nil)
 }
 
+func TestCopyToStruct_MapToNonStruct(t *testing.T) {
+	src := map[string]any{"key": "value"}
+	dst := new(string)
+
+	err := copyToStruct(src, dst)
+	if err == nil {
+		t.Fatal("expected error when destination is a non-struct pointer, got nil")
+	}
+	if err.Error() != "destination must be a struct, got string" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 func TestQueryInto(t *testing.T) {
 	type TestResult struct {
 		ID   int    `bigquery:"id"`

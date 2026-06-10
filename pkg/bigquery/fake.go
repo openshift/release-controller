@@ -72,6 +72,10 @@ func copyToStruct(src, dst any) error {
 
 	// If source is a map, copy fields by name
 	if srcVal.Kind() == reflect.Map {
+		if dstElem.Kind() != reflect.Struct {
+			return fmt.Errorf("destination must be a struct, got %s", dstElem.Kind())
+		}
+
 		srcMap, ok := src.(map[string]any)
 		if !ok {
 			return fmt.Errorf("source map is not map[string]interface{}")
