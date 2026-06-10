@@ -40,7 +40,11 @@ func (f *fakeRowIterator) Next(dst any) error {
 	switch d := dst.(type) {
 	case *map[string]any:
 		if m, ok := result.(map[string]any); ok {
-			*d = m
+			cp := make(map[string]any, len(m))
+			for k, v := range m {
+				cp[k] = v
+			}
+			*d = cp
 		}
 	default:
 		// For structs, use reflection to copy data
