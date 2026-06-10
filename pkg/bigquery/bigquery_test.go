@@ -233,7 +233,7 @@ func TestFakeClient_SummaryRejectsMistypedResult(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for mis-typed DefaultResult entry, got nil")
 	}
-	if !errors.Is(err, err) || err.Error() != "DefaultResult[1]: expected ReleaseQualifiersProwjobSummaryResult, got string" {
+	if err.Error() != "DefaultResult[1]: expected ReleaseQualifiersProwjobSummaryResult, got string" {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

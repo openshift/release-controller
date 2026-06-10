@@ -81,7 +81,7 @@ func copyToStruct(src, dst any) error {
 
 		srcMap, ok := src.(map[string]any)
 		if !ok {
-			return fmt.Errorf("source map is not map[string]interface{}")
+			return fmt.Errorf("source map is not map[string]any")
 		}
 
 		for i := 0; i < dstElem.NumField(); i++ {
