@@ -3,6 +3,7 @@ package bigquery
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
 	"sync"
 
@@ -41,9 +42,7 @@ func (f *fakeRowIterator) Next(dst any) error {
 	case *map[string]any:
 		if m, ok := result.(map[string]any); ok {
 			cp := make(map[string]any, len(m))
-			for k, v := range m {
-				cp[k] = v
-			}
+			maps.Copy(cp, m)
 			*d = cp
 		}
 	default:
