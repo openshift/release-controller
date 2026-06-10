@@ -188,6 +188,56 @@ func TestFakeClient_Reset(t *testing.T) {
 	}
 }
 
+func TestFakeClient_SummaryRecordsParameters(t *testing.T) {
+	fc := NewFakeClient()
+	fc.DefaultResult = []any{
+		ReleaseQualifiersProwjobSummaryResult{
+			Release: "4.22.0-0.nightly-2026-04-06-112110",
+			Name:    "job-a",
+			State:   "success",
+			URL:     "https://prow.ci/1",
+		},
+	}
+
+	defaultJobs := []string{"job-a", "job-b"}
+	filteredJobs := []ProwjobQueryFilter{
+		{Name: "job-c", Interval: "2 DAY"},
+	}
+
+	_, err := fc.GetReleaseQualifiersProwjobSummaryWithFilters(context.Background(), defaultJobs, filteredJobs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(fc.LastDefaultJobs) != 2 || fc.LastDefaultJobs[0] != "job-a" || fc.LastDefaultJobs[1] != "job-b" {
+		t.Errorf("expected LastDefaultJobs [job-a, job-b], got %v", fc.LastDefaultJobs)
+	}
+	if len(fc.LastFilteredJobs) != 1 || fc.LastFilteredJobs[0].Name != "job-c" || fc.LastFilteredJobs[0].Interval != "2 DAY" {
+		t.Errorf("expected LastFilteredJobs [{job-c 2 DAY}], got %v", fc.LastFilteredJobs)
+	}
+}
+
+func TestFakeClient_SummaryRejectsMistypedResult(t *testing.T) {
+	fc := NewFakeClient()
+	fc.DefaultResult = []any{
+		ReleaseQualifiersProwjobSummaryResult{
+			Release: "4.22.0-0.nightly-2026-04-06-112110",
+			Name:    "job-a",
+			State:   "success",
+			URL:     "https://prow.ci/1",
+		},
+		"not a result struct",
+	}
+
+	_, err := fc.GetReleaseQualifiersProwjobSummaryWithFilters(context.Background(), []string{"job-a"}, nil)
+	if err == nil {
+		t.Fatal("expected error for mis-typed DefaultResult entry, got nil")
+	}
+	if !errors.Is(err, err) || err.Error() != "DefaultResult[1]: expected ReleaseQualifiersProwjobSummaryResult, got string" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 func TestClientInterface(t *testing.T) {
 	// Verify that both Client and FakeClient implement ClientInterface
 	var _ ClientInterface = (*Client)(nil)

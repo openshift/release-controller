@@ -17,6 +17,9 @@ type FakeClient struct {
 	QueryErrors   map[string]error
 	DefaultResult []any
 	SummaryError  error
+
+	LastDefaultJobs  []string
+	LastFilteredJobs []ProwjobQueryFilter
 }
 
 // fakeRowIterator implements RowIteratorInterface for testing
@@ -160,6 +163,8 @@ func (f *FakeClient) Reset() {
 	f.QueryErrors = make(map[string]error)
 	f.DefaultResult = nil
 	f.SummaryError = nil
+	f.LastDefaultJobs = nil
+	f.LastFilteredJobs = nil
 }
 
 // GetReleaseQualifiersProwjobSummary implements the ClientInterface method for testing.
@@ -169,20 +174,25 @@ func (f *FakeClient) GetReleaseQualifiersProwjobSummary(ctx context.Context, pro
 }
 
 // GetReleaseQualifiersProwjobSummaryWithFilters implements the ClientInterface method for testing.
-// It returns the results configured in DefaultResult, ignoring the filter parameters.
+// It records the incoming parameters and returns the results configured in DefaultResult.
 func (f *FakeClient) GetReleaseQualifiersProwjobSummaryWithFilters(ctx context.Context, defaultJobs []string, filteredJobs []ProwjobQueryFilter) ([]ReleaseQualifiersProwjobSummaryResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	f.LastDefaultJobs = defaultJobs
+	f.LastFilteredJobs = filteredJobs
 
 	if f.SummaryError != nil {
 		return nil, f.SummaryError
 	}
 
 	var results []ReleaseQualifiersProwjobSummaryResult
-	for _, result := range f.DefaultResult {
-		if r, ok := result.(ReleaseQualifiersProwjobSummaryResult); ok {
-			results = append(results, r)
+	for i, result := range f.DefaultResult {
+		r, ok := result.(ReleaseQualifiersProwjobSummaryResult)
+		if !ok {
+			return nil, fmt.Errorf("DefaultResult[%d]: expected ReleaseQualifiersProwjobSummaryResult, got %T", i, result)
 		}
+		results = append(results, r)
 	}
 
 	return results, nil
