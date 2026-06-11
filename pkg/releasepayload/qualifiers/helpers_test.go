@@ -536,7 +536,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 				Spec: createBasePayloadSpec(),
 				Status: v1alpha1.ReleasePayloadStatus{
 					InformingJobResults: []v1alpha1.JobStatus{
-						// techpreview: 2 Success, 1 Failure, 1 Pending → Failure
+						// techpreview: 2 Success, 1 Failure, 1 Pending → Pending (Pending takes priority)
 						newJobStatus("aws-ovn-techpreview", "periodic-ci-openshift-release-master-ci-4.20-e2e-aws-ovn-techpreview", 1, v1alpha1.JobStateSuccess, []v1alpha1.JobRunResult{
 							newJobRunResult(v1alpha1.JobRunStateSuccess),
 						}),
@@ -590,10 +590,10 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 							{CIConfigurationName: "aws-ovn-techpreview-serial-2of3", CIConfigurationJobName: "periodic-ci-openshift-release-master-ci-4.20-e2e-aws-ovn-techpreview-serial-2of3"},
 							{CIConfigurationName: "aws-ovn-techpreview-serial-3of3", CIConfigurationJobName: "periodic-ci-openshift-release-master-ci-4.20-e2e-aws-ovn-techpreview-serial-3of3"},
 						},
-						AggregateState:  v1alpha1.JobStateFailure, // One failed job causes entire qualifier to fail
+						AggregateState:  v1alpha1.JobStatePending, // Pending takes priority over Failure
 						BadgeName:       "Tech Preview",
-						BadgeEarned:     false, // Not earned because not all jobs succeeded
-						BadgePropagated: false, // Not propagated because badge not earned
+						BadgeEarned:     false,
+						BadgePropagated: false,
 					},
 					"fips": {
 						Jobs: []v1alpha1.ReleaseQualifierJobReference{
@@ -660,7 +660,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -733,7 +732,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			},
 		},
 		{
-			name: "MultipleJobTypes_BlockingAndUpgradeJobs",
+			name: "UpgradeJobs_ExcludedFromQualifierSummary",
 			configAccessor: &mockConfigAccessor{
 				config: createBaseConfig(),
 			},
@@ -797,7 +796,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 						Jobs: []v1alpha1.ReleaseQualifierJobReference{
 							{CIConfigurationName: "fips-blocking", CIConfigurationJobName: "periodic-ci-openshift-release-master-blocking-fips"},
 							{CIConfigurationName: "fips-informing", CIConfigurationJobName: "periodic-ci-openshift-release-master-informing-fips"},
-							{CIConfigurationName: "fips-upgrade", CIConfigurationJobName: "periodic-ci-openshift-release-master-upgrade-fips"},
 						},
 						AggregateState:  v1alpha1.JobStateSuccess,
 						BadgeName:       "FIPS",
@@ -831,7 +829,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -869,7 +866,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -902,7 +898,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -943,7 +938,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -976,7 +970,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -1009,7 +1002,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -1364,7 +1356,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},
@@ -1415,7 +1406,6 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
 						BlockingJobs:  []v1alpha1.CIConfiguration{},
 						InformingJobs: []v1alpha1.CIConfiguration{},
-						UpgradeJobs:   []v1alpha1.CIConfiguration{},
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{},

@@ -379,7 +379,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			},
 		},
 		{
-			name: "MultipleJobTypes_BlockingInformingAndUpgrade",
+			name: "UpgradeJobs_ExcludedFromQualifierSummary",
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
@@ -518,10 +518,6 @@ func TestQualifiersSummarySync(t *testing.T) {
 									{
 										CIConfigurationName:    "fips-informing",
 										CIConfigurationJobName: "periodic-ci-openshift-release-master-informing-fips",
-									},
-									{
-										CIConfigurationName:    "fips-upgrade",
-										CIConfigurationJobName: "periodic-ci-openshift-release-master-upgrade-fips",
 									},
 								},
 								AggregateState:  v1alpha1.JobStateSuccess,

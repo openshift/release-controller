@@ -444,13 +444,9 @@ func TestGetJobQualifiers(t *testing.T) {
 			},
 		},
 		{
-			name:                "Upgrade job qualifiers",
+			name:                "Upgrade job qualifiers not searched",
 			ciConfigurationName: "upgrade-job-1",
-			want: releasequalifierslib.ReleaseQualifiers{
-				"telco": releasequalifierslib.ReleaseQualifier{
-					BadgeName: "Telco",
-				},
-			},
+			want:                nil,
 		},
 		{
 			name:                "Non-existent job",

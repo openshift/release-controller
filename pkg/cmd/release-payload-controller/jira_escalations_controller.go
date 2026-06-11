@@ -144,9 +144,6 @@ func (c *JiraEscalationsController) sync(ctx context.Context, key string) error 
 	if err := c.processJobsForEscalations(ctx, releasePayload, releasePayload.Status.InformingJobResults, qualifiersConfig, historyByJob); err != nil {
 		return err
 	}
-	if err := c.processJobsForEscalations(ctx, releasePayload, releasePayload.Status.UpgradeJobResults, qualifiersConfig, historyByJob); err != nil {
-		return err
-	}
 
 	// Persist notification state changes
 	if !reflect.DeepEqual(originalReleasePayload.Status.QualifiersSummary, releasePayload.Status.QualifiersSummary) {
@@ -239,7 +236,6 @@ func (c *JiraEscalationsController) collectJobNamesWithEscalations(
 
 	collectFromJobs(releasePayload.Spec.PayloadVerificationConfig.BlockingJobs)
 	collectFromJobs(releasePayload.Spec.PayloadVerificationConfig.InformingJobs)
-	collectFromJobs(releasePayload.Spec.PayloadVerificationConfig.UpgradeJobs)
 
 	return defaultJobs, filteredJobs
 }
@@ -442,13 +438,6 @@ func (c *JiraEscalationsController) getJobQualifiers(
 
 	// Check informing jobs
 	for _, job := range releasePayload.Spec.PayloadVerificationConfig.InformingJobs {
-		if job.CIConfigurationName == ciConfigurationName {
-			return job.Qualifiers
-		}
-	}
-
-	// Check upgrade jobs
-	for _, job := range releasePayload.Spec.PayloadVerificationConfig.UpgradeJobs {
 		if job.CIConfigurationName == ciConfigurationName {
 			return job.Qualifiers
 		}

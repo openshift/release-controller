@@ -121,10 +121,6 @@ func buildJobStatusIndex(status *v1alpha1.ReleasePayloadStatus) map[string]v1alp
 		key := jobStatus.CIConfigurationName + "/" + jobStatus.CIConfigurationJobName
 		index[key] = jobStatus
 	}
-	for _, jobStatus := range status.UpgradeJobResults {
-		key := jobStatus.CIConfigurationName + "/" + jobStatus.CIConfigurationJobName
-		index[key] = jobStatus
-	}
 
 	return index
 }
@@ -160,7 +156,6 @@ func computeQualifierStates(
 	for _, jobs := range [][]v1alpha1.CIConfiguration{
 		payload.Spec.PayloadVerificationConfig.BlockingJobs,
 		payload.Spec.PayloadVerificationConfig.InformingJobs,
-		payload.Spec.PayloadVerificationConfig.UpgradeJobs,
 	} {
 		for _, job := range jobs {
 			if len(job.Qualifiers) > 0 {
