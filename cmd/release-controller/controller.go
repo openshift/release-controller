@@ -439,7 +439,8 @@ func (c *Controller) run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
 
-	go wait.Until(c.gcWorker, time.Second, stopCh)
+	// TODO: Turn GC back on...
+	// go wait.Until(c.gcWorker, time.Second, stopCh)
 
 	for range workers {
 		go wait.Until(c.auditWorker, time.Second, stopCh)
