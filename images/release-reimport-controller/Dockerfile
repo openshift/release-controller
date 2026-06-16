@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/4.23:cli
+FROM registry.ci.openshift.org/ocp/5.0:cli
 LABEL maintainer="apavel@redhat.com"
 
 ADD release-reimport-controller /usr/bin/release-reimport-controller
