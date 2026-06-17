@@ -24,6 +24,11 @@ func (c *Controller) garbageCollectSync() error {
 		}
 	}()
 
+	if c.auditStore != nil || c.signer != nil {
+		klog.V(2).Infof("Skipping garbage collection in audit mode")
+		return nil
+	}
+
 	imageStreams, err := c.releaseLister.List(labels.Everything())
 	if err != nil {
 		return err
