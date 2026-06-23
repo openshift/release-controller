@@ -130,9 +130,18 @@ func resolveReleasePullSpec(release *releasecontroller.Release, tagName string) 
 	return releasecontroller.FindPublicImagePullSpec(release.Target, tagName)
 }
 
+func (c *Controller) resolvePhase(tag imagev1.TagReference) string {
+	payload := c.GetReleasePayload(tag.Name)
+	if payload == nil {
+		klog.Errorf("no ReleasePayload found for tag %q, phase is unknown", tag.Name)
+		return "Unknown"
+	}
+	return releasecontroller.GetReleasePhase(payload)
+}
+
 func (c *Controller) phaseCell(tag imagev1.TagReference) string {
-	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-	alert := phaseAlert(tag)
+	phase := c.resolvePhase(tag)
+	alert := phaseAlert(phase)
 
 	var title string
 	var overridden bool
@@ -158,8 +167,7 @@ func (c *Controller) phaseCell(tag imagev1.TagReference) string {
 	return fmt.Sprintf("<td class=\"%s\">%s</td>", alert, display)
 }
 
-func phaseAlert(tag imagev1.TagReference) string {
-	phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
+func phaseAlert(phase string) string {
 	switch phase {
 	case releasecontroller.ReleasePhasePending:
 		return ""
@@ -295,13 +303,8 @@ func upgradeJobs(upgrades *ReleaseUpgrades, index int, tagCreationTimestampStrin
 
 	return buf2.String()
 }
-func canLink(tag imagev1.TagReference) bool {
-	switch tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
-	case releasecontroller.ReleasePhasePending:
-		return false
-	default:
-		return true
-	}
+func canLink(phase string) bool {
+	return phase != releasecontroller.ReleasePhasePending
 }
 
 func (c *Controller) GetReleasePayload(name string) *v1alpha1.ReleasePayload {
@@ -409,7 +412,8 @@ func (c *Controller) links(tag imagev1.TagReference, release *releasecontroller.
 			buf.WriteString("</span>")
 			continue
 		}
-		final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
+		phase := c.resolvePhase(tag)
+		final := phase == releasecontroller.ReleasePhaseRejected || phase == releasecontroller.ReleasePhaseAccepted
 		if !verificationJobs[key].Disabled && !final {
 			buf.WriteString(" <span title=\"Pending\">")
 			buf.WriteString(template.HTMLEscapeString(key))
@@ -487,7 +491,8 @@ func (c *Controller) renderVerifyLinks(w io.Writer, tag imagev1.TagReference, re
 		return
 	}
 	buf := &bytes.Buffer{}
-	final := tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseRejected || tag.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted
+	phase := c.resolvePhase(tag)
+	final := phase == releasecontroller.ReleasePhaseRejected || phase == releasecontroller.ReleasePhaseAccepted
 	if len(verificationJobs.BlockingJobs) > 0 {
 		buf.WriteString("<li>Blocking jobs<ul>")
 		buf.WriteString(c.renderVerificationJobsList(verificationJobs.BlockingJobs, release, tag, final))
@@ -667,7 +672,7 @@ func hasPublishTag(config *releasecontroller.ReleaseConfig) (string, bool) {
 	return "", false
 }
 
-func findPreviousRelease(older []*imagev1.TagReference, release *releasecontroller.Release) *imagev1.TagReference {
+func findPreviousRelease(older []*imagev1.TagReference, release *releasecontroller.Release, phaseOf func(imagev1.TagReference) string) *imagev1.TagReference {
 	if len(older) == 0 {
 		return nil
 	}
@@ -682,7 +687,7 @@ func findPreviousRelease(older []*imagev1.TagReference, release *releasecontroll
 		}
 	}
 	for _, old := range older {
-		if old.Annotations[releasecontroller.ReleaseAnnotationPhase] == releasecontroller.ReleasePhaseAccepted {
+		if phaseOf(*old) == releasecontroller.ReleasePhaseAccepted {
 			return old
 		}
 	}
