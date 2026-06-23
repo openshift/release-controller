@@ -671,6 +671,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	if strings.ToLower(format) != "short" {
 		generateChangelog = true
 	}
+	includeChangelogs := req.URL.Query().Get("includeChangelogs") == "true"
 
 	tagInfo, err := c.getReleaseTagInfo(req)
 	if err != nil {
@@ -716,6 +717,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 				if err != nil {
 					nodeImageErr = newHTTPError(http.StatusInternalServerError, "RPM diff for %s: %w", tagInfo.Tag, err)
 					return
+				}
+				if includeChangelogs && len(diff.Changed) > 0 {
+					if imageRef, refErr := c.releaseInfo.ImageReferenceForComponent(tagInfo.TagPullSpec, "rhel-coreos"); refErr == nil {
+						populateChangelogs(c.releaseInfo, imageRef, &diff)
+					}
 				}
 				nodeImageStreams = []releasecontroller.APINodeImageStream{{
 					Name:    "Red Hat Enterprise Linux CoreOS",
@@ -764,6 +770,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 					if err != nil {
 						klog.V(4).Infof("Unable to retrieve RPM diff for stream %s in %s: %v", e.Tag, tagInfo.Tag, err)
 					} else {
+						if includeChangelogs && len(diff.Changed) > 0 {
+							if imageRef, refErr := c.releaseInfo.ImageReferenceForComponent(tagInfo.TagPullSpec, e.Tag); refErr == nil {
+								populateChangelogs(c.releaseInfo, imageRef, &diff)
+							}
+						}
 						e.RpmDiff = &diff
 					}
 				}
@@ -822,6 +833,24 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	fmt.Fprintln(w)
+}
+
+func populateChangelogs(releaseInfo releasecontroller.ReleaseInfo, imageRef string, diff *releasecontroller.RpmDiff) {
+	packageNames := make([]string, 0, len(diff.Changed))
+	for pkg := range diff.Changed {
+		packageNames = append(packageNames, pkg)
+	}
+	changelogs, err := releaseInfo.RpmChangelogs(imageRef, packageNames)
+	if err != nil {
+		klog.V(4).Infof("Unable to retrieve RPM changelogs for %s: %v", imageRef, err)
+		return
+	}
+	for pkg, entry := range diff.Changed {
+		if cl, ok := changelogs[pkg]; ok {
+			entry.Changelog = releasecontroller.FilterChangelogBetweenVersions(cl, entry.Old)
+			diff.Changed[pkg] = entry
+		}
+	}
 }
 
 func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagInfo, format string) {

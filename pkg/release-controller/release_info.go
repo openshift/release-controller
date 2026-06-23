@@ -178,6 +178,23 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64, architecture string) Re
 					}
 				}
 			}
+		case "rpmchangelogs":
+			if len(parts) != 3 {
+				s, err = "", fmt.Errorf("invalid rpmchangelogs key")
+			} else {
+				packages := strings.Split(parts[2], ",")
+				var changelogs map[string]string
+				changelogs, err = info.RpmChangelogs(parts[1], packages)
+				if err == nil {
+					var b []byte
+					b, err = json.Marshal(changelogs)
+					if err != nil {
+						klog.V(4).Infof("Failed to Marshal RPM changelogs for %s: %s", parts[1], err)
+					} else {
+						s = string(b)
+					}
+				}
+			}
 		case "changelog":
 			if strings.Contains(parts[1], "\x00") || strings.Contains(parts[2], "\x00") || strings.Contains(parts[3], "\x00") {
 				s, err = "", fmt.Errorf("invalid from/to")
@@ -306,6 +323,24 @@ func (c *CachingReleaseInfo) ListMachineOSStreams(releaseImage string) ([]Machin
 	return streams, nil
 }
 
+func (c *CachingReleaseInfo) RpmChangelogs(imageRef string, packageNames []string) (map[string]string, error) {
+	sort.Strings(packageNames)
+	var s string
+	key := strings.Join([]string{"rpmchangelogs", imageRef, strings.Join(packageNames, ",")}, "\x00")
+	err := c.cache.Get(context.TODO(), key, groupcache.StringSink(&s))
+	if err != nil {
+		return nil, err
+	}
+	if s == "" {
+		return nil, nil
+	}
+	var result map[string]string
+	if err = json.Unmarshal([]byte(s), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (c *CachingReleaseInfo) ChangeLog(from, to string, json bool) (string, error) {
 	var s string
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to, strconv.FormatBool(json)}, "\x00"), groupcache.StringSink(&s))
@@ -362,6 +397,10 @@ type ReleaseInfo interface {
 	ImageReferenceForComponent(releaseImage, componentName string) (string, error)
 	// ListMachineOSStreams returns machine-OS streams from the release payload (see machine_os_tags.go).
 	ListMachineOSStreams(releaseImage string) ([]MachineOSStreamInfo, error)
+	// RpmChangelogs extracts RPM changelogs for the given packages from the machine-OS image
+	// identified by imageRef (a full pull spec with digest). Returns a map of package-name to raw
+	// changelog text. The caller is responsible for semaphore management.
+	RpmChangelogs(imageRef string, packageNames []string) (map[string]string, error)
 	ReleaseInfo(image string) (string, error)
 	UpgradeInfo(image string) (ReleaseUpgradeInfo, error)
 	ImageInfo(image, architecture string) (string, error)
@@ -791,6 +830,114 @@ func (r *ExecReleaseInfo) RpmDiffForStream(fromRelease, toRelease, rpmdbImageNam
 	return rpmdiff, nil
 }
 
+var rpmdbLocations = []string{"usr/lib/sysimage/rpm", "var/lib/rpm", "usr/share/rpm"}
+
+// RpmChangelogs extracts RPM changelogs for the given packages from the machine-OS image.
+// It caches results per image digest in /tmp/rpmdb/changelogs-sha256_<digest>.json.
+// The caller must hold a RpmdbOCSlots semaphore slot.
+func (r *ExecReleaseInfo) RpmChangelogs(imageRef string, packageNames []string) (map[string]string, error) {
+	if _, err := imagereference.Parse(imageRef); err != nil {
+		return nil, fmt.Errorf("%s is not an image reference: %v", imageRef, err)
+	}
+	if len(packageNames) == 0 {
+		return nil, nil
+	}
+
+	_, sha, found := strings.Cut(imageRef, "@sha256:")
+	if !found {
+		return nil, fmt.Errorf("image reference missing sha256 digest: %s", imageRef)
+	}
+	cacheID := "sha256_" + sha
+
+	cachedPath := filepath.Join("/tmp/rpmdb", "changelogs-"+cacheID+".json")
+	if data, err := os.ReadFile(cachedPath); err == nil {
+		var cached map[string]string
+		if err = json.Unmarshal(data, &cached); err != nil {
+			return nil, fmt.Errorf("unmarshaling changelogs cache: %w", err)
+		}
+		result := make(map[string]string, len(packageNames))
+		for _, pkg := range packageNames {
+			if cl, ok := cached[pkg]; ok {
+				result[pkg] = cl
+			}
+		}
+		return result, nil
+	}
+
+	tmpdir, err := os.MkdirTemp("", "rpmdb-changelog")
+	if err != nil {
+		return nil, fmt.Errorf("creating tmpdir for changelog extraction: %w", err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	rpmdbDir := filepath.Join(tmpdir, "rpmdb")
+	if err = os.MkdirAll(rpmdbDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating rpmdb dir: %w", err)
+	}
+
+	var extracted bool
+	for _, loc := range rpmdbLocations {
+		_, _, extractErr := ocCmd("image", "extract", imageRef, "--path", loc+":"+rpmdbDir)
+		if extractErr != nil {
+			klog.V(4).Infof("RPM DB not found at %s in %s: %v", loc, imageRef, extractErr)
+			continue
+		}
+		if entries, _ := os.ReadDir(rpmdbDir); len(entries) > 0 {
+			extracted = true
+			break
+		}
+	}
+	if !extracted {
+		return nil, fmt.Errorf("no RPM database found in %s (tried %v)", imageRef, rpmdbLocations)
+	}
+
+	args := []string{"-q", "--dbpath", rpmdbDir,
+		"--queryformat", rpmChangelogSeparatorPrefix + "%{NAME}" + rpmChangelogSeparatorSuffix + "\\n",
+		"--changelog"}
+	args = append(args, packageNames...)
+
+	rpmPath, err := exec.LookPath("rpm")
+	if err != nil {
+		return nil, fmt.Errorf("rpm not found: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, rpmPath, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err = cmd.Run(); err != nil {
+		return nil, fmt.Errorf("querying RPM changelogs: %v: %s", err, stderr.String())
+	}
+
+	changelogs := ParseRpmChangelogOutput(stdout.String())
+
+	data, err := json.Marshal(changelogs)
+	if err == nil {
+		tmpCache, tmpErr := os.CreateTemp(filepath.Dir(cachedPath), ".changelogs-tmp-*")
+		if tmpErr == nil {
+			_, writeErr := tmpCache.Write(data)
+			closeErr := tmpCache.Close()
+			if writeErr == nil && closeErr == nil {
+				_ = os.Rename(tmpCache.Name(), cachedPath)
+			} else {
+				_ = os.Remove(tmpCache.Name())
+			}
+		}
+	}
+
+	result := make(map[string]string, len(packageNames))
+	for _, pkg := range packageNames {
+		if cl, ok := changelogs[pkg]; ok {
+			result[pkg] = cl
+		}
+	}
+	return result, nil
+}
+
 type RpmList struct {
 	Packages   map[string]string `json:"packages"`
 	Extensions map[string]string `json:"extensions"`
@@ -803,8 +950,9 @@ type RpmDiff struct {
 }
 
 type RpmChangedDiff struct {
-	Old string `json:"old,omitempty"`
-	New string `json:"new,omitempty"`
+	Old       string `json:"old,omitempty"`
+	New       string `json:"new,omitempty"`
+	Changelog string `json:"changelog,omitempty"`
 }
 
 type ReleaseUpgradeInfo struct {
