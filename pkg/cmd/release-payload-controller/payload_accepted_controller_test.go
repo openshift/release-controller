@@ -590,6 +590,27 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			},
 		},
 		{
+			// Verifies that a pending job is not masked by a failure in a sibling
+			// job. Acceptance must wait for all jobs to complete, regardless of
+			// whether other jobs have already failed.
+			name: "MixedInformingAndUpgradeJobsFailureAndPendingNoBlockingJobs",
+			payload: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					InformingJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateFailure},
+					},
+					UpgradeJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "upgrade-a", AggregateState: v1alpha1.JobStatePending},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadAccepted,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadAcceptedReason,
+			},
+		},
+		{
 			name: "MixedInformingAndUpgradeJobsCompleteNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{

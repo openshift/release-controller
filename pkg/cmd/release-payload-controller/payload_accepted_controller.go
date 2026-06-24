@@ -148,14 +148,20 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 	}
 
 	// When there are no blocking jobs, wait for all informing/upgrade jobs to
-	// finish before accepting. Informing job failures do not prevent acceptance.
+	// finish before accepting. Failures do not prevent acceptance — only pending
+	// jobs delay it. We check for pending jobs directly rather than using
+	// ComputeJobState, because ComputeJobState prioritizes failure over pending
+	// (designed for blocking jobs where failure is terminal). Here, a failed job
+	// alongside a pending job must still wait for the pending job to complete.
 	if len(payload.Status.BlockingJobResults) == 0 {
 		allJobs := append(payload.Status.InformingJobResults, payload.Status.UpgradeJobResults...)
-		if jobstatus.ComputeJobState(allJobs) == v1alpha1.JobStatePending {
-			acceptedCondition.Status = metav1.ConditionUnknown
-		} else {
-			acceptedCondition.Status = metav1.ConditionTrue
+		for _, job := range allJobs {
+			if job.AggregateState == v1alpha1.JobStatePending {
+				acceptedCondition.Status = metav1.ConditionUnknown
+				return acceptedCondition
+			}
 		}
+		acceptedCondition.Status = metav1.ConditionTrue
 		return acceptedCondition
 	}
 
