@@ -404,6 +404,7 @@ func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
 	select {
 	case RpmdbOCSlots <- struct{}{}:
 	default:
+		klog.Infof("rpmdb semaphore exhausted (limit %d), rejecting: oc %s", MaxConcurrentRpmdbOCCalls, strings.Join(args, " "))
 		return nil, nil, fmt.Errorf(
 			"too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
 			MaxConcurrentRpmdbOCCalls,
