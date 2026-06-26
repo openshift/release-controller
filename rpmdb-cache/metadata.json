@@ -1,0 +1,2696 @@
+{
+  "generated": "2026-06-08T18:05:15Z",
+  "versions": {
+    "4.12.0": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.1": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.2": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.3": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.4": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.5": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.6": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.7": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.8": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.9": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.10": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.11": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.12": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.13": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.14": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.15": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.16": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.17": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.18": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.19": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.20": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.21": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.22": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.23": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.24": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.25": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.26": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.27": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.28": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.29": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.30": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.31": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.32": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.33": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.34": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.35": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.36": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.37": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.38": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.39": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.40": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.41": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.42": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.43": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.44": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.45": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.46": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.47": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.48": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.49": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.50": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.51": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.52": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.53": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.54": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.55": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.56": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.57": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.58": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.59": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.60": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.61": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.62": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.63": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.64": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.65": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.66": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.67": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.68": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.69": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.70": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.71": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.72": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.73": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.74": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.75": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.76": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.77": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.78": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.79": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.80": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.81": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.82": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.83": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.84": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.85": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.86": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.87": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.88": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.89": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.90": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.12.91": {
+      "streams": [
+        "rhel-coreos-8"
+      ]
+    },
+    "4.13.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.44": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.45": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.46": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.47": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.48": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.49": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.50": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.51": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.52": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.53": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.54": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.55": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.56": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.57": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.58": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.59": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.60": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.61": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.62": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.63": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.64": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.65": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.66": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.13.67": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.44": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.45": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.46": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.47": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.48": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.49": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.50": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.51": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.52": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.53": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.54": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.55": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.56": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.57": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.58": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.59": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.60": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.61": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.62": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.63": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.64": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.65": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.14.66": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.44": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.45": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.46": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.47": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.48": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.49": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.50": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.51": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.52": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.53": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.54": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.55": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.56": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.57": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.58": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.59": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.60": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.61": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.62": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.63": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.64": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.15.65": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.44": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.45": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.46": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.47": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.48": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.49": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.50": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.51": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.52": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.53": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.54": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.55": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.56": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.57": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.58": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.59": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.60": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.61": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.62": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.16.63": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.44": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.45": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.46": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.47": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.48": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.49": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.50": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.51": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.52": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.53": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.17.54": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.34": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.35": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.36": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.37": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.38": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.39": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.40": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.41": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.42": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.18.43": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.7": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.25": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.26": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.27": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.28": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.29": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.30": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.31": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.32": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.19.33": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.0": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.1": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.2": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.3": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.4": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.5": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.6": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.8": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.9": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.10": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.11": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.12": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.13": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.14": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.15": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.16": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.17": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.18": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.19": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.20": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.21": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.22": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.23": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.20.24": {
+      "streams": [
+        "rhel-coreos"
+      ]
+    },
+    "4.21.0": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.1": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.2": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.3": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.4": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.5": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.6": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.7": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.8": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.9": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.10": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.11": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.12": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.13": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.14": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.15": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.16": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.17": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.18": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.21.19": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    },
+    "4.22.0": {
+      "streams": [
+        "rhel-coreos-10",
+        "rhel-coreos"
+      ]
+    }
+  }
+}
