@@ -51,7 +51,7 @@ const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
 
 // MaxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
 // --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
-const MaxConcurrentRpmdbOCCalls = 16
+const MaxConcurrentRpmdbOCCalls = 32
 
 var (
 	ocPath = ""
@@ -404,6 +404,7 @@ func ocCmdRpmdb(args ...string) ([]byte, []byte, error) {
 	select {
 	case RpmdbOCSlots <- struct{}{}:
 	default:
+		klog.Infof("rpmdb semaphore exhausted (limit %d), rejecting: oc %s", MaxConcurrentRpmdbOCCalls, strings.Join(args, " "))
 		return nil, nil, fmt.Errorf(
 			"too many concurrent oc adm release info --rpmdb/--rpmdb-diff operations (limit %d)",
 			MaxConcurrentRpmdbOCCalls,
