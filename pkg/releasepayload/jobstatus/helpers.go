@@ -75,15 +75,12 @@ func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 	}
 
 	switch {
-	// Any failed jobs mean the release cannot be Accepted
-	case len(failedJobs) > 0:
-		return v1alpha1.JobStateFailure
-	// If everything is successful, then we can Accept the payload
-	case len(successfulJobs) == totalJobs && totalJobs > 0:
-		return v1alpha1.JobStateSuccess
-	// If there are any pending jobs, then we're still working on validating the release
 	case len(pendingJobs) > 0:
 		return v1alpha1.JobStatePending
+	case len(failedJobs) > 0:
+		return v1alpha1.JobStateFailure
+	case len(successfulJobs) == totalJobs && totalJobs > 0:
+		return v1alpha1.JobStateSuccess
 	default:
 		return v1alpha1.JobStateUnknown
 	}

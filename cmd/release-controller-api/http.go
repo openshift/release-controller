@@ -1414,7 +1414,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	switch c.resolvePhase(*tagInfo.Info.Tag) {
 	case releasecontroller.ReleasePhaseFailed:
-		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationMessage]))
+		fmt.Fprintf(w, `<div class="alert alert-danger">`)
+		if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
+			fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
+		}
 		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
 			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
 		} else {
@@ -1660,8 +1663,8 @@ func (c *Controller) tableLink(config *releasecontroller.ReleaseConfig, tag imag
 	phase := c.resolvePhase(tag)
 	alert := phaseAlert(phase)
 	if canLink(phase) {
-		if value, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
-			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+		if _, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
+			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString("keep"), alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
 		if strings.Contains(tag.Name, "nightly") && c.doesInconsistencyExist(tag.Name) {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))

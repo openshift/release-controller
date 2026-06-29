@@ -74,6 +74,21 @@ func TestComputeJobState(t *testing.T) {
 			expected: v1alpha1.JobStateFailure,
 		},
 		{
+			name: "FailedAndPendingJobs",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+				{
+					AggregateState: v1alpha1.JobStatePending,
+				},
+			},
+			expected: v1alpha1.JobStatePending,
+		},
+		{
 			name: "Garbage",
 			input: []v1alpha1.JobStatus{
 				{

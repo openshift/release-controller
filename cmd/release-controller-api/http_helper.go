@@ -148,8 +148,6 @@ func (c *Controller) phaseCell(tag imagev1.TagReference) string {
 	if payload := c.GetReleasePayload(tag.Name); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
 		title = payload.Spec.PayloadOverride.Reason
 		overridden = true
-	} else if phase == releasecontroller.ReleasePhaseRejected {
-		title = tag.Annotations[releasecontroller.ReleaseAnnotationMessage]
 	}
 
 	display := template.HTMLEscapeString(phase)
