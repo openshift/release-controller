@@ -76,7 +76,7 @@ func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chN
 		return
 	}
 
-	out, err = rhcos.TransformMarkDownOutput(out, fromTag, toTag, architecture, archExtension)
+	out, err = rhcos.TransformMarkDownOutput(out, fromTag, toTag, architecture, archExtension, c.releaseInfo, toImage.GenerateDigestPullSpec())
 	if err != nil {
 		ch <- renderResult{err: err}
 		return
