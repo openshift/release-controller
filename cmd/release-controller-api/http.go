@@ -121,7 +121,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 				needed[tag.Name] = &ReleaseStreamTag{
 					Release:         r,
 					Tag:             tag,
-					Previous:        findPreviousRelease(releaseTags[i+1:], r),
+					Previous:        findPreviousRelease(releaseTags[i+1:], r, c.resolvePhase),
 					PreviousRelease: r,
 					Older:           releaseTags[i+1:],
 					Stable:          stable,
@@ -551,7 +551,7 @@ func (c *Controller) apiReleaseLatest(w http.ResponseWriter, req *http.Request) 
 		Name:        latest.Name,
 		PullSpec:    resolveReleasePullSpec(r, latest.Name),
 		DownloadURL: downloadURL,
-		Phase:       latest.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Phase:       c.resolvePhase(*latest),
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -628,7 +628,7 @@ func (c *Controller) apiReleaseTags(w http.ResponseWriter, req *http.Request) {
 	var tags []releasecontroller.APITag
 	for _, tag := range r.Tags {
 		downloadURL, _ := c.urlForArtifacts(tag.Name)
-		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
+		phase := c.resolvePhase(*tag)
 		if len(filterPhase) > 0 && !slices.Contains(filterPhase, phase) {
 			continue
 		}
@@ -803,7 +803,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	summary := releasecontroller.APIReleaseInfo{
 		Name:             tagInfo.Tag,
-		Phase:            tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+		Phase:            c.resolvePhase(*tagInfo.Info.Tag),
 		Results:          verificationJobs,
 		UpgradesTo:       c.graph.UpgradesTo(tagInfo.Tag),
 		UpgradesFrom:     c.graph.UpgradesFrom(tagInfo.Tag),
@@ -1413,9 +1413,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			linkifyURLs(override.Reason))
 	}
 
-	switch tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationPhase] {
+	switch c.resolvePhase(*tagInfo.Info.Tag) {
 	case releasecontroller.ReleasePhaseFailed:
-		fmt.Fprintf(w, `<div class="alert alert-danger"><p>%s</p>`, template.HTMLEscapeString(tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationMessage]))
+		fmt.Fprintf(w, `<div class="alert alert-danger">`)
+		if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
+			fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
+		}
 		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
 			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
 		} else {
@@ -1658,19 +1661,21 @@ func (c *Controller) doesInconsistencyExist(tag string) bool {
 }
 
 func (c *Controller) tableLink(config *releasecontroller.ReleaseConfig, tag imagev1.TagReference) string {
-	if canLink(tag) {
-		if value, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
-			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString(value), phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+	phase := c.resolvePhase(tag)
+	alert := phaseAlert(phase)
+	if canLink(phase) {
+		if _, ok := tag.Annotations[releasecontroller.ReleaseAnnotationKeep]; ok {
+			return fmt.Sprintf(`<td class="text-monospace"><a title="%s" class="%s" href="/releasestream/%s/release/%s">%s <span>*</span></a></td>`, template.HTMLEscapeString("keep"), alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
 		if strings.Contains(tag.Name, "nightly") && c.doesInconsistencyExist(tag.Name) {
-			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))
 		} else if config.As == releasecontroller.ReleaseConfigModeStable {
-			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" style="padding-left:15px" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" style="padding-left:15px" href="/releasestream/%s/release/%s">%s</a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		} else {
-			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, phaseAlert(tag), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
+			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		}
 	}
-	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, phaseAlert(tag), template.HTMLEscapeString(tag.Name))
+	return fmt.Sprintf(`<td class="text-monospace %s">%s</td>`, alert, template.HTMLEscapeString(tag.Name))
 }
 
 func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
@@ -1757,7 +1762,6 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"versionGrouping":         versionGrouping,
 			"streamNames":             streamNames,
 			"phaseCell":               c.phaseCell,
-			"phaseAlert":              phaseAlert,
 			"alerts":                  renderAlerts,
 			"links":                   c.links,
 			"releaseJoin":             releaseJoin,
@@ -1997,7 +2001,6 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 			"versionGrouping":         versionGrouping,
 			"streamNames":             streamNames,
 			"phaseCell":               c.phaseCell,
-			"phaseAlert":              phaseAlert,
 			"alerts":                  renderAlerts,
 			"links":                   c.links,
 			"releaseJoin":             releaseJoin,
@@ -2145,7 +2148,6 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			},
 			"tableLink":      c.tableLink,
 			"phaseCell":      c.phaseCell,
-			"phaseAlert":     phaseAlert,
 			"inc":            func(i int) int { return i + 1 },
 			"upgradeJobs":    upgradeJobs,
 			"releaseJoin":    releaseJoin,
@@ -2187,7 +2189,11 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
 			}
 		}
-		if isReleaseFailing(s.Tags, r.Config.MaxUnreadyReleases) {
+		phases := make([]string, len(s.Tags))
+		for i, tag := range s.Tags {
+			phases[i] = c.resolvePhase(*tag)
+		}
+		if isReleaseFailing(phases, r.Config.MaxUnreadyReleases) {
 			s.Failing = true
 		}
 
@@ -2224,10 +2230,13 @@ func generateStreamMessage(r *ReleaseStream) string {
 	return fmt.Sprintf("%s%s", prefix, message)
 }
 
-func isReleaseFailing(tags []*imagev1.TagReference, maxUnready int) bool {
+func isReleaseFailing(phases []string, maxUnready int) bool {
+	if maxUnready == 0 {
+		return false
+	}
 	unreadyCount := 0
-	for i := 0; unreadyCount < maxUnready && i < len(tags); i++ {
-		switch tags[i].Annotations[releasecontroller.ReleaseAnnotationPhase] {
+	for i := 0; unreadyCount < maxUnready && i < len(phases); i++ {
+		switch phases[i] {
 		case releasecontroller.ReleasePhaseReady:
 			continue
 		case releasecontroller.ReleasePhaseAccepted:
@@ -2436,10 +2445,8 @@ func (c *Controller) filteredStreams(phase string) ([]byte, error) {
 			if phase == "" {
 				tags = append(tags, tag.Name)
 			} else {
-				if annotation, ok := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]; ok {
-					if annotation == phase {
-						tags = append(tags, tag.Name)
-					}
+				if c.resolvePhase(*tag) == phase {
+					tags = append(tags, tag.Name)
 				}
 			}
 		}

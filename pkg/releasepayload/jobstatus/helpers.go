@@ -62,6 +62,7 @@ func FindJobStatus(results []v1alpha1.JobStatus, ciConfigurationName, ciConfigur
 func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 	totalJobs := len(jobs)
 	var pendingJobs, successfulJobs, failedJobs []v1alpha1.JobStatus
+	undetermined := 0
 
 	for _, job := range jobs {
 		switch job.AggregateState {
@@ -71,19 +72,20 @@ func ComputeJobState(jobs []v1alpha1.JobStatus) v1alpha1.JobState {
 			successfulJobs = append(successfulJobs, job)
 		case v1alpha1.JobStateFailure:
 			failedJobs = append(failedJobs, job)
+		default:
+			undetermined++
 		}
 	}
 
 	switch {
-	// Any failed jobs mean the release cannot be Accepted
-	case len(failedJobs) > 0:
-		return v1alpha1.JobStateFailure
-	// If everything is successful, then we can Accept the payload
-	case len(successfulJobs) == totalJobs && totalJobs > 0:
-		return v1alpha1.JobStateSuccess
-	// If there are any pending jobs, then we're still working on validating the release
 	case len(pendingJobs) > 0:
 		return v1alpha1.JobStatePending
+	case undetermined > 0:
+		return v1alpha1.JobStateUnknown
+	case len(failedJobs) > 0:
+		return v1alpha1.JobStateFailure
+	case len(successfulJobs) == totalJobs && totalJobs > 0:
+		return v1alpha1.JobStateSuccess
 	default:
 		return v1alpha1.JobStateUnknown
 	}

@@ -45,53 +45,9 @@ def validate_server_connection(ctx):
             username = oc.whoami()
             version = oc.get_server_version()
             logger.debug(f'Connected to APIServer running version: {version}, as: {username}')
-        except (ValueError, OpenShiftPythonException, Exception) as e:
+        except (OpenShiftPythonException, Exception) as e:
             logger.error(f"Unable to verify cluster connection using context: \"{ctx['context']}\"")
             raise e
-
-
-def create_imagestreamtag_patch(action, custom_message, custom_reason):
-    data = {
-        'image': {
-            'metadata': {
-                'annotations': {}
-            }
-        },
-        'metadata': {
-            'annotations': {}
-        },
-        'tag': {
-            'annotations': {}
-        }
-    }
-
-    if action == 'accept':
-        phase = 'Accepted'
-    elif action == 'reject':
-        phase = 'Rejected'
-    else:
-        raise ValueError(f'Unsupported action specified: {action}')
-
-    message = f'Manually {action}ed per TRT'
-    if custom_message is not None:
-        message = custom_message
-
-    annotations = {
-        'phase': phase,
-        'message': message
-    }
-
-    if custom_reason is not None:
-        annotations['reason'] = custom_reason
-
-    for key, value in annotations.items():
-        if value is not None:
-            annotation = 'release.openshift.io/' + key
-            data['image']['metadata']['annotations'][annotation] = value
-            data['metadata']['annotations'][annotation] = value
-            data['tag']['annotations'][annotation] = value
-
-    return data
 
 
 def write_backup_file(path, name, release, data):
@@ -103,34 +59,6 @@ def write_backup_file(path, name, release, data):
         backup.write(json.dumps(data, indent=4))
 
     return backup_filename
-
-
-def patch_imagestreamtag(ctx, namespace, imagestream, action, release, custom_message, custom_reason, execute, output_path):
-    patch = create_imagestreamtag_patch(action, custom_message, custom_reason)
-    logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
-
-    with oc.options(ctx), oc.tracking(), oc.timeout(15):
-        try:
-            with oc.project(namespace):
-                tag = oc.selector(f'imagestreamtag/{imagestream}:{release}').object(ignore_not_found=True)
-                if not tag:
-                    raise ValueError(f'Unable to locate imagestreamtag: {namespace}/{imagestream}:{release}')
-
-                logger.info(f'{action.capitalize()}ing imagestreamtag: {namespace}/{imagestream}:{release}')
-                if execute:
-                    backup_file = write_backup_file(output_path, imagestream, release, tag.model._primitive())
-
-                    tag.patch(patch)
-
-                    logger.info(f'Release {release} updated successfully')
-                    logger.info(f'Backup written to: {backup_file}')
-                else:
-                    logger.info(f'[dry-run] Patching release {release} with patch:\n{json.dumps(patch, indent=4)}')
-                    logger.warning('You must specify "--execute" to permanently apply these changes')
-
-        except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to update release: "{release}"')
-            raise e
 
 
 def create_releasepayload_patch(action, custom_reason):
@@ -170,13 +98,13 @@ def resolve_imagestream_from_releasepayload(ctx, namespace, release):
             return None
 
 
-def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute, output_path):
+def patch_releaespayload(ctx, options, namespace, action, release, custom_reason, execute, output_path):
     patch = create_releasepayload_patch(action, custom_reason)
     logger.debug(f'Generated oc patch:\n{json.dumps(patch, indent=4)}')
 
     with oc.options(ctx), oc.tracking(), oc.timeout(15):
         try:
-            with oc.project(namespace):
+            with oc.project(namespace), oc.options(options):
                 payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
                 if not payload:
                     logger.error(f'Unable to locate releasepayload: {namespace}/{release}')
@@ -194,7 +122,7 @@ def patch_releaespayload(ctx, namespace, action, release, custom_reason, execute
                     logger.info(f'[dry-run] Patching releasepayload {release} with patch:\n{json.dumps(patch, indent=4)}')
                     logger.warning('You must specify "--execute" to permanently apply these changes')
 
-        except (ValueError, OpenShiftPythonException, Exception) as e:
+        except (OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to update releasepayload: "{release}"')
             raise e
 
@@ -236,8 +164,8 @@ def delete_imagestreamtag(ctx, namespace, imagestream, tag, confirm, output_path
                             logger.info(f'Deletion of imagestreamtag: "{namespace}/{imagestreamtag}" skipped.')
                 else:
                     logger.info(f'Imagestreamtag: "{namespace}/{imagestreamtag}" does not exist.')
-        except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to delete imagestreamtag: {e}')
+        except (OpenShiftPythonException, Exception) as e:
+            logger.exception(f'Unable to delete imagestreamtag: {e}')
             raise e
 
 
@@ -315,8 +243,8 @@ def process_imagestream(ctx, namespace, imagestream, prefixes):
                                             tags_to_archive.append(data)
                 else:
                     logger.info(f'Imagestream: "{namespace}/{imagestream}" does not exist.')
-        except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to process imagestream: {e}')
+        except (OpenShiftPythonException, Exception) as e:
+            logger.exception(f'Unable to process imagestream: {e}')
             raise e
 
     return items
@@ -389,7 +317,7 @@ def create_archive_imagestream(ctx, namespace, name, payload, execute):
                 else:
                     logger.info(f'[dry-run] Creating archive imagestream: {namespace}/{name}')
                     logger.warning('You must specify "--execute" to permanently apply these changes')
-        except (ValueError, OpenShiftPythonException, Exception) as e:
+        except (OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to create archive imagestream: "{namespace}/{name}"')
             raise e
 
@@ -420,7 +348,7 @@ def patch_archive_imagestream(ctx, namespace, name, status_tags, execute, output
                 else:
                     logger.info(f'[dry-run] Patching archive imagestream {name} with patch:\n{json.dumps(patch, indent=4)}')
                     logger.warning('You must specify "--execute" to permanently apply these changes')
-        except (ValueError, OpenShiftPythonException, Exception) as e:
+        except (OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to update archive imagestream: "{name}"')
             raise e
 
@@ -615,7 +543,7 @@ def bypass(ctx, nightly: str, trigger: str, execute):
                     else:
                         logger.info(f'[dry-run] oc tag with {tag_cmd_args} then {untag_cmd_args}')
 
-        except (ValueError, OpenShiftPythonException, Exception):
+        except (OpenShiftPythonException, Exception):
             logger.error(f'Unable to perform bypass of {nightly_components.major_minor} nightly {nightly}')
             raise
 
@@ -650,19 +578,19 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
                         if tag.get_annotation('release.openshift.io/keep') is not None:
                             logger.info(f' - {namespace}/{tag.name()}')
 
-        except (ValueError, OpenShiftPythonException, Exception) as e:
+        except (OpenShiftPythonException, Exception) as e:
             logger.error(f'Unable to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
             raise e
 
 
-def approval(ctx, namespace, imagestream, release, team, accept, reject, delete, check, execute):
+def approval(ctx, options, namespace, release, team, accept, reject, delete, check, execute):
     team_label = team.lower()
     with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
-            with oc.project(namespace):
+            with oc.options(options), oc.project(namespace):
                 payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
                 if not payload:
-                    logger.error(f'Unable to locate imagestreamtag: releasepayload/{release}')
+                    logger.error(f'Unable to locate releasepayload/{release}')
                     return
                 if execute:
                     if accept:
@@ -689,8 +617,8 @@ def approval(ctx, namespace, imagestream, release, team, accept, reject, delete,
                     else:
                         logger.info(f'releasepayload/{release} marked as {state} by {team}')
 
-        except (ValueError, OpenShiftPythonException, Exception) as e:
-            logger.error(f'Unable to process imagestreamtag: "{namespace}/{imagestream}:{release}"')
+        except (OpenShiftPythonException, Exception) as e:
+            logger.error(f'Unable to process releasepayload: "{namespace}/releasepayload/{release}"')
             raise e
 
 
@@ -726,7 +654,7 @@ def poke(ctx, namespace, art_imagestream_name, execute):
                     logger.info('Triggered a release-controller update cycle.')
                 else:
                     logger.info(f'[dry-run] oc tag with {tag_cmd_args} then {untag_cmd_args}')
-        except (ValueError, OpenShiftPythonException, Exception):
+        except (OpenShiftPythonException, Exception):
             logger.error(f'Unable to poke imagestream: {namespace}/{art_imagestream_name}')
             raise
 
@@ -743,7 +671,7 @@ def annotate_imagestream(ctx, namespace, name, annotations, execute):
                 else:
                     logger.info(f'[dry-run] Annotating imagestream {namespace}/{name} with: {annotations}')
 
-        except (ValueError, OpenShiftPythonException, Exception):
+        except (OpenShiftPythonException, Exception):
             logger.error(f'Unable to annotate imagestream: {namespace}/{name}')
             raise
 
@@ -757,6 +685,7 @@ if __name__ == '__main__':
 
     config_group = parser.add_argument_group('Configuration Options')
     config_group.add_argument('-v', '--verbose', help='Enable verbose output', action='store_true')
+    config_group.add_argument('--admin', help='Run commands as "system:admin"', action='store_true')
 
     ocp_group = parser.add_argument_group('Openshift Configuration Options')
     ocp_group.add_argument('-c', '--context', help='The OC context to use (default is "app.ci")', default='app.ci')
@@ -838,6 +767,11 @@ if __name__ == '__main__':
 
     validate_server_connection(context)
 
+    # Allow for a system:admin override if necessary
+    options = {}
+    if args['admin']:
+        options['as'] = 'system:admin'
+
     # Configure the output location
     if args['output'] is None:
         output_dir = tempfile.mkdtemp(prefix=f'release-tool_{args["action"]}-')
@@ -885,10 +819,7 @@ if __name__ == '__main__':
 
     # Execute action
     if args['action'] in ['accept', 'reject']:
-        # TODO: Remove once ReleasePayloads are fully implemented...
-        patch_imagestreamtag(context, release_namespace, release_image_stream, args['action'], args['release'], args['message'], args['reason'], args['execute'], output_dir)
-
-        patch_releaespayload(context, release_namespace, args['action'], args['release'], args['reason'], args['execute'], output_dir)
+        patch_releaespayload(context, options, release_namespace, args['action'], args['release'], args['reason'], args['execute'], output_dir)
     elif args['action'] == 'prune':
         prune_release_tags(context, release_namespace, release_image_stream, args['releases'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'archive':
@@ -929,7 +860,7 @@ if __name__ == '__main__':
                 exit(1)
             team = args['check_team']
             check = True
-        approval(context, release_namespace, release_image_stream, args['release'][0], team, accept, reject, delete, check, args['execute'])
+        approval(context, options, release_namespace, args['release'][0], team, accept, reject, delete, check, args['execute'])
     elif args['action'] == 'lock':
         # Generate the nightly imagestream information based on version
         nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])

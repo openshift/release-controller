@@ -35,6 +35,7 @@ func ApprovedReleases(lister v1alpha2.ReleasePayloadLister) ([]*v1alpha1.Release
 }
 
 func GetReleasePhase(payload *v1alpha1.ReleasePayload) string {
+	created := false
 	for _, condition := range payload.Status.Conditions {
 		switch condition.Type {
 		case v1alpha1.ConditionPayloadAccepted:
@@ -49,7 +50,14 @@ func GetReleasePhase(payload *v1alpha1.ReleasePayload) string {
 			if condition.Status == v1.ConditionTrue {
 				return ReleasePhaseFailed
 			}
+		case v1alpha1.ConditionPayloadCreated:
+			if condition.Status == v1.ConditionTrue {
+				created = true
+			}
 		}
 	}
-	return ""
+	if created {
+		return ReleasePhaseReady
+	}
+	return ReleasePhasePending
 }

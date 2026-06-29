@@ -74,6 +74,21 @@ func TestComputeJobState(t *testing.T) {
 			expected: v1alpha1.JobStateFailure,
 		},
 		{
+			name: "FailedAndPendingJobs",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+				{
+					AggregateState: v1alpha1.JobStatePending,
+				},
+			},
+			expected: v1alpha1.JobStatePending,
+		},
+		{
 			name: "Garbage",
 			input: []v1alpha1.JobStatus{
 				{
@@ -87,6 +102,48 @@ func TestComputeJobState(t *testing.T) {
 				},
 			},
 			expected: v1alpha1.JobStateUnknown,
+		},
+		{
+			name: "FailedJobWithEmptyAggregateState",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+				{
+					AggregateState: "",
+				},
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+			},
+			expected: v1alpha1.JobStateUnknown,
+		},
+		{
+			name: "SuccessWithEmptyAggregateState",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+				{
+					AggregateState: "",
+				},
+			},
+			expected: v1alpha1.JobStateUnknown,
+		},
+		{
+			name: "PendingTakesPriorityOverUndetermined",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStatePending,
+				},
+				{
+					AggregateState: "",
+				},
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+			},
+			expected: v1alpha1.JobStatePending,
 		},
 	}
 	for _, testCase := range testCases {
