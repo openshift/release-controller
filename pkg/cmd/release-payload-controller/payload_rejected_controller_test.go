@@ -396,6 +396,54 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
+			name: "ReleasePayloadWithFailedJobAndEmptyAggregateState",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{
+							AggregateState: v1alpha1.JobStateSuccess,
+						},
+						{
+							AggregateState: v1alpha1.JobStateFailure,
+						},
+						{
+							AggregateState: "",
+						},
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{
+							AggregateState: v1alpha1.JobStateSuccess,
+						},
+						{
+							AggregateState: v1alpha1.JobStateFailure,
+						},
+						{
+							AggregateState: "",
+						},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionUnknown,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "ReleaseCreationJobFailed",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{

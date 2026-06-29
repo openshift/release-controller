@@ -443,6 +443,23 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			},
 		},
 		{
+			name: "BlockingJobWithEmptyAggregateState",
+			payload: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateSuccess},
+						{AggregateState: ""},
+						{AggregateState: v1alpha1.JobStateSuccess},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadAccepted,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadAcceptedReason,
+			},
+		},
+		{
 			name: "NoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{

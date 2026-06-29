@@ -103,6 +103,48 @@ func TestComputeJobState(t *testing.T) {
 			},
 			expected: v1alpha1.JobStateUnknown,
 		},
+		{
+			name: "FailedJobWithEmptyAggregateState",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+				{
+					AggregateState: "",
+				},
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+			},
+			expected: v1alpha1.JobStateUnknown,
+		},
+		{
+			name: "SuccessWithEmptyAggregateState",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStateSuccess,
+				},
+				{
+					AggregateState: "",
+				},
+			},
+			expected: v1alpha1.JobStateUnknown,
+		},
+		{
+			name: "PendingTakesPriorityOverUndetermined",
+			input: []v1alpha1.JobStatus{
+				{
+					AggregateState: v1alpha1.JobStatePending,
+				},
+				{
+					AggregateState: "",
+				},
+				{
+					AggregateState: v1alpha1.JobStateFailure,
+				},
+			},
+			expected: v1alpha1.JobStatePending,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
