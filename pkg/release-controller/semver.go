@@ -174,3 +174,17 @@ func ReleaseTagIsDualRHCOS(toTag string) bool {
 	}
 	return v.Major == 4 && v.Minor >= 21
 }
+
+// ReleaseTagHasCheapRpmdb reports whether the target release tag supports
+// rpmdb collection without pulling the entire rhel-coreos image.
+// Releases 4.19 and later store the rpmdb separately; 4.18 and earlier
+// require pulling the full image, so Node Info is omitted for those releases.
+// If the tag cannot be parsed as a semver version, it is assumed to support
+// cheap rpmdb (i.e., nightly or CI tags are not gated).
+func ReleaseTagHasCheapRpmdb(toTag string) bool {
+	v, err := SemverParseTolerant(toTag)
+	if err != nil {
+		return true
+	}
+	return !(v.Major == 4 && v.Minor <= 18)
+}

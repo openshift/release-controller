@@ -706,6 +706,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 
 		wg.Go(func() {
+			// Skip node image info for 4.18 and earlier: rpmdb collection requires
+			// pulling the entire rhel-coreos image for those releases.
+			if !releasecontroller.ReleaseTagHasCheapRpmdb(tagInfo.Tag) {
+				return
+			}
 			streams, err := c.releaseInfo.ListMachineOSStreams(tagInfo.TagPullSpec)
 			if err != nil {
 				nodeImageErr = newHTTPError(http.StatusInternalServerError, "listing machine-OS streams for %s: %w", tagInfo.Tag, err)
