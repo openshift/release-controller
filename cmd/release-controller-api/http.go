@@ -2230,6 +2230,9 @@ func generateStreamMessage(r *ReleaseStream) string {
 }
 
 func isReleaseFailing(phases []string, maxUnready int) bool {
+	if maxUnready == 0 {
+		return false
+	}
 	unreadyCount := 0
 	for i := 0; unreadyCount < maxUnready && i < len(phases); i++ {
 		switch phases[i] {

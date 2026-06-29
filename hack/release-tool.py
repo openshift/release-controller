@@ -583,14 +583,14 @@ def keep(ctx, namespace, imagestream, release, delete, execute):
             raise e
 
 
-def approval(ctx, namespace, release, team, accept, reject, delete, check, execute):
+def approval(ctx, options, namespace, release, team, accept, reject, delete, check, execute):
     team_label = team.lower()
     with oc.options(ctx), oc.tracking(), oc.timeout(5 * 60):
         try:
-            with oc.project(namespace):
+            with oc.options(options), oc.project(namespace):
                 payload = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
                 if not payload:
-                    logger.error(f'Unable to locate imagestreamtag: releasepayload/{release}')
+                    logger.error(f'Unable to locate releasepayload/{release}')
                     return
                 if execute:
                     if accept:
@@ -860,7 +860,7 @@ if __name__ == '__main__':
                 exit(1)
             team = args['check_team']
             check = True
-        approval(context, release_namespace, release_image_stream, args['release'][0], team, accept, reject, delete, check, args['execute'])
+        approval(context, options, release_namespace, args['release'][0], team, accept, reject, delete, check, args['execute'])
     elif args['action'] == 'lock':
         # Generate the nightly imagestream information based on version
         nightly_namespace, nightly_imagestream = generate_resource_values(args['name'], f'{args["version"]}-art-latest', args['architecture'], args['private'])
