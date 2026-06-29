@@ -190,6 +190,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
+	mux.HandleFunc("/api/v1/releasestreams/ready", c.apiReadyStreams)
 	mux.HandleFunc("/api/v1/releasestreams/approvals", c.apiReleaseApprovals)
 
 	//mux.HandleFunc("/api/v1/features/{tag}", c.apiFeatureInfo)
@@ -2376,6 +2377,19 @@ func (c *Controller) apiAcceptedStreams(w http.ResponseWriter, req *http.Request
 
 func (c *Controller) apiRejectedStreams(w http.ResponseWriter, req *http.Request) {
 	data, err := c.filteredStreams(releasecontroller.ReleasePhaseRejected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiReadyStreams(w http.ResponseWriter, req *http.Request) {
+	data, err := c.filteredStreams(releasecontroller.ReleasePhaseReady)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
