@@ -186,5 +186,5 @@ func ReleaseTagHasCheapRpmdb(toTag string) bool {
 	if err != nil {
 		return true
 	}
-	return !(v.Major == 4 && v.Minor <= 18)
+	return v.Major != 4 || v.Minor > 18
 }
