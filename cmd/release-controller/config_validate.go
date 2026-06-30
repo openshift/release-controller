@@ -52,6 +52,7 @@ func validateReleaseConfigs(configDir string) error {
 	errors = append(errors, verifyPeriodicFields(releaseConfigs)...)
 	errors = append(errors, findDuplicatePeriodics(releaseConfigs)...)
 	errors = append(errors, validateQualifiers(releaseConfigs)...)
+	errors = append(errors, validateOptionalAggregatedJobs(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
 }
 
@@ -165,6 +166,18 @@ func validateReleaseQualifiersConfig(configPath string) []error {
 	}
 	for qualifierId, overrides := range config.Qualifiers {
 		errors = append(errors, validateQualifier(qualifierId, overrides))
+	}
+	return errors
+}
+
+func validateOptionalAggregatedJobs(releaseConfigs []releasecontroller.ReleaseConfig) []error {
+	var errors []error
+	for _, config := range releaseConfigs {
+		for name, verify := range config.Verify {
+			if verify.Optional && verify.AggregatedProwJob != nil {
+				errors = append(errors, fmt.Errorf("%s: verification job %q cannot be both optional and an aggregatedProwJob", config.Name, name))
+			}
+		}
 	}
 	return errors
 }

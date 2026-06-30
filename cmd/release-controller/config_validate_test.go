@@ -418,6 +418,179 @@ func TestValidateUpgradeJobs(t *testing.T) {
 	}
 }
 
+func TestValidateOptionalAggregatedJobs(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configs     []releasecontroller.ReleaseConfig
+		expectedErr bool
+	}{
+		{
+			name: "optional with aggregatedProwJob is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"analysis-job": {
+						Optional: true,
+						AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+							AnalysisJobCount: 10,
+						},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "non-optional with aggregatedProwJob is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"analysis-job": {
+						Optional: false,
+						AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+							AnalysisJobCount: 10,
+						},
+					},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "optional without aggregatedProwJob is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"my-optional-job": {
+						Optional: true,
+						ProwJob:  &releasecontroller.ProwJobVerification{Name: "some-job"},
+					},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "non-optional without aggregatedProwJob is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"my-blocking-job": {
+						Optional: false,
+						ProwJob:  &releasecontroller.ProwJobVerification{Name: "some-job"},
+					},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "multiple jobs with one invalid combination",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"good-job": {
+						Optional: false,
+						AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+							AnalysisJobCount: 10,
+						},
+					},
+					"bad-job": {
+						Optional: true,
+						AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+							AnalysisJobCount: 5,
+						},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "invalid combination across multiple configs",
+			configs: []releasecontroller.ReleaseConfig{
+				{
+					Name: "4.18.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"good-job": {
+							Optional: false,
+							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+								AnalysisJobCount: 10,
+							},
+						},
+					},
+				},
+				{
+					Name: "4.19.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"bad-job": {
+							Optional: true,
+							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+								AnalysisJobCount: 5,
+							},
+						},
+					},
+				},
+			},
+			expectedErr: true,
+		},
+		{
+			name: "optional with aggregatedProwJob containing custom prowJob is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"analysis-job": {
+						Optional: true,
+						AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+							ProwJob: &releasecontroller.ProwJobVerification{
+								Name: "custom-aggregator",
+							},
+							AnalysisJobCount: 10,
+						},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "all valid jobs across multiple configs",
+			configs: []releasecontroller.ReleaseConfig{
+				{
+					Name: "4.18.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"blocking-aggregated": {
+							Optional: false,
+							AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+								AnalysisJobCount: 10,
+							},
+						},
+						"optional-regular": {
+							Optional: true,
+							ProwJob:  &releasecontroller.ProwJobVerification{Name: "some-job"},
+						},
+					},
+				},
+				{
+					Name: "4.19.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"blocking-regular": {
+							Optional: false,
+							ProwJob:  &releasecontroller.ProwJobVerification{Name: "another-job"},
+						},
+					},
+				},
+			},
+			expectedErr: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			errs := validateOptionalAggregatedJobs(testCase.configs)
+			if len(errs) > 0 && !testCase.expectedErr {
+				t.Errorf("got error when error was not expected: %v", errs)
+			}
+			if len(errs) == 0 && testCase.expectedErr {
+				t.Errorf("did not get error when error was expected")
+			}
+		})
+	}
+}
+
 func TestValidateQualifiersConfiguration(t *testing.T) {
 	testCases := []struct {
 		name        string
