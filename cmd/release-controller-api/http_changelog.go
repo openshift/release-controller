@@ -88,6 +88,13 @@ func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chN
 		return
 	}
 
+	// Skip node image info for 4.18 and earlier: rpmdb collection requires
+	// pulling the entire rhel-coreos image for those releases.
+	if !releasecontroller.ReleaseTagHasCheapRpmdb(toTag) {
+		chNodeInfo <- renderResult{}
+		return
+	}
+
 	toImagePullspec := toImage.GenerateDigestPullSpec()
 	fromImagePullspec := fromImage.GenerateDigestPullSpec()
 
@@ -197,6 +204,12 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		}
 	}
 	if !needsNode {
+		return
+	}
+
+	// Skip node image info for 4.18 and earlier: rpmdb collection requires
+	// pulling the entire rhel-coreos image for those releases.
+	if !releasecontroller.ReleaseTagHasCheapRpmdb(toTag) {
 		return
 	}
 
