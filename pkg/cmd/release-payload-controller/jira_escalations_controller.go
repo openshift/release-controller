@@ -86,6 +86,18 @@ func (c *JiraEscalationsController) sync(ctx context.Context, key string) error 
 	klog.V(4).Infof("Starting JiraEscalationsController sync")
 	defer klog.V(4).Infof("JiraEscalationsController sync done")
 
+	// Skip if release qualifier config is not available
+	if c.configAccessor == nil {
+		klog.V(5).Infof("Skipping Jira escalations check - no release qualifiers config")
+		return nil
+	}
+
+	qualifiersConfig := c.configAccessor.Get()
+	if len(qualifiersConfig) == 0 {
+		klog.V(5).Infof("Skipping Jira escalations check - empty qualifiers config")
+		return nil
+	}
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -98,18 +110,6 @@ func (c *JiraEscalationsController) sync(ctx context.Context, key string) error 
 	}
 	if err != nil {
 		return err
-	}
-
-	// Skip if release qualifier config is not available
-	if c.configAccessor == nil {
-		klog.V(5).Infof("Skipping Jira escalations check - no release qualifiers config")
-		return nil
-	}
-
-	qualifiersConfig := c.configAccessor.Get()
-	if len(qualifiersConfig) == 0 {
-		klog.V(5).Infof("Skipping Jira escalations check - empty qualifiers config")
-		return nil
 	}
 
 	// Collect all job names that need to be queried, split by whether they have custom OverPeriod
@@ -327,7 +327,7 @@ func (c *JiraEscalationsController) processJobsForEscalations(
 				c.setNotificationState(releasePayload, qualifierID, threadID, notifState)
 			} else if notifState.ActiveEscalation != "" && !notifState.Abated {
 				// Abatement: conditions improved, leave comment on open Jira ticket
-				notifState = c.handleAbatement(ctx, releasePayload, qualifierID, jiraConfig, threadID, notifState)
+				notifState = c.handleAbatement(ctx, qualifierID, jiraConfig, threadID, notifState)
 				c.setNotificationState(releasePayload, qualifierID, threadID, notifState)
 			}
 		}
@@ -380,7 +380,6 @@ func (c *JiraEscalationsController) setNotificationState(
 // are never closed programmatically.
 func (c *JiraEscalationsController) handleAbatement(
 	ctx context.Context,
-	releasePayload *v1alpha1.ReleasePayload,
 	qualifierID releasequalifierslib.QualifierId,
 	jiraConfig *jira.Notification,
 	threadID string,

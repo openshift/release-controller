@@ -2609,16 +2609,13 @@ func TestHandleAbatement_NilClient(t *testing.T) {
 		jiraClient:               nil,
 	}
 
-	releasePayload := &v1alpha1.ReleasePayload{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-payload", Namespace: "ocp"},
-	}
 	jiraConfig := &jira.Notification{Project: "OCPBUGS"}
 	state := v1alpha1.JiraNotificationState{
 		ActiveEscalation: "critical",
 		ActivePriority:   "Critical",
 	}
 
-	result := controller.handleAbatement(context.Background(), releasePayload, "rosa", jiraConfig, "thread-1", state)
+	result := controller.handleAbatement(context.Background(), "rosa", jiraConfig, "thread-1", state)
 	if !result.Abated {
 		t.Error("Expected Abated=true even with nil client")
 	}

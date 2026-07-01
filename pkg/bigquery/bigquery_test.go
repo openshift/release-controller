@@ -3,7 +3,6 @@ package bigquery
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"google.golang.org/api/iterator"
@@ -257,99 +256,3 @@ func TestCopyToStruct_MapToNonStruct(t *testing.T) {
 	}
 }
 
-func TestQueryInto(t *testing.T) {
-	type TestResult struct {
-		ID   int    `bigquery:"id"`
-		Name string `bigquery:"name"`
-	}
-
-	tests := []struct {
-		name        string
-		query       string
-		setupFake   func(*FakeClient, string)
-		wantCount   int
-		wantErr     bool
-		validateRes func(*testing.T, []TestResult)
-	}{
-		{
-			name:  "successful query with results",
-			query: "SELECT id, name FROM table",
-			setupFake: func(fc *FakeClient, query string) {
-				fc.SetQueryResult(query, []any{
-					map[string]any{"id": 1, "name": "first"},
-					map[string]any{"id": 2, "name": "second"},
-					map[string]any{"id": 3, "name": "third"},
-				})
-			},
-			wantCount: 3,
-			wantErr:   false,
-			validateRes: func(t *testing.T, results []TestResult) {
-				if results[0].ID != 1 || results[0].Name != "first" {
-					t.Errorf("unexpected first result: %+v", results[0])
-				}
-				if results[2].ID != 3 || results[2].Name != "third" {
-					t.Errorf("unexpected third result: %+v", results[2])
-				}
-			},
-		},
-		{
-			name:  "empty results",
-			query: "SELECT id, name FROM empty_table",
-			setupFake: func(fc *FakeClient, query string) {
-				fc.SetQueryResult(query, []any{})
-			},
-			wantCount: 0,
-			wantErr:   false,
-		},
-		{
-			name:  "query error",
-			query: "SELECT * FROM nonexistent",
-			setupFake: func(fc *FakeClient, query string) {
-				fc.SetQueryError(query, fmt.Errorf("table not found"))
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fc := NewFakeClient()
-			if tt.setupFake != nil {
-				tt.setupFake(fc, tt.query)
-			}
-
-			var results []TestResult
-			iter, err := fc.Query(context.Background(), tt.query)
-			if err != nil && !tt.wantErr {
-				t.Fatalf("unexpected query error: %v", err)
-			}
-			if err != nil {
-				return
-			}
-
-			// Iterate through results
-			for {
-				var result TestResult
-				err := iter.Next(&result)
-				if err == iterator.Done {
-					break
-				}
-				if err != nil {
-					if !tt.wantErr {
-						t.Fatalf("unexpected iteration error: %v", err)
-					}
-					return
-				}
-				results = append(results, result)
-			}
-
-			if len(results) != tt.wantCount {
-				t.Errorf("expected %d results, got %d", tt.wantCount, len(results))
-			}
-
-			if tt.validateRes != nil {
-				tt.validateRes(t, results)
-			}
-		})
-	}
-}

@@ -2,11 +2,11 @@ package qualifiers
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobstatus"
 	"github.com/openshift/release-controller/pkg/releasequalifiers"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -303,14 +303,5 @@ func deduplicateAndSortStrings(s []string) []string {
 	if len(s) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(s))
-	result := make([]string, 0, len(s))
-	for _, v := range s {
-		if _, ok := seen[v]; !ok {
-			seen[v] = struct{}{}
-			result = append(result, v)
-		}
-	}
-	sort.Strings(result)
-	return result
+	return sets.List(sets.New(s...))
 }

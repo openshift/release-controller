@@ -249,11 +249,9 @@ func (o *options) Run() error {
 			configAccessor = configLoader
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			go func() {
-				if err := configLoader.StartWatching(ctx); err != nil {
-					klog.Warningf("Failed to start watching release qualifiers config: %v", err)
-				}
-			}()
+			if err := configLoader.StartWatching(ctx); err != nil {
+				klog.Warningf("Failed to start watching release qualifiers config: %v", err)
+			}
 		}
 	}
 

@@ -144,11 +144,9 @@ func (o *Options) Run(ctx context.Context) error {
 		} else {
 			configAccessor = configLoader
 			// Start watching config file for changes
-			go func() {
-				if err := configLoader.StartWatching(ctx); err != nil {
-					klog.Warningf("Failed to start watching release qualifiers config: %v", err)
-				}
-			}()
+			if err := configLoader.StartWatching(ctx); err != nil {
+				klog.Warningf("Failed to start watching release qualifiers config: %v", err)
+			}
 			klog.Infof("Release qualifiers config loaded from: %s", o.ReleaseQualifiersConfigPath)
 		}
 	}
