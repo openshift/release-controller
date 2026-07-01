@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/rhcos"
@@ -177,6 +178,7 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
 	mux.HandleFunc("/releasestream/{release}/candidates", c.httpReleaseCandidateList)
+	mux.HandleFunc("/releasestream/{release}/qualifier/{qualifier}", c.httpQualifierStatus)
 
 	mux.HandleFunc("/dashboards/overview", c.httpDashboardOverview)
 	mux.HandleFunc("/dashboards/compare", c.httpDashboardCompare)
@@ -187,11 +189,14 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/api/v1/releasestream/{release}/candidate", c.apiReleaseCandidate)
 	mux.HandleFunc("/api/v1/releasestream/{release}/release/{tag}", c.apiReleaseInfo)
 	mux.HandleFunc("/api/v1/releasestream/{release}/config", c.apiReleaseConfig)
+	mux.HandleFunc("/api/v1/releasestream/{release}/qualifier/{qualifier}/config", c.apiQualifierConfig)
 	mux.HandleFunc("/api/v1/releasestreams/accepted", c.apiAcceptedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/rejected", c.apiRejectedStreams)
 	mux.HandleFunc("/api/v1/releasestreams/all", c.apiAllStreams)
 	mux.HandleFunc("/api/v1/releasestreams/ready", c.apiReadyStreams)
 	mux.HandleFunc("/api/v1/releasestreams/approvals", c.apiReleaseApprovals)
+
+	mux.HandleFunc("/api/v1/releasetag/{tag}/qualifiers", c.apiReleaseQualifiersSummaries)
 
 	//mux.HandleFunc("/api/v1/features/{tag}", c.apiFeatureInfo)
 	//mux.HandleFunc("/features/{tag}", c.httpFeatureInfo)
@@ -1441,12 +1446,22 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
 	}
 
-	fmt.Fprintf(w, "Team Approvals: ")
-	teamApprovedList := c.renderTeamApprovals(tagInfo.Tag, true)
-	if teamApprovedList == "" {
-		fmt.Fprintf(w, "None<br>")
+	qualifierStatusAPI := fmt.Sprintf(`(<a href="/api/v1/releasetag/%s/qualifiers">status api</a>)`, template.HTMLEscapeString(url.PathEscape(tagInfo.Tag)))
+	qualifierBadges := c.renderQualifierBadges(tagInfo.Tag, true)
+	if qualifierBadges == "" {
+		fmt.Fprintf(w, `<p><strong>Qualifiers</strong> %s: None</p>`, qualifierStatusAPI)
 	} else {
-		fmt.Fprint(w, "<br>"+teamApprovedList+"<br>")
+		fmt.Fprintf(w, `<p style="margin-bottom:0"><strong>Qualifiers</strong> %s:</p><div style="margin-left:40px;margin-bottom:16px">%s</div>`, qualifierStatusAPI, qualifierBadges)
+	}
+
+	if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil &&
+		payload.Status.QualifiersSummary != nil &&
+		len(payload.Status.QualifiersSummary.FailureLabels) > 0 {
+		fmt.Fprintf(w, `<p style="margin-bottom:0"><strong>Failure Labels:</strong></p><ul>`)
+		for _, label := range payload.Status.QualifiersSummary.FailureLabels {
+			fmt.Fprintf(w, `<li>%s</li>`, template.HTMLEscapeString(label))
+		}
+		fmt.Fprintf(w, `</ul>`)
 	}
 
 	c.renderVerifyLinks(w, *tagInfo.Info.Tag, tagInfo.Info.Release)
@@ -1774,7 +1789,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"inc":                     func(i int) int { return i + 1 },
 			"upgradeCells":            upgradeCells,
 			"removeSpecialCharacters": removeSpecialCharacters,
-			"teamApprovals":           c.renderTeamApprovals,
+			"qualifierBadges":         c.renderQualifierBadges,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -1846,60 +1861,286 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) renderTeamApprovals(tag string, asList bool) string {
+func qualifierStateText(summary v1alpha1.ReleaseQualifierSummary) string {
+	if summary.Approval {
+		switch summary.AggregateState {
+		case v1alpha1.JobStateSuccess:
+			return "Accepted"
+		case v1alpha1.JobStateFailure:
+			return "Rejected"
+		default:
+			return ""
+		}
+	}
+	switch summary.AggregateState {
+	case v1alpha1.JobStateSuccess:
+		return "Passed"
+	case v1alpha1.JobStateFailure:
+		return "Failed"
+	default:
+		return "Pending"
+	}
+}
+
+func (c *Controller) renderQualifierBadges(tag string, showAll bool) string {
 	payload := c.GetReleasePayload(tag)
 	if payload == nil {
 		return ""
 	}
-	acceptedLabels := []string{}
-	rejectedLabels := []string{}
-	for label, value := range payload.Labels {
-		if strings.HasSuffix(label, "_state") {
-			if value == "Accepted" {
-				acceptedLabels = append(acceptedLabels, label)
+	if payload.Status.QualifiersSummary == nil || len(payload.Status.QualifiersSummary.Qualifiers) == 0 {
+		return ""
+	}
+
+	// Sort qualifier IDs for deterministic display order
+	qualifierIDs := make([]releasequalifiers.QualifierId, 0, len(payload.Status.QualifiersSummary.Qualifiers))
+	for qID := range payload.Status.QualifiersSummary.Qualifiers {
+		qualifierIDs = append(qualifierIDs, qID)
+	}
+	slices.Sort(qualifierIDs)
+
+	streamName := payload.Spec.PayloadCoordinates.StreamName
+
+	var badges strings.Builder
+	for _, qID := range qualifierIDs {
+		summary := payload.Status.QualifiersSummary.Qualifiers[qID]
+		if !showAll && !summary.BadgePropagated {
+			continue
+		}
+
+		badgeName := summary.BadgeName
+		if badgeName == "" {
+			badgeName = string(qID)
+		}
+
+		var badgeClass string
+		switch summary.AggregateState {
+		case v1alpha1.JobStateSuccess:
+			badgeClass = "badge-success"
+		case v1alpha1.JobStateFailure:
+			badgeClass = "badge-danger"
+		default:
+			badgeClass = "badge-warning"
+		}
+
+		escapedBadgeName := template.HTMLEscapeString(badgeName)
+		stateText := qualifierStateText(summary)
+		linkURL := fmt.Sprintf("/releasestream/%s/qualifier/%s",
+			url.PathEscape(streamName), url.PathEscape(string(qID)))
+		fmt.Fprintf(&badges, `<a href="%s" title="%s: %s"><span class="badge %s qualifier-badge">%s</span></a> `,
+			linkURL, escapedBadgeName, stateText, badgeClass, escapedBadgeName)
+	}
+	return badges.String()
+}
+
+func (c *Controller) httpQualifierStatus(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+	qualifierID := releasequalifiers.QualifierId(vars["qualifier"])
+
+	// Find the most recent payload in this stream that has this qualifier
+	payloads := c.GetReleasePayloads()
+	var payload *v1alpha1.ReleasePayload
+	for _, p := range payloads {
+		if p.Spec.PayloadCoordinates.StreamName != streamName {
+			continue
+		}
+		if p.Status.QualifiersSummary != nil {
+			if _, ok := p.Status.QualifiersSummary.Qualifiers[qualifierID]; ok {
+				if payload == nil || p.CreationTimestamp.After(payload.CreationTimestamp.Time) {
+					payload = p
+				}
 			}
-			if value == "Rejected" {
-				rejectedLabels = append(rejectedLabels, label)
+		}
+	}
+
+	if payload == nil {
+		http.Error(w, fmt.Sprintf("No payload found for qualifier %q in stream %q", qualifierID, streamName), http.StatusNotFound)
+		return
+	}
+
+	summary := payload.Status.QualifiersSummary.Qualifiers[qualifierID]
+
+	// Build a lookup of job name -> JobStatus from the payload results
+	jobStatusMap := make(map[string]*v1alpha1.JobStatus)
+	for i := range payload.Status.BlockingJobResults {
+		js := &payload.Status.BlockingJobResults[i]
+		jobStatusMap[js.CIConfigurationName] = js
+	}
+	for i := range payload.Status.InformingJobResults {
+		js := &payload.Status.InformingJobResults[i]
+		jobStatusMap[js.CIConfigurationName] = js
+	}
+
+	// Render the page
+	w.Header().Set("Content-Type", "text/html;charset=UTF-8")
+	fmt.Fprintf(w, htmlPageStart, template.HTMLEscapeString(fmt.Sprintf("Qualifier: %s", qualifierID)))
+	defer func() { fmt.Fprintln(w, htmlPageEnd) }()
+
+	fmt.Fprintf(w, `<style>
+		h1 { font-size: 2rem; margin-bottom: 1rem }
+		h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem }
+	</style>`)
+
+	fmt.Fprintf(w, `<p><a href="/">Back to index</a> | <a href="/releasestream/%s">Back to %s</a></p>`,
+		template.HTMLEscapeString(url.PathEscape(streamName)), template.HTMLEscapeString(streamName))
+
+	badgeName := summary.BadgeName
+	if badgeName == "" {
+		badgeName = string(qualifierID)
+	}
+
+	fmt.Fprintf(w, `<h1>Qualifier: %s</h1>`, template.HTMLEscapeString(badgeName))
+	if badgeName != string(qualifierID) {
+		fmt.Fprintf(w, `<p><strong>ID:</strong> %s</p>`, template.HTMLEscapeString(string(qualifierID)))
+	}
+	fmt.Fprintf(w, `<p><strong>Stream:</strong> %s</p>`, template.HTMLEscapeString(streamName))
+	fmt.Fprintf(w, `<p><strong>Payload:</strong> <a href="/releasetag/%s">%s</a></p>`,
+		template.HTMLEscapeString(url.PathEscape(payload.Name)), template.HTMLEscapeString(payload.Name))
+
+	if c.configAccessor != nil {
+		if globalConfig := c.configAccessor.Get(); globalConfig != nil {
+			if qualifier, ok := globalConfig[qualifierID]; ok {
+				if qualifier.Summary != "" {
+					fmt.Fprintf(w, `<p><strong>Summary:</strong> %s</p>`, template.HTMLEscapeString(qualifier.Summary))
+				}
+				if qualifier.Description != "" {
+					fmt.Fprintf(w, `<p><strong>Description:</strong> %s</p>`, template.HTMLEscapeString(qualifier.Description))
+				}
 			}
 		}
 	}
-	teamName := func(fullLabel string) string {
-		return strings.ToUpper(strings.Split(strings.TrimSuffix(fullLabel, "_state"), "/")[1])
+
+	// Overall status badge
+	var badgeClass string
+	switch summary.AggregateState {
+	case v1alpha1.JobStateSuccess:
+		badgeClass = "badge-success"
+	case v1alpha1.JobStateFailure:
+		badgeClass = "badge-danger"
+	default:
+		badgeClass = "badge-warning"
 	}
-	var approvals strings.Builder
-	if asList {
-		approvals.WriteString("<ul>")
+	fmt.Fprintf(w, `<p><strong>Overall Status:</strong> <span class="badge %s">%s</span></p>`,
+		badgeClass, template.HTMLEscapeString(qualifierStateText(summary)))
+
+	// Failure Labels for this specific qualifier (from merged config)
+	if len(summary.FailureLabels) > 0 {
+		fmt.Fprintf(w, `<p><strong>Failure Labels:</strong></p><ul>`)
+		for _, label := range summary.FailureLabels {
+			fmt.Fprintf(w, `<li>%s</li>`, template.HTMLEscapeString(label))
+		}
+		fmt.Fprintf(w, `</ul>`)
 	}
-	if len(acceptedLabels) > 0 {
-		if asList {
-			approvals.WriteString("<li>")
+
+	// Contributing Jobs table
+	fmt.Fprintf(w, `<h2>Contributing Jobs</h2>`)
+	if len(summary.Jobs) == 0 {
+		fmt.Fprintf(w, `<p>No jobs found for this qualifier.</p>`)
+	} else {
+		fmt.Fprintf(w, `<table class="table table-bordered"><thead><tr>`)
+		fmt.Fprintf(w, `<th>Job Name</th><th>Prowjob</th><th>Status</th><th title="Attempts / Max Allowed (1 + MaxRetries)">Attempts</th><th>Last Run</th><th>Config</th>`)
+		fmt.Fprintf(w, `</tr></thead><tbody>`)
+		for _, jobRef := range summary.Jobs {
+			js := jobStatusMap[jobRef.CIConfigurationName]
+
+			fmt.Fprintf(w, `<tr>`)
+			fmt.Fprintf(w, `<td>%s</td>`, template.HTMLEscapeString(jobRef.CIConfigurationName))
+			fmt.Fprintf(w, `<td>%s</td>`, template.HTMLEscapeString(jobRef.CIConfigurationJobName))
+
+			if js != nil {
+				var jobBadgeClass string
+				switch js.AggregateState {
+				case v1alpha1.JobStateSuccess:
+					jobBadgeClass = "badge-success"
+				case v1alpha1.JobStateFailure:
+					jobBadgeClass = "badge-danger"
+				default:
+					jobBadgeClass = "badge-warning"
+				}
+				fmt.Fprintf(w, `<td><span class="badge %s">%s</span></td>`,
+					jobBadgeClass, template.HTMLEscapeString(string(js.AggregateState)))
+				fmt.Fprintf(w, `<td>%d/%d</td>`, len(js.JobRunResults), 1+js.MaxRetries)
+
+				// Last run link
+				if len(js.JobRunResults) > 0 {
+					lastRun := js.JobRunResults[len(js.JobRunResults)-1]
+					if lastRun.HumanProwResultsURL != "" {
+						fmt.Fprintf(w, `<td><a href="%s" target="_blank">View</a></td>`,
+							template.HTMLEscapeString(lastRun.HumanProwResultsURL))
+					} else {
+						fmt.Fprintf(w, `<td>-</td>`)
+					}
+				} else {
+					fmt.Fprintf(w, `<td>-</td>`)
+				}
+			} else {
+				fmt.Fprintf(w, `<td>-</td><td>-</td><td>-</td>`)
+			}
+			configURL := fmt.Sprintf("/api/v1/releasestream/%s/qualifier/%s/config?job=%s",
+				url.PathEscape(streamName), url.PathEscape(string(qualifierID)),
+				url.QueryEscape(jobRef.CIConfigurationName))
+			fmt.Fprintf(w, `<td><a href="%s" target="_blank">View</a></td>`,
+				template.HTMLEscapeString(configURL))
+			fmt.Fprintf(w, `</tr>`)
 		}
-		approvals.WriteString("<span class=\"text-success\">Accepted</span><ul>")
-		for _, anno := range acceptedLabels {
-			approvals.WriteString("<li>" + teamName(anno) + "</li>")
-		}
-		approvals.WriteString("</ul>")
-		if asList {
-			approvals.WriteString("</li>")
-		}
+		fmt.Fprintf(w, `</tbody></table>`)
 	}
-	if len(rejectedLabels) > 0 {
-		if asList {
-			approvals.WriteString("<li>")
+
+	// Active Notifications section
+	if len(summary.JiraNotifications) > 0 {
+		fmt.Fprintf(w, `<h2>Active Notifications</h2>`)
+		fmt.Fprintf(w, `<table class="table table-bordered"><thead><tr>`)
+		fmt.Fprintf(w, `<th>Thread</th><th>Jira Ticket</th><th>Escalation</th><th>Priority</th><th>Status</th><th>Last Transition</th>`)
+		fmt.Fprintf(w, `</tr></thead><tbody>`)
+
+		threadIDs := make([]string, 0, len(summary.JiraNotifications))
+		for threadID := range summary.JiraNotifications {
+			threadIDs = append(threadIDs, threadID)
 		}
-		approvals.WriteString("<span class=\"text-danger\">Rejected</span><ul>")
-		for _, anno := range rejectedLabels {
-			approvals.WriteString("<li>" + teamName(anno) + "</li>")
+		sort.Strings(threadIDs)
+
+		for _, threadID := range threadIDs {
+			notif := summary.JiraNotifications[threadID]
+			fmt.Fprintf(w, `<tr>`)
+			fmt.Fprintf(w, `<td>%s</td>`, template.HTMLEscapeString(threadID))
+
+			if notif.IssueKey != "" {
+				fmt.Fprintf(w, `<td><a href="https://issues.redhat.com/browse/%s" target="_blank">%s</a></td>`,
+					template.HTMLEscapeString(notif.IssueKey), template.HTMLEscapeString(notif.IssueKey))
+			} else {
+				fmt.Fprintf(w, `<td>-</td>`)
+			}
+
+			fmt.Fprintf(w, `<td>%s</td>`, template.HTMLEscapeString(notif.ActiveEscalation))
+
+			var priorityBadgeClass string
+			switch strings.ToLower(notif.ActivePriority) {
+			case "critical", "high":
+				priorityBadgeClass = "badge-danger"
+			case "normal":
+				priorityBadgeClass = "badge-warning"
+			default:
+				priorityBadgeClass = "badge-info"
+			}
+			fmt.Fprintf(w, `<td><span class="badge %s">%s</span></td>`,
+				priorityBadgeClass, template.HTMLEscapeString(notif.ActivePriority))
+
+			if notif.Abated {
+				fmt.Fprintf(w, `<td><span class="badge badge-success">Abated</span></td>`)
+			} else {
+				fmt.Fprintf(w, `<td><span class="badge badge-danger">Active</span></td>`)
+			}
+
+			fmt.Fprintf(w, `<td>%s</td>`, template.HTMLEscapeString(notif.LastTransitionTime.Format(time.RFC3339)))
+			fmt.Fprintf(w, `</tr>`)
 		}
-		approvals.WriteString("</ul>")
-		if asList {
-			approvals.WriteString("</li>")
-		}
+
+		fmt.Fprintf(w, `</tbody></table>`)
 	}
-	if asList {
-		approvals.WriteString("</ul>")
-	}
-	return approvals.String()
+
 }
 
 func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Request) {
@@ -2013,6 +2254,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 			"inc":                     func(i int) int { return i + 1 },
 			"upgradeCells":            upgradeCells,
 			"removeSpecialCharacters": removeSpecialCharacters,
+			"qualifierBadges":         c.renderQualifierBadges,
 			"since": func(utcDate string) string {
 				t, err := time.Parse(time.RFC3339, utcDate)
 				if err != nil {
@@ -2364,6 +2606,117 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 			data, err = json.MarshalIndent(&verificationJobs, "", "  ")
 		}
 	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiQualifierConfig(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	vars := mux.Vars(req)
+	streamName := vars["release"]
+	qualifierID := releasequalifiers.QualifierId(vars["qualifier"])
+
+	jobName := req.URL.Query().Get("job")
+	if jobName == "" {
+		http.Error(w, "error: job query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the most recent payload in this stream that has this qualifier
+	payloads := c.GetReleasePayloads()
+	var payload *v1alpha1.ReleasePayload
+	for _, p := range payloads {
+		if p.Spec.PayloadCoordinates.StreamName != streamName {
+			continue
+		}
+		if p.Status.QualifiersSummary != nil {
+			if _, ok := p.Status.QualifiersSummary.Qualifiers[qualifierID]; ok {
+				if payload == nil || p.CreationTimestamp.After(payload.CreationTimestamp.Time) {
+					payload = p
+				}
+			}
+		}
+	}
+
+	if payload == nil {
+		http.Error(w, fmt.Sprintf("No payload found for qualifier %q in stream %q", qualifierID, streamName), http.StatusNotFound)
+		return
+	}
+
+	// Find the CIConfiguration for the specified job
+	var jobConfig *v1alpha1.CIConfiguration
+	for i := range payload.Spec.PayloadVerificationConfig.BlockingJobs {
+		if payload.Spec.PayloadVerificationConfig.BlockingJobs[i].CIConfigurationName == jobName {
+			jobConfig = &payload.Spec.PayloadVerificationConfig.BlockingJobs[i]
+			break
+		}
+	}
+	if jobConfig == nil {
+		for i := range payload.Spec.PayloadVerificationConfig.InformingJobs {
+			if payload.Spec.PayloadVerificationConfig.InformingJobs[i].CIConfigurationName == jobName {
+				jobConfig = &payload.Spec.PayloadVerificationConfig.InformingJobs[i]
+				break
+			}
+		}
+	}
+	if jobConfig == nil {
+		http.Error(w, fmt.Sprintf("Job %q not found in payload %q", jobName, payload.Name), http.StatusNotFound)
+		return
+	}
+
+	// Start with the global config as the base
+	var mergedQualifier releasequalifiers.ReleaseQualifier
+	if c.configAccessor != nil {
+		globalConfig := c.configAccessor.Get()
+		if globalConfig != nil {
+			if gq, ok := globalConfig[qualifierID]; ok {
+				mergedQualifier = gq
+			}
+		}
+	}
+
+	// Merge per-job override on top
+	if override, ok := jobConfig.Qualifiers[qualifierID]; ok {
+		mergedQualifier = mergedQualifier.Merge(override)
+	}
+
+	data, err := json.MarshalIndent(&mergedQualifier, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	fmt.Fprintln(w)
+}
+
+func (c *Controller) apiReleaseQualifiersSummaries(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() { klog.V(4).Infof("rendered in %s", time.Since(start)) }()
+
+	vars := mux.Vars(req)
+	tag := vars["tag"]
+
+	payload := c.GetReleasePayload(tag)
+	if payload == nil {
+		http.Error(w, fmt.Sprintf("No release payload found for tag %q", tag), http.StatusNotFound)
+		return
+	}
+
+	data, err := json.MarshalIndent(payload.Status.QualifiersSummary, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

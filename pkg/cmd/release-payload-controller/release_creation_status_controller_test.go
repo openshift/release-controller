@@ -2,6 +2,7 @@ package release_payload_controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -460,7 +461,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 				return
 			}
 
-			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil && err != testCase.expectedErr {
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil && !errors.Is(err, testCase.expectedErr) {
 				t.Errorf("%s - expected error: %v, got: %v", testCase.name, testCase.expectedErr, err)
 			}
 

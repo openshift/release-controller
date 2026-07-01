@@ -1,0 +1,1429 @@
+[{
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-132406",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2050205768946290688",
+  "prowjob_start": "2026-05-01T13:28:38",
+  "prowjob_completion": "2026-05-01T19:57:00"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-071722",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2050113387936878592",
+  "prowjob_start": "2026-05-01T07:20:59",
+  "prowjob_completion": "2026-05-01T09:41:33"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-225934",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049988508646379520",
+  "prowjob_start": "2026-04-30T23:04:32",
+  "prowjob_completion": "2026-05-01T04:09:00"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-151455",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049871430639685632",
+  "prowjob_start": "2026-04-30T15:19:57",
+  "prowjob_completion": "2026-04-30T17:43:02"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-093328",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049785175738421248",
+  "prowjob_start": "2026-04-30T09:37:21",
+  "prowjob_completion": "2026-04-30T12:17:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-024629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049682997350764544",
+  "prowjob_start": "2026-04-30T02:51:22",
+  "prowjob_completion": "2026-04-30T05:18:51"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-224558",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049622256757248000",
+  "prowjob_start": "2026-04-29T22:49:32",
+  "prowjob_completion": "2026-04-30T00:58:13"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-175947",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049550705831710720",
+  "prowjob_start": "2026-04-29T18:05:13",
+  "prowjob_completion": "2026-04-29T20:26:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-114113",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049455052711530496",
+  "prowjob_start": "2026-04-29T11:45:09",
+  "prowjob_completion": "2026-04-29T14:05:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-033806",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049333693910093824",
+  "prowjob_start": "2026-04-29T03:43:22",
+  "prowjob_completion": "2026-04-29T06:04:06"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-210841",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049235740230946816",
+  "prowjob_start": "2026-04-28T21:13:28",
+  "prowjob_completion": "2026-04-28T23:30:40"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-125854",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2049112470873706496",
+  "prowjob_start": "2026-04-28T13:03:40",
+  "prowjob_completion": "2026-04-28T15:32:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-042702",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048983570751426560",
+  "prowjob_start": "2026-04-28T04:31:45",
+  "prowjob_completion": "2026-04-28T06:51:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-194825",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048853203558076416",
+  "prowjob_start": "2026-04-27T19:53:49",
+  "prowjob_completion": "2026-04-27T22:43:36"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-130324",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048763426833960960",
+  "prowjob_start": "2026-04-27T13:08:19",
+  "prowjob_completion": "2026-04-27T16:10:25"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-170224",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048448763453771776",
+  "prowjob_start": "2026-04-26T17:06:15",
+  "prowjob_completion": "2026-04-26T19:40:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-104009",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048352642035355648",
+  "prowjob_start": "2026-04-26T10:44:09",
+  "prowjob_completion": "2026-04-26T13:09:59"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-032920",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048243901134802944",
+  "prowjob_start": "2026-04-26T03:32:41",
+  "prowjob_completion": "2026-04-26T05:51:14"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-214646",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048158262800420864",
+  "prowjob_start": "2026-04-25T21:52:03",
+  "prowjob_completion": "2026-04-26T00:15:45"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-155912",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2048070310002954240",
+  "prowjob_start": "2026-04-25T16:02:50",
+  "prowjob_completion": "2026-04-25T18:36:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-090049",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047965101427789824",
+  "prowjob_start": "2026-04-25T09:04:55",
+  "prowjob_completion": "2026-04-25T11:28:53"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-030944",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047877102392315904",
+  "prowjob_start": "2026-04-25T03:14:25",
+  "prowjob_completion": "2026-04-25T05:37:47"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-210006",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047783857666658304",
+  "prowjob_start": "2026-04-24T21:04:07",
+  "prowjob_completion": "2026-04-24T23:18:26"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-151454",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047697330676699136",
+  "prowjob_start": "2026-04-24T15:20:32",
+  "prowjob_completion": "2026-04-24T17:37:08"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-070221",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047573167030931456",
+  "prowjob_start": "2026-04-24T07:07:27",
+  "prowjob_completion": "2026-04-24T09:38:56"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047482379349528576",
+  "prowjob_start": "2026-04-24T01:06:30",
+  "prowjob_completion": "2026-04-24T03:26:02"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-193408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047400201710211072",
+  "prowjob_start": "2026-04-23T19:39:32",
+  "prowjob_completion": "2026-04-23T22:16:39"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-135257",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047313822611410944",
+  "prowjob_start": "2026-04-23T13:57:05",
+  "prowjob_completion": "2026-04-23T14:06:37"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-080802",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047227319411544064",
+  "prowjob_start": "2026-04-23T08:12:48",
+  "prowjob_completion": "2026-04-23T10:31:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-021021",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047137088272338944",
+  "prowjob_start": "2026-04-23T02:14:34",
+  "prowjob_completion": "2026-04-23T04:36:50"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-201025",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2047046542619054080",
+  "prowjob_start": "2026-04-22T20:14:44",
+  "prowjob_completion": "2026-04-22T22:41:33"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-141937",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046958168994484224",
+  "prowjob_start": "2026-04-22T14:23:41",
+  "prowjob_completion": "2026-04-22T16:56:19"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-080408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046864293181263872",
+  "prowjob_start": "2026-04-22T08:10:08",
+  "prowjob_completion": "2026-04-22T10:42:33"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-021901",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046777052056522752",
+  "prowjob_start": "2026-04-22T02:23:40",
+  "prowjob_completion": "2026-04-22T04:39:20"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-180831",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046653722330664960",
+  "prowjob_start": "2026-04-21T18:13:18",
+  "prowjob_completion": "2026-04-21T20:39:34"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-110601",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046546902572339200",
+  "prowjob_start": "2026-04-21T11:09:39",
+  "prowjob_completion": "2026-04-21T13:42:38"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-051400",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046459002392416256",
+  "prowjob_start": "2026-04-21T05:18:44",
+  "prowjob_completion": "2026-04-21T07:34:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-223814",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046358692357476352",
+  "prowjob_start": "2026-04-20T22:41:46",
+  "prowjob_completion": "2026-04-21T01:10:28"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-143244",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046237215540908032",
+  "prowjob_start": "2026-04-20T14:38:07",
+  "prowjob_completion": "2026-04-20T17:08:27"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-082629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046144666427985920",
+  "prowjob_start": "2026-04-20T08:30:36",
+  "prowjob_completion": "2026-04-20T11:18:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-015039",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2046044746731753472",
+  "prowjob_start": "2026-04-20T01:54:01",
+  "prowjob_completion": "2026-04-20T04:10:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-192951",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045948901621501952",
+  "prowjob_start": "2026-04-19T19:33:18",
+  "prowjob_completion": "2026-04-19T22:02:56"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-114914",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045833505224527872",
+  "prowjob_start": "2026-04-19T11:54:02",
+  "prowjob_completion": "2026-04-19T14:15:06"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-051333",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045733503030530048",
+  "prowjob_start": "2026-04-19T05:17:06",
+  "prowjob_completion": "2026-04-19T07:36:15"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-230548",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045643293886255104",
+  "prowjob_start": "2026-04-18T23:19:01",
+  "prowjob_completion": "2026-04-19T01:37:56"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-162844",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045541306784026624",
+  "prowjob_start": "2026-04-18T16:33:28",
+  "prowjob_completion": "2026-04-18T18:58:52"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-101508",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045447366730846208",
+  "prowjob_start": "2026-04-18T10:20:19",
+  "prowjob_completion": "2026-04-18T12:38:40"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-032544",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045343939753414656",
+  "prowjob_start": "2026-04-18T03:29:25",
+  "prowjob_completion": "2026-04-18T05:44:05"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-17-213419",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-console-aws",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-console-aws/2045255499544268800",
+  "prowjob_start": "2026-04-17T21:37:59",
+  "prowjob_completion": "2026-04-17T23:53:21"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-132406",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2050206087717588992",
+  "prowjob_start": "2026-05-01T13:29:05",
+  "prowjob_completion": "2026-05-01T15:48:22"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-071722",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2050113194151645184",
+  "prowjob_start": "2026-05-01T07:20:42",
+  "prowjob_completion": "2026-05-01T09:12:40"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-225934",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049988993650528256",
+  "prowjob_start": "2026-04-30T23:04:35",
+  "prowjob_completion": "2026-05-01T03:32:02"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-151455",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049871563179692032",
+  "prowjob_start": "2026-04-30T15:20:07",
+  "prowjob_completion": "2026-04-30T17:34:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-093328",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049785379581595648",
+  "prowjob_start": "2026-04-30T09:37:47",
+  "prowjob_completion": "2026-04-30T11:29:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-024629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049683092154617856",
+  "prowjob_start": "2026-04-30T02:51:39",
+  "prowjob_completion": "2026-04-30T05:05:31"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-224558",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049622078142812160",
+  "prowjob_start": "2026-04-29T22:49:18",
+  "prowjob_completion": "2026-04-30T00:46:04"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-175947",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049550656347312128",
+  "prowjob_start": "2026-04-29T18:05:09",
+  "prowjob_completion": "2026-04-29T19:59:26"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-114113",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049454949531652096",
+  "prowjob_start": "2026-04-29T11:45:01",
+  "prowjob_completion": "2026-04-29T13:49:30"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-033806",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049333870884556800",
+  "prowjob_start": "2026-04-29T03:43:37",
+  "prowjob_completion": "2026-04-29T05:51:43"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-210841",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049235564061790208",
+  "prowjob_start": "2026-04-28T21:13:12",
+  "prowjob_completion": "2026-04-28T23:12:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-125854",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2049112484282896384",
+  "prowjob_start": "2026-04-28T13:03:43",
+  "prowjob_completion": "2026-04-28T15:17:49"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-042702",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048983376144109568",
+  "prowjob_start": "2026-04-28T04:31:11",
+  "prowjob_completion": "2026-04-28T06:36:08"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-194825",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048853143998959616",
+  "prowjob_start": "2026-04-27T19:53:44",
+  "prowjob_completion": "2026-04-27T22:52:31"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-130324",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048756543129653248",
+  "prowjob_start": "2026-04-27T13:07:59",
+  "prowjob_completion": "2026-04-27T15:27:49"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-170224",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048448715638706176",
+  "prowjob_start": "2026-04-26T17:06:10",
+  "prowjob_completion": "2026-04-26T19:09:22"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-104009",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048352451609759744",
+  "prowjob_start": "2026-04-26T10:43:54",
+  "prowjob_completion": "2026-04-26T12:49:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-032920",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048243922940989440",
+  "prowjob_start": "2026-04-26T03:32:42",
+  "prowjob_completion": "2026-04-26T05:33:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-214646",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048158142004465664",
+  "prowjob_start": "2026-04-25T21:51:51",
+  "prowjob_completion": "2026-04-25T23:44:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-155912",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2048070205992603648",
+  "prowjob_start": "2026-04-25T16:02:43",
+  "prowjob_completion": "2026-04-25T18:30:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-090049",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047965152606687232",
+  "prowjob_start": "2026-04-25T09:05:03",
+  "prowjob_completion": "2026-04-25T11:13:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-030944",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047876841498218496",
+  "prowjob_start": "2026-04-25T03:14:04",
+  "prowjob_completion": "2026-04-25T05:27:04"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-210006",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047783823273365504",
+  "prowjob_start": "2026-04-24T21:04:05",
+  "prowjob_completion": "2026-04-24T23:03:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-151454",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047697711469170688",
+  "prowjob_start": "2026-04-24T15:21:10",
+  "prowjob_completion": "2026-04-24T17:20:23"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-070221",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047573093576085504",
+  "prowjob_start": "2026-04-24T07:07:22",
+  "prowjob_completion": "2026-04-24T09:06:57"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047482240933302272",
+  "prowjob_start": "2026-04-24T01:06:11",
+  "prowjob_completion": "2026-04-24T03:04:20"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-193408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047400075012870144",
+  "prowjob_start": "2026-04-23T19:39:21",
+  "prowjob_completion": "2026-04-23T21:51:29"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-135257",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047314148940845056",
+  "prowjob_start": "2026-04-23T13:57:39",
+  "prowjob_completion": "2026-04-23T15:53:20"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-080802",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047227520486477824",
+  "prowjob_start": "2026-04-23T08:13:02",
+  "prowjob_completion": "2026-04-23T10:19:12"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-021021",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047137036262969344",
+  "prowjob_start": "2026-04-23T02:14:30",
+  "prowjob_completion": "2026-04-23T04:18:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-201025",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2047046400847384576",
+  "prowjob_start": "2026-04-22T20:14:28",
+  "prowjob_completion": "2026-04-22T22:23:29"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-141937",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046958356022693888",
+  "prowjob_start": "2026-04-22T14:23:53",
+  "prowjob_completion": "2026-04-22T16:27:56"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-080408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046864237795479552",
+  "prowjob_start": "2026-04-22T08:10:05",
+  "prowjob_completion": "2026-04-22T10:18:14"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-021901",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046776894342303744",
+  "prowjob_start": "2026-04-22T02:23:16",
+  "prowjob_completion": "2026-04-22T04:32:14"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-180831",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046653550330646528",
+  "prowjob_start": "2026-04-21T18:13:06",
+  "prowjob_completion": "2026-04-21T20:23:30"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-110601",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046546902635253760",
+  "prowjob_start": "2026-04-21T11:09:39",
+  "prowjob_completion": "2026-04-21T13:01:23"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-051400",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046459098030936064",
+  "prowjob_start": "2026-04-21T05:18:52",
+  "prowjob_completion": "2026-04-21T07:17:46"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-223814",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046358713341579264",
+  "prowjob_start": "2026-04-20T22:41:46",
+  "prowjob_completion": "2026-04-21T00:51:37"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-143244",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046236967267471360",
+  "prowjob_start": "2026-04-20T14:37:48",
+  "prowjob_completion": "2026-04-20T16:52:07"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-082629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046144620693295104",
+  "prowjob_start": "2026-04-20T08:30:28",
+  "prowjob_completion": "2026-04-20T10:48:45"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-015039",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2046044661289586688",
+  "prowjob_start": "2026-04-20T01:53:55",
+  "prowjob_completion": "2026-04-20T03:57:15"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-192951",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045949145738383360",
+  "prowjob_start": "2026-04-19T19:33:39",
+  "prowjob_completion": "2026-04-19T21:49:49"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-114914",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045833273677975552",
+  "prowjob_start": "2026-04-19T11:53:44",
+  "prowjob_completion": "2026-04-19T14:00:41"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-051333",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045733655749332992",
+  "prowjob_start": "2026-04-19T05:17:21",
+  "prowjob_completion": "2026-04-19T07:22:34"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-230548",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045643223421947904",
+  "prowjob_start": "2026-04-18T23:18:44",
+  "prowjob_completion": "2026-04-19T01:52:27"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-162844",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045541430885093376",
+  "prowjob_start": "2026-04-18T16:33:39",
+  "prowjob_completion": "2026-04-18T18:47:33"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-101508",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045447306353840128",
+  "prowjob_start": "2026-04-18T10:20:15",
+  "prowjob_completion": "2026-04-18T12:17:41"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-032544",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045344140249534464",
+  "prowjob_start": "2026-04-18T03:29:44",
+  "prowjob_completion": "2026-04-18T05:48:05"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-17-213419",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-csi/2045255664808235008",
+  "prowjob_start": "2026-04-17T21:38:11",
+  "prowjob_completion": "2026-04-17T23:49:28"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-132406",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2050205859551645696",
+  "prowjob_start": "2026-05-01T13:28:46",
+  "prowjob_completion": "2026-05-01T14:36:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-071722",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2050113391283933184",
+  "prowjob_start": "2026-05-01T07:20:59",
+  "prowjob_completion": "2026-05-01T08:24:54"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-225934",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049988799039016960",
+  "prowjob_start": "2026-04-30T23:04:39",
+  "prowjob_completion": "2026-05-01T02:27:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-151455",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049871660495933440",
+  "prowjob_start": "2026-04-30T15:20:15",
+  "prowjob_completion": "2026-04-30T16:33:48"
+}, {
+  "release_verify_tag": "4.22.0-rc.2",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049856290099826688",
+  "prowjob_start": "2026-04-30T14:19:57",
+  "prowjob_completion": "2026-04-30T15:35:23"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-093328",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049785194197553152",
+  "prowjob_start": "2026-04-30T09:37:23",
+  "prowjob_completion": "2026-04-30T10:45:44"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-024629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049683145841709056",
+  "prowjob_start": "2026-04-30T02:51:43",
+  "prowjob_completion": "2026-04-30T04:08:27"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-224558",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049622297018372096",
+  "prowjob_start": "2026-04-29T22:49:35",
+  "prowjob_completion": "2026-04-30T00:03:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-175947",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049550613552828416",
+  "prowjob_start": "2026-04-29T18:05:06",
+  "prowjob_completion": "2026-04-29T19:19:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-114113",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049454988144414720",
+  "prowjob_start": "2026-04-29T11:45:04",
+  "prowjob_completion": "2026-04-29T13:23:19"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-033806",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049333984978014208",
+  "prowjob_start": "2026-04-29T03:43:48",
+  "prowjob_completion": "2026-04-29T04:57:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-210841",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049235608525606912",
+  "prowjob_start": "2026-04-28T21:13:16",
+  "prowjob_completion": "2026-04-28T22:25:03"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-125854",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2049112426401501184",
+  "prowjob_start": "2026-04-28T13:03:34",
+  "prowjob_completion": "2026-04-28T14:18:37"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-042702",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048983439050280960",
+  "prowjob_start": "2026-04-28T04:31:23",
+  "prowjob_completion": "2026-04-28T05:38:38"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-194825",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048853464464756736",
+  "prowjob_start": "2026-04-27T19:54:08",
+  "prowjob_completion": "2026-04-27T21:40:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-130324",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048752172480335872",
+  "prowjob_start": "2026-04-27T13:08:17",
+  "prowjob_completion": "2026-04-27T14:19:02"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-170224",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048448527721304064",
+  "prowjob_start": "2026-04-26T17:05:53",
+  "prowjob_completion": "2026-04-26T18:23:26"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-104009",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048352695726641152",
+  "prowjob_start": "2026-04-26T10:44:13",
+  "prowjob_completion": "2026-04-26T11:52:28"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-032920",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048243815571001344",
+  "prowjob_start": "2026-04-26T03:32:34",
+  "prowjob_completion": "2026-04-26T04:49:17"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-214646",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048158101747535872",
+  "prowjob_start": "2026-04-25T21:51:47",
+  "prowjob_completion": "2026-04-25T22:55:58"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-155912",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2048070505470103552",
+  "prowjob_start": "2026-04-25T16:03:04",
+  "prowjob_completion": "2026-04-25T17:32:05"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-090049",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047965069559468032",
+  "prowjob_start": "2026-04-25T09:04:50",
+  "prowjob_completion": "2026-04-25T10:29:10"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-030944",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047876966501060608",
+  "prowjob_start": "2026-04-25T03:14:15",
+  "prowjob_completion": "2026-04-25T04:20:39"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-210006",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047783991070691328",
+  "prowjob_start": "2026-04-24T21:04:14",
+  "prowjob_completion": "2026-04-24T22:15:02"
+}, {
+  "release_verify_tag": "4.22.0-rc.1",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047770521025646592",
+  "prowjob_start": "2026-04-24T20:11:51",
+  "prowjob_completion": "2026-04-24T21:20:18"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-151454",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047697600773099520",
+  "prowjob_start": "2026-04-24T15:20:55",
+  "prowjob_completion": "2026-04-24T16:33:13"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-070221",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047573249239289856",
+  "prowjob_start": "2026-04-24T07:07:34",
+  "prowjob_completion": "2026-04-24T08:20:40"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047488054121205760",
+  "prowjob_start": "2026-04-24T01:29:27",
+  "prowjob_completion": "2026-04-24T01:37:17"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047485451530407936",
+  "prowjob_start": "2026-04-24T01:19:06",
+  "prowjob_completion": "2026-04-24T01:27:05"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "failure",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047482534547165184",
+  "prowjob_start": "2026-04-24T01:06:47",
+  "prowjob_completion": "2026-04-24T01:16:39"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-193408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047400087046328320",
+  "prowjob_start": "2026-04-23T19:39:22",
+  "prowjob_completion": "2026-04-23T20:52:07"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-135257",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047314135514877952",
+  "prowjob_start": "2026-04-23T13:57:36",
+  "prowjob_completion": "2026-04-23T15:09:26"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-080802",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047227177388216320",
+  "prowjob_start": "2026-04-23T08:12:39",
+  "prowjob_completion": "2026-04-23T09:21:12"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-021021",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047137109239664640",
+  "prowjob_start": "2026-04-23T02:14:36",
+  "prowjob_completion": "2026-04-23T03:25:59"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-201025",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2047046428533985280",
+  "prowjob_start": "2026-04-22T20:14:32",
+  "prowjob_completion": "2026-04-22T21:22:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-141937",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046958111058563072",
+  "prowjob_start": "2026-04-22T14:23:38",
+  "prowjob_completion": "2026-04-22T15:36:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-080408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046864280577380352",
+  "prowjob_start": "2026-04-22T08:10:07",
+  "prowjob_completion": "2026-04-22T09:14:44"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-021901",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046776883453890560",
+  "prowjob_start": "2026-04-22T02:23:14",
+  "prowjob_completion": "2026-04-22T03:31:25"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-180831",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046653686226096128",
+  "prowjob_start": "2026-04-21T18:13:16",
+  "prowjob_completion": "2026-04-21T19:24:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-110601",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046546952073515008",
+  "prowjob_start": "2026-04-21T11:09:42",
+  "prowjob_completion": "2026-04-21T12:22:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-051400",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046459238120689664",
+  "prowjob_start": "2026-04-21T05:19:03",
+  "prowjob_completion": "2026-04-21T06:36:25"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-223814",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046358731788128256",
+  "prowjob_start": "2026-04-20T22:41:48",
+  "prowjob_completion": "2026-04-20T23:55:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-143244",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046237022598729728",
+  "prowjob_start": "2026-04-20T14:37:51",
+  "prowjob_completion": "2026-04-20T16:04:49"
+}, {
+  "release_verify_tag": "4.22.0-rc.0",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046198035565776896",
+  "prowjob_start": "2026-04-20T12:03:14",
+  "prowjob_completion": "2026-04-20T13:22:42"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-082629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046144612745089024",
+  "prowjob_start": "2026-04-20T08:30:28",
+  "prowjob_completion": "2026-04-20T09:40:16"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-015039",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2046044859139100672",
+  "prowjob_start": "2026-04-20T01:54:11",
+  "prowjob_completion": "2026-04-20T02:58:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-192951",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045949022409068544",
+  "prowjob_start": "2026-04-19T19:33:28",
+  "prowjob_completion": "2026-04-19T20:52:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-114914",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045833464103571456",
+  "prowjob_start": "2026-04-19T11:53:59",
+  "prowjob_completion": "2026-04-19T13:01:26"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-051333",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045733395660541952",
+  "prowjob_start": "2026-04-19T05:16:56",
+  "prowjob_completion": "2026-04-19T06:26:49"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-230548",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045643213892489216",
+  "prowjob_start": "2026-04-18T23:18:42",
+  "prowjob_completion": "2026-04-19T00:28:00"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-162844",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045541221203447808",
+  "prowjob_start": "2026-04-18T16:33:20",
+  "prowjob_completion": "2026-04-18T17:44:48"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-101508",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045447467402530816",
+  "prowjob_start": "2026-04-18T10:20:28",
+  "prowjob_completion": "2026-04-18T11:27:50"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-032544",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045344149481197568",
+  "prowjob_start": "2026-04-18T03:29:44",
+  "prowjob_completion": "2026-04-18T04:44:52"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-17-213419",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-driver-toolkit/2045255648874074112",
+  "prowjob_start": "2026-04-17T21:38:09",
+  "prowjob_completion": "2026-04-17T22:51:59"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-132406",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2050206023968362496",
+  "prowjob_start": "2026-05-01T13:28:59",
+  "prowjob_completion": "2026-05-01T15:05:21"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-05-01-071722",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2050113475174207488",
+  "prowjob_start": "2026-05-01T07:21:07",
+  "prowjob_completion": "2026-05-01T08:46:00"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-225934",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049988993767968768",
+  "prowjob_start": "2026-04-30T23:04:27",
+  "prowjob_completion": "2026-05-01T02:45:10"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-151455",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049871685670146048",
+  "prowjob_start": "2026-04-30T15:20:17",
+  "prowjob_completion": "2026-04-30T16:51:22"
+}, {
+  "release_verify_tag": "4.22.0-rc.2",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049856279563735040",
+  "prowjob_start": "2026-04-30T14:19:55",
+  "prowjob_completion": "2026-04-30T15:47:06"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-093328",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049785240326508544",
+  "prowjob_start": "2026-04-30T09:37:27",
+  "prowjob_completion": "2026-04-30T11:13:56"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-30-024629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049683090481090560",
+  "prowjob_start": "2026-04-30T02:51:38",
+  "prowjob_completion": "2026-04-30T04:20:38"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-224558",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049622102394277888",
+  "prowjob_start": "2026-04-29T22:49:19",
+  "prowjob_completion": "2026-04-30T00:09:12"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-175947",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049550740237586432",
+  "prowjob_start": "2026-04-29T18:05:16",
+  "prowjob_completion": "2026-04-29T19:35:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-114113",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049455201194086400",
+  "prowjob_start": "2026-04-29T11:45:19",
+  "prowjob_completion": "2026-04-29T13:24:03"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-29-033806",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049333915352567808",
+  "prowjob_start": "2026-04-29T03:43:41",
+  "prowjob_completion": "2026-04-29T05:20:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-210841",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049235642914705408",
+  "prowjob_start": "2026-04-28T21:13:19",
+  "prowjob_completion": "2026-04-28T22:40:28"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-125854",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2049112241004875776",
+  "prowjob_start": "2026-04-28T13:03:16",
+  "prowjob_completion": "2026-04-28T14:27:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-28-042702",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048983319923658752",
+  "prowjob_start": "2026-04-28T04:31:04",
+  "prowjob_completion": "2026-04-28T05:54:20"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-194825",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048853451038789632",
+  "prowjob_start": "2026-04-27T19:54:07",
+  "prowjob_completion": "2026-04-27T21:50:39"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-27-130324",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048751658489352192",
+  "prowjob_start": "2026-04-27T13:07:28",
+  "prowjob_completion": "2026-04-27T14:38:01"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-170224",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048448501720813568",
+  "prowjob_start": "2026-04-26T17:05:50",
+  "prowjob_completion": "2026-04-26T18:28:15"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-104009",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048352654618267648",
+  "prowjob_start": "2026-04-26T10:44:10",
+  "prowjob_completion": "2026-04-26T12:04:35"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-26-032920",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048243911201132544",
+  "prowjob_start": "2026-04-26T03:32:41",
+  "prowjob_completion": "2026-04-26T04:56:06"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-214646",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048158108458422272",
+  "prowjob_start": "2026-04-25T21:51:48",
+  "prowjob_completion": "2026-04-25T23:19:18"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-155912",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2048070448507260928",
+  "prowjob_start": "2026-04-25T16:03:00",
+  "prowjob_completion": "2026-04-25T17:43:12"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-090049",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047965236509544448",
+  "prowjob_start": "2026-04-25T09:05:10",
+  "prowjob_completion": "2026-04-25T10:29:04"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-25-030944",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047876901904584704",
+  "prowjob_start": "2026-04-25T03:14:09",
+  "prowjob_completion": "2026-04-25T04:31:13"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-210006",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047783900456947712",
+  "prowjob_start": "2026-04-24T21:04:08",
+  "prowjob_completion": "2026-04-24T22:23:03"
+}, {
+  "release_verify_tag": "4.22.0-rc.1",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047770518500675584",
+  "prowjob_start": "2026-04-24T20:11:51",
+  "prowjob_completion": "2026-04-24T21:33:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-151454",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047697708956782592",
+  "prowjob_start": "2026-04-24T15:21:09",
+  "prowjob_completion": "2026-04-24T16:52:10"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-070221",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047573172902957056",
+  "prowjob_start": "2026-04-24T07:07:28",
+  "prowjob_completion": "2026-04-24T08:36:41"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-24-010109",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047482303847862272",
+  "prowjob_start": "2026-04-24T01:06:19",
+  "prowjob_completion": "2026-04-24T02:34:51"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-193408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047399975226183680",
+  "prowjob_start": "2026-04-23T19:39:14",
+  "prowjob_completion": "2026-04-23T21:05:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-135257",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047313758014935040",
+  "prowjob_start": "2026-04-23T13:56:50",
+  "prowjob_completion": "2026-04-23T15:22:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-080802",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047227214428114944",
+  "prowjob_start": "2026-04-23T08:12:41",
+  "prowjob_completion": "2026-04-23T09:36:35"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-23-021021",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047137043804327936",
+  "prowjob_start": "2026-04-23T02:14:31",
+  "prowjob_completion": "2026-04-23T03:37:10"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-201025",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2047046739004755968",
+  "prowjob_start": "2026-04-22T20:15:12",
+  "prowjob_completion": "2026-04-22T21:49:06"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-141937",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046958458367905792",
+  "prowjob_start": "2026-04-22T14:24:01",
+  "prowjob_completion": "2026-04-22T16:01:51"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-080408",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046864137127989248",
+  "prowjob_start": "2026-04-22T08:09:49",
+  "prowjob_completion": "2026-04-22T09:33:16"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-22-021901",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046776875891560448",
+  "prowjob_start": "2026-04-22T02:23:13",
+  "prowjob_completion": "2026-04-22T03:47:54"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-180831",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046653796959916032",
+  "prowjob_start": "2026-04-21T18:13:24",
+  "prowjob_completion": "2026-04-21T19:39:37"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-110601",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046547039294066688",
+  "prowjob_start": "2026-04-21T11:09:49",
+  "prowjob_completion": "2026-04-21T12:30:54"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-21-051400",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046459231409803264",
+  "prowjob_start": "2026-04-21T05:19:03",
+  "prowjob_completion": "2026-04-21T06:48:09"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-223814",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046358691225014272",
+  "prowjob_start": "2026-04-20T22:41:46",
+  "prowjob_completion": "2026-04-21T00:14:08"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-143244",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046237188701556736",
+  "prowjob_start": "2026-04-20T14:38:05",
+  "prowjob_completion": "2026-04-20T16:12:56"
+}, {
+  "release_verify_tag": "4.22.0-rc.0",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046198017953894400",
+  "prowjob_start": "2026-04-20T12:03:11",
+  "prowjob_completion": "2026-04-20T13:39:28"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-082629",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046144475465519104",
+  "prowjob_start": "2026-04-20T08:30:09",
+  "prowjob_completion": "2026-04-20T09:55:49"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-20-015039",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2046044776947519488",
+  "prowjob_start": "2026-04-20T01:54:03",
+  "prowjob_completion": "2026-04-20T03:39:24"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-192951",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045948928456658944",
+  "prowjob_start": "2026-04-19T19:33:20",
+  "prowjob_completion": "2026-04-19T21:07:16"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-114914",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045833569804226560",
+  "prowjob_start": "2026-04-19T11:54:07",
+  "prowjob_completion": "2026-04-19T13:23:25"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-19-051333",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045733444314468352",
+  "prowjob_start": "2026-04-19T05:17:01",
+  "prowjob_completion": "2026-04-19T06:41:39"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-230548",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045643344259846144",
+  "prowjob_start": "2026-04-18T23:19:13",
+  "prowjob_completion": "2026-04-19T00:48:50"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-162844",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045541214450618368",
+  "prowjob_start": "2026-04-18T16:33:19",
+  "prowjob_completion": "2026-04-18T18:03:11"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-101508",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045447476629999616",
+  "prowjob_start": "2026-04-18T10:20:28",
+  "prowjob_completion": "2026-04-18T11:45:17"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-18-032544",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045344213238812672",
+  "prowjob_start": "2026-04-18T03:29:50",
+  "prowjob_completion": "2026-04-18T04:58:34"
+}, {
+  "release_verify_tag": "4.22.0-0.nightly-2026-04-17-213419",
+  "prowjob_job_name": "periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan",
+  "prowjob_state": "success",
+  "prowjob_url": "https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-openshift-release-main-nightly-4.22-fips-payload-scan/2045255793179103232",
+  "prowjob_start": "2026-04-17T21:38:22",
+  "prowjob_completion": "2026-04-17T23:13:56"
+}]

@@ -21,7 +21,7 @@ import (
 )
 
 // JobStateController is responsible for updating the JobState for every entry in the
-// BlockingJobResults and InformingJobResults lists.
+// BlockingJobResults, InformingJobResults, and UpgradeJobResults lists.
 // The JobStateController reads the following pieces of information:
 //   - .status.blockingJobResults[] | .results[]
 //   - .status.informingJobResults[] | .results[]

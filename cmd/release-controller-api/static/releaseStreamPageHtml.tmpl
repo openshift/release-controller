@@ -1,4 +1,4 @@
-<a href="/">Back home</a>
+<a href="/">Back to index</a>
 <div class="row">
     <div class="col">
         {{ $isStable := .TargetStream.Release.Config.As }}
@@ -13,6 +13,7 @@
                 <th title="The release moves through these stages:&#10;&#10;Pending - still creating release image&#10;Ready - release image created&#10;Accepted - all tests pass&#10;Rejected - some tests failed&#10;Failed - Could not create release image">Phase</th>
                 <th>Started</th>
                 <th title="Tests that failed or are still pending on releases. See release page for more.">Failures</th>
+                <th title="Qualification badges earned by this payload">Qualifiers</th>
                 {{ if $upgrades }}<th colspan="{{ inc $upgrades.Width }}">Upgrades</th>{{ end }}
             </tr>
             </thead>
@@ -20,7 +21,7 @@
             {{ $release := .TargetStream.Release }}
             {{ if .TargetStream.Delayed }}
             <tr>
-                <td colspan="4"><em>{{ .TargetStream.Delayed.Message }}</em></td>
+                <td colspan="5"><em>{{ .TargetStream.Delayed.Message }}</em></td>
                 {{ if $upgrades }}<td colspan="{{ inc $upgrades.Width }}"></td>{{ end }}
             </tr>
             {{ end }}
@@ -31,6 +32,7 @@
                 {{ phaseCell . }}
                 <td title="{{ $created }}">{{ since $created }}</td>
                 <td>{{ links . $release }}</td>
+                <td>{{ qualifierBadges $tag.Name false }}</td>
                 {{ upgradeCells $upgrades $index }}
             </tr>
             {{ end }}

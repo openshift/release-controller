@@ -4,6 +4,7 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 	releasepayloadlister "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 
 	lru "github.com/hashicorp/golang-lru"
 
@@ -66,6 +67,9 @@ type Controller struct {
 	releasePayloadNamespace string
 	releasePayloadLister    releasepayloadlister.ReleasePayloadLister
 
+	// configAccessor provides access to release qualifiers configuration (optional, may be nil)
+	configAccessor releasequalifiers.ConfigAccessor
+
 	// All image streams from app.ci cluster
 	imageStreams []*imagev1.ImageStream
 }
@@ -81,6 +85,7 @@ func NewController(
 	artSuffix string,
 	releasePayloadNamespace string,
 	releasePayloadLister releasepayloadlister.ReleasePayloadLister,
+	configAccessor releasequalifiers.ConfigAccessor,
 ) *Controller {
 	// log events at v2 and send them to the server
 	broadcaster := record.NewBroadcaster()
@@ -115,6 +120,8 @@ func NewController(
 
 		releasePayloadNamespace: releasePayloadNamespace,
 		releasePayloadLister:    releasePayloadLister,
+
+		configAccessor: configAccessor,
 	}
 
 	c.dashboards = []Dashboard{

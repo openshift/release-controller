@@ -44,6 +44,7 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 				Namespace:          release.Target.Namespace,
 				ImagestreamName:    release.Target.Name,
 				ImagestreamTagName: name,
+				StreamName: release.Config.Name,
 			},
 			PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 				ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -95,6 +96,7 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 			CIConfigurationName:    verifyName,
 			CIConfigurationJobName: verificationJobDefinition.ProwJob.Name,
 			MaxRetries:             verificationJobDefinition.MaxRetries,
+			Qualifiers:             verificationJobDefinition.Qualifiers,
 		}
 
 		switch {
@@ -113,6 +115,7 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 				CIConfigurationName:    verifyName,
 				CIConfigurationJobName: verificationJobDefinition.ProwJob.Name,
 				AnalysisJobCount:       verificationJobDefinition.AggregatedProwJob.AnalysisJobCount,
+				Qualifiers:             verificationJobDefinition.Qualifiers,
 			}
 			payload.Spec.PayloadVerificationConfig.InformingJobs = append(payload.Spec.PayloadVerificationConfig.InformingJobs, informingJob)
 		default:

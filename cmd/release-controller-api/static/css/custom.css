@@ -51,3 +51,12 @@ td.upgrade-track {
   padding-left: 2px;
   padding-right: 2px;
 }
+.qualifier-badge {
+  font-size: 0.75em;
+  margin-right: 3px;
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+a .qualifier-badge:hover {
+  opacity: 0.85;
+}
