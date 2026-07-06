@@ -7,11 +7,15 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
 	release = &releasecontroller.Release{
+		Config: &releasecontroller.ReleaseConfig{
+			Name: "InboundImageStreamName",
+		},
 		Target: &imagev1.ImageStream{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "release",
@@ -59,6 +63,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -109,6 +114,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -164,6 +170,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -220,6 +227,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -277,6 +285,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -334,6 +343,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -400,6 +410,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.12.11",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -474,6 +485,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.12.11",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -537,6 +549,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -605,6 +618,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -641,8 +655,175 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name:          "RealWorldExample",
+			name:          "BlockingJobWithQualifiers",
 			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"blocking-job-with-qualifiers": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+					},
+					Qualifiers: releasequalifiers.ReleaseQualifiers{
+						"qual-a": releasequalifiers.ReleaseQualifier{
+							Enabled:   releasequalifiers.BoolPtr(true),
+							BadgeName: "QA",
+							Summary:   "Qualifier A",
+						},
+					},
+				},
+			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "blocking-job-with-qualifiers",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
+								Qualifiers: releasequalifiers.ReleaseQualifiers{
+									"qual-a": releasequalifiers.ReleaseQualifier{
+										Enabled:   releasequalifiers.BoolPtr(true),
+										BadgeName: "QA",
+										Summary:   "Qualifier A",
+									},
+								},
+							},
+						},
+						InformingJobs:                 []v1alpha1.CIConfiguration{},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
+				},
+			},
+		},
+		{
+			name:          "AggregatedJobWithQualifiers",
+			release:       release,
+			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
+			jobNamespace:  "ci-release",
+			prowNamespace: "ci",
+			verificationJobs: map[string]releasecontroller.ReleaseVerification{
+				"aggregated-job-with-qualifiers": {
+					ProwJob: &releasecontroller.ProwJobVerification{
+						Name: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
+					},
+					Upgrade: true,
+					AggregatedProwJob: &releasecontroller.AggregatedProwJobVerification{
+						AnalysisJobCount: 10,
+					},
+					Qualifiers: releasequalifiers.ReleaseQualifiers{
+						"qual-b": releasequalifiers.ReleaseQualifier{
+							Enabled:   releasequalifiers.BoolPtr(true),
+							BadgeName: "QB",
+							Summary:   "Qualifier B",
+						},
+					},
+				},
+			},
+			upgradeJobs: map[string]releasecontroller.UpgradeVerification{},
+			dataSource:  v1alpha1.PayloadVerificationDataSourceBuildFarm,
+			payloadType: v1alpha1.PayloadTypeLocal,
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-03-11-113341",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "ocp",
+						ImagestreamName:    "release",
+						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
+					},
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
+							Namespace:              "ci-release",
+							ReleaseCreationJobName: "4.11.0-0.nightly-2022-03-11-113341",
+						},
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							Namespace:            "ci-release",
+							ReleaseMirrorJobName: "4.11.0-0.nightly-2022-03-11-113341-alternate-mirror",
+						},
+						ProwCoordinates: v1alpha1.ProwCoordinates{
+							Namespace: "ci",
+						},
+					},
+					PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
+						BlockingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aggregated-job-with-qualifiers",
+								CIConfigurationJobName: "aggregated-job-with-qualifiers-release-openshift-release-analysis-aggregator",
+								Qualifiers: releasequalifiers.ReleaseQualifiers{
+									"qual-b": releasequalifiers.ReleaseQualifier{
+										Enabled:   releasequalifiers.BoolPtr(true),
+										BadgeName: "QB",
+										Summary:   "Qualifier B",
+									},
+								},
+							},
+						},
+						InformingJobs: []v1alpha1.CIConfiguration{
+							{
+								CIConfigurationName:    "aggregated-job-with-qualifiers",
+								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-upgrade",
+								AnalysisJobCount:       10,
+								Qualifiers: releasequalifiers.ReleaseQualifiers{
+									"qual-b": releasequalifiers.ReleaseQualifier{
+										Enabled:   releasequalifiers.BoolPtr(true),
+										BadgeName: "QB",
+										Summary:   "Qualifier B",
+									},
+								},
+							},
+						},
+						UpgradeJobs:                   []v1alpha1.CIConfiguration{},
+						PayloadVerificationDataSource: v1alpha1.PayloadVerificationDataSourceBuildFarm,
+					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
+				},
+			},
+		},
+		{
+			name:          "RealWorldExample",
+			release:       &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "4.11-art-latest",
+				},
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "release",
+						Namespace: "ocp",
+					},
+				},
+			},
 			payloadName:   "4.11.0-0.nightly-2022-03-11-113341",
 			jobNamespace:  "ci-release",
 			prowNamespace: "ci",
@@ -735,6 +916,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "4.11-art-latest",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
@@ -844,6 +1026,7 @@ func TestNewReleasePayload(t *testing.T) {
 						Namespace:          "ocp",
 						ImagestreamName:    "release",
 						ImagestreamTagName: "4.11.0-0.nightly-2022-03-11-113341",
+						StreamName:         "InboundImageStreamName",
 					},
 					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
 						ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{

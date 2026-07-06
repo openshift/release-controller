@@ -140,6 +140,10 @@ func validateQualifiers(releaseConfigs []releasecontroller.ReleaseConfig) []erro
 	for _, config := range releaseConfigs {
 		for verificationName, verification := range config.Verify {
 			for qualifierId, overrides := range verification.Qualifiers {
+				if overrides.Approval != nil {
+					errors = append(errors, fmt.Errorf("%s: qualifier %s must not specify approval in release config (approval qualifiers are only valid in global config)", verificationName, qualifierId))
+					continue
+				}
 				if err := validateQualifier(qualifierId, overrides); err != nil {
 					errors = append(errors, fmt.Errorf("unable to validate %q release qualifier %s: %v", verificationName, qualifierId, err))
 				}
@@ -149,6 +153,11 @@ func validateQualifiers(releaseConfigs []releasecontroller.ReleaseConfig) []erro
 	return errors
 }
 
+// rawConfigFile mirrors ConfigFile but uses yaml.MapSlice to preserve duplicate keys
+type rawConfigFile struct {
+	Qualifiers yaml.MapSlice `yaml:"qualifiers"`
+}
+
 // validateReleaseQualifiersConfig validates the contents of the file located at options.ReleaseQualifiersConfigPath
 func validateReleaseQualifiersConfig(configPath string) []error {
 	errors := []error{}
@@ -156,7 +165,15 @@ func validateReleaseQualifiersConfig(configPath string) []error {
 	if err != nil {
 		return errors
 	}
-	config := releasecontroller.ReleaseQualifiersConfig{}
+
+	// First pass: detect duplicate qualifier IDs using MapSlice (yaml.v2 maps silently deduplicate)
+	rawConfig := rawConfigFile{}
+	if err = yaml.Unmarshal(raw, &rawConfig); err == nil {
+		errors = append(errors, findDuplicateQualifierIDs(rawConfig.Qualifiers)...)
+	}
+
+	// Second pass: typed decode + per-qualifier validation
+	config := releasequalifiers.ConfigFile{}
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.SetStrict(true)
 	if err = dec.Decode(&config); err != nil {
@@ -165,6 +182,20 @@ func validateReleaseQualifiersConfig(configPath string) []error {
 	}
 	for qualifierId, overrides := range config.Qualifiers {
 		errors = append(errors, validateQualifier(qualifierId, overrides))
+	}
+	return errors
+}
+
+// findDuplicateQualifierIDs checks a yaml.MapSlice for duplicate qualifier keys
+func findDuplicateQualifierIDs(qualifiers yaml.MapSlice) []error {
+	var errors []error
+	seen := make(map[string]bool)
+	for _, item := range qualifiers {
+		key := fmt.Sprintf("%v", item.Key)
+		if seen[key] {
+			errors = append(errors, fmt.Errorf("duplicate qualifier ID %q", key))
+		}
+		seen[key] = true
 	}
 	return errors
 }

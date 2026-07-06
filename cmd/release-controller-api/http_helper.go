@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/releasepayload"
+	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
@@ -488,37 +490,77 @@ func (c *Controller) renderVerifyLinks(w io.Writer, tag imagev1.TagReference, re
 		fmt.Fprint(w, msg)
 		return
 	}
+
+	// Build reverse map: jobName -> []qualifierId for badge display
+	jobQualifiers := c.getJobQualifierMap(tag.Name)
+
 	buf := &bytes.Buffer{}
 	phase := c.resolvePhase(tag)
 	final := phase == releasecontroller.ReleasePhaseRejected || phase == releasecontroller.ReleasePhaseAccepted
 	if len(verificationJobs.BlockingJobs) > 0 {
 		buf.WriteString("<li>Blocking jobs<ul>")
-		buf.WriteString(c.renderVerificationJobsList(verificationJobs.BlockingJobs, release, tag, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.BlockingJobs, release, tag, final, jobQualifiers))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.InformingJobs) > 0 {
 		buf.WriteString("<li>Informing jobs<ul>")
-		buf.WriteString(c.renderVerificationJobsList(verificationJobs.InformingJobs, release, tag, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.InformingJobs, release, tag, final, jobQualifiers))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.AsyncJobs) > 0 {
 		buf.WriteString("<li>Async jobs<ul>")
-		buf.WriteString(c.renderVerificationJobsList(verificationJobs.AsyncJobs, release, tag, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.AsyncJobs, release, tag, final, jobQualifiers))
 		buf.WriteString("</ul></li>")
 	}
 	if len(verificationJobs.PendingJobs) > 0 {
 		buf.WriteString("<li>Pending jobs<ul>")
-		buf.WriteString(c.renderVerificationJobsList(verificationJobs.PendingJobs, release, tag, final))
+		buf.WriteString(c.renderVerificationJobsList(verificationJobs.PendingJobs, release, tag, final, jobQualifiers))
 		buf.WriteString("</ul></li>")
 	}
 	if out := buf.String(); len(out) > 0 {
-		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
+		fmt.Fprintf(w, `<p><strong>Tests:</strong></p><ul>%s</ul>`, out)
 	} else {
 		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
 	}
 }
 
-func (c *Controller) renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, release *releasecontroller.Release, tag imagev1.TagReference, final bool) string {
+// getJobQualifierMap builds a reverse mapping from job CIConfigurationName to qualifier IDs
+func (c *Controller) getJobQualifierMap(tagName string) map[string][]releasequalifiers.QualifierId {
+	payload := c.GetReleasePayload(tagName)
+	if payload == nil || payload.Status.QualifiersSummary == nil || len(payload.Status.QualifiersSummary.Qualifiers) == 0 {
+		return nil
+	}
+	result := make(map[string][]releasequalifiers.QualifierId)
+	for qID, summary := range payload.Status.QualifiersSummary.Qualifiers {
+		for _, job := range summary.Jobs {
+			result[job.CIConfigurationName] = append(result[job.CIConfigurationName], qID)
+		}
+	}
+	// Sort qualifier IDs for deterministic display
+	for _, qIDs := range result {
+		slices.Sort(qIDs)
+	}
+	return result
+}
+
+// renderJobQualifierBadges renders small inline badge indicators for qualifiers associated with a job
+func renderJobQualifierBadges(jobName string, jobQualifiers map[string][]releasequalifiers.QualifierId) string {
+	if jobQualifiers == nil {
+		return ""
+	}
+	qIDs, ok := jobQualifiers[jobName]
+	if !ok || len(qIDs) == 0 {
+		return ""
+	}
+	var buf bytes.Buffer
+	for _, qID := range qIDs {
+		fmt.Fprintf(&buf, ` <span class="badge badge-info qualifier-badge" title="Qualifier: %s">%s</span>`,
+			template.HTMLEscapeString(string(qID)), template.HTMLEscapeString(string(qID)))
+	}
+	return buf.String()
+}
+
+func (c *Controller) renderVerificationJobsList(jobs releasecontroller.VerificationStatusMap, release *releasecontroller.Release, tag imagev1.TagReference, final bool, jobQualifiers map[string][]releasequalifiers.QualifierId) string {
 	buf := &bytes.Buffer{}
 	keys := make([]string, 0, len(jobs))
 	for k := range jobs {
@@ -535,7 +577,9 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			if !verificationJobs[key].Disabled && !final {
 				buf.WriteString("<li><span title=\"Pending\">")
 				buf.WriteString(template.HTMLEscapeString(key))
-				buf.WriteString("</span></li>")
+				buf.WriteString("</span>")
+				buf.WriteString(renderJobQualifierBadges(key, jobQualifiers))
+				buf.WriteString("</li>")
 			}
 			continue
 		}
@@ -563,6 +607,7 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 					buf.WriteString(" ")
 					buf.WriteString(pj.Name)
 				}
+				buf.WriteString(renderJobQualifierBadges(key, jobQualifiers))
 				buf.WriteString("</summary><ul>")
 				for i, retryURL := range value.PreviousAttemptURLs {
 					fmt.Fprintf(buf, "<li><a class=\"text-danger\" href=\"%s\">Attempt %d Failed</a></li>", template.HTMLEscapeString(releasecontroller.GenerateProwJobResultsURL(retryURL)), i+1)
@@ -599,6 +644,7 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 				buf.WriteString(" ")
 				buf.WriteString(pj.Name)
 			}
+			buf.WriteString(renderJobQualifierBadges(key, jobQualifiers))
 			continue
 		}
 		// Synthetic upgrade jobs are always successful and never have a URL.  This can cause confusion, so we're going
@@ -629,6 +675,7 @@ func (c *Controller) renderVerificationJobsList(jobs releasecontroller.Verificat
 			buf.WriteString(" ")
 			buf.WriteString(pj.Name)
 		}
+		buf.WriteString(renderJobQualifierBadges(key, jobQualifiers))
 		continue
 	}
 	return buf.String()

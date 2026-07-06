@@ -1,10 +1,12 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasequalifiers"
+	"gopkg.in/yaml.v2"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
@@ -485,6 +487,49 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 			}},
 			expectedErr: false,
 		},
+		{
+			name: "Approval=true in release config is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"osd-aws": {
+						Optional: true,
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
+						},
+						Qualifiers: releasequalifiers.ReleaseQualifiers{
+							"sdn-migration": {
+								Approval:  releasequalifiers.BoolPtr(true),
+								Enabled:   releasequalifiers.BoolPtr(true),
+								BadgeName: "SDN Migration",
+							},
+						},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "Approval=false in release config is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"osd-aws": {
+						Optional: true,
+						ProwJob: &releasecontroller.ProwJobVerification{
+							Name: "periodic-ci-openshift-release-master-nightly-4.19-osd-aws",
+						},
+						Qualifiers: releasequalifiers.ReleaseQualifiers{
+							"sdn-migration": {
+								Approval:  releasequalifiers.BoolPtr(false),
+								BadgeName: "SDN Migration",
+							},
+						},
+					},
+				},
+			}},
+			expectedErr: true,
+		},
 	}
 	for _, testCase := range testCases {
 		errs := validateQualifiers(testCase.configs)
@@ -494,5 +539,128 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 		if len(errs) == 0 && testCase.expectedErr {
 			t.Errorf("%s: did not get error when error was expected", testCase.name)
 		}
+	}
+}
+
+func TestFindDuplicateQualifierIDs(t *testing.T) {
+	testCases := []struct {
+		name        string
+		qualifiers  yaml.MapSlice
+		expectedErr bool
+	}{
+		{
+			name:        "no qualifiers",
+			qualifiers:  yaml.MapSlice{},
+			expectedErr: false,
+		},
+		{
+			name: "unique qualifier IDs",
+			qualifiers: yaml.MapSlice{
+				{Key: "fips", Value: nil},
+				{Key: "techpreview", Value: nil},
+				{Key: "metal", Value: nil},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "duplicate qualifier IDs",
+			qualifiers: yaml.MapSlice{
+				{Key: "fips", Value: nil},
+				{Key: "techpreview", Value: nil},
+				{Key: "fips", Value: nil},
+			},
+			expectedErr: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			errs := findDuplicateQualifierIDs(testCase.qualifiers)
+			if len(errs) > 0 && !testCase.expectedErr {
+				t.Errorf("got error when error was not expected: %v", errs)
+			}
+			if len(errs) == 0 && testCase.expectedErr {
+				t.Errorf("did not get error when error was expected")
+			}
+		})
+	}
+}
+
+func TestValidateReleaseQualifiersConfig(t *testing.T) {
+	testCases := []struct {
+		name        string
+		yamlContent string
+		expectedErr bool
+	}{
+		{
+			name: "valid config with unique qualifiers",
+			yamlContent: `qualifiers:
+  fips:
+    enabled: true
+    badgeName: FIPS
+  techpreview:
+    enabled: true
+    badgeName: Tech Preview
+`,
+			expectedErr: false,
+		},
+		{
+			name: "duplicate qualifier IDs",
+			yamlContent: `qualifiers:
+  fips:
+    enabled: true
+    badgeName: FIPS
+  fips:
+    enabled: false
+    badgeName: FIPS2
+`,
+			expectedErr: true,
+		},
+		{
+			name: "valid approval qualifier",
+			yamlContent: `qualifiers:
+  sdn-migration:
+    approval: true
+    enabled: true
+    badgeName: SDN Migration
+    summary: SDN Migration Approval
+    description: Earned via team approval
+    payloadBadgeStatus: OnSuccess
+`,
+			expectedErr: false,
+		},
+		{
+			name: "invalid approval qualifier with failureLabels",
+			yamlContent: `qualifiers:
+  sdn-migration:
+    approval: true
+    enabled: true
+    badgeName: SDN Migration
+    labels:
+      - some-label
+`,
+			expectedErr: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tmpFile := t.TempDir() + "/qualifiers.yaml"
+			if err := os.WriteFile(tmpFile, []byte(testCase.yamlContent), 0644); err != nil {
+				t.Fatalf("failed to write temp file: %v", err)
+			}
+			errs := validateReleaseQualifiersConfig(tmpFile)
+			hasErr := false
+			for _, err := range errs {
+				if err != nil {
+					hasErr = true
+					break
+				}
+			}
+			if hasErr && !testCase.expectedErr {
+				t.Errorf("got errors when none expected: %v", errs)
+			}
+			if !hasErr && testCase.expectedErr {
+				t.Errorf("expected errors but got none")
+			}
+		})
 	}
 }

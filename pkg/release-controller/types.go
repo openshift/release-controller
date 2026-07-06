@@ -3,7 +3,6 @@ package releasecontroller
 import (
 	"fmt"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/openshift/release-controller/pkg/releasequalifiers"
@@ -825,8 +824,3 @@ func (t APITagsBySemVerName) Less(i, j int) bool {
 
 func (t APITagsBySemVerName) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 func (t APITagsBySemVerName) Len() int      { return len(t) }
-
-type ReleaseQualifiersConfig struct {
-	Qualifiers releasequalifiers.ReleaseQualifiers `yaml:"qualifiers"`
-	Mutex      sync.RWMutex                        `yaml:"-"`
-}
