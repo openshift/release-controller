@@ -372,6 +372,18 @@ func FindPublicImagePullSpec(is *imagev1.ImageStream, name string) string {
 }
 
 // UnsortedSemanticReleaseTags returns the tags in the release as a sortable array, but
+// GetTagPhase returns the phase of a tag. It checks the pre-built PayloadPhases
+// map first (derived from ReleasePayload conditions), falling back to the
+// release.openshift.io/phase annotation on the ImageStream tag.
+func GetTagPhase(release *Release, tag *imagev1.TagReference) string {
+	if release.PayloadPhases != nil {
+		if phase, ok := release.PayloadPhases[tag.Name]; ok {
+			return phase
+		}
+	}
+	return tag.Annotations[ReleaseAnnotationPhase]
+}
+
 // does not sort the array. If phases is specified only tags in the provided phases
 // are returned.
 func UnsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVersions {
@@ -388,7 +400,7 @@ func UnsortedSemanticReleaseTags(release *Release, phases ...string) SemanticVer
 		if tag.Annotations[ReleaseAnnotationName] != release.Config.Name {
 			continue
 		}
-		if len(phases) > 0 && !slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if len(phases) > 0 && !slices.Contains(phases, GetTagPhase(release, tag)) {
 			continue
 		}
 
@@ -442,7 +454,7 @@ func SortedRawReleaseTags(release *Release, phases ...string) []*imagev1.TagRefe
 		if tag.Annotations[ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
-		if slices.Contains(phases, tag.Annotations[ReleaseAnnotationPhase]) {
+		if slices.Contains(phases, GetTagPhase(release, tag)) {
 			tags = append(tags, tag)
 		}
 	}
@@ -494,8 +506,7 @@ func CountUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 			continue
 		}
 
-		phase := tag.Annotations[ReleaseAnnotationPhase]
-		switch phase {
+		switch GetTagPhase(release, tag) {
 		case ReleasePhaseFailed, ReleasePhaseRejected, ReleasePhaseAccepted:
 			// terminal don't count
 		default:

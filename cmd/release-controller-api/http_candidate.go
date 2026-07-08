@@ -296,7 +296,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	}
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}

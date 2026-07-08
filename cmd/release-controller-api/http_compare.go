@@ -88,7 +88,7 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	}
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}

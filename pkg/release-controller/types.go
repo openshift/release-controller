@@ -78,6 +78,10 @@ type Release struct {
 	Target *imagev1.ImageStream
 	// Config holds the release configuration parsed off of Source.
 	Config *ReleaseConfig
+	// PayloadPhases maps tag names to their phase derived from the corresponding
+	// ReleasePayload conditions. When nil, callers fall back to reading the
+	// release.openshift.io/phase annotation from the ImageStream tag.
+	PayloadPhases map[string]string
 }
 
 // ReleaseConfig is serialized in JSON as the release.openshift.io/config annotation

@@ -99,7 +99,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 	}
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -147,7 +147,7 @@ func (c *Controller) endOfLifePrefixes() sets.Set[string] {
 	}
 	endOfLifePrefixes := sets.New[string]()
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -592,7 +592,7 @@ func (c *Controller) locateStream(streamName string, phases ...string) (*Release
 		return nil, err
 	}
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -1817,7 +1817,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	endOfLifePrefixes := sets.New[string]()
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -2158,7 +2158,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 
 	var requestedStream *imagev1.ImageStream
 	for _, stream := range c.imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -2275,7 +2275,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 
 	endOfLifePrefixes := sets.New[string]()
 
-	r, ok, err := releasecontroller.ReleaseDefinition(requestedStream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+	r, ok, err := c.releaseDefinition(requestedStream)
 	if err != nil || !ok {
 		return
 	}
@@ -2416,7 +2416,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 	}
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -2547,7 +2547,7 @@ func (c *Controller) apiReleaseConfig(w http.ResponseWriter, req *http.Request) 
 	var release *releasecontroller.Release
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
@@ -2790,7 +2790,7 @@ func (c *Controller) filteredStreams(phase string) ([]byte, error) {
 	releases := make(map[string][]string)
 
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream)
 		if err != nil || !ok {
 			continue
 		}
