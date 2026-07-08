@@ -106,9 +106,10 @@ func WithManifest(m manifest.Manifest) ManifestOpts {
 
 // ReferrerConfig is used by schemes to import [ReferrerOpts].
 type ReferrerConfig struct {
-	MatchOpt descriptor.MatchOpt // filter/sort results
-	Platform string              // get referrers for a specific platform
-	SrcRepo  ref.Ref             // repo used to query referrers
+	MatchOpt   descriptor.MatchOpt // filter/sort results
+	Platform   string              // get referrers for a specific platform
+	SlowSearch bool                // search every manifest in an OCI Layout index.json file
+	SrcRepo    ref.Ref             // repo used to query referrers
 }
 
 // ReferrerOpts is used to set options on referrer APIs.
@@ -117,7 +118,7 @@ type ReferrerOpts func(*ReferrerConfig)
 // WithReferrerMatchOpt filters results using [descriptor.MatchOpt].
 func WithReferrerMatchOpt(mo descriptor.MatchOpt) ReferrerOpts {
 	return func(config *ReferrerConfig) {
-		config.MatchOpt = mo
+		config.MatchOpt = config.MatchOpt.Merge(mo)
 	}
 }
 
@@ -126,6 +127,14 @@ func WithReferrerMatchOpt(mo descriptor.MatchOpt) ReferrerOpts {
 func WithReferrerPlatform(p string) ReferrerOpts {
 	return func(config *ReferrerConfig) {
 		config.Platform = p
+	}
+}
+
+// WithReferrerSlowSearch looks for referrers in ways that increases compatibility but takes longer.
+// When used with an OCI Layout, this searches every manifest for a subject for ORAS compatibility.
+func WithReferrerSlowSearch() ReferrerOpts {
+	return func(config *ReferrerConfig) {
+		config.SlowSearch = true
 	}
 }
 
@@ -140,35 +149,28 @@ func WithReferrerSource(r ref.Ref) ReferrerOpts {
 // WithReferrerAT filters by a specific artifactType value.
 //
 // Deprecated: replace with [WithReferrerMatchOpt].
+//
+//go:fix inline
 func WithReferrerAT(at string) ReferrerOpts {
-	return func(config *ReferrerConfig) {
-		config.MatchOpt.ArtifactType = at
-	}
+	return WithReferrerMatchOpt(descriptor.MatchOpt{ArtifactType: at})
 }
 
 // WithReferrerAnnotations filters by a list of annotations, all of which must match.
 //
 // Deprecated: replace with [WithReferrerMatchOpt].
+//
+//go:fix inline
 func WithReferrerAnnotations(annotations map[string]string) ReferrerOpts {
-	return func(config *ReferrerConfig) {
-		if config.MatchOpt.Annotations == nil {
-			config.MatchOpt.Annotations = annotations
-		} else {
-			for k, v := range annotations {
-				config.MatchOpt.Annotations[k] = v
-			}
-		}
-	}
+	return WithReferrerMatchOpt(descriptor.MatchOpt{Annotations: annotations})
 }
 
 // WithReferrerSort orders the resulting referrers listing according to a specified annotation.
 //
 // Deprecated: replace with [WithReferrerMatchOpt].
+//
+//go:fix inline
 func WithReferrerSort(annotation string, desc bool) ReferrerOpts {
-	return func(config *ReferrerConfig) {
-		config.MatchOpt.SortAnnotation = annotation
-		config.MatchOpt.SortDesc = desc
-	}
+	return WithReferrerMatchOpt(descriptor.MatchOpt{SortAnnotation: annotation, SortDesc: desc})
 }
 
 // ReferrerFilter filters the referrer list according to the config.

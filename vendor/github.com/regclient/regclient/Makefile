@@ -1,9 +1,9 @@
 COMMANDS?=regctl regsync regbot
 BINARIES?=$(addprefix bin/,$(COMMANDS))
 IMAGES?=$(addprefix docker-,$(COMMANDS))
-ARTIFACT_PLATFORMS?=linux-amd64 linux-arm64 linux-ppc64le linux-s390x darwin-amd64 darwin-arm64 windows-amd64.exe
+ARTIFACT_PLATFORMS?=linux-amd64 linux-arm64 linux-ppc64le linux-s390x linux-riscv64 darwin-amd64 darwin-arm64 windows-amd64.exe freebsd-amd64
 ARTIFACTS?=$(foreach cmd,$(addprefix artifacts/,$(COMMANDS)),$(addprefix $(cmd)-,$(ARTIFACT_PLATFORMS)))
-TEST_PLATFORMS?=linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
+IMAGE_PLATFORMS?=linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64
 VCS_REPO?="https://github.com/regclient/regclient.git"
 VCS_REF?=$(shell git rev-list -1 HEAD)
 ifneq ($(shell git status --porcelain 2>/dev/null),)
@@ -19,10 +19,12 @@ VCS_VERSION?=$(shell vcs_describe="$$(git describe --all)"; \
   fi; \
   echo "$${vcs_version}" | sed -r 's#/+#-#g')
 VCS_TAG?=$(shell git describe --tags --abbrev=0 2>/dev/null || true)
+VCS_SEC?=$(shell git log -1 --format=%ct)
+VCS_DATE?=$(shell date -d "@$(VCS_SEC)" +%Y-%m-%dT%H:%M:%SZ --utc)
 LD_FLAGS?=-s -w -extldflags -static -buildid= -X \"github.com/regclient/regclient/internal/version.vcsTag=$(VCS_TAG)\"
 GO_BUILD_FLAGS?=-trimpath -ldflags "$(LD_FLAGS)"
 DOCKERFILE_EXT?=$(shell if docker build --help 2>/dev/null | grep -q -- '--progress'; then echo ".buildkit"; fi)
-DOCKER_ARGS?=--build-arg "VCS_REF=$(VCS_REF)" --build-arg "VCS_VERSION=$(VCS_VERSION)"
+DOCKER_ARGS?=--build-arg "VCS_REF=$(VCS_REF)" --build-arg "VCS_VERSION=$(VCS_VERSION)" --build-arg "SOURCE_DATE_EPOCH=$(VCS_SEC)"  --build-arg "BUILD_DATE=$(VCS_DATE)"
 GOPATH?=$(shell go env GOPATH)
 PWD:=$(shell pwd)
 VER_BUMP?=$(shell command -v version-bump 2>/dev/null)
@@ -33,34 +35,43 @@ ifeq "$(strip $(VER_BUMP))" ''
 		-u "$(shell id -u):$(shell id -g)" \
 		$(VER_BUMP_CONTAINER)
 endif
-MARKDOWN_LINT_VER?=v0.17.2
-GOMAJOR_VER?=v0.14.0
-GOSEC_VER?=v2.22.3
-GO_VULNCHECK_VER?=v1.1.4
-OSV_SCANNER_VER?=v2.0.1
+MARKDOWN_LINT_VER?=v0.22.1
+GOFUMPT_VER?=v0.10.0
+GOMAJOR_VER?=v0.15.0
+GOSEC_VER?=v2.26.1
+GO_VULNCHECK_VER?=v1.3.0
+OSV_SCANNER_VER?=v2.3.8
 SYFT?=$(shell command -v syft 2>/dev/null)
 SYFT_CMD_VER:=$(shell [ -x "$(SYFT)" ] && echo "v$$($(SYFT) version | awk '/^Version: / {print $$2}')" || echo "0")
-SYFT_VERSION?=v1.22.0
-SYFT_CONTAINER?=anchore/syft:v1.22.0@sha256:b7b38b51897feb0a8118bbfe8e43a1eb94aaef31f8d0e4663354e42834a12126
+SYFT_VERSION?=v1.44.0
+SYFT_CONTAINER?=anchore/syft:v1.44.0@sha256:86fde6445b483d902fe011dd9f68c4987dd94e07da1e9edc004e3c2422650de6
 ifneq "$(SYFT_CMD_VER)" "$(SYFT_VERSION)"
 	SYFT=docker run --rm \
 		-v "$(shell pwd)/:$(shell pwd)/" -w "$(shell pwd)" \
 		-u "$(shell id -u):$(shell id -g)" \
 		$(SYFT_CONTAINER)
 endif
-STATICCHECK_VER?=v0.6.1
-CI_DISTRIBUTION_VER?=3.0.0
-CI_ZOT_VER?=v2.1.2
+STATICCHECK_VER?=v0.7.0
+CI_DISTRIBUTION_VER?=3.1.1
+CI_ZOT_VER?=v2.1.17
 
 .PHONY: .FORCE
 .FORCE:
 
 .PHONY: all
-all: fmt goimports vet test lint binaries ## Full build of Go binaries (including fmt, vet, test, and lint)
+all: fmt gofumpt gofix goimports vet test lint binaries ## Full build of Go binaries (including fmt, vet, test, and lint)
 
 .PHONY: fmt
 fmt: ## go fmt
 	go fmt ./...
+
+.PHONY: gofumpt
+gofumpt: $(GOPATH)/bin/gofumpt ## gofumpt is a stricter alternative to go fmt
+	gofumpt -l -w .
+
+.PHONY: gofix
+gofix: ## go fix
+	go fix ./...
 
 goimports: $(GOPATH)/bin/goimports
 	$(GOPATH)/bin/goimports -w -format-only -local github.com/regclient .
@@ -77,8 +88,10 @@ test: ## go test
 lint: lint-go lint-goimports lint-md lint-gosec ## Run all linting
 
 .PHONY: lint-go
-lint-go: $(GOPATH)/bin/staticcheck .FORCE ## Run linting for Go
+lint-go: $(GOPATH)/bin/gofumpt $(GOPATH)/bin/staticcheck .FORCE ## Run linting for Go
 	$(GOPATH)/bin/staticcheck -checks all ./...
+	$(GOPATH)/bin/gofumpt -l -d .
+	errors=$$(go fix -diff ./...); if [ "$${errors}" != "" ]; then echo "$${errors}"; exit 1; fi
 
 lint-goimports: $(GOPATH)/bin/goimports
 	@if [ -n "$$($(GOPATH)/bin/goimports -l -format-only -local github.com/regclient .)" ]; then \
@@ -129,15 +142,15 @@ docker-%: .FORCE
 oci-image: $(addprefix oci-image-,$(COMMANDS)) ## Build reproducible images to an OCI Layout
 
 oci-image-%: bin/regctl .FORCE
-	PATH="$(PWD)/bin:$(PATH)" build/oci-image.sh -r scratch -i "$*" -p "$(TEST_PLATFORMS)"
-	PATH="$(PWD)/bin:$(PATH)" build/oci-image.sh -r alpine  -i "$*" -p "$(TEST_PLATFORMS)" -b "alpine:3"
+	PATH="$(PWD)/bin:$(PATH)" build/oci-image.sh -r scratch -i "$*" -p "$(IMAGE_PLATFORMS)"
+	PATH="$(PWD)/bin:$(PATH)" build/oci-image.sh -r alpine  -i "$*" -p "$(IMAGE_PLATFORMS)" -b "alpine:3"
 
 .PHONY: test-docker
 test-docker: $(addprefix test-docker-,$(COMMANDS)) ## Build multi-platform docker images (but do not tag)
 
 test-docker-%:
-	docker buildx build --platform="$(TEST_PLATFORMS)" -f build/Dockerfile.$*.buildkit .
-	docker buildx build --platform="$(TEST_PLATFORMS)" -f build/Dockerfile.$*.buildkit --target release-alpine .
+	docker buildx build --platform="$(IMAGE_PLATFORMS)" -f build/Dockerfile.$*.buildkit .
+	docker buildx build --platform="$(IMAGE_PLATFORMS)" -f build/Dockerfile.$*.buildkit --target release-alpine .
 
 .PHONY: ci
 ci: ci-distribution ci-zot ## Run CI tests against self hosted registries
@@ -182,6 +195,13 @@ artifacts/%: artifact-pre .FORCE
 	$(SYFT) scan -q "file:$@" --source-name "$${command}" -o cyclonedx-json >"artifacts/$${command}-$${platform}.cyclonedx.json"; \
 	$(SYFT) scan -q "file:$@" --source-name "$${command}" -o spdx-json >"artifacts/$${command}-$${platform}.spdx.json"
 
+.PHONY: clean
+clean: ## delete generated content
+	[ ! -d artifacts ] || rm -r artifacts
+	[ ! -d bin ] || rm -r bin
+	[ ! -d output ] || rm -r output
+	[ ! -d vendor ] || rm -r vendor
+
 .PHONY: plugin-user
 plugin-user:
 	mkdir -p ${HOME}/.docker/cli-plugins/
@@ -220,17 +240,22 @@ util-version-check: ## check all dependencies for updates
 util-version-update: ## update versions on all dependencies
 	$(VER_BUMP) update
 
+$(GOPATH)/bin/gofumpt: .FORCE
+	@[ -f "$(GOPATH)/bin/gofumpt" ] \
+	&& [ "$$($(GOPATH)/bin/gofumpt -version | cut -f 1 -d ' ')" = "$(GOFUMPT_VER)" ] \
+	|| go install mvdan.cc/gofumpt@$(GOFUMPT_VER)
+
 $(GOPATH)/bin/gomajor: .FORCE
 	@[ -f "$(GOPATH)/bin/gomajor" ] \
 	&& [ "$$($(GOPATH)/bin/gomajor version | grep '^version' | cut -f 2 -d ' ')" = "$(GOMAJOR_VER)" ] \
 	|| go install github.com/icholy/gomajor@$(GOMAJOR_VER)
 
 $(GOPATH)/bin/goimports: .FORCE
-	@[ -f "$(GOPATH)/bin/goimports" ] \
+	@[ -f "$(GOPATH)/bin/goimports" ] && [ "$$(go version | cut -f3 -d' ')" = "$$(go version $(GOPATH)/bin/goimports | cut -f2 -d' ')" ] \
 	||	go install golang.org/x/tools/cmd/goimports@latest
 
 $(GOPATH)/bin/gorelease: .FORCE
-	@[ -f "$(GOPATH)/bin/gorelease" ] \
+	@[ -f "$(GOPATH)/bin/gorelease" ] && [ "$$(go version | cut -f3 -d' ')" = "$$(go version $(GOPATH)/bin/gorelease | cut -f2 -d' ')" ] \
 	|| go install golang.org/x/exp/cmd/gorelease@latest
 
 $(GOPATH)/bin/gosec: .FORCE

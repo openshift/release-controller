@@ -19,6 +19,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/regclient/regclient/scheme"
+	"github.com/regclient/regclient/types"
 	"github.com/regclient/regclient/types/errs"
 	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/mediatype"
@@ -241,15 +242,15 @@ func (o *OCIDir) manifestPut(ctx context.Context, r ref.Ref, m manifest.Manifest
 			return fmt.Errorf("failed to rebuilding manifest with ref \"%s\": %w", r.CommonName(), err)
 		}
 	}
+	desc.Annotations = map[string]string{}
 	if r.Tag != "" {
-		desc.Annotations = map[string]string{
-			aOCIRefName: r.Tag,
-		}
+		desc.Annotations[types.AnnotationRefName] = r.Tag
 	}
+	// TODO: if the manifest contains a subject, option to add descriptor details and include entry in the index.json, config.child=false
 	// create manifest CAS file
 	dir := path.Join(r.Path, "blobs", desc.Digest.Algorithm().String())
 	//#nosec G301 defer to user umask settings
-	err = os.MkdirAll(dir, 0777)
+	err = os.MkdirAll(dir, 0o777)
 	if err != nil && !errors.Is(err, fs.ErrExist) {
 		return fmt.Errorf("failed creating %s: %w", dir, err)
 	}
@@ -272,6 +273,7 @@ func (o *OCIDir) manifestPut(ctx context.Context, r ref.Ref, m manifest.Manifest
 		return fmt.Errorf("failed to close manifest tmpfile: %w", errC)
 	}
 	file := path.Join(dir, desc.Digest.Encoded())
+	//#nosec G703 inputs are user controlled
 	err = os.Rename(path.Join(dir, tmpName), file)
 	if err != nil {
 		return fmt.Errorf("failed to write manifest (rename tmpfile): %w", err)
