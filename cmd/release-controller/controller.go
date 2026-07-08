@@ -294,7 +294,7 @@ func (c *Controller) AddReleasePayloadNamespace(ns string, releasePayloads relea
 	c.releasePayloadLister.Listers[ns] = releasePayloads.Lister().ReleasePayloads(ns)
 
 	if _, err := releasePayloads.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) {
+		UpdateFunc: func(old, cur any) {
 			payload, ok := cur.(*releasepayloadv1alpha1.ReleasePayload)
 			if !ok {
 				return
