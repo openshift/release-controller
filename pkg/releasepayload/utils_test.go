@@ -2,6 +2,9 @@ package releasepayload
 
 import (
 	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -350,6 +353,148 @@ func Test_getVerificationStatusPreviousAttemptURLs(t *testing.T) {
 				if tt.want[i] != got[i] {
 					t.Errorf("%s: Expected %v at index %d, got %v", tt.name, tt.want[i], i, got[i])
 				}
+			}
+		})
+	}
+}
+
+func Test_getTransitionTime(t *testing.T) {
+	t1 := metav1.NewTime(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+	t1c := metav1.NewTime(time.Date(2026, 1, 1, 10, 30, 0, 0, time.UTC))
+	t2 := metav1.NewTime(time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC))
+	t2c := metav1.NewTime(time.Date(2026, 1, 1, 11, 30, 0, 0, time.UTC))
+	t3 := metav1.NewTime(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	t3c := metav1.NewTime(time.Date(2026, 1, 1, 12, 30, 0, 0, time.UTC))
+
+	tests := []struct {
+		name    string
+		results []v1alpha1.JobRunResult
+		want    *metav1.Time
+	}{
+		{
+			name:    "No results",
+			results: nil,
+			want:    nil,
+		},
+		{
+			name: "Single result with CompletionTime",
+			results: []v1alpha1.JobRunResult{
+				{
+					StartTime:      t1,
+					CompletionTime: &t1c,
+				},
+			},
+			want: &t1c,
+		},
+		{
+			name: "Single result without CompletionTime",
+			results: []v1alpha1.JobRunResult{
+				{
+					StartTime: t1,
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "Multiple results returns CompletionTime of result with latest StartTime",
+			results: []v1alpha1.JobRunResult{
+				{
+					StartTime:      t1,
+					CompletionTime: &t1c,
+				},
+				{
+					StartTime:      t3,
+					CompletionTime: &t3c,
+				},
+				{
+					StartTime:      t2,
+					CompletionTime: &t2c,
+				},
+			},
+			want: &t3c,
+		},
+		{
+			name: "Multiple results, latest has no CompletionTime",
+			results: []v1alpha1.JobRunResult{
+				{
+					StartTime:      t1,
+					CompletionTime: &t1c,
+				},
+				{
+					StartTime: t2,
+				},
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getTransitionTime(tt.results)
+			if tt.want == nil && got != nil {
+				t.Errorf("expected nil, got %v", got)
+			} else if tt.want != nil && got == nil {
+				t.Errorf("expected %v, got nil", tt.want)
+			} else if tt.want != nil && !tt.want.Equal(got) {
+				t.Errorf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func Test_convertToVerificationStatusMapResult_TransitionTime(t *testing.T) {
+	completionTime := metav1.NewTime(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+
+	tests := []struct {
+		name               string
+		job                v1alpha1.JobStatus
+		wantTransitionTime *metav1.Time
+	}{
+		{
+			name:               "No results has nil TransitionTime",
+			job:                v1alpha1.JobStatus{},
+			wantTransitionTime: nil,
+		},
+		{
+			name: "Result with CompletionTime populates TransitionTime",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStateFailure,
+				JobRunResults: []v1alpha1.JobRunResult{
+					{
+						State:               v1alpha1.JobRunStateFailure,
+						HumanProwResultsURL: "https://example.com/",
+						StartTime:           metav1.NewTime(time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)),
+						CompletionTime:      &completionTime,
+					},
+				},
+			},
+			wantTransitionTime: &completionTime,
+		},
+		{
+			name: "Result without CompletionTime has nil TransitionTime",
+			job: v1alpha1.JobStatus{
+				AggregateState: v1alpha1.JobStatePending,
+				JobRunResults: []v1alpha1.JobRunResult{
+					{
+						State:     v1alpha1.JobRunStatePending,
+						StartTime: metav1.NewTime(time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)),
+					},
+				},
+			},
+			wantTransitionTime: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, ok := convertToVerificationStatusMapResult(tt.job)
+			if !ok {
+				t.Fatalf("expected ok to be true")
+			}
+			if tt.wantTransitionTime == nil && result.TransitionTime != nil {
+				t.Errorf("expected nil TransitionTime, got %v", result.TransitionTime)
+			} else if tt.wantTransitionTime != nil && result.TransitionTime == nil {
+				t.Errorf("expected TransitionTime %v, got nil", tt.wantTransitionTime)
+			} else if tt.wantTransitionTime != nil && !tt.wantTransitionTime.Equal(result.TransitionTime) {
+				t.Errorf("expected TransitionTime %v, got %v", tt.wantTransitionTime, result.TransitionTime)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/openshift/release-controller/pkg/rhcos"
 	"github.com/russross/blackfriday"
+	"k8s.io/klog/v2"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 )
@@ -170,8 +171,10 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 				return
 			}
 			fmt.Fprintf(w, "<pre><code>")
+			// Headers may already be sent (streaming response), so http.Error would
+			// trigger a superfluous WriteHeader call. Log instead.
 			if _, err := w.Write(data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				klog.Errorf("Failed to write changelog JSON: %v", err)
 			}
 			fmt.Fprintf(w, "</pre></code>")
 		default:
@@ -183,8 +186,10 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 				}
 				return []byte(`<a target="_blank" ` + string(bytes.TrimPrefix(s, []byte("<a "))))
 			})
+			// Headers may already be sent (streaming response), so http.Error would
+			// trigger a superfluous WriteHeader call. Log instead.
 			if _, err := w.Write(result); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				klog.Errorf("Failed to write changelog: %v", err)
 			}
 		}
 		fmt.Fprintln(w, "<hr>")
@@ -227,8 +232,10 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show node image info: %s", render.err))
 	} else {
 		result := blackfriday.Run([]byte(render.out))
+		// Headers are already sent (streaming response), so http.Error would trigger
+		// a superfluous WriteHeader call. Log instead.
 		if _, err := w.Write(result); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			klog.Errorf("Failed to write node image info: %v", err)
 		}
 	}
 }

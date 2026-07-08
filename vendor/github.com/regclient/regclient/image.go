@@ -56,23 +56,26 @@ type dockerTarManifest struct {
 	LayerSources map[digest.Digest]descriptor.Descriptor `json:",omitempty"`
 }
 
-type tarFileHandler func(header *tar.Header, trd *tarReadData) error
-type tarReadData struct {
-	tr          *tar.Reader
-	name        string
-	handleAdded bool
-	handlers    map[string]tarFileHandler
-	links       map[string][]string
-	processed   map[string]bool
-	finish      []func() error
-	// data processed from various handlers
-	manifests           map[digest.Digest]manifest.Manifest
-	ociIndex            v1.Index
-	ociManifest         manifest.Manifest
-	dockerManifestFound bool
-	dockerManifestList  []dockerTarManifest
-	dockerManifest      schema2.Manifest
-}
+type (
+	tarFileHandler func(header *tar.Header, trd *tarReadData) error
+	tarReadData    struct {
+		tr          *tar.Reader
+		name        string
+		handleAdded bool
+		handlers    map[string]tarFileHandler
+		links       map[string][]string
+		processed   map[string]bool
+		finish      []func() error
+		// data processed from various handlers
+		manifests           map[digest.Digest]manifest.Manifest
+		ociIndex            v1.Index
+		ociManifest         manifest.Manifest
+		dockerManifestFound bool
+		dockerManifestList  []dockerTarManifest
+		dockerManifest      schema2.Manifest
+	}
+)
+
 type tarWriteData struct {
 	tw    *tar.Writer
 	dirs  map[string]bool
@@ -104,6 +107,7 @@ type imageOpt struct {
 	mu              sync.Mutex
 	seen            map[string]*imageSeen
 	finalFn         []func(context.Context) error
+	blobReaderHook  func(*blob.BReader) (*blob.BReader, error)
 }
 
 type imageSeen struct {
@@ -113,6 +117,16 @@ type imageSeen struct {
 
 // ImageOpts define options for the Image* commands.
 type ImageOpts func(*imageOpt)
+
+// ImageWithBlobReaderHook calls the given function on every blob copy in [RegClient.ImageCopy].
+// The hook receives a [blob.BReader] from getting the blob from the source.
+// The returned [blob.BReader] will be used for pushing the blob to the target.
+// If the hook returns an error on any blob, the image copy may fail.
+func ImageWithBlobReaderHook(fn func(*blob.BReader) (*blob.BReader, error)) ImageOpts {
+	return func(opts *imageOpt) {
+		opts.blobReaderHook = fn
+	}
+}
 
 // ImageWithCallback provides progress data to a callback function.
 func ImageWithCallback(callback func(kind types.CallbackKind, instance string, state types.CallbackState, cur, total int64)) ImageOpts {
@@ -624,6 +638,9 @@ func (rc *RegClient) imageCopyOpt(ctx context.Context, refSrc ref.Ref, refTgt re
 	if opt.callback != nil {
 		bOpt = append(bOpt, BlobWithCallback(opt.callback))
 	}
+	if opt.blobReaderHook != nil {
+		bOpt = append(bOpt, BlobWithReaderHook(opt.blobReaderHook))
+	}
 	waitCh := make(chan error)
 	waitCount := 0
 	ctx, cancel := context.WithCancel(ctx)
@@ -1063,7 +1080,7 @@ func (rc *RegClient) ImageExport(ctx context.Context, r ref.Ref, outStream io.Wr
 		tw:    tw,
 		dirs:  map[string]bool{},
 		files: map[string]bool{},
-		mode:  0644,
+		mode:  0o644,
 	}
 
 	// retrieve image manifest
@@ -1837,7 +1854,7 @@ func (td *tarWriteData) tarWriteHeader(filename string, size int64) error {
 					Typeflag:   tar.TypeDir,
 					Name:       dirJoin + "/",
 					Size:       0,
-					Mode:       td.mode | 0511,
+					Mode:       td.mode | 0o511,
 					ModTime:    td.timestamp,
 					AccessTime: td.timestamp,
 					ChangeTime: td.timestamp,
@@ -1859,7 +1876,7 @@ func (td *tarWriteData) tarWriteHeader(filename string, size int64) error {
 		Typeflag:   tar.TypeReg,
 		Name:       filename,
 		Size:       size,
-		Mode:       td.mode | 0400,
+		Mode:       td.mode | 0o400,
 		ModTime:    td.timestamp,
 		AccessTime: td.timestamp,
 		ChangeTime: td.timestamp,

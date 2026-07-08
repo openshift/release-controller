@@ -1,10 +1,13 @@
 package releasepayload
 
 import (
+	"sort"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasepayload/jobrunresult"
-	"sort"
 )
 
 func GenerateVerificationStatusMap(payload *v1alpha1.ReleasePayload, status *releasecontroller.VerificationStatusMap) bool {
@@ -43,6 +46,7 @@ func convertToVerificationStatusMapResult(job v1alpha1.JobStatus) (*releasecontr
 		PreviousAttemptURLs: getVerificationStatusPreviousAttemptURLs(job.JobRunResults, url),
 		State:               state,
 		URL:                 url,
+		TransitionTime:      getTransitionTime(job.JobRunResults),
 	}
 	return status, true
 }
@@ -107,17 +111,31 @@ func getVerificationStatusPreviousAttemptURLs(jobRunResults []v1alpha1.JobRunRes
 	return urls
 }
 
+func getTransitionTime(results []v1alpha1.JobRunResult) *metav1.Time {
+	if len(results) == 0 {
+		return nil
+	}
+	sorted := make([]v1alpha1.JobRunResult, len(results))
+	copy(sorted, results)
+	sort.Sort(jobrunresult.ByStartTime(sorted))
+	last := sorted[len(sorted)-1]
+	if last.CompletionTime != nil {
+		return last.CompletionTime
+	}
+	return nil
+}
+
 func getVerificationStatusUrl(jobRunResults []v1alpha1.JobRunResult) string {
-	// If there was any successful run, then return that URL
 	for _, result := range jobRunResults {
 		if result.State == v1alpha1.JobRunStateSuccess {
 			return result.HumanProwResultsURL
 		}
 	}
-	// Otherwise, return the URL of the "last" attempt
 	if len(jobRunResults) >= 1 {
-		sort.Sort(jobrunresult.ByStartTime(jobRunResults))
-		return jobRunResults[len(jobRunResults)-1].HumanProwResultsURL
+		sorted := make([]v1alpha1.JobRunResult, len(jobRunResults))
+		copy(sorted, jobRunResults)
+		sort.Sort(jobrunresult.ByStartTime(sorted))
+		return sorted[len(sorted)-1].HumanProwResultsURL
 	}
 	return ""
 }

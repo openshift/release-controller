@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -197,9 +198,7 @@ func (l *List) Append(add *List) error {
 		if l.Manifests == nil {
 			l.Manifests = add.Manifests
 		} else {
-			for k, v := range add.Manifests {
-				l.Manifests[k] = v
-			}
+			maps.Copy(l.Manifests, add.Manifests)
 		}
 	}
 	return nil
@@ -217,7 +216,7 @@ func (t tagCommon) MarshalJSON() ([]byte, error) {
 	}
 
 	if t.orig != nil {
-		return json.Marshal((t.orig))
+		return json.Marshal(t.orig)
 	}
 	return []byte{}, fmt.Errorf("JSON marshalling failed: %w", errs.ErrNotFound)
 }

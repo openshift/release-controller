@@ -4,8 +4,6 @@ package s3
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -47,8 +45,10 @@ import (
 //
 //   - You must make requests for this API operation to the Zonal endpoint. These
 //     endpoints support virtual-hosted-style requests in the format
-//     https://bucket_name.s3express-az_id.region.amazonaws.com . Path-style requests
-//     are not supported. For more information, see [Regional and Zonal endpoints]in the Amazon S3 User Guide.
+//     https://bucket-name.s3express-zone-id.region-code.amazonaws.com . Path-style
+//     requests are not supported. For more information about endpoints in Availability
+//     Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more information about endpoints
+//     in Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
 //
 //   - CopyObject API operation - Unlike other Zonal endpoint API operations, the
 //     CopyObject API operation doesn't use the temporary security credentials
@@ -119,11 +119,15 @@ import (
 // CreateSession request.
 //
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
-// Bucket_name.s3express-az_id.region.amazonaws.com .
+// Bucket-name.s3express-zone-id.region-code.amazonaws.com .
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
+// [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [Performance guidelines and design patterns]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-optimizing-performance-guidelines-design-patterns.html#s3-express-optimizing-performance-session-authentication
-// [Regional and Zonal endpoints]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-Regions-and-Zones.html
 // [CopyObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html
 // [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 // [S3 Express One Zone APIs]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-APIs.html
@@ -136,6 +140,7 @@ import (
 // [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
 // [x-amz-create-session-mode]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html#API_CreateSession_RequestParameters
 // [Zonal endpoint (object-level) API operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-differences.html#s3-express-differences-api-operations
+// [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 func (c *Client) CreateSession(ctx context.Context, params *CreateSessionInput, optFns ...func(*Options)) (*CreateSessionOutput, error) {
 	if params == nil {
 		params = &CreateSessionInput{}
@@ -176,7 +181,7 @@ type CreateSessionInput struct {
 
 	// Specifies the Amazon Web Services KMS Encryption Context as an additional
 	// encryption context to use for object encryption. The value of this header is a
-	// Base64-encoded string of a UTF-8 encoded JSON, which contains the encryption
+	// Base64 encoded string of a UTF-8 encoded JSON, which contains the encryption
 	// context as key-value pairs. This value is stored as object metadata and
 	// automatically gets passed on to Amazon Web Services KMS for future GetObject
 	// operations on this object.
@@ -200,8 +205,8 @@ type CreateSessionInput struct {
 	// in the same account that't issuing the command, you must use the full Key ARN
 	// not the Key ID.
 	//
-	// Your SSE-KMS configuration can only support 1 [customer managed key] per directory bucket for the
-	// lifetime of the bucket. The [Amazon Web Services managed key]( aws/s3 ) isn't supported.
+	// Your SSE-KMS configuration can only support 1 [customer managed key] per directory bucket's lifetime.
+	// The [Amazon Web Services managed key]( aws/s3 ) isn't supported.
 	//
 	// [customer managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk
 	// [Amazon Web Services managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#aws-managed-cmk
@@ -216,15 +221,26 @@ type CreateSessionInput struct {
 	// Amazon S3 encrypts data with SSE-S3. For more information, see [Protecting data with server-side encryption]in the Amazon S3
 	// User Guide.
 	//
-	// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
+	// S3 access points for Amazon FSx - When accessing data stored in Amazon FSx file
+	// systems using S3 access points, the only valid server side encryption option is
+	// aws:fsx . All Amazon FSx file systems have encryption configured by default and
+	// are encrypted at rest. Data is automatically encrypted before being written to
+	// the file system, and automatically decrypted as it is read. These processes are
+	// handled transparently by Amazon FSx.
+	//
+	// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html
 	ServerSideEncryption types.ServerSideEncryption
 
 	// Specifies the mode of the session that will be created, either ReadWrite or
-	// ReadOnly . By default, a ReadWrite session is created. A ReadWrite session is
-	// capable of executing all the Zonal endpoint API operations on a directory
-	// bucket. A ReadOnly session is constrained to execute the following Zonal
-	// endpoint API operations: GetObject , HeadObject , ListObjectsV2 ,
-	// GetObjectAttributes , ListParts , and ListMultipartUploads .
+	// ReadOnly . If no session mode is specified, the default behavior attempts to
+	// create a session with the maximum allowable privilege. It will first attempt to
+	// create a ReadWrite session, and if that is not allowed by permissions, it will
+	// attempt to create a ReadOnly session. If neither session type is allowed, the
+	// request will return an Access Denied error. A ReadWrite session is capable of
+	// executing all the Zonal endpoint API operations on a directory bucket. A
+	// ReadOnly session is constrained to execute the following Zonal endpoint API
+	// operations: GetObject , HeadObject , ListObjectsV2 , GetObjectAttributes ,
+	// ListParts , and ListMultipartUploads .
 	SessionMode types.SessionMode
 
 	noSmithyDocumentSerde
@@ -248,7 +264,7 @@ type CreateSessionOutput struct {
 	BucketKeyEnabled *bool
 
 	// If present, indicates the Amazon Web Services KMS Encryption Context to use for
-	// object encryption. The value of this header is a Base64-encoded string of a
+	// object encryption. The value of this header is a Base64 encoded string of a
 	// UTF-8 encoded JSON, which contains the encryption context as key-value pairs.
 	// This value is stored as object metadata and automatically gets passed on to
 	// Amazon Web Services KMS for future GetObject operations on this object.
@@ -261,6 +277,9 @@ type CreateSessionOutput struct {
 
 	// The server-side encryption algorithm used when you store objects in the
 	// directory bucket.
+	//
+	// When accessing data stored in Amazon FSx file systems using S3 access points,
+	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
 
 	// Metadata pertaining to the operation's result.
@@ -270,9 +289,6 @@ type CreateSessionOutput struct {
 }
 
 func (c *Client) addOperationCreateSessionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsRestxml_serializeOpCreateSession{}, middleware.After)
 	if err != nil {
 		return err
@@ -281,17 +297,8 @@ func (c *Client) addOperationCreateSessionMiddlewares(stack *middleware.Stack, o
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateSession"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
 	if err = addComputeContentLength(stack); err != nil {
@@ -303,19 +310,7 @@ func (c *Client) addOperationCreateSessionMiddlewares(stack *middleware.Stack, o
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
-		return err
-	}
-	if err = addRawResponseToMetadata(stack); err != nil {
-		return err
-	}
 	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -324,31 +319,22 @@ func (c *Client) addOperationCreateSessionMiddlewares(stack *middleware.Stack, o
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = addOpCreateSessionValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateSession(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateSession"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addCreateSessionUpdateEndpoint(stack, options); err != nil {
@@ -372,16 +358,7 @@ func (c *Client) addOperationCreateSessionMiddlewares(stack *middleware.Stack, o
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -392,14 +369,6 @@ func (v *CreateSessionInput) bucket() (string, bool) {
 		return "", false
 	}
 	return *v.Bucket, true
-}
-
-func newServiceMetadataMiddleware_opCreateSession(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CreateSession",
-	}
 }
 
 // getCreateSessionBucketMember returns a pointer to string denoting a provided
