@@ -126,16 +126,16 @@ func getTransitionTime(results []v1alpha1.JobRunResult) *metav1.Time {
 }
 
 func getVerificationStatusUrl(jobRunResults []v1alpha1.JobRunResult) string {
-	// If there was any successful run, then return that URL
 	for _, result := range jobRunResults {
 		if result.State == v1alpha1.JobRunStateSuccess {
 			return result.HumanProwResultsURL
 		}
 	}
-	// Otherwise, return the URL of the "last" attempt
 	if len(jobRunResults) >= 1 {
-		sort.Sort(jobrunresult.ByStartTime(jobRunResults))
-		return jobRunResults[len(jobRunResults)-1].HumanProwResultsURL
+		sorted := make([]v1alpha1.JobRunResult, len(jobRunResults))
+		copy(sorted, jobRunResults)
+		sort.Sort(jobrunresult.ByStartTime(sorted))
+		return sorted[len(sorted)-1].HumanProwResultsURL
 	}
 	return ""
 }
