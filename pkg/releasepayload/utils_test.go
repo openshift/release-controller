@@ -360,8 +360,11 @@ func Test_getVerificationStatusPreviousAttemptURLs(t *testing.T) {
 
 func Test_getTransitionTime(t *testing.T) {
 	t1 := metav1.NewTime(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC))
+	t1c := metav1.NewTime(time.Date(2026, 1, 1, 10, 30, 0, 0, time.UTC))
 	t2 := metav1.NewTime(time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC))
+	t2c := metav1.NewTime(time.Date(2026, 1, 1, 11, 30, 0, 0, time.UTC))
 	t3 := metav1.NewTime(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	t3c := metav1.NewTime(time.Date(2026, 1, 1, 12, 30, 0, 0, time.UTC))
 
 	tests := []struct {
 		name    string
@@ -378,10 +381,10 @@ func Test_getTransitionTime(t *testing.T) {
 			results: []v1alpha1.JobRunResult{
 				{
 					StartTime:      t1,
-					CompletionTime: &t1,
+					CompletionTime: &t1c,
 				},
 			},
-			want: &t1,
+			want: &t1c,
 		},
 		{
 			name: "Single result without CompletionTime",
@@ -393,29 +396,29 @@ func Test_getTransitionTime(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "Multiple results returns latest CompletionTime",
+			name: "Multiple results returns CompletionTime of result with latest StartTime",
 			results: []v1alpha1.JobRunResult{
 				{
 					StartTime:      t1,
-					CompletionTime: &t1,
+					CompletionTime: &t1c,
 				},
 				{
 					StartTime:      t3,
-					CompletionTime: &t3,
+					CompletionTime: &t3c,
 				},
 				{
 					StartTime:      t2,
-					CompletionTime: &t2,
+					CompletionTime: &t2c,
 				},
 			},
-			want: &t3,
+			want: &t3c,
 		},
 		{
 			name: "Multiple results, latest has no CompletionTime",
 			results: []v1alpha1.JobRunResult{
 				{
 					StartTime:      t1,
-					CompletionTime: &t1,
+					CompletionTime: &t1c,
 				},
 				{
 					StartTime: t2,
