@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -21,6 +20,8 @@ import (
 
 	"github.com/openshift/api/image/docker10"
 	imagev1 "github.com/openshift/api/image/v1"
+	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	"github.com/openshift/release-controller/pkg/releasepayload"
 )
 
 // sync expects to receive a queue key that points to a valid release image input
@@ -501,7 +502,6 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
-		// ensure ready tags are pushed to alternative mirror
 		mirror, err := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
 		if err != nil {
 			klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
@@ -513,53 +513,38 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 			klog.Errorf("unable to launch release upgrade jobs for %q: %v", releaseTag.Name, err)
 		}
 
-		status, err := c.ensureVerificationJobs(release, releaseTag)
+		payload, verifyStatus, err := c.getReleasePayloadVerificationState(release, releaseTag.Name)
 		if err != nil {
-			return err
-		}
-
-		verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
-		if err != nil {
-			return err
-		}
-		if names, ok := status.Incomplete(verificationJobs); ok {
-			klog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
-			if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
-				return err
-			}
+			klog.Errorf("unable to get ReleasePayload for %q: %v", releaseTag.Name, err)
 			continue
 		}
 
-		if names, ok := status.Failures(); ok {
-			retryNames, blockingJobFailed := releasecontroller.VerificationJobsWithRetries(verificationJobs, status)
-			if !blockingJobFailed && len(retryNames) > 0 {
-				klog.V(4).Infof("Release %s has retryable job failures: %v", releaseTag.Name, strings.Join(retryNames, ", "))
-				if err := c.markReleaseReady(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
-					return err
-				}
-				continue
+		if err := c.ensureVerificationJobs(release, releaseTag, verifyStatus); err != nil {
+			if errors.IsConflict(err) {
+				return nil
 			}
-			if !releasecontroller.AllOptional(verificationJobs, names...) {
-				klog.V(4).Infof("Release %s was rejected", releaseTag.Name)
-				annotations := reasonAndMessage("VerificationFailed", fmt.Sprintf("release verification step failed: %s", strings.Join(names, ", ")))
-				// When a release is rejected, naturally, we no longer need to carry the verification results because its ReleasePayload will hold all the same information
-				// and the UI relies on the ReleasePayload for its results.  Setting the annotation's value to an empty string will delete it from the tag all together.
-				annotations[releasecontroller.ReleaseAnnotationVerify] = ""
-				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhaseReady}, releasecontroller.ReleasePhaseRejected, annotations, releaseTag.Name); err != nil {
-					return err
-				}
-				continue
-			}
-			klog.V(4).Infof("Release %s had only optional job failures: %v", releaseTag.Name, strings.Join(names, ", "))
-		}
-
-		// If all jobs are complete and there are no failures, this is accepted
-		// When a release is accepted, naturally, we no longer need to carry the verification results because its ReleasePayload will hold all the same information
-		// and the UI relies on the ReleasePayload for its results.  Setting the annotation's value to an empty string will delete it from the tag all together.
-		if err := c.markReleaseAccepted(release, map[string]string{releasecontroller.ReleaseAnnotationVerify: ""}, releaseTag.Name); err != nil {
 			return err
 		}
-		klog.V(4).Infof("Release %s accepted", releaseTag.Name)
+
+		phase := releasecontroller.GetReleasePhase(payload)
+		switch phase {
+		case releasecontroller.ReleasePhaseAccepted:
+			if err := c.markReleaseAccepted(release, nil, releaseTag.Name); err != nil {
+				return err
+			}
+			klog.V(4).Infof("Release %s accepted", releaseTag.Name)
+
+		case releasecontroller.ReleasePhaseRejected:
+			reason, message := getRejectionDetails(payload)
+			annotations := reasonAndMessage(reason, message)
+			if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhaseReady}, releasecontroller.ReleasePhaseRejected, annotations, releaseTag.Name); err != nil {
+				return err
+			}
+			klog.V(4).Infof("Release %s rejected", releaseTag.Name)
+
+		default:
+			klog.V(4).Infof("Verification jobs for %s are still running (phase=%s)", releaseTag.Name, phase)
+		}
 	}
 
 	return nil
@@ -630,13 +615,26 @@ func (c *Controller) loadReleaseForSync(namespace, name string) (*releasecontrol
 	return release, nil
 }
 
-func toJSONString(data any) string {
-	out, err := json.Marshal(data)
+func (c *Controller) getReleasePayloadVerificationState(release *releasecontroller.Release, tagName string) (*v1alpha1.ReleasePayload, releasecontroller.VerificationStatusMap, error) {
+	nsLister := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace)
+	if nsLister == nil {
+		return nil, nil, fmt.Errorf("no ReleasePayload lister for namespace %s", release.Target.Namespace)
+	}
+	payload, err := nsLister.Get(tagName)
 	if err != nil {
-		panic(err)
+		return nil, nil, fmt.Errorf("unable to get ReleasePayload %s/%s: %v", release.Target.Namespace, tagName, err)
 	}
-	if string(out) == "null" {
-		return ""
-	}
-	return string(out)
+	var verifyStatus releasecontroller.VerificationStatusMap
+	releasepayload.GenerateVerificationStatusMap(payload, &verifyStatus)
+	return payload, verifyStatus, nil
 }
+
+func getRejectionDetails(payload *v1alpha1.ReleasePayload) (string, string) {
+	for _, cond := range payload.Status.Conditions {
+		if cond.Type == v1alpha1.ConditionPayloadRejected && cond.Status == metav1.ConditionTrue {
+			return cond.Reason, cond.Message
+		}
+	}
+	return "VerificationFailed", "release verification failed"
+}
+

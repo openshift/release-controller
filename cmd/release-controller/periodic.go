@@ -176,7 +176,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 
 	schedulingEnabled := c.prowConfigLoader.Config().Scheduler.Enabled
 	prowJob := pjutil.NewProwJob(spec, periodicWithRelease.Periodic.Labels, periodicWithRelease.Periodic.Annotations, pjutil.RequireScheduling(schedulingEnabled))
-	prowJob.Labels[releasecontroller.ReleaseAnnotationVerify] = "true"
+	prowJob.Labels[releasecontroller.ReleaseLabelVerify] = "true"
 	prowJob.Annotations[releasecontroller.ReleaseAnnotationSource] = fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name)
 	prowJob.Annotations[releasecontroller.ReleaseAnnotationToTag] = latestTag.Name
 	if periodicWithRelease.Upgrade && len(previousTag) > 0 {

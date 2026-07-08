@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	releasepayloadv1alpha1 "github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
@@ -291,6 +292,21 @@ func (c *Controller) AddPublishNamespace(ns string, imagestreams imageinformers.
 // for releasepayloads.
 func (c *Controller) AddReleasePayloadNamespace(ns string, releasePayloads releasepayloadinformer.ReleasePayloadInformer) {
 	c.releasePayloadLister.Listers[ns] = releasePayloads.Lister().ReleasePayloads(ns)
+
+	if _, err := releasePayloads.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) {
+			payload, ok := cur.(*releasepayloadv1alpha1.ReleasePayload)
+			if !ok {
+				return
+			}
+			c.addQueueKey(queueKey{
+				namespace: payload.Spec.PayloadCoordinates.Namespace,
+				name:      payload.Spec.PayloadCoordinates.ImagestreamName,
+			})
+		},
+	}); err != nil {
+		klog.Fatalf("Failed to add event handler for releasepayloads: %v", err)
+	}
 }
 
 // AddProwInformer sets the controller up to watch for changes to prow jobs created by the

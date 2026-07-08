@@ -163,7 +163,7 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 	}
 
 	labelSelector := labels.Set{
-		releasecontroller.ReleaseAnnotationVerify: "true",
+		releasecontroller.ReleaseLabelVerify: "true",
 		releasecontroller.ReleaseLabelPayload:     originalReleasePayload.Name,
 	}
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,12 +16,11 @@ import (
 	"k8s.io/klog"
 )
 
-func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference) (releasecontroller.VerificationStatusMap, error) {
-	var verifyStatus releasecontroller.VerificationStatusMap
+func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, releaseTag *imagev1.TagReference, verifyStatus releasecontroller.VerificationStatusMap) error {
 	retryQueueDelay := 0 * time.Second
 	verificationJobs, err := releasecontroller.GetVerificationJobs(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, release, releaseTag, c.artSuffix)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for name, verifyType := range verificationJobs {
 		if verifyType.Disabled {
@@ -32,15 +30,6 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 
 		switch {
 		case verifyType.ProwJob != nil:
-			if verifyStatus == nil {
-				if data := releaseTag.Annotations[releasecontroller.ReleaseAnnotationVerify]; len(data) > 0 {
-					verifyStatus = make(releasecontroller.VerificationStatusMap)
-					if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
-						klog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
-					}
-				}
-			}
-
 			var jobRetries int
 			if status, ok := verifyStatus[name]; ok {
 				jobRetries = status.Retries
@@ -52,7 +41,6 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 					if jobRetries > verifyType.MaxRetries {
 						continue
 					}
-					// find the next time, if ok run.
 					if status.TransitionTime != nil {
 						backoffDuration := releasecontroller.CalculateBackoff(jobRetries-1, status.TransitionTime, &metav1.Time{Time: time.Now()})
 						if backoffDuration > 0 {
@@ -71,13 +59,12 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 				}
 			}
 
-			// if this is an upgrade job, find the appropriate source for the upgrade job
 			var previousTag, previousReleasePullSpec string
 			if verifyType.Upgrade {
 				var err error
 				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, verifyType.UpgradeFromRelease, false)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 			jobNameSuffix := ""
@@ -92,38 +79,20 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 			if verifyType.AggregatedProwJob != nil {
 				err := c.launchAnalysisJobs(release, name, verifyType, releaseTag, previousTag, previousReleasePullSpec)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				jobLabels["release.openshift.io/aggregator"] = releaseTag.Name
 			}
 			job, err := c.ensureProwJobForReleaseTag(release, name, jobNameSuffix, verifyType, releaseTag, previousTag, previousReleasePullSpec, jobLabels)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			status, ok := releasecontroller.ProwJobVerificationStatus(job)
+			prowStatus, ok := releasecontroller.ProwJobVerificationStatus(job)
 			if !ok {
-				return nil, fmt.Errorf("unexpected error accessing prow job definition")
+				return fmt.Errorf("unexpected error accessing prow job definition")
 			}
-			if status.State == releasecontroller.ReleaseVerificationStateSucceeded {
-				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, releasecontroller.GenerateProwJobResultsURL(status.URL))
-			}
-			if verifyStatus == nil {
-				verifyStatus = make(releasecontroller.VerificationStatusMap)
-			}
-			status.Retries = jobRetries
-			verifyStatus[name] = status
-
-			if jobRetries >= verifyType.MaxRetries {
-				verifyStatus[name].TransitionTime = nil
-				continue
-			}
-
-			if status.State == releasecontroller.ReleaseVerificationStateFailed {
-				// Queue for retry if at least one retryable job at earliest interval
-				backoffDuration := releasecontroller.CalculateBackoff(jobRetries, status.TransitionTime, &metav1.Time{Time: time.Now()})
-				if retryQueueDelay == 0 || backoffDuration < retryQueueDelay {
-					retryQueueDelay = backoffDuration
-				}
+			if prowStatus.State == releasecontroller.ReleaseVerificationStateSucceeded {
+				klog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, releasecontroller.GenerateProwJobResultsURL(prowStatus.URL))
 			}
 
 		default:
@@ -137,7 +106,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 		}
 		c.queue.AddAfter(key, retryQueueDelay)
 	}
-	return verifyStatus, nil
+	return nil
 }
 
 func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *releasecontroller.UpgradeRelease, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
