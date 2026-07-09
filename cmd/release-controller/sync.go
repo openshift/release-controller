@@ -44,6 +44,7 @@ func (c *Controller) sync(key queueKey) error {
 	if err != nil || release == nil {
 		return err
 	}
+	c.populatePayloadPhases(release)
 
 	if release.Config.EndOfLife {
 		klog.V(6).Infof("release %s has reached the end of life", release.Config.Name)
@@ -183,7 +184,7 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 			hasNewImages = false
 		}
 
-		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
+		phase := releasecontroller.GetTagPhase(release, tag)
 		switch phase {
 		case releasecontroller.ReleasePhasePending, "":
 			unreadyTagCount++
@@ -576,6 +577,10 @@ func (c *Controller) precacheChangelog(release *releasecontroller.Release, tag *
 			}
 		}()
 	}
+}
+
+func (c *Controller) populatePayloadPhases(release *releasecontroller.Release) {
+	releasecontroller.PopulatePayloadPhases(release, c.releasePayloadLister.ReleasePayloads(release.Target.Namespace))
 }
 
 func (c *Controller) loadReleaseForSync(namespace, name string) (*releasecontroller.Release, error) {

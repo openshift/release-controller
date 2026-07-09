@@ -29,6 +29,23 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 )
 
+func (c *Controller) releaseDefinition(stream *imagev1.ImageStream, payloadPhases map[string]string) (*releasecontroller.Release, bool, error) {
+	r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+	if err != nil || !ok {
+		return r, ok, err
+	}
+	if payloadPhases != nil {
+		r.PayloadPhases = payloadPhases
+	} else {
+		releasecontroller.PopulatePayloadPhases(r, c.releasePayloadLister.ReleasePayloads(c.releasePayloadNamespace))
+	}
+	return r, ok, nil
+}
+
+func (c *Controller) buildPayloadPhases() map[string]string {
+	return releasecontroller.BuildPayloadPhases(c.releasePayloadLister.ReleasePayloads(c.releasePayloadNamespace))
+}
+
 var urlRegexp = regexp.MustCompile(`https?://[^\s<>"]*[^\s<>").,:;!?]`)
 
 // linkifyURLs HTML-escapes the input text, then converts any URLs into clickable links.

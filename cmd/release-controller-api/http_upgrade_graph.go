@@ -34,8 +34,9 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 
 	var nodeCount int
 	var streams []ReleaseStream
+	payloadPhases := c.buildPayloadPhases()
 	for _, stream := range imageStreams {
-		r, ok, err := releasecontroller.ReleaseDefinition(stream, c.parsedReleaseConfigCache, c.eventRecorder, *c.releaseLister)
+		r, ok, err := c.releaseDefinition(stream, payloadPhases)
 		if err != nil || !ok {
 			continue
 		}
