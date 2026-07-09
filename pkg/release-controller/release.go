@@ -22,6 +22,7 @@ import (
 	"maps"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	releasepayloadlisters "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 )
 
 var (
@@ -520,7 +521,13 @@ func CountUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 	return unreadyTagCount
 }
 
-func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister) (*StableReferences, error) {
+// ReleasePayloadLister provides access to namespace-scoped ReleasePayload listers.
+// Both MultiReleasePayloadLister and the generated ReleasePayloadLister satisfy this interface.
+type ReleasePayloadLister interface {
+	ReleasePayloads(namespace string) releasepayloadlisters.ReleasePayloadNamespaceLister
+}
+
+func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, rpLister ReleasePayloadLister) (*StableReferences, error) {
 	imageStreams, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -532,6 +539,9 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 		r, ok, err := ReleaseDefinition(stream, rcCache, eventRecorder, *lister)
 		if err != nil || !ok {
 			continue
+		}
+		if rpLister != nil {
+			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
 		}
 
 		if r.Config.As == ReleaseConfigModeStable {
@@ -547,7 +557,7 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 	return stable, nil
 }
 
-func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, streamName string, constraint semver.Range, relativeIndex int, versionPrefix string) (*Release, *imagev1.TagReference, error) {
+func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, rpLister ReleasePayloadLister, streamName string, constraint semver.Range, relativeIndex int, versionPrefix string) (*Release, *imagev1.TagReference, error) {
 	imageStreams, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -556,6 +566,9 @@ func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lis
 		r, ok, err := ReleaseDefinition(stream, rcCache, eventRecorder, *lister)
 		if err != nil || !ok {
 			continue
+		}
+		if rpLister != nil {
+			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
 		}
 		if r.Config.Name != streamName {
 			continue

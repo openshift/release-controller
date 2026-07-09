@@ -202,7 +202,7 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 
 	stableReleases := make([]imagev1.TagReference, 0)
 
-	stable, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
+	stable, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister)
 	if err != nil {
 		return releaseCandidates, err
 	}
