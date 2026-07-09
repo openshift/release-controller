@@ -381,7 +381,11 @@ func GetTagPhase(release *Release, tag *imagev1.TagReference) string {
 			return phase
 		}
 	}
-	return tag.Annotations[ReleaseAnnotationPhase]
+	phase := tag.Annotations[ReleaseAnnotationPhase]
+	if len(phase) > 0 {
+		klog.Warningf("GetTagPhase falling back to annotation for tag %s/%s:%s (phase=%s, PayloadPhases nil=%v)", release.Target.Namespace, release.Target.Name, tag.Name, phase, release.PayloadPhases == nil)
+	}
+	return phase
 }
 
 // does not sort the array. If phases is specified only tags in the provided phases

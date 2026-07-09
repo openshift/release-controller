@@ -295,8 +295,9 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		stable = &releasecontroller.StableReferences{}
 	}
 
+	payloadPhases := c.buildPayloadPhases()
 	for _, stream := range imageStreams {
-		r, ok, err := c.releaseDefinition(stream)
+		r, ok, err := c.releaseDefinition(stream, payloadPhases)
 		if err != nil || !ok {
 			continue
 		}
