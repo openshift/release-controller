@@ -368,48 +368,27 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			if err != nil || job == nil {
 				return err
 			}
-			success, complete := jobIsComplete(job)
-			switch {
-			case !complete:
-				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
-			case !success:
-				// TODO: extract termination message from the job
-				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
+			payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(tag.Name)
+			if err != nil {
+				if !errors.IsNotFound(err) {
 					return err
 				}
-			default:
+				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
+			}
+			phase := releasecontroller.GetReleasePhase(payload)
+			switch phase {
+			case releasecontroller.ReleasePhaseReady:
 				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 					return err
 				}
-				if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
-					go func() {
-						fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
-						if len(fromPullSpec) == 0 {
-							klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
-							return
-						}
-						fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
-						if err != nil {
-							klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
-							return
-						}
-
-						toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
-						if len(toPullSpec) == 0 {
-							klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
-							return
-						}
-						toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
-						if err != nil {
-							klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
-							return
-						}
-
-						if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
-							klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
-						}
-					}()
+				c.precacheChangelog(release, tag)
+			case releasecontroller.ReleasePhaseFailed:
+				log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
+				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
+					return err
 				}
+			default:
+				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
 			}
 		}
 		return nil
@@ -444,50 +423,28 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 		if err != nil || job == nil {
 			return err
 		}
-		success, complete := jobIsComplete(job)
-		klog.V(4).Infof("Release creation for %s success: %v, complete: %v", tag.Name, success, complete)
-		switch {
-		case !complete:
+		payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(tag.Name)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return err
+			}
 			return nil
-		case !success:
-			// try to get the last termination message
+		}
+		phase := releasecontroller.GetReleasePhase(payload)
+		klog.V(4).Infof("Release creation for %s phase: %s", tag.Name, phase)
+		switch phase {
+		case releasecontroller.ReleasePhaseReady:
+			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+				return err
+			}
+			c.precacheChangelog(release, tag)
+		case releasecontroller.ReleasePhaseFailed:
 			log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
 			if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
 				return err
 			}
 		default:
-			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
-				return err
-			}
-			if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
-				go func() {
-					fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
-					if len(fromPullSpec) == 0 {
-						klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
-						return
-					}
-					fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
-					if err != nil {
-						klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
-						return
-					}
-
-					toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
-					if len(toPullSpec) == 0 {
-						klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
-						return
-					}
-					toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
-					if err != nil {
-						klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
-						return
-					}
-
-					if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
-						klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
-					}
-				}()
-			}
+			return nil
 		}
 	}
 
@@ -587,6 +544,38 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 		return utilerrors.NewAggregate(errs)
 	}
 	return nil
+}
+
+func (c *Controller) precacheChangelog(release *releasecontroller.Release, tag *imagev1.TagReference) {
+	if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
+		go func() {
+			fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
+			if len(fromPullSpec) == 0 {
+				klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
+				return
+			}
+			fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
+			if err != nil {
+				klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
+				return
+			}
+
+			toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
+			if len(toPullSpec) == 0 {
+				klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
+				return
+			}
+			toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
+			if err != nil {
+				klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
+				return
+			}
+
+			if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
+				klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+			}
+		}()
+	}
 }
 
 func (c *Controller) loadReleaseForSync(namespace, name string) (*releasecontroller.Release, error) {
