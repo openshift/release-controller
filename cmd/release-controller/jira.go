@@ -83,7 +83,7 @@ func getNonVerifiedTagsJira(acceptedTags []*v1.TagReference) (current, previous 
 // If a major version transition requires a specific previous release mapping, follow this pattern.
 func (c *Controller) calculatePreviousReleaseTagForNightly(currentVersion semver.Version) (*releasecontroller.VerifyIssuesTagInfo, error) {
 	// Get all stable releases (includes 4-stable, 4-dev-preview, 5-stable, and 5-dev-preview streams)
-	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
+	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get stable releases: %w", err)
 	}
@@ -163,6 +163,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		klog.V(6).Infof("jira: could not load release for sync for %s/%s", key.namespace, key.name)
 		return err
 	}
+	c.populatePayloadPhases(release)
 
 	klog.V(6).Infof("checking if %v (%s) has verifyIssues set", key, release.Config.Name)
 
@@ -365,7 +366,7 @@ func (c *Controller) syncJira(key queueKey) error {
 	// figure out what fix version should be applied
 	tagSemver := semver.MustParse(tag.Name)
 	fixVersion := fmt.Sprintf("%d.%d.0", tagSemver.Major, tagSemver.Minor)
-	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister)
+	stableReleases, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister)
 	if err != nil {
 		klog.V(4).Infof("Jira: Error getting stable releases: %v", err)
 		c.jiraErrorMetrics.WithLabelValues(jiraStableReleases).Inc()

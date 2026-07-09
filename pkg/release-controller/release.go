@@ -22,6 +22,7 @@ import (
 	"maps"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	releasepayloadlisters "github.com/openshift/release-controller/pkg/client/listers/release/v1alpha1"
 )
 
 var (
@@ -520,7 +521,13 @@ func CountUnreadyReleases(release *Release, tags []*imagev1.TagReference) int {
 	return unreadyTagCount
 }
 
-func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister) (*StableReferences, error) {
+// ReleasePayloadLister provides access to namespace-scoped ReleasePayload listers.
+// Both MultiReleasePayloadLister and the generated ReleasePayloadLister satisfy this interface.
+type ReleasePayloadLister interface {
+	ReleasePayloads(namespace string) releasepayloadlisters.ReleasePayloadNamespaceLister
+}
+
+func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, rpLister ReleasePayloadLister) (*StableReferences, error) {
 	imageStreams, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -535,6 +542,9 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 		}
 
 		if r.Config.As == ReleaseConfigModeStable {
+			if rpLister != nil {
+				PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
+			}
 			version, _ := SemverParseTolerant(r.Source.Name)
 			stable.Releases = append(stable.Releases, StableRelease{
 				Release: r,
@@ -547,7 +557,7 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 	return stable, nil
 }
 
-func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, streamName string, constraint semver.Range, relativeIndex int, versionPrefix string) (*Release, *imagev1.TagReference, error) {
+func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, rpLister ReleasePayloadLister, streamName string, constraint semver.Range, relativeIndex int, versionPrefix string) (*Release, *imagev1.TagReference, error) {
 	imageStreams, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, nil, err
@@ -559,6 +569,9 @@ func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lis
 		}
 		if r.Config.Name != streamName {
 			continue
+		}
+		if rpLister != nil {
+			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
 		}
 		// find all accepted tags, then sort by semantic version
 		tags := UnsortedSemanticReleaseTags(r, ReleasePhaseAccepted)

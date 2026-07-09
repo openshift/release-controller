@@ -532,7 +532,7 @@ func (c *Controller) locateLatest(w http.ResponseWriter, req *http.Request) (*re
 		releasePrefix = inString
 	}
 
-	r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, streamName, constraint, relativeIndex, releasePrefix)
+	r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister, streamName, constraint, relativeIndex, releasePrefix)
 	if err != nil {
 		code := http.StatusInternalServerError
 		if errors.Is(err, releasecontroller.ErrStreamNotFound) || errors.Is(err, releasecontroller.ErrStreamTagNotFound) {
@@ -2280,7 +2280,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 
 	endOfLifePrefixes := sets.New[string]()
 
-	r, ok, err := c.releaseDefinition(requestedStream, nil)
+	r, ok, err := c.releaseDefinition(requestedStream, payloadPhases)
 	if err != nil || !ok {
 		return
 	}

@@ -139,13 +139,13 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 	case releasecontroller.ReleaseUpgradeFromPreviousMinor:
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
 			version.Minor--
-			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
+			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister); err == nil {
 				previousTag, previousReleasePullSpec = findLatestStableForVersion(ref, version)
 			}
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousPatch:
 		if version, err := semver.Parse(releaseTag.Name); err == nil {
-			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister); err == nil {
+			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister); err == nil {
 				previousTag, previousReleasePullSpec = findLatestStableForVersion(ref, version)
 			}
 		}
@@ -179,7 +179,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 			return "", "", fmt.Errorf("invalid semver range `%s`: %w", upgradeRelease.Prerelease.VersionBounds.Query(), err)
 		}
 		//TODO: Right now, nothing relies on the "prerelease" stanza that would trigger this logic.  If it is ever used, we are going to need to handle "4-stable" and "5-stable"...
-		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, "4-stable", semverRange, 0, "")
+		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister, "4-stable", semverRange, 0, "")
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get latest tag in 4-stable stream: %w", err)
 		}
@@ -190,7 +190,7 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		// create blank semver.Range
 		var constraint semver.Range
 		stream := fmt.Sprintf("%s.0-0.%s%s", upgradeRelease.Candidate.Version, upgradeRelease.Candidate.Stream, TrimPrefixes(release.Config.To, "release-5", "release"))
-		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, stream, constraint, upgradeRelease.Candidate.Relative, "")
+		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister, stream, constraint, upgradeRelease.Candidate.Relative, "")
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", stream, err)
 		}

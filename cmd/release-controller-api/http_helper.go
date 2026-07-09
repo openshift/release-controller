@@ -37,7 +37,7 @@ func (c *Controller) releaseDefinition(stream *imagev1.ImageStream, payloadPhase
 	if payloadPhases != nil {
 		r.PayloadPhases = payloadPhases
 	} else {
-		releasecontroller.PopulatePayloadPhases(r, c.releasePayloadLister.ReleasePayloads(c.releasePayloadNamespace))
+		releasecontroller.PopulatePayloadPhases(r, c.releasePayloadLister.ReleasePayloads(r.Target.Namespace))
 	}
 	return r, ok, nil
 }
