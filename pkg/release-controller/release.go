@@ -540,11 +540,11 @@ func GetStableReleases(rcCache *lru.Cache, eventRecorder record.EventRecorder, l
 		if err != nil || !ok {
 			continue
 		}
-		if rpLister != nil {
-			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
-		}
 
 		if r.Config.As == ReleaseConfigModeStable {
+			if rpLister != nil {
+				PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
+			}
 			version, _ := SemverParseTolerant(r.Source.Name)
 			stable.Releases = append(stable.Releases, StableRelease{
 				Release: r,
@@ -567,11 +567,11 @@ func LatestForStream(rcCache *lru.Cache, eventRecorder record.EventRecorder, lis
 		if err != nil || !ok {
 			continue
 		}
-		if rpLister != nil {
-			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
-		}
 		if r.Config.Name != streamName {
 			continue
+		}
+		if rpLister != nil {
+			PopulatePayloadPhases(r, rpLister.ReleasePayloads(r.Target.Namespace))
 		}
 		// find all accepted tags, then sort by semantic version
 		tags := UnsortedSemanticReleaseTags(r, ReleasePhaseAccepted)

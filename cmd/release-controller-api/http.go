@@ -2280,7 +2280,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 
 	endOfLifePrefixes := sets.New[string]()
 
-	r, ok, err := c.releaseDefinition(requestedStream, nil)
+	r, ok, err := c.releaseDefinition(requestedStream, payloadPhases)
 	if err != nil || !ok {
 		return
 	}

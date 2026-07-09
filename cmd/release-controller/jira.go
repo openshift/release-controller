@@ -163,6 +163,7 @@ func (c *Controller) syncJira(key queueKey) error {
 		klog.V(6).Infof("jira: could not load release for sync for %s/%s", key.namespace, key.name)
 		return err
 	}
+	c.populatePayloadPhases(release)
 
 	klog.V(6).Infof("checking if %v (%s) has verifyIssues set", key, release.Config.Name)
 
