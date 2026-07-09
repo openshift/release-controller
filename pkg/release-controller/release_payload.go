@@ -38,17 +38,8 @@ func ApprovedReleases(lister v1alpha2.ReleasePayloadLister) ([]*v1alpha1.Release
 }
 
 func PopulatePayloadPhases(release *Release, lister v1alpha2.ReleasePayloadNamespaceLister) {
-	if lister == nil {
-		return
-	}
-	payloads, err := lister.List(labels.Everything())
-	if err != nil {
-		klog.V(4).Infof("Unable to list ReleasePayloads for %s: %v", release.Target.Namespace, err)
-		return
-	}
-	release.PayloadPhases = make(map[string]string, len(payloads))
-	for _, p := range payloads {
-		release.PayloadPhases[p.Name] = GetReleasePhase(p)
+	if phases := BuildPayloadPhases(lister); phases != nil {
+		release.PayloadPhases = phases
 	}
 }
 
