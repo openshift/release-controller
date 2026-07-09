@@ -41,6 +41,22 @@ func convertToVerificationStatusMapResult(job v1alpha1.JobStatus) (*releasecontr
 	if state == releasecontroller.ReleaseVerificationStateSucceeded && url == "" {
 		state = releasecontroller.ReleaseVerificationStatePending
 	}
+	// The ReleasePayload controller sets AggregateState=Pending for retryable jobs
+	// that have failed but haven't exhausted their retries. The release-controller's
+	// retry logic needs to see Failed (not Pending) to trigger a retry with backoff.
+	// Detect this by checking whether all results are failures while aggregate is Pending.
+	if state == releasecontroller.ReleaseVerificationStatePending && job.MaxRetries > 0 && len(job.JobRunResults) > 0 {
+		allFailed := true
+		for _, r := range job.JobRunResults {
+			if r.State != v1alpha1.JobRunStateFailure && r.State != v1alpha1.JobRunStateAborted && r.State != v1alpha1.JobRunStateError {
+				allFailed = false
+				break
+			}
+		}
+		if allFailed {
+			state = releasecontroller.ReleaseVerificationStateFailed
+		}
+	}
 	status := &releasecontroller.VerificationStatus{
 		Retries:             getVerificationStatusRetries(job),
 		PreviousAttemptURLs: getVerificationStatusPreviousAttemptURLs(job.JobRunResults, url),
