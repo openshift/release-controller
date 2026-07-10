@@ -141,10 +141,14 @@ func computeReleasePayloadRejectedCondition(payload *v1alpha1.ReleasePayload) me
 		rejectedCondition.Reason = ReleasePayloadManuallyRejectedReason
 		return rejectedCondition
 	case v1alpha1.ReleasePayloadOverrideAccepted:
-		// If a payload has already been accepted, then we do not want to process it any further...
 		rejectedCondition.Status = metav1.ConditionFalse
 		rejectedCondition.Message = payload.Spec.PayloadOverride.Reason
 		rejectedCondition.Reason = ReleasePayloadManuallyAcceptedReason
+		return rejectedCondition
+	}
+
+	// The release creation job must succeed before rejection can be evaluated
+	if payload.Status.ReleaseCreationJobResult.Status != v1alpha1.ReleaseCreationJobSuccess {
 		return rejectedCondition
 	}
 

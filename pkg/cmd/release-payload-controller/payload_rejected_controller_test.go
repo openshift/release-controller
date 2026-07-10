@@ -211,6 +211,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -230,6 +231,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -259,6 +261,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -278,6 +281,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -307,6 +311,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -326,6 +331,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -355,6 +361,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -374,6 +381,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -403,6 +411,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -422,6 +431,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
