@@ -29,7 +29,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			payload: &v1alpha1.ReleasePayload{},
 			expected: metav1.Condition{
 				Type:   v1alpha1.ConditionPayloadAccepted,
-				Status: metav1.ConditionTrue,
+				Status: metav1.ConditionUnknown,
 				Reason: ReleasePayloadAcceptedReason,
 			},
 		},
@@ -151,7 +151,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			},
 		},
 		{
-			name: "CreationJobUnknownDoesNotShortCircuit",
+			name: "CreationJobUnknownBlocksAcceptance",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
@@ -164,7 +164,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			},
 			expected: metav1.Condition{
 				Type:   v1alpha1.ConditionPayloadAccepted,
-				Status: metav1.ConditionTrue,
+				Status: metav1.ConditionUnknown,
 				Reason: ReleasePayloadAcceptedReason,
 			},
 		},
@@ -177,6 +177,9 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 						Override: v1alpha1.ReleasePayloadOverrideAccepted,
 						Reason:   "Manually accepted per TRT",
 					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 				},
 			},
 			expected: metav1.Condition{
@@ -195,6 +198,9 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 						Reason:   "Manually rejected per TRT",
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: metav1.Condition{
 				Type:    v1alpha1.ConditionPayloadAccepted,
@@ -211,6 +217,9 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 						Override: v1alpha1.ReleasePayloadOverrideAccepted,
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: metav1.Condition{
 				Type:   v1alpha1.ConditionPayloadAccepted,
@@ -225,6 +234,9 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 					PayloadOverride: v1alpha1.ReleasePayloadOverride{
 						Override: v1alpha1.ReleasePayloadOverrideRejected,
 					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 				},
 			},
 			expected: metav1.Condition{
@@ -243,6 +255,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateFailure},
 						{AggregateState: v1alpha1.JobStateFailure},
@@ -266,6 +279,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: v1alpha1.JobStateSuccess},
@@ -284,6 +298,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "AllBlockingJobsSuccessful",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "job-a", AggregateState: v1alpha1.JobStateSuccess},
 						{CIConfigurationName: "job-b", AggregateState: v1alpha1.JobStateSuccess},
@@ -301,6 +316,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "SingleBlockingJobSuccessful",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 					},
@@ -316,6 +332,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "SingleBlockingJobFailed",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateFailure},
 					},
@@ -331,6 +348,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "SingleBlockingJobPending",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStatePending},
 					},
@@ -346,6 +364,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "MixOfSuccessAndPendingBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: v1alpha1.JobStatePending},
@@ -363,6 +382,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "MixOfSuccessAndFailedBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: v1alpha1.JobStateSuccess},
@@ -380,6 +400,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "FailureTakesPrecedenceOverPendingInBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: v1alpha1.JobStateFailure},
@@ -397,6 +418,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "AllBlockingJobsPending",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStatePending},
 						{AggregateState: v1alpha1.JobStatePending},
@@ -413,6 +435,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "AllBlockingJobsFailed",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateFailure},
 						{AggregateState: v1alpha1.JobStateFailure},
@@ -429,6 +452,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "BlockingJobWithUnknownState",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: v1alpha1.JobStateUnknown},
@@ -446,6 +470,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "BlockingJobWithEmptyAggregateState",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 						{AggregateState: ""},
@@ -463,6 +488,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "NoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{},
 				},
 			},
@@ -477,6 +503,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "InformingJobFailureDoesNotAffectAcceptance",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 					},
@@ -495,6 +522,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "UpgradeJobFailureDoesNotAffectAcceptance",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{AggregateState: v1alpha1.JobStateSuccess},
 					},
@@ -514,6 +542,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "OnlyInformingJobsSuccessfulNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateSuccess},
 						{CIConfigurationName: "informing-b", AggregateState: v1alpha1.JobStateSuccess},
@@ -530,6 +559,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "OnlyInformingJobsWithFailuresNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateSuccess},
 						{CIConfigurationName: "informing-b", AggregateState: v1alpha1.JobStateFailure},
@@ -546,6 +576,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "OnlyInformingJobsPendingNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStatePending},
 						{CIConfigurationName: "informing-b", AggregateState: v1alpha1.JobStateSuccess},
@@ -562,6 +593,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "InformingJobsWithUnsetStateNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a"},
 						{CIConfigurationName: "informing-b"},
@@ -578,6 +610,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "OnlyUpgradeJobsSuccessfulNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					UpgradeJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "upgrade-a", AggregateState: v1alpha1.JobStateSuccess},
 					},
@@ -593,6 +626,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "OnlyUpgradeJobsPendingNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					UpgradeJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "upgrade-a", AggregateState: v1alpha1.JobStatePending},
 					},
@@ -608,6 +642,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "MixedInformingAndUpgradeJobsPendingNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateSuccess},
 					},
@@ -629,6 +664,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "MixedInformingAndUpgradeJobsFailureAndPendingNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateFailure},
 					},
@@ -647,6 +683,7 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			name: "MixedInformingAndUpgradeJobsCompleteNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					InformingJobResults: []v1alpha1.JobStatus{
 						{CIConfigurationName: "informing-a", AggregateState: v1alpha1.JobStateSuccess},
 						{CIConfigurationName: "informing-b", AggregateState: v1alpha1.JobStateFailure},
@@ -695,6 +732,9 @@ func TestPayloadAcceptedSync(t *testing.T) {
 						Reason:   "Manually accepted per TRT",
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -708,6 +748,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -733,6 +774,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadRejected,
@@ -755,6 +797,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -785,6 +828,9 @@ func TestPayloadAcceptedSync(t *testing.T) {
 						Reason:   "Manually rejected per TRT",
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -798,6 +844,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -823,6 +870,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadRejected,
@@ -845,6 +893,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -870,6 +919,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -889,6 +939,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -918,6 +969,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -937,6 +989,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -966,6 +1019,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -985,6 +1039,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -1014,6 +1069,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -1033,6 +1089,7 @@ func TestPayloadAcceptedSync(t *testing.T) {
 					Namespace: "ocp",
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
