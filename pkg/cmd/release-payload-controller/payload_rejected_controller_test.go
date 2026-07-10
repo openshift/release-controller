@@ -36,6 +36,9 @@ func TestPayloadRejectedSync(t *testing.T) {
 						Reason:   "Manually rejected per TRT",
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -49,6 +52,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadRejected,
@@ -74,6 +78,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -96,6 +101,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -126,6 +132,9 @@ func TestPayloadRejectedSync(t *testing.T) {
 						Reason:   "Manually accepted per TRT",
 					},
 				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+				},
 			},
 			expected: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
@@ -139,6 +148,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadRejected,
@@ -164,6 +174,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,
@@ -186,6 +197,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 					},
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
 					Conditions: []metav1.Condition{
 						{
 							Type:    v1alpha1.ConditionPayloadAccepted,

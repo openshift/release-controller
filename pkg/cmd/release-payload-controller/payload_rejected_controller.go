@@ -133,7 +133,14 @@ func computeReleasePayloadRejectedCondition(payload *v1alpha1.ReleasePayload) me
 		return rejectedCondition
 	}
 
-	// Check for "Accepted" PayloadOverride
+	// The release creation job must succeed before rejection can be evaluated,
+	// including manual overrides — there is no physical release to reject until
+	// the creation job completes.
+	if payload.Status.ReleaseCreationJobResult.Status != v1alpha1.ReleaseCreationJobSuccess {
+		return rejectedCondition
+	}
+
+	// Check for PayloadOverride
 	switch payload.Spec.PayloadOverride.Override {
 	case v1alpha1.ReleasePayloadOverrideRejected:
 		rejectedCondition.Status = metav1.ConditionTrue
@@ -144,11 +151,6 @@ func computeReleasePayloadRejectedCondition(payload *v1alpha1.ReleasePayload) me
 		rejectedCondition.Status = metav1.ConditionFalse
 		rejectedCondition.Message = payload.Spec.PayloadOverride.Reason
 		rejectedCondition.Reason = ReleasePayloadManuallyAcceptedReason
-		return rejectedCondition
-	}
-
-	// The release creation job must succeed before rejection can be evaluated
-	if payload.Status.ReleaseCreationJobResult.Status != v1alpha1.ReleaseCreationJobSuccess {
 		return rejectedCondition
 	}
 
