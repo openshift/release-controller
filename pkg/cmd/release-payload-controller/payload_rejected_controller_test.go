@@ -177,6 +177,53 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
+			name: "CreationJobFailedTakesPrecedenceOverAcceptanceOverride",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideAccepted,
+						Reason:   "Manually accepted per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Status:  v1alpha1.ReleaseCreationJobFailed,
+						Message: "BackoffLimitExceeded",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideAccepted,
+						Reason:   "Manually accepted per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Status:  v1alpha1.ReleaseCreationJobFailed,
+						Message: "BackoffLimitExceeded",
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:    v1alpha1.ConditionPayloadRejected,
+							Status:  metav1.ConditionTrue,
+							Reason:  ReleasePayloadCreationJobFailedReason,
+							Message: "BackoffLimitExceeded",
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "TestPayloadOverrideRejectedAfterAccepted",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
