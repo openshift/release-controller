@@ -65,6 +65,118 @@ func TestPayloadRejectedSync(t *testing.T) {
 			},
 		},
 		{
+			name: "CreationJobUnsetBlocksRejectionOverride",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideRejected,
+						Reason:   "Manually rejected per TRT",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideRejected,
+						Reason:   "Manually rejected per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionUnknown,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "CreationJobUnknownBlocksRejectionOverride",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideRejected,
+						Reason:   "Manually rejected per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobUnknown},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideRejected,
+						Reason:   "Manually rejected per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobUnknown},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionUnknown,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "CreationJobUnsetBlocksAcceptanceOverride",
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideAccepted,
+						Reason:   "Manually accepted per TRT",
+					},
+				},
+			},
+			expected: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideAccepted,
+						Reason:   "Manually accepted per TRT",
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionUnknown,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "TestPayloadOverrideRejectedAfterAccepted",
 			input: &v1alpha1.ReleasePayload{
 				ObjectMeta: metav1.ObjectMeta{
