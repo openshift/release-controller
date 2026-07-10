@@ -559,6 +559,22 @@ func TestComputeReleasePayloadAcceptedCondition(t *testing.T) {
 			},
 		},
 		{
+			name: "InformingJobsWithUnsetStateNoBlockingJobs",
+			payload: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					InformingJobResults: []v1alpha1.JobStatus{
+						{CIConfigurationName: "informing-a"},
+						{CIConfigurationName: "informing-b"},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadAccepted,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadAcceptedReason,
+			},
+		},
+		{
 			name: "OnlyUpgradeJobsSuccessfulNoBlockingJobs",
 			payload: &v1alpha1.ReleasePayload{
 				Status: v1alpha1.ReleasePayloadStatus{

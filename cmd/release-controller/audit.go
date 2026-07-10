@@ -351,8 +351,8 @@ func (a *AuditTracker) Sync(release *releasecontroller.Release) {
 		if len(tag.Name) == 0 {
 			continue
 		}
-		phase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
-		if phase != "Accepted" && phase != "Ready" && phase != "Rejected" {
+		phase := releasecontroller.GetTagPhase(release, &tag)
+		if phase != releasecontroller.ReleasePhaseAccepted && phase != releasecontroller.ReleasePhaseReady && phase != releasecontroller.ReleasePhaseRejected {
 			continue
 		}
 
