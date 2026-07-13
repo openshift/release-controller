@@ -100,13 +100,15 @@ func (c *Controller) sync(key queueKey) error {
 		pendingTags = []*imagev1.TagReference{releaseTag}
 	}
 
+	var syncErrors []error
+
 	// ensure any pending tags have the necessary jobs/mirrors created
 	if err := c.syncPending(release, pendingTags, inputImageHash); err != nil {
 		if errors.IsConflict(err) {
 			return nil
 		}
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToProcessRelease", "%v", err)
-		return err
+		syncErrors = append(syncErrors, err)
 	}
 
 	// ensure verification steps are run on the ready tags
@@ -115,7 +117,7 @@ func (c *Controller) sync(key queueKey) error {
 			return nil
 		}
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
-		return err
+		syncErrors = append(syncErrors, err)
 	}
 
 	// ensure publish steps are run on the accepted tags
@@ -124,7 +126,7 @@ func (c *Controller) sync(key queueKey) error {
 			return nil
 		}
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
-		return err
+		syncErrors = append(syncErrors, err)
 	}
 
 	// if we're waiting for an interval to elapse, go ahead and queue to be woken
@@ -133,7 +135,7 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	c.gcQueue.AddAfter("", 15*time.Second)
-	return nil
+	return utilerrors.NewAggregate(syncErrors)
 }
 
 func calculateSyncActions(release *releasecontroller.Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
@@ -290,109 +292,14 @@ func (c *Controller) syncAdopted(release *releasecontroller.Release, adoptTags [
 func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags []*imagev1.TagReference, inputImageHash string) (err error) {
 	switch release.Config.As {
 	case releasecontroller.ReleaseConfigModeStable:
+		var errs []error
 		for _, tag := range pendingTags {
-			// wait for import, then determine whether the requested version (tag name) matches the source version (label on image)
-			id := releasecontroller.FindImageIDForTag(release.Source, tag.Name)
-			if len(id) == 0 {
-				klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
-				continue
-			}
-			klog.V(2).Infof("Processing pending release %s", tag.Name)
-			rewriteValue := tag.Annotations[releasecontroller.ReleaseAnnotationRewrite]
-			if len(rewriteValue) == 0 {
-				klog.V(2).Infof("Rewriting pending release %s", tag.Name)
-				isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
-				// Handle manifest list based releases...
-				for _, m := range isi.Image.DockerImageManifests {
-					if m.Architecture == "amd64" {
-						isi, err = c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, m.Digest), metav1.GetOptions{})
-						if err != nil {
-							return err
-						}
-						break
-					}
-				}
-				metadata := &docker10.DockerImage{}
-				if len(isi.Image.DockerImageMetadata.Raw) == 0 {
-					return fmt.Errorf("could not fetch Docker image metadata for release %s", tag.Name)
-				}
-				if err := json.Unmarshal(isi.Image.DockerImageMetadata.Raw, metadata); err != nil {
-					return fmt.Errorf("malformed Docker image metadata on ImageStreamTag: %v", err)
-				}
-				var name string
-				if metadata.Config != nil {
-					name = metadata.Config.Labels["io.openshift.release"]
-				}
-				rewriteValue = fmt.Sprintf("%t", name != tag.Name)
-				if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationRewrite: rewriteValue}, tag.Name); err != nil {
-					return err
-				}
-				continue
-			}
-			rewrite := rewriteValue == "true"
-
-			hash := fmt.Sprintf("%s-%d", tag.Name, *tag.Generation)
-			// mirror any internal images
-			// rewrite payload for internal images with metadata
-			mirror, err := c.ensureReleaseMirror(release, tag.Name, hash)
-			if err != nil {
-				return err
-			}
-			if len(tag.Annotations[releasecontroller.ReleaseAnnotationImageHash]) == 0 {
-				if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationImageHash: mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash]}, tag.Name); err != nil {
-					return err
-				}
-				continue
-			}
-			if mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash] != tag.Annotations[releasecontroller.ReleaseAnnotationImageHash] {
-				// delete the mirror and exit
-				return fmt.Errorf("unimplemented, should regenerate contents of tag")
-			}
-			// Create the corresponding ReleasePayload object...
-			_, err = c.ensureReleasePayload(release, tag)
-			if err != nil {
-				return err
-			}
-			// get metadata about the release
-			//   get upgrade graph edges
-			//   check to see any required edges are missing?  wait for latest edge?  wait for pending edges?
-			//     how do we calculate required edge set?
-			var job *batchv1.Job
-			if rewrite {
-				job, err = c.ensureRewriteJob(release, tag.Name, mirror, `{}`)
-			} else {
-				job, err = c.ensureImportJob(release, tag.Name, mirror)
-			}
-			if err != nil || job == nil {
-				return err
-			}
-			payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(tag.Name)
-			if err != nil {
-				if !errors.IsNotFound(err) {
-					return err
-				}
-				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
-			}
-			phase := releasecontroller.GetReleasePhase(payload)
-			switch phase {
-			case releasecontroller.ReleasePhaseReady:
-				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
-					return err
-				}
-				c.precacheChangelog(release, tag)
-			case releasecontroller.ReleasePhaseFailed:
-				log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
-				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
-					return err
-				}
-			default:
-				return c.ensureRewriteJobImageRetrieved(release, job, mirror)
+			if err := c.syncPendingStableTag(release, tag); err != nil {
+				klog.Errorf("Error processing pending stable tag %s: %v", tag.Name, err)
+				errs = append(errs, err)
 			}
 		}
-		return nil
+		return utilerrors.NewAggregate(errs)
 	}
 
 	if len(pendingTags) > 1 {
@@ -449,6 +356,100 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) syncPendingStableTag(release *releasecontroller.Release, tag *imagev1.TagReference) error {
+	id := releasecontroller.FindImageIDForTag(release.Source, tag.Name)
+	if len(id) == 0 {
+		klog.V(2).Infof("Waiting for release %s to be imported before we can retrieve metadata", tag.Name)
+		return nil
+	}
+	klog.V(2).Infof("Processing pending release %s", tag.Name)
+	rewriteValue := tag.Annotations[releasecontroller.ReleaseAnnotationRewrite]
+	if len(rewriteValue) == 0 {
+		klog.V(2).Infof("Rewriting pending release %s", tag.Name)
+		isi, err := c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, id), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		for _, m := range isi.Image.DockerImageManifests {
+			if m.Architecture == "amd64" {
+				isi, err = c.imageClient.ImageStreamImages(release.Source.Namespace).Get(context.TODO(), fmt.Sprintf("%s@%s", release.Source.Name, m.Digest), metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+		metadata := &docker10.DockerImage{}
+		if len(isi.Image.DockerImageMetadata.Raw) == 0 {
+			return fmt.Errorf("could not fetch Docker image metadata for release %s", tag.Name)
+		}
+		if err := json.Unmarshal(isi.Image.DockerImageMetadata.Raw, metadata); err != nil {
+			return fmt.Errorf("malformed Docker image metadata on ImageStreamTag: %v", err)
+		}
+		var name string
+		if metadata.Config != nil {
+			name = metadata.Config.Labels["io.openshift.release"]
+		}
+		rewriteValue = fmt.Sprintf("%t", name != tag.Name)
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationRewrite: rewriteValue}, tag.Name); err != nil {
+			return err
+		}
+		return nil
+	}
+	rewrite := rewriteValue == "true"
+
+	hash := fmt.Sprintf("%s-%d", tag.Name, *tag.Generation)
+	mirror, err := c.ensureReleaseMirror(release, tag.Name, hash)
+	if err != nil {
+		return err
+	}
+	if len(tag.Annotations[releasecontroller.ReleaseAnnotationImageHash]) == 0 {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase], map[string]string{releasecontroller.ReleaseAnnotationImageHash: mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash]}, tag.Name); err != nil {
+			return err
+		}
+		return nil
+	}
+	if mirror.Annotations[releasecontroller.ReleaseAnnotationImageHash] != tag.Annotations[releasecontroller.ReleaseAnnotationImageHash] {
+		return fmt.Errorf("unimplemented, should regenerate contents of tag %s", tag.Name)
+	}
+	_, err = c.ensureReleasePayload(release, tag)
+	if err != nil {
+		return err
+	}
+	var job *batchv1.Job
+	if rewrite {
+		job, err = c.ensureRewriteJob(release, tag.Name, mirror, `{}`)
+	} else {
+		job, err = c.ensureImportJob(release, tag.Name, mirror)
+	}
+	if err != nil || job == nil {
+		return err
+	}
+	payload, err := c.releasePayloadLister.ReleasePayloads(release.Target.Namespace).Get(tag.Name)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		return c.ensureRewriteJobImageRetrieved(release, job, mirror)
+	}
+	phase := releasecontroller.GetReleasePhase(payload)
+	switch phase {
+	case releasecontroller.ReleasePhaseReady:
+		if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+			return err
+		}
+		c.precacheChangelog(release, tag)
+	case releasecontroller.ReleasePhaseFailed:
+		log, _, _ := ensureJobTerminationMessageRetrieved(c.podClient, job, "status.phase=Failed", "build", false)
+		if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, withLog(reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), log), tag.Name); err != nil {
+			return err
+		}
+	default:
+		return c.ensureRewriteJobImageRetrieved(release, job, mirror)
+	}
 	return nil
 }
 
