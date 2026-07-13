@@ -295,6 +295,9 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 		var errs []error
 		for _, tag := range pendingTags {
 			if err := c.syncPendingStableTag(release, tag); err != nil {
+				if errors.IsConflict(err) {
+					return err
+				}
 				klog.Errorf("Error processing pending stable tag %s: %v", tag.Name, err)
 				errs = append(errs, err)
 			}
