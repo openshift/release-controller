@@ -515,11 +515,27 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 		klog.Infof("release=%s accepted=%v", release.Config.Name, releasecontroller.TagNames(acceptedTags))
 	}
 
-	if len(release.Config.Publish) == 0 || len(acceptedTags) == 0 {
+	if len(acceptedTags) == 0 {
+		return nil
+	}
+
+	// Mirror the newest accepted release to the alternate image repository
+	// (e.g. quay.io). This is normally done in syncReady, but if a release
+	// transitions directly to Accepted before syncReady processes it, the
+	// mirror job is never created. Only the newest accepted release is
+	// mirrored here to avoid recreating pruned jobs for old releases.
+	newestAccepted := acceptedTags[0]
+	mirror, err := releasecontroller.GetMirror(release, newestAccepted.Name, c.releaseLister)
+	if err != nil {
+		klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
+	} else if _, err := c.ensureReleaseMirrorJob(release, newestAccepted.Name, mirror); err != nil {
+		klog.Errorf("Failed to create release mirror job: %v", err)
+	}
+
+	if len(release.Config.Publish) == 0 {
 		return nil
 	}
 	var errs []error
-	newestAccepted := acceptedTags[0]
 	for name, publishType := range release.Config.Publish {
 		if publishType.Disabled {
 			continue
