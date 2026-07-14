@@ -138,20 +138,8 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 		return acceptedCondition
 	}
 
-	// When a mirror job is configured, it must reach a terminal state before
-	// acceptance can be evaluated — including manual overrides, since the
-	// images need to be backed up before any decision is made. A failed
-	// mirror job does not block acceptance.
-	// Skip this gate if the payload has already been accepted or rejected —
-	// retroactively reverting a terminal release due to a stale mirror status
-	// would be disruptive for payloads that predate this check.
-	if payload.Spec.PayloadCreationConfig.ReleaseMirrorCoordinates.ReleaseMirrorJobName != "" &&
-		!v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadAccepted) &&
-		!v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadRejected) {
-		if payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobSuccess &&
-			payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobFailed {
-			return acceptedCondition
-		}
+	if mirrorJobPending(payload) {
+		return acceptedCondition
 	}
 
 	// Check for "Accepted" PayloadOverride
@@ -196,4 +184,19 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 	}
 
 	return acceptedCondition
+}
+
+// mirrorJobPending reports whether a configured mirror job has not yet reached
+// a terminal state and the payload has not already been accepted or rejected.
+// When true, acceptance/rejection evaluation should wait.
+func mirrorJobPending(payload *v1alpha1.ReleasePayload) bool {
+	if payload.Spec.PayloadCreationConfig.ReleaseMirrorCoordinates.ReleaseMirrorJobName == "" {
+		return false
+	}
+	if v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadAccepted) ||
+		v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadRejected) {
+		return false
+	}
+	return payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobSuccess &&
+		payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobFailed
 }
