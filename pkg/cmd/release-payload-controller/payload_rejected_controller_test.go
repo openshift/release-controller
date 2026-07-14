@@ -383,6 +383,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -403,6 +404,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -433,6 +435,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -453,6 +456,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -483,6 +487,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -503,6 +508,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -533,6 +539,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -553,6 +560,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -583,6 +591,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -603,6 +612,7 @@ func TestPayloadRejectedSync(t *testing.T) {
 				},
 				Status: v1alpha1.ReleasePayloadStatus{
 					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult:   v1alpha1.ReleaseMirrorJobResult{Status: v1alpha1.ReleaseMirrorJobSuccess},
 					BlockingJobResults: []v1alpha1.JobStatus{
 						{
 							AggregateState: v1alpha1.JobStateSuccess,
@@ -696,6 +706,250 @@ func TestPayloadRejectedSync(t *testing.T) {
 			output, _ := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
 			if !cmp.Equal(output, testCase.expected, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, output)
+			}
+		})
+	}
+}
+
+func TestComputeReleasePayloadRejectedCondition(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name     string
+		payload  *v1alpha1.ReleasePayload
+		expected metav1.Condition
+	}{
+		{
+			name: "MirrorJobUnsetBlocksRejection",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "MirrorJobUnknownBlocksRejection",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult: v1alpha1.ReleaseMirrorJobResult{
+						Status: v1alpha1.ReleaseMirrorJobUnknown,
+					},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "MirrorJobFailedDoesNotCauseRejection",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult: v1alpha1.ReleaseMirrorJobResult{
+						Status: v1alpha1.ReleaseMirrorJobFailed,
+					},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateSuccess},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionFalse,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "NoMirrorJobConfiguredSkipsGate",
+			payload: &v1alpha1.ReleasePayload{
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionTrue,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "AlreadyRejectedSkipsMirrorGate",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult: v1alpha1.ReleaseMirrorJobResult{
+						Status: v1alpha1.ReleaseMirrorJobUnknown,
+					},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionTrue,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionTrue,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "AlreadyRejectedWithUnsetMirrorSkipsGate",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionTrue,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionTrue,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "AlreadyAcceptedSkipsMirrorGateInRejectedController",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult: v1alpha1.ReleaseMirrorJobResult{
+						Status: v1alpha1.ReleaseMirrorJobUnknown,
+					},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateSuccess},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadAccepted,
+							Status: metav1.ConditionTrue,
+							Reason: ReleasePayloadAcceptedReason,
+						},
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionFalse,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionFalse,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+		{
+			name: "NotYetRejectedStillBlockedByMirror",
+			payload: &v1alpha1.ReleasePayload{
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+						ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+							ReleaseMirrorJobName: "4.23.0-0.nightly-2026-07-14-alternate-mirror",
+						},
+					},
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{Status: v1alpha1.ReleaseCreationJobSuccess},
+					ReleaseMirrorJobResult: v1alpha1.ReleaseMirrorJobResult{
+						Status: v1alpha1.ReleaseMirrorJobUnknown,
+					},
+					BlockingJobResults: []v1alpha1.JobStatus{
+						{AggregateState: v1alpha1.JobStateFailure},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   v1alpha1.ConditionPayloadRejected,
+							Status: metav1.ConditionUnknown,
+							Reason: ReleasePayloadRejectedReason,
+						},
+					},
+				},
+			},
+			expected: metav1.Condition{
+				Type:   v1alpha1.ConditionPayloadRejected,
+				Status: metav1.ConditionUnknown,
+				Reason: ReleasePayloadRejectedReason,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := computeReleasePayloadRejectedCondition(tc.payload)
+			if diff := cmp.Diff(tc.expected, result, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")); diff != "" {
+				t.Errorf("unexpected condition (-expected +got):\n%s", diff)
 			}
 		})
 	}

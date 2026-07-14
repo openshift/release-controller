@@ -51,10 +51,6 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 					Namespace:              jobNamespace,
 					ReleaseCreationJobName: name,
 				},
-				ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
-					Namespace:            jobNamespace,
-					ReleaseMirrorJobName: releaseMirrorJobName(name),
-				},
 				ProwCoordinates: v1alpha1.ProwCoordinates{Namespace: prowNamespace},
 			},
 			PayloadVerificationConfig: v1alpha1.PayloadVerificationConfig{
@@ -77,6 +73,14 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 			Repository: release.Target.Status.PublicDockerImageRepository,
 			Tag:        name,
 		}}
+	}
+
+	// We should only be populating the ReleaseMirrorCoordinates if/when they are actually defined...
+	if release.Config.AlternateImageRepository != "" && release.Config.AlternateImageRepositorySecretName != "" {
+		payload.Spec.PayloadCreationConfig.ReleaseMirrorCoordinates = v1alpha1.ReleaseMirrorCoordinates{
+			Namespace:            jobNamespace,
+			ReleaseMirrorJobName: releaseMirrorJobName(name),
+		}
 	}
 
 	// Sort the ReleaseVerification items into a consistent order

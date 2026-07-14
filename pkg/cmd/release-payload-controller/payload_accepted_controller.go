@@ -39,6 +39,7 @@ const (
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
 //   - .status.releaseCreationJobResult.status
+//   - .status.releaseMirrorJobResult.status
 //
 // and populates the following condition:
 //   - .status.conditions.PayloadAccepted
@@ -137,6 +138,10 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 		return acceptedCondition
 	}
 
+	if mirrorJobPending(payload) {
+		return acceptedCondition
+	}
+
 	// Check for "Accepted" PayloadOverride
 	switch payload.Spec.PayloadOverride.Override {
 	case v1alpha1.ReleasePayloadOverrideAccepted:
@@ -179,4 +184,19 @@ func computeReleasePayloadAcceptedCondition(payload *v1alpha1.ReleasePayload) me
 	}
 
 	return acceptedCondition
+}
+
+// mirrorJobPending reports whether a configured mirror job has not yet reached
+// a terminal state and the payload has not already been accepted or rejected.
+// When true, acceptance/rejection evaluation should wait.
+func mirrorJobPending(payload *v1alpha1.ReleasePayload) bool {
+	if payload.Spec.PayloadCreationConfig.ReleaseMirrorCoordinates.ReleaseMirrorJobName == "" {
+		return false
+	}
+	if v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadAccepted) ||
+		v1helpers.IsConditionTrue(payload.Status.Conditions, v1alpha1.ConditionPayloadRejected) {
+		return false
+	}
+	return payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobSuccess &&
+		payload.Status.ReleaseMirrorJobResult.Status != v1alpha1.ReleaseMirrorJobFailed
 }

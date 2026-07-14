@@ -40,6 +40,7 @@ const (
 //   - .spec.payloadOverride.override
 //   - .status.blockingJobResults
 //   - .status.releaseCreationJobResult.status
+//   - .status.releaseMirrorJobResult.status
 //
 // and populates the following condition:
 //   - .status.conditions.PayloadRejected
@@ -137,6 +138,10 @@ func computeReleasePayloadRejectedCondition(payload *v1alpha1.ReleasePayload) me
 	// including manual overrides — there is no physical release to reject until
 	// the creation job completes.
 	if payload.Status.ReleaseCreationJobResult.Status != v1alpha1.ReleaseCreationJobSuccess {
+		return rejectedCondition
+	}
+
+	if mirrorJobPending(payload) {
 		return rejectedCondition
 	}
 
