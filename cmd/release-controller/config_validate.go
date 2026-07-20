@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -53,6 +54,7 @@ func validateReleaseConfigs(configDir string) error {
 	errors = append(errors, findDuplicatePeriodics(releaseConfigs)...)
 	errors = append(errors, validateQualifiers(releaseConfigs)...)
 	errors = append(errors, validateOptionalAggregatedJobs(releaseConfigs)...)
+	errors = append(errors, validateVerifyNames(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
 }
 
@@ -215,6 +217,20 @@ func validateOptionalAggregatedJobs(releaseConfigs []releasecontroller.ReleaseCo
 		for name, verify := range config.Verify {
 			if verify.Optional && verify.AggregatedProwJob != nil {
 				errors = append(errors, fmt.Errorf("%s: verification job %q cannot be both optional and an aggregatedProwJob", config.Name, name))
+			}
+		}
+	}
+	return errors
+}
+
+var trailingDashDigitPattern = regexp.MustCompile(`-\d+$`)
+
+func validateVerifyNames(releaseConfigs []releasecontroller.ReleaseConfig) []error {
+	var errors []error
+	for _, config := range releaseConfigs {
+		for name := range config.Verify {
+			if trailingDashDigitPattern.MatchString(name) {
+				errors = append(errors, fmt.Errorf("%s: verification job %q must not end with a dash followed by a number", config.Name, name))
 			}
 		}
 	}
