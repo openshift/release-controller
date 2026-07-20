@@ -809,7 +809,7 @@ func TestValidateVerifyNames(t *testing.T) {
 			configs: []releasecontroller.ReleaseConfig{{
 				Name: "4.19.0-0.nightly",
 				Verify: map[string]releasecontroller.ReleaseVerification{
-					"e2e": {},
+					"e2e4": {},
 				},
 			}},
 			expectedErr: false,

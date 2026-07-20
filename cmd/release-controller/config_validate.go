@@ -230,7 +230,7 @@ func validateVerifyNames(releaseConfigs []releasecontroller.ReleaseConfig) []err
 	for _, config := range releaseConfigs {
 		for name := range config.Verify {
 			if trailingDashDigitPattern.MatchString(name) {
-				errors = append(errors, fmt.Errorf("%s: verification job %q must not end with a dash followed by a number (e.g. %q)", config.Name, name, name))
+				errors = append(errors, fmt.Errorf("%s: verification job %q must not end with a dash followed by a number", config.Name, name))
 			}
 		}
 	}
