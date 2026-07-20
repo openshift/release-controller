@@ -556,6 +556,7 @@ const (
 	ReleaseVerificationStatePending   = "Pending"
 
 	ReleaseConfigModeStable = "Stable"
+	ReleaseConfigModeLayered = "Layered"
 
 	// ReferencePayloadTagPrefix is prepended to release names when pushing
 	// to ReferenceRepository, so that image cleanup tooling can identify

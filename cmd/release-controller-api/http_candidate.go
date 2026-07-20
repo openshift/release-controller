@@ -303,7 +303,7 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		}
 
 		if includeStableTags {
-			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable || r.Config.As == releasecontroller.ReleaseConfigModeLayered {
 				stable.Releases = append(stable.Releases, releasecontroller.StableRelease{
 					Release: r,
 					Version: version,

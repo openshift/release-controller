@@ -114,6 +114,13 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 			Config: cfg,
 		}
 		return r, true, nil
+	case ReleaseConfigModeLayered:
+		r := &Release{
+			Source: is,
+			Target: is,
+			Config: cfg,
+		}
+		return r, true, nil
 	default:
 		targetImageStream, err := releaseLister.ImageStreams(is.Namespace).Get(cfg.To)
 		if errors.IsNotFound(err) {
@@ -152,8 +159,8 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 	if len(cfg.Name) == 0 {
 		return nil, fmt.Errorf("release config must have a valid name")
 	}
-	if len(cfg.To) == 0 && cfg.As != ReleaseConfigModeStable {
-		return nil, fmt.Errorf("release must specify 'to' unless 'as' is 'Stable'")
+	if len(cfg.To) == 0 && cfg.As != ReleaseConfigModeStable && cfg.As != ReleaseConfigModeLayered {
+		return nil, fmt.Errorf("release must specify 'to' unless 'as' is 'Stable' or 'Layered'")
 	}
 	for name, verify := range cfg.Verify {
 		if len(name) == 0 {
@@ -608,7 +615,7 @@ func GetImageInfo(releaseInfo ReleaseInfo, architecture, pullSpec string) (*imag
 }
 
 func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, release *Release, releaseTag *imagev1.TagReference, artSuffix string) (map[string]ReleaseVerification, error) {
-	if release.Config.As != ReleaseConfigModeStable || artSuffix == "" {
+	if release.Config.As != ReleaseConfigModeStable && release.Config.As != ReleaseConfigModeLayered || artSuffix == "" {
 		return release.Config.Verify, nil
 	}
 	jobs := make(map[string]ReleaseVerification)

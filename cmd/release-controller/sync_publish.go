@@ -71,10 +71,19 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *releasecontroller.
 		return nil
 	}
 
-	mirror, err := releasecontroller.GetMirror(release, from, c.releaseLister)
-	if err != nil {
-		klog.V(2).Infof("Error getting release mirror image stream: %v", err)
-		return nil
+	var mirror *imagev1.ImageStream
+	var err error
+
+	// For layered releases, use the release target imagestream directly since there's no separate mirror
+	if release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+		mirror = release.Target
+		klog.V(4).Infof("Using release target imagestream directly for layered release publishing: %s/%s", release.Target.Namespace, release.Target.Name)
+	} else {
+		mirror, err = releasecontroller.GetMirror(release, from, c.releaseLister)
+		if err != nil {
+			klog.V(2).Infof("Error getting release mirror image stream: %v", err)
+			return nil
+		}
 	}
 
 	lister := c.publishLister.ImageStreams(toNamespace)
