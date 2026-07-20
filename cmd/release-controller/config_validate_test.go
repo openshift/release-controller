@@ -758,6 +758,94 @@ func TestFindDuplicateQualifierIDs(t *testing.T) {
 	}
 }
 
+func TestValidateVerifyNames(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configs     []releasecontroller.ReleaseConfig
+		expectedErr bool
+	}{
+		{
+			name: "valid name",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"aws-e2e": {},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "name ending with dash and single digit is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"aws-e2e-1": {},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "name ending with dash and multiple digits is invalid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"aws-e2e-10": {},
+				},
+			}},
+			expectedErr: true,
+		},
+		{
+			name: "name with digits in the middle is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"aws-4x-e2e": {},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "name ending with digit but no dash is valid",
+			configs: []releasecontroller.ReleaseConfig{{
+				Name: "4.19.0-0.nightly",
+				Verify: map[string]releasecontroller.ReleaseVerification{
+					"e2e": {},
+				},
+			}},
+			expectedErr: false,
+		},
+		{
+			name: "multiple configs with one invalid name",
+			configs: []releasecontroller.ReleaseConfig{
+				{
+					Name: "4.18.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"good-job": {},
+					},
+				},
+				{
+					Name: "4.19.0-0.nightly",
+					Verify: map[string]releasecontroller.ReleaseVerification{
+						"bad-job-3": {},
+					},
+				},
+			},
+			expectedErr: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			errs := validateVerifyNames(testCase.configs)
+			if len(errs) > 0 && !testCase.expectedErr {
+				t.Errorf("got error when error was not expected: %v", errs)
+			}
+			if len(errs) == 0 && testCase.expectedErr {
+				t.Errorf("did not get error when error was expected")
+			}
+		})
+	}
+}
+
 func TestValidateReleaseQualifiersConfig(t *testing.T) {
 	testCases := []struct {
 		name        string
