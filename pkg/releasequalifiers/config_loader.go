@@ -79,16 +79,10 @@ func (cl *ConfigLoader) StartWatching(ctx context.Context) error {
 	}
 	cl.watcher = watcher
 
-	// Determine which directory to watch
-	// For ConfigMap support, if the path contains ..data, watch the grandparent directory
-	// to detect when the ..data symlink is replaced
+	// Watch the parent directory of the config file. For ConfigMap mounts this is
+	// the mount root where the ..data symlink lives, so we receive CREATE events
+	// when Kubernetes atomically swaps it during ConfigMap updates.
 	dir := filepath.Dir(cl.configPath)
-
-	// Check if we're in a ConfigMap mount scenario (path contains ..data)
-	if filepath.Base(dir) == "..data" {
-		// Watch the grandparent directory to detect ..data symlink changes
-		dir = filepath.Dir(dir)
-	}
 
 	if err := watcher.Add(dir); err != nil {
 		watcher.Close()
@@ -133,16 +127,8 @@ func (cl *ConfigLoader) watch(ctx context.Context) {
 			if event.Op&fsnotify.Write == fsnotify.Write && event.Name == cl.configPath {
 				// Direct write to config file
 				shouldReload = true
-			} else if event.Op&fsnotify.Create == fsnotify.Create {
-				// ConfigMap scenario: ..data symlink was recreated
-				// Check if the event is for a ..data symlink in our config path
-				dir := filepath.Dir(cl.configPath)
-				if filepath.Base(dir) == "..data" {
-					// We're using a ConfigMap mount, check if ..data was recreated
-					if event.Name == dir {
-						shouldReload = true
-					}
-				}
+			} else if event.Op&fsnotify.Create == fsnotify.Create && filepath.Base(event.Name) == "..data" {
+				shouldReload = true
 			}
 
 			if shouldReload {
