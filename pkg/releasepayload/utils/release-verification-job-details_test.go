@@ -47,6 +47,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "CIJobWithRetries",
+			prowjobName: "4.11.0-0.ci-2022-06-03-013657-aws-serial-retry-1",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.11.0-0.ci-2022-06-03-013657-aws-serial-retry-1",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 11,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "ci-2022-06-03-013657-aws-serial-retry-1",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "ci",
+					Timestamp:           "2022-06-03-013657",
+					CIConfigurationName: "aws-serial",
+					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "CIJobWithRetriesLegacy",
 			prowjobName: "4.11.0-0.ci-2022-06-03-013657-aws-serial-1",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.11.0-0.ci-2022-06-03-013657-aws-serial-1",
@@ -73,6 +105,70 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 					Timestamp:           "2022-06-03-013657",
 					CIConfigurationName: "aws-serial",
 					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "JobWithNumericSuffixNotRetry",
+			prowjobName: "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10",
+			want: &ReleaseVerificationJobDetails{
+				Name: "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10",
+				Version: semver.Version{
+					Major: 5,
+					Minor: 0,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "nightly-2026-07-20-081439-driver-toolkit-rhel10",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "nightly",
+					Timestamp:           "2026-07-20-081439",
+					CIConfigurationName: "driver-toolkit-rhel10",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "JobWithNumericSuffixNotRetryWithRetries",
+			prowjobName: "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10-retry-2",
+				Version: semver.Version{
+					Major: 5,
+					Minor: 0,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "nightly-2026-07-20-081439-driver-toolkit-rhel10-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "nightly",
+					Timestamp:           "2026-07-20-081439",
+					CIConfigurationName: "driver-toolkit-rhel10",
+					Count:               "2",
 				},
 			},
 			wantErr: false,
@@ -111,6 +207,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "NightlyJobWithRetries",
+			prowjobName: "4.11.0-0.nightly-2022-06-03-013657-aws-serial-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.11.0-0.nightly-2022-06-03-013657-aws-serial-retry-2",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 11,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "nightly-2022-06-03-013657-aws-serial-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-06-03-013657",
+					CIConfigurationName: "aws-serial",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyJobWithRetriesLegacy",
 			prowjobName: "4.11.0-0.nightly-2022-06-03-013657-aws-serial-2",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.11.0-0.nightly-2022-06-03-013657-aws-serial-2",
@@ -175,6 +303,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "OKDJobWithRetries",
+			prowjobName: "4.11.0-0.okd-2022-06-03-013657-aws-serial-retry-1",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.11.0-0.okd-2022-06-03-013657-aws-serial-retry-1",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 11,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "okd-2022-06-03-013657-aws-serial-retry-1",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "okd",
+					Timestamp:           "2022-06-03-013657",
+					CIConfigurationName: "aws-serial",
+					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "OKDJobWithRetriesLegacy",
 			prowjobName: "4.11.0-0.okd-2022-06-03-013657-aws-serial-1",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.11.0-0.okd-2022-06-03-013657-aws-serial-1",
@@ -239,6 +399,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "OKD-SCOSJobWithRetries",
+			prowjobName: "4.20.0-0.okd-scos-2025-06-19-225747-aws-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.20.0-0.okd-scos-2025-06-19-225747-aws-retry-2",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 20,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "okd-scos-2025-06-19-225747-aws-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "okd-scos",
+					Timestamp:           "2025-06-19-225747",
+					CIConfigurationName: "aws",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "OKD-SCOSJobWithRetriesLegacy",
 			prowjobName: "4.20.0-0.okd-scos-2025-06-19-225747-aws-2",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.20.0-0.okd-scos-2025-06-19-225747-aws-2",
@@ -303,6 +495,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "OKD-SCOSReleaseJobWithRetries",
+			prowjobName: "4.19.0-okd-scos.5-upgrade-minor-retry-1",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.19.0-okd-scos.5-upgrade-minor-retry-1",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 19,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "okd-scos",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "5-upgrade-minor-retry-1",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "5",
+					Stream:              "okd-scos",
+					Timestamp:           "",
+					CIConfigurationName: "upgrade-minor",
+					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "OKD-SCOSReleaseJobWithRetriesLegacy",
 			prowjobName: "4.19.0-okd-scos.5-upgrade-minor-1",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.19.0-okd-scos.5-upgrade-minor-1",
@@ -403,6 +627,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "ReleaseCandidateJobWithRetries",
+			prowjobName: "4.11.0-rc.0-aws-serial-retry-1",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.11.0-rc.0-aws-serial-retry-1",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 11,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "rc",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "0-aws-serial-retry-1",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "rc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-serial",
+					Count:               "1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "ReleaseCandidateJobWithRetriesLegacy",
 			prowjobName: "4.11.0-rc.0-aws-serial-1",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.11.0-rc.0-aws-serial-1",
@@ -467,6 +723,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "FeatureCandidateJobWithRetries",
+			prowjobName: "4.11.0-fc.0-aws-serial-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.11.0-fc.0-aws-serial-retry-2",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 11,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "fc",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "0-aws-serial-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "fc.0",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-serial",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "FeatureCandidateJobWithRetriesLegacy",
 			prowjobName: "4.11.0-fc.0-aws-serial-2",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.11.0-fc.0-aws-serial-2",
@@ -531,6 +819,38 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "EngineeringCandidateJobWithRetries",
+			prowjobName: "4.13.0-ec.1-aws-sdn-serial-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.13.0-ec.1-aws-sdn-serial-retry-2",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 13,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "ec",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "1-aws-sdn-serial-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "ec.1",
+					Stream:              "Candidate",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-serial",
+					Count:               "2",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "EngineeringCandidateJobWithRetriesLegacy",
 			prowjobName: "4.13.0-ec.1-aws-sdn-serial-2",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.13.0-ec.1-aws-sdn-serial-2",
@@ -590,6 +910,33 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "ProductionJobWithRetries",
+			prowjobName: "4.10.17-aws-serial-retry-3",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.10.17-aws-serial-retry-3",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 10,
+					Patch: 17,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "aws-serial-retry-3",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws-serial",
+					Count:               "3",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "ProductionJobWithRetriesLegacy",
 			prowjobName: "4.10.17-aws-serial-3",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.10.17-aws-serial-3",
@@ -649,6 +996,39 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "ProductionJobWithEmbeddedVersionStringWithRetries",
+			prowjobName: "4.10.41-aws-sdn-upgrade-4.10-micro-retry-1",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.10.41-aws-sdn-upgrade-4.10-micro-retry-1",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 10,
+					Patch: 41,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "aws-sdn-upgrade-4",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "10-micro-retry-1",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "",
+					Stream:              "Stable",
+					Timestamp:           "",
+					CIConfigurationName: "aws-sdn-upgrade-4.10-micro",
+					Count:               "1",
+					UpgradeFrom:         "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "ProductionJobWithEmbeddedVersionStringWithRetriesLegacy",
 			prowjobName: "4.10.41-aws-sdn-upgrade-4.10-micro-1",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.10.41-aws-sdn-upgrade-4.10-micro-1",
@@ -807,9 +1187,9 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "CandidateAutomaticReleaseUpgradeWithCountTest",
-			prowjobName: "4.12.0-rc.0-upgrade-from-4.11.10-aws-3",
+			prowjobName: "4.12.0-rc.0-upgrade-from-4.11.10-aws-retry-3",
 			want: &ReleaseVerificationJobDetails{
-				Name: "4.12.0-rc.0-upgrade-from-4.11.10-aws-3",
+				Name: "4.12.0-rc.0-upgrade-from-4.11.10-aws-retry-3",
 				Version: semver.Version{
 					Major: 4,
 					Minor: 12,
@@ -831,7 +1211,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 							IsNum:      true,
 						},
 						{
-							VersionStr: "10-aws-3",
+							VersionStr: "10-aws-retry-3",
 							VersionNum: 0,
 							IsNum:      false,
 						},
@@ -898,9 +1278,9 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "CandidateAutomaticReleaseUpgradeToCandidateWithCountTest",
-			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-2",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-retry-2",
 			want: &ReleaseVerificationJobDetails{
-				Name: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-2",
+				Name: "4.12.0-rc.7-upgrade-from-4.12.0-rc.6-aws-retry-2",
 				Version: semver.Version{
 					Major: 4,
 					Minor: 12,
@@ -927,7 +1307,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 							IsNum:      false,
 						},
 						{
-							VersionStr: "6-aws-2",
+							VersionStr: "6-aws-retry-2",
 							VersionNum: 0,
 							IsNum:      false,
 						},
@@ -989,9 +1369,9 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "CandidateAutomaticReleaseUpgradeToStableWithCountTest",
-			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-aws-2",
+			prowjobName: "4.12.0-rc.7-upgrade-from-4.12.0-aws-retry-2",
 			want: &ReleaseVerificationJobDetails{
-				Name: "4.12.0-rc.7-upgrade-from-4.12.0-aws-2",
+				Name: "4.12.0-rc.7-upgrade-from-4.12.0-aws-retry-2",
 				Version: semver.Version{
 					Major: 4,
 					Minor: 12,
@@ -1013,7 +1393,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 							IsNum:      true,
 						},
 						{
-							VersionStr: "0-aws-2",
+							VersionStr: "0-aws-retry-2",
 							VersionNum: 0,
 							IsNum:      false,
 						},
@@ -1070,9 +1450,9 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "StableAutomaticReleaseUpgradeWithCountTest",
-			prowjobName: "4.12.6-upgrade-from-4.12.5-aws-2",
+			prowjobName: "4.12.6-upgrade-from-4.12.5-aws-retry-2",
 			want: &ReleaseVerificationJobDetails{
-				Name: "4.12.6-upgrade-from-4.12.5-aws-2",
+				Name: "4.12.6-upgrade-from-4.12.5-aws-retry-2",
 				Version: semver.Version{
 					Major: 4,
 					Minor: 12,
@@ -1089,7 +1469,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 							IsNum:      true,
 						},
 						{
-							VersionStr: "5-aws-2",
+							VersionStr: "5-aws-retry-2",
 							VersionNum: 0,
 							IsNum:      false,
 						},
@@ -1151,9 +1531,9 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "StableAutomaticReleaseUpgradeToCandidateWithCountTest",
-			prowjobName: "4.12.6-upgrade-from-4.12.0-rc.6-aws-2",
+			prowjobName: "4.12.6-upgrade-from-4.12.0-rc.6-aws-retry-2",
 			want: &ReleaseVerificationJobDetails{
-				Name: "4.12.6-upgrade-from-4.12.0-rc.6-aws-2",
+				Name: "4.12.6-upgrade-from-4.12.0-rc.6-aws-retry-2",
 				Version: semver.Version{
 					Major: 4,
 					Minor: 12,
@@ -1175,7 +1555,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 							IsNum:      false,
 						},
 						{
-							VersionStr: "6-aws-2",
+							VersionStr: "6-aws-retry-2",
 							VersionNum: 0,
 							IsNum:      false,
 						},
@@ -1227,6 +1607,39 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "NightlyMultiArchJobWithRetries",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-retry-2",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-retry-2",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 13,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-retry-2",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-upgrade",
+					Count:               "2",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyMultiArchJobWithRetriesLegacy",
 			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-2",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-upgrade-2",
@@ -1293,6 +1706,39 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 		},
 		{
 			name:        "NightlyMultiArchTruncatedJobWithRetries",
+			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-retry-3",
+			want: &ReleaseVerificationJobDetails{
+				Name: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-retry-3",
+				Version: semver.Version{
+					Major: 4,
+					Minor: 13,
+					Patch: 0,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "",
+							VersionNum: 0,
+							IsNum:      true,
+						},
+						{
+							VersionStr: "nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-retry-3",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "0",
+					Stream:              "nightly",
+					Timestamp:           "2022-11-11-162833",
+					CIConfigurationName: "multi-aws-ovn-5w4rkb2",
+					Count:               "3",
+					Architecture:        "multi",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NightlyMultiArchTruncatedJobWithRetriesLegacy",
 			prowjobName: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-3",
 			want: &ReleaseVerificationJobDetails{
 				Name: "4.13.0-0.nightly-multi-2022-11-11-162833-multi-aws-ovn-5w4rkb2-3",
@@ -1359,6 +1805,18 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "PreReleaseWithRetries",
+			line: "0.ci-2022-06-02-152750-aws-serial-retry-1",
+			want: map[string]string{
+				"prerelease":   "0",
+				"stream":       "ci",
+				"architecture": "",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "1",
+			},
+		},
+		{
+			name: "PreReleaseWithRetriesLegacy",
 			line: "0.ci-2022-06-02-152750-aws-serial-1",
 			want: map[string]string{
 				"prerelease":   "0",
@@ -1383,6 +1841,18 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "MultiArchPreReleaseWithRetries",
+			line: "0.nightly-s390x-2022-06-02-152750-aws-serial-retry-3",
+			want: map[string]string{
+				"prerelease":   "0",
+				"stream":       "nightly",
+				"architecture": "s390x",
+				"timestamp":    "2022-06-02-152750",
+				"job":          "aws-serial",
+				"count":        "3",
+			},
+		},
+		{
+			name: "MultiArchPreReleaseWithRetriesLegacy",
 			line: "0.nightly-s390x-2022-06-02-152750-aws-serial-3",
 			want: map[string]string{
 				"prerelease":   "0",
@@ -1403,6 +1873,14 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "CandidateWithRetries",
+			line: "metal-ipi-ovn-ipv6-retry-2",
+			want: map[string]string{
+				"job":   "metal-ipi-ovn-ipv6",
+				"count": "2",
+			},
+		},
+		{
+			name: "CandidateWithRetriesLegacy",
 			line: "metal-ipi-ovn-ipv6-2",
 			want: map[string]string{
 				"job":   "metal-ipi-ovn-ipv6",
@@ -1419,6 +1897,14 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "StableWithRetries",
+			line: "aws-serial-retry-3",
+			want: map[string]string{
+				"job":   "aws-serial",
+				"count": "3",
+			},
+		},
+		{
+			name: "StableWithRetriesLegacy",
 			line: "aws-serial-3",
 			want: map[string]string{
 				"job":   "aws-serial",
@@ -1437,6 +1923,16 @@ func Test_parse(t *testing.T) {
 		},
 		{
 			name: "UpgradeFromWithRetries",
+			line: "upgrade-from-4.11.13-gcp-retry-1",
+			want: map[string]string{
+				"upgrade_from": "4.11.13",
+				"job":          "gcp",
+				"count":        "1",
+				"prerelease":   "",
+			},
+		},
+		{
+			name: "UpgradeFromWithRetriesLegacy",
 			line: "upgrade-from-4.11.13-gcp-1",
 			want: map[string]string{
 				"upgrade_from": "4.11.13",
