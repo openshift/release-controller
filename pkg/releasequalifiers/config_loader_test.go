@@ -348,41 +348,48 @@ func TestConfigLoaderConfigMapSimulation(t *testing.T) {
 
 	t.Parallel()
 
-	// Simulate ConfigMap structure
+	// Simulate a real Kubernetes ConfigMap mount structure:
+	//   mountRoot/
+	//   ├── ..data -> ..2026_01_01_v1/
+	//   ├── ..2026_01_01_v1/
+	//   │   └── release-qualifiers.yaml
+	//   └── release-qualifiers.yaml -> ..data/release-qualifiers.yaml
+	//
+	// The config path is the top-level symlink (release-qualifiers.yaml),
+	// NOT a path through ..data.
 	tmpDir := t.TempDir()
 
-	// Create ..data_v1 directory with config file
-	dataDir1 := filepath.Join(tmpDir, "..data_v1")
+	// Create timestamped data directory v1
+	dataDir1 := filepath.Join(tmpDir, "..2026_01_01_v1")
 	if err := os.Mkdir(dataDir1, 0755); err != nil {
 		t.Fatalf("Failed to create data directory: %v", err)
 	}
-	configFile1 := filepath.Join(dataDir1, "config.yaml")
-	initialContent := `qualifiers:
+	if err := os.WriteFile(filepath.Join(dataDir1, "release-qualifiers.yaml"), []byte(`qualifiers:
   test-qualifier:
     enabled: true
     badgeName: Version1
-`
-	if err := os.WriteFile(configFile1, []byte(initialContent), 0644); err != nil {
+`), 0644); err != nil {
 		t.Fatalf("Failed to write initial config file: %v", err)
 	}
 
-	// Create ..data symlink pointing to ..data_v1
-	symlinkPath := filepath.Join(tmpDir, "..data")
-	if err := os.Symlink(dataDir1, symlinkPath); err != nil {
-		t.Fatalf("Failed to create symlink: %v", err)
+	// Create ..data symlink pointing to v1
+	dataSym := filepath.Join(tmpDir, "..data")
+	if err := os.Symlink(dataDir1, dataSym); err != nil {
+		t.Fatalf("Failed to create ..data symlink: %v", err)
 	}
 
-	// Config path points through the symlink
-	configPath := filepath.Join(symlinkPath, "config.yaml")
+	// Create top-level file symlink (this is what the controller uses as configPath)
+	configSym := filepath.Join(tmpDir, "release-qualifiers.yaml")
+	if err := os.Symlink(filepath.Join("..data", "release-qualifiers.yaml"), configSym); err != nil {
+		t.Fatalf("Failed to create config symlink: %v", err)
+	}
 
-	loader, err := NewConfigLoader(configPath)
+	loader, err := NewConfigLoader(configSym)
 	if err != nil {
 		t.Fatalf("NewConfigLoader() error = %v", err)
 	}
 
 	ctx := t.Context()
-
-	// Start watching
 	if err := loader.StartWatching(ctx); err != nil {
 		t.Fatalf("StartWatching() error = %v", err)
 	}
@@ -393,33 +400,31 @@ func TestConfigLoaderConfigMapSimulation(t *testing.T) {
 		t.Errorf("Expected BadgeName 'Version1', got '%s'", config["test-qualifier"].BadgeName)
 	}
 
-	// Simulate ConfigMap update: create new version directory
-	dataDir2 := filepath.Join(tmpDir, "..data_v2")
+	// Simulate ConfigMap update: Kubernetes creates a new timestamped dir,
+	// then atomically replaces the ..data symlink.
+	dataDir2 := filepath.Join(tmpDir, "..2026_01_01_v2")
 	if err := os.Mkdir(dataDir2, 0755); err != nil {
 		t.Fatalf("Failed to create new data directory: %v", err)
 	}
-	configFile2 := filepath.Join(dataDir2, "config.yaml")
-	updatedContent := `qualifiers:
+	if err := os.WriteFile(filepath.Join(dataDir2, "release-qualifiers.yaml"), []byte(`qualifiers:
   test-qualifier:
     enabled: true
     badgeName: Version2
-`
-	if err := os.WriteFile(configFile2, []byte(updatedContent), 0644); err != nil {
+`), 0644); err != nil {
 		t.Fatalf("Failed to write updated config file: %v", err)
 	}
 
-	// Remove old symlink and create new one (atomic update)
-	if err := os.Remove(symlinkPath); err != nil {
-		t.Fatalf("Failed to remove old symlink: %v", err)
+	// Atomic symlink swap (remove + create)
+	if err := os.Remove(dataSym); err != nil {
+		t.Fatalf("Failed to remove old ..data symlink: %v", err)
 	}
-	if err := os.Symlink(dataDir2, symlinkPath); err != nil {
-		t.Fatalf("Failed to create new symlink: %v", err)
+	if err := os.Symlink(dataDir2, dataSym); err != nil {
+		t.Fatalf("Failed to create new ..data symlink: %v", err)
 	}
 
 	// Wait for file watcher to detect change
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify updated config
 	config = loader.Get()
 	if config["test-qualifier"].BadgeName != "Version2" {
 		t.Errorf("Expected BadgeName 'Version2' after ConfigMap update, got '%s'", config["test-qualifier"].BadgeName)
