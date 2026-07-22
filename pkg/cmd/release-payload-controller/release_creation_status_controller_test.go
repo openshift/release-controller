@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"k8s.io/apimachinery/pkg/types"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
@@ -447,7 +448,7 @@ func TestReleaseCreationStatusSync(t *testing.T) {
 			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
 			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
-			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, events.NewInMemoryRecorder("release-creation-status-controller-test", clock.RealClock{}))
+			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, kubeClient.CoreV1(), events.NewInMemoryRecorder("release-creation-status-controller-test", clock.RealClock{}))
 			if err != nil {
 				t.Fatalf("Failed to create Release Creation Status Controller: %v", err)
 			}
@@ -563,6 +564,257 @@ func TestComputeReleaseCreationJobMessage(t *testing.T) {
 
 			if !cmp.Equal(releaseCreationJobMessage, testCase.expected) {
 				t.Errorf("%s: Expected %v, got %v", testCase.name, testCase.expected, releaseCreationJobMessage)
+			}
+		})
+	}
+}
+
+func TestReleaseCreationStatusSyncWithTerminationMessage(t *testing.T) {
+	t.Parallel()
+
+	jobUID := types.UID("test-job-uid")
+
+	testCases := []struct {
+		name            string
+		objects         []runtime.Object
+		input           *v1alpha1.ReleasePayload
+		expectedMessage string
+	}{
+		{
+			name: "FailedJobWithSinglePodTerminationMessage",
+			objects: []runtime.Object{
+				&batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559",
+						Namespace: "ci-release",
+						UID:       jobUID,
+					},
+					Status: batchv1.JobStatus{
+						Failed: 1,
+						Conditions: []batchv1.JobCondition{
+							{
+								Type:    batchv1.JobFailed,
+								Status:  corev1.ConditionTrue,
+								Reason:  "BackoffLimitExceeded",
+								Message: "Job has reached the specified backoff limit",
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-abc",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodFailed,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Terminated: &corev1.ContainerStateTerminated{
+										ExitCode:   1,
+										Message:    "error: image registry.example.com/ocp/release:test not found",
+										FinishedAt: metav1.Time{Time: time.Date(2022, 2, 9, 10, 0, 0, 0, time.UTC)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+					},
+				},
+			},
+			expectedMessage: "error: image registry.example.com/ocp/release:test not found",
+		},
+		{
+			name: "FailedJobWithMultipleRetryPods",
+			objects: []runtime.Object{
+				&batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559",
+						Namespace: "ci-release",
+						UID:       jobUID,
+					},
+					Status: batchv1.JobStatus{
+						Failed: 3,
+						Conditions: []batchv1.JobCondition{
+							{
+								Type:    batchv1.JobFailed,
+								Status:  corev1.ConditionTrue,
+								Reason:  "BackoffLimitExceeded",
+								Message: "Job has reached the specified backoff limit",
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-first",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodFailed,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Terminated: &corev1.ContainerStateTerminated{
+										ExitCode:   1,
+										Message:    "first attempt failure",
+										FinishedAt: metav1.Time{Time: time.Date(2022, 2, 9, 9, 0, 0, 0, time.UTC)},
+									},
+								},
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-last",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodFailed,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Terminated: &corev1.ContainerStateTerminated{
+										ExitCode:   1,
+										Message:    "final attempt failure",
+										FinishedAt: metav1.Time{Time: time.Date(2022, 2, 9, 11, 0, 0, 0, time.UTC)},
+									},
+								},
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-middle",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodFailed,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Terminated: &corev1.ContainerStateTerminated{
+										ExitCode:   1,
+										Message:    "second attempt failure",
+										FinishedAt: metav1.Time{Time: time.Date(2022, 2, 9, 10, 0, 0, 0, time.UTC)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+					},
+				},
+			},
+			expectedMessage: "final attempt failure",
+		},
+		{
+			name: "FailedJobWithNoTerminationMessage",
+			objects: []runtime.Object{
+				&batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559",
+						Namespace: "ci-release",
+						UID:       jobUID,
+					},
+					Status: batchv1.JobStatus{
+						Failed: 1,
+						Conditions: []batchv1.JobCondition{
+							{
+								Type:    batchv1.JobFailed,
+								Status:  corev1.ConditionTrue,
+								Reason:  "BackoffLimitExceeded",
+								Message: "Job has reached the specified backoff limit",
+							},
+						},
+					},
+				},
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+					},
+				},
+			},
+			expectedMessage: "BackoffLimitExceeded: Job has reached the specified backoff limit",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			kubeClient := fake2.NewSimpleClientset(testCase.objects...)
+			kubeFactory := informers.NewSharedInformerFactory(kubeClient, controllerDefaultResyncDuration)
+			batchJobInformer := kubeFactory.Batch().V1().Jobs()
+
+			releasePayloadClient := fake.NewSimpleClientset(testCase.input)
+			releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
+			releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
+
+			c, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, kubeClient.CoreV1(), events.NewInMemoryRecorder("release-creation-status-controller-test", clock.RealClock{}))
+			if err != nil {
+				t.Fatalf("Failed to create Release Creation Status Controller: %v", err)
+			}
+			c.cachesToSync = append(c.cachesToSync, batchJobInformer.Informer().HasSynced)
+
+			releasePayloadInformerFactory.Start(context.Background().Done())
+			kubeFactory.Start(context.Background().Done())
+
+			if !cache.WaitForNamedCacheSync("ReleaseCreationStatusController", context.Background().Done(), c.cachesToSync...) {
+				t.Errorf("%s: error waiting for caches to sync", testCase.name)
+				return
+			}
+
+			if err := c.sync(context.TODO(), fmt.Sprintf("%s/%s", testCase.input.Namespace, testCase.input.Name)); err != nil {
+				t.Errorf("%s: unexpected error: %v", testCase.name, err)
+			}
+
+			output, _ := c.releasePayloadClient.ReleasePayloads(testCase.input.Namespace).Get(context.TODO(), testCase.input.Name, metav1.GetOptions{})
+			if output.Status.ReleaseCreationJobResult.Message != testCase.expectedMessage {
+				t.Errorf("%s: expected message %q, got %q", testCase.name, testCase.expectedMessage, output.Status.ReleaseCreationJobResult.Message)
 			}
 		})
 	}

@@ -1429,8 +1429,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	switch c.resolvePhase(*tagInfo.Info.Tag) {
 	case releasecontroller.ReleasePhaseFailed:
 		fmt.Fprintf(w, `<div class="alert alert-danger">`)
-		if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil && payload.Spec.PayloadOverride.Reason != "" {
-			fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
+		if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil {
+			if payload.Spec.PayloadOverride.Reason != "" {
+				fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
+			} else if msg := payload.Status.ReleaseCreationJobResult.Message; msg != "" {
+				fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(msg))
+			}
 		}
 		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
 			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
