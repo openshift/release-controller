@@ -1433,7 +1433,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			if payload.Spec.PayloadOverride.Reason != "" {
 				fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
 			} else if msg := payload.Status.ReleaseCreationJobResult.Message; msg != "" {
-				fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(msg))
+				fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(msg))
 			}
 		}
 		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {

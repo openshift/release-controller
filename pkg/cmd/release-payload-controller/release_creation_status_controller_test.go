@@ -782,6 +782,85 @@ func TestReleaseCreationStatusSyncWithTerminationMessage(t *testing.T) {
 			},
 			expectedMessage: "BackoffLimitExceeded: Job has reached the specified backoff limit",
 		},
+		{
+			name: "FailedJobWithRunningAndFailedPods",
+			objects: []runtime.Object{
+				&batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559",
+						Namespace: "ci-release",
+						UID:       jobUID,
+					},
+					Status: batchv1.JobStatus{
+						Active: 1,
+						Failed: 1,
+						Conditions: []batchv1.JobCondition{
+							{
+								Type:    batchv1.JobFailed,
+								Status:  corev1.ConditionTrue,
+								Reason:  "BackoffLimitExceeded",
+								Message: "Job has reached the specified backoff limit",
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-running",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodRunning,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Running: &corev1.ContainerStateRunning{},
+								},
+							},
+						},
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "4.11.0-0.nightly-2022-02-09-091559-failed",
+						Namespace: "ci-release",
+						Labels:    map[string]string{"controller-uid": string(jobUID)},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodFailed,
+						ContainerStatuses: []corev1.ContainerStatus{
+							{
+								Name: "build",
+								State: corev1.ContainerState{
+									Terminated: &corev1.ContainerStateTerminated{
+										ExitCode:   1,
+										Message:    "failed pod termination message",
+										FinishedAt: metav1.Time{Time: time.Date(2022, 2, 9, 10, 0, 0, 0, time.UTC)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			input: &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "4.11.0-0.nightly-2022-02-09-091559",
+					Namespace: "ocp",
+				},
+				Status: v1alpha1.ReleasePayloadStatus{
+					ReleaseCreationJobResult: v1alpha1.ReleaseCreationJobResult{
+						Coordinates: v1alpha1.ReleaseCreationJobCoordinates{
+							Name:      "4.11.0-0.nightly-2022-02-09-091559",
+							Namespace: "ci-release",
+						},
+					},
+				},
+			},
+			expectedMessage: "failed pod termination message",
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -216,7 +216,7 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 		releasePayload.Status.ReleaseCreationJobResult.Status = computeReleaseCreationJobStatus(job)
 		releasePayload.Status.ReleaseCreationJobResult.Message = computeReleaseCreationJobMessage(job)
 		if releasePayload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobFailed {
-			if msg := c.getTerminationMessage(job); len(msg) > 0 {
+			if msg := c.getTerminationMessage(ctx, job); len(msg) > 0 {
 				releasePayload.Status.ReleaseCreationJobResult.Message = msg
 			}
 		}
@@ -272,12 +272,16 @@ func computeReleaseCreationJobMessage(job *batchv1.Job) string {
 	return ReleaseCreationJobUnknownMessage
 }
 
-func (c *ReleaseCreationStatusController) getTerminationMessage(job *batchv1.Job) string {
-	pods, err := c.podClient.Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{
+func (c *ReleaseCreationStatusController) getTerminationMessage(ctx context.Context, job *batchv1.Job) string {
+	pods, err := c.podClient.Pods(job.Namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: "status.phase=Failed",
 		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
 	})
-	if err != nil || len(pods.Items) == 0 {
+	if err != nil {
+		klog.V(4).Infof("Unable to list pods for job %s/%s: %v", job.Namespace, job.Name, err)
+		return ""
+	}
+	if len(pods.Items) == 0 {
 		return ""
 	}
 
@@ -293,7 +297,7 @@ func (c *ReleaseCreationStatusController) getTerminationMessage(job *batchv1.Job
 	sort.Slice(statuses, func(i, j int) bool {
 		a, b := statuses[i], statuses[j]
 		if a.State.Terminated != nil && b.State.Terminated != nil {
-			return a.State.Terminated.FinishedAt.Time.After(b.State.Terminated.FinishedAt.Time)
+			return a.State.Terminated.FinishedAt.After(b.State.Terminated.FinishedAt.Time)
 		}
 		return a.State.Terminated != nil
 	})
