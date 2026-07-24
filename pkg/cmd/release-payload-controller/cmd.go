@@ -30,6 +30,7 @@ import (
 type Options struct {
 	controllerContext           *controllercmd.ControllerContext
 	ReleaseQualifiersConfigPath string
+	ReleaseNamespace            string
 
 	// BigQuery Options
 	GoogleProjectID                    string
@@ -75,6 +76,7 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.GoogleProjectID, "google-project-id", os.Getenv("GOOGLE_PROJECT_ID"), "Google project name.")
 	fs.StringVar(&o.GoogleServiceAccountCredentialFile, "google-service-account-credential-file", os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"), "location of a credential file described by https://cloud.google.com/docs/authentication/production")
 	fs.DurationVar(&o.BigQueryCacheTTL, "bigquery-cache-ttl", o.BigQueryCacheTTL, "TTL for cached BigQuery query results (0 to disable caching)")
+	fs.StringVar(&o.ReleaseNamespace, "release-namespace", "", "Namespace to watch for releasepayloads. When unset, all namespaces will be watched. Useful for testing locally with a single namespace.")
 
 	goFlagSet := flag.NewFlagSet("jira", flag.ContinueOnError)
 	o.jira.AddFlags(goFlagSet)
@@ -97,7 +99,7 @@ func (o *Options) Run(ctx context.Context) error {
 	}
 
 	// Batch Job Informers
-	kubeFactory := informers.NewSharedInformerFactory(kubeClient, controllerDefaultResyncDuration)
+	kubeFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controllerDefaultResyncDuration, informers.WithNamespace(o.ReleaseNamespace))
 	batchJobInformer := kubeFactory.Batch().V1().Jobs()
 
 	// ReleasePayload Informers
@@ -106,7 +108,7 @@ func (o *Options) Run(ctx context.Context) error {
 		klog.Fatalf("Error building releasePayload clientset: %s", err.Error())
 	}
 
-	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactory(releasePayloadClient, controllerDefaultResyncDuration)
+	releasePayloadInformerFactory := releasepayloadinformers.NewSharedInformerFactoryWithOptions(releasePayloadClient, controllerDefaultResyncDuration, releasepayloadinformers.WithNamespace(o.ReleaseNamespace))
 	releasePayloadInformer := releasePayloadInformerFactory.Release().V1alpha1().ReleasePayloads()
 
 	// ProwJob Informers
@@ -124,7 +126,7 @@ func (o *Options) Run(ctx context.Context) error {
 		klog.Fatalf("Error building imagestream clientset: %s", err.Error())
 	}
 
-	imageStreamInformerFactory := imageinformers.NewSharedInformerFactory(imageStreamClient, controllerDefaultResyncDuration)
+	imageStreamInformerFactory := imageinformers.NewSharedInformerFactoryWithOptions(imageStreamClient, controllerDefaultResyncDuration, imageinformers.WithNamespace(o.ReleaseNamespace))
 	imageStreamInformer := imageStreamInformerFactory.Image().V1().ImageStreams()
 
 	// Initialize release qualifiers config loader
