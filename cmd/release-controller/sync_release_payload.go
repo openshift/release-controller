@@ -40,6 +40,9 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 			Namespace: release.Target.Namespace,
 		},
 		Spec: v1alpha1.ReleasePayloadSpec{
+			PayloadCreationConfig: v1alpha1.PayloadCreationConfig{
+				ProwCoordinates: v1alpha1.ProwCoordinates{Namespace: prowNamespace},
+			},
 			PayloadCoordinates: v1alpha1.PayloadCoordinates{
 				Namespace:          release.Target.Namespace,
 				ImagestreamName:    release.Target.Name,
@@ -56,15 +59,12 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 		},
 	}
 
-	// Only add PayloadCreationConfig for releases that need payload creation jobs
+	// Only add ReleaseCreationCoordinates for releases that need payload creation jobs
 	// Layered releases use pre-existing images and don't need creation jobs
 	if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
-		payload.Spec.PayloadCreationConfig = v1alpha1.PayloadCreationConfig{
-			ReleaseCreationCoordinates: v1alpha1.ReleaseCreationCoordinates{
-				Namespace:              jobNamespace,
-				ReleaseCreationJobName: name,
-			},
-			ProwCoordinates: v1alpha1.ProwCoordinates{Namespace: prowNamespace},
+		payload.Spec.PayloadCreationConfig.ReleaseCreationCoordinates = v1alpha1.ReleaseCreationCoordinates{
+			Namespace:              jobNamespace,
+			ReleaseCreationJobName: name,
 		}
 
 		// We should only be populating the ReleaseMirrorCoordinates if/when they are actually defined...
