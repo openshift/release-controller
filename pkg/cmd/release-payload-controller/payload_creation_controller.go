@@ -115,6 +115,37 @@ func (c *PayloadCreationController) sync(ctx context.Context, key string) error 
 		return nil
 	}
 
+	// If we already have coordinates and no creation config, then we skip the release creation phase
+	// and assume that the release has already been compiled and is ready to be used.
+	if originalReleasePayload.Spec.PayloadCoordinates != (v1alpha1.PayloadCoordinates{}) &&
+		originalReleasePayload.Spec.PayloadCreationConfig.ReleaseCreationCoordinates == (v1alpha1.ReleaseCreationCoordinates{}) {
+		preCreatedImageConditions := getPreCreatedImageCreationConditions()
+
+		releasePayload := originalReleasePayload.DeepCopy()
+		for _, condition := range preCreatedImageConditions {
+			v1helpers.SetCondition(&releasePayload.Status.Conditions, condition)
+		}
+		releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
+
+		// Set the job status to success to indicate that the release has already been created.
+		// This short-circuits the release creation job controller and the release creation status controller.
+		// It also indicates to the release payload accepted controller that the release has already been created.
+		releasePayload.Status.ReleaseCreationJobResult = v1alpha1.ReleaseCreationJobResult{
+			Status:  v1alpha1.ReleaseCreationJobSuccess,
+			Message: "Release payload using pre-existing image, no creation job needed",
+		}
+
+		if reflect.DeepEqual(originalReleasePayload, releasePayload) {
+			return nil
+		}
+
+		_, err := c.releasePayloadClient.ReleasePayloads(releasePayload.Namespace).UpdateStatus(ctx, releasePayload, metav1.UpdateOptions{})
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
 	createdCondition := &metav1.Condition{
 		Type:   v1alpha1.ConditionPayloadCreated,
 		Status: metav1.ConditionUnknown,
@@ -160,4 +191,21 @@ func (c *PayloadCreationController) sync(ctx context.Context, key string) error 
 	}
 
 	return nil
+}
+
+func getPreCreatedImageCreationConditions() []metav1.Condition {
+	createdCondition := metav1.Condition{
+		Type:    v1alpha1.ConditionPayloadCreated,
+		Status:  metav1.ConditionTrue,
+		Reason:  ReleasePayloadCreatedReason,
+		Message: "Release payload using pre-existing image, no creation job needed",
+	}
+	failedCondition := metav1.Condition{
+		Type:    v1alpha1.ConditionPayloadFailed,
+		Status:  metav1.ConditionFalse,
+		Reason:  ReleasePayloadFailedReason,
+		Message: "Release payload using pre-existing image, no creation job needed",
+	}
+
+	return []metav1.Condition{createdCondition, failedCondition}
 }

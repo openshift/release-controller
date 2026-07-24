@@ -85,8 +85,8 @@ func (c *ReleaseCreationJobController) sync(ctx context.Context, key string) err
 		return err
 	}
 
-	// If the Coordinates are already set, then don't do anything...
-	if len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) > 0 && len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) > 0 {
+	// If the Coordinates are already set, or the job has otherwise been set to success, then don't do anything...
+	if len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Namespace) > 0 && len(originalReleasePayload.Status.ReleaseCreationJobResult.Coordinates.Name) > 0 || originalReleasePayload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobSuccess {
 		return nil
 	}
 

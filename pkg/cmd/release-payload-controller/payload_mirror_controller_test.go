@@ -277,3 +277,116 @@ func TestPayloadMirrorSync(t *testing.T) {
 		})
 	}
 }
+
+func TestPayloadMirrorWithoutMirrorConfig(t *testing.T) {
+	testCases := []struct {
+		name                    string
+		hasMirrorConfig         bool
+		expectMirroredCondition metav1.ConditionStatus
+		expectFailedCondition   metav1.ConditionStatus
+		expectMessage           string
+	}{
+		{
+			name:                    "Payload with mirror config follows normal job-based flow",
+			hasMirrorConfig:         true,
+			expectMirroredCondition: metav1.ConditionUnknown, // Waits for job completion
+			expectFailedCondition:   metav1.ConditionUnknown,
+		},
+		{
+			name:                    "Payload without mirror config marked as mirrored immediately",
+			hasMirrorConfig:         false,
+			expectMirroredCondition: metav1.ConditionTrue, // Immediate success
+			expectFailedCondition:   metav1.ConditionFalse,
+			expectMessage:           "Release payload using pre-existing image, no mirror job needed",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a test payload with coordinates (like a real release payload)
+			payload := &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-release",
+					Namespace: "test-namespace",
+				},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadCoordinates: v1alpha1.PayloadCoordinates{
+						Namespace:          "test-namespace",
+						ImagestreamName:    "releases",
+						ImagestreamTagName: "test-release",
+					},
+					PayloadType: v1alpha1.PayloadTypeLocal,
+				},
+			}
+
+			if tc.hasMirrorConfig {
+				payload.Spec.PayloadCreationConfig = v1alpha1.PayloadCreationConfig{
+					ReleaseMirrorCoordinates: v1alpha1.ReleaseMirrorCoordinates{
+						Namespace:            "test-jobs",
+						ReleaseMirrorJobName: "test-release-mirror",
+					},
+				}
+			}
+
+			// Set up fake client and controller
+			fakeClient := fake.NewSimpleClientset(payload)
+			informerFactory := releasepayloadinformers.NewSharedInformerFactory(fakeClient, 0)
+			payloadInformer := informerFactory.Release().V1alpha1().ReleasePayloads()
+
+			controller, err := NewPayloadMirrorController(
+				payloadInformer,
+				fakeClient.ReleaseV1alpha1(),
+				events.NewInMemoryRecorder("test", clock.RealClock{}),
+			)
+			if err != nil {
+				t.Fatalf("Failed to create controller: %v", err)
+			}
+
+			// Start informer and wait for cache sync
+			informerFactory.Start(make(chan struct{}))
+			cache.WaitForCacheSync(make(chan struct{}), payloadInformer.Informer().HasSynced)
+
+			// Sync the payload
+			err = controller.sync(context.Background(), "test-namespace/test-release")
+			if err != nil {
+				t.Fatalf("Sync failed: %v", err)
+			}
+
+			// Get the updated payload
+			updatedPayload, err := fakeClient.ReleaseV1alpha1().ReleasePayloads("test-namespace").Get(context.Background(), "test-release", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("Failed to get updated payload: %v", err)
+			}
+
+			// Check the conditions
+			var mirroredCond, failedCond *metav1.Condition
+			for _, cond := range updatedPayload.Status.Conditions {
+				if cond.Type == v1alpha1.ConditionPayloadMirrored {
+					mirroredCond = &cond
+				}
+				if cond.Type == v1alpha1.ConditionPayloadMirrorFailed {
+					failedCond = &cond
+				}
+			}
+
+			if mirroredCond == nil {
+				t.Fatalf("PayloadMirrored condition not found")
+			}
+			if failedCond == nil {
+				t.Fatalf("PayloadMirrorFailed condition not found")
+			}
+
+			if mirroredCond.Status != tc.expectMirroredCondition {
+				t.Errorf("Expected PayloadMirrored condition status %s, got %s", tc.expectMirroredCondition, mirroredCond.Status)
+			}
+
+			if failedCond.Status != tc.expectFailedCondition {
+				t.Errorf("Expected PayloadMirrorFailed condition status %s, got %s", tc.expectFailedCondition, failedCond.Status)
+			}
+
+			if tc.expectMessage != "" && mirroredCond.Message != tc.expectMessage {
+				t.Errorf("Expected message %q, got %q", tc.expectMessage, mirroredCond.Message)
+			}
+		})
+	}
+}
