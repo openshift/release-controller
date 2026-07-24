@@ -1440,10 +1440,12 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		// TODO: Remove once all historical releases with this annotation have aged out.
-		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
-			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
-		} else if !hasFailureMessage {
-			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
+		if !hasFailureMessage {
+			if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
+				fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
+			} else {
+				fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
+			}
 		}
 		fmt.Fprintf(w, `</div>`)
 		return
