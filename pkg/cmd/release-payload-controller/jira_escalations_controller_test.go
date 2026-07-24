@@ -69,6 +69,35 @@ func TestNewJiraEscalationsController(t *testing.T) {
 	}
 }
 
+func TestNewJiraEscalationsControllerWithNilBigQueryClient(t *testing.T) {
+	t.Parallel()
+
+	objs := []runtime.Object{}
+	client := releasepayloadclient.NewSimpleClientset(objs...)
+	informerFactory := releasepayloadinformers.NewSharedInformerFactory(client, 0)
+	releasePayloadInformer := informerFactory.Release().V1alpha1().ReleasePayloads()
+
+	eventRecorder := events.NewInMemoryRecorder("test", clock.RealClock{})
+	configAccessor := &mockConfigAccessor{}
+
+	controller, err := NewJiraEscalationsController(
+		releasePayloadInformer,
+		client.ReleaseV1alpha1(),
+		eventRecorder,
+		configAccessor,
+		nil,
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("Failed to create controller: %v", err)
+	}
+
+	if controller == nil {
+		t.Fatal("Expected non-nil controller")
+	}
+}
+
 func TestGetWindowSize(t *testing.T) {
 	t.Parallel()
 
