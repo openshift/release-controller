@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 
+	"sort"
+
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasepayloadclient "github.com/openshift/release-controller/pkg/client/clientset/versioned/typed/release/v1alpha1"
 	releasepayloadinformer "github.com/openshift/release-controller/pkg/client/informers/externalversions/release/v1alpha1"
@@ -16,10 +18,12 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	batchv1informers "k8s.io/client-go/informers/batch/v1"
+	kv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	batchv1listers "k8s.io/client-go/listers/batch/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -56,12 +60,14 @@ type ReleaseCreationStatusController struct {
 	*ReleasePayloadController
 
 	batchJobLister batchv1listers.JobLister
+	podClient      kv1core.PodsGetter
 }
 
 func NewReleaseCreationStatusController(
 	releasePayloadInformer releasepayloadinformer.ReleasePayloadInformer,
 	releasePayloadClient releasepayloadclient.ReleaseV1alpha1Interface,
 	batchJobInformer batchv1informers.JobInformer,
+	podClient kv1core.PodsGetter,
 	eventRecorder events.Recorder,
 ) (*ReleaseCreationStatusController, error) {
 	c := &ReleaseCreationStatusController{
@@ -71,6 +77,7 @@ func NewReleaseCreationStatusController(
 			eventRecorder.WithComponentSuffix("release-creation-status-controller"),
 			workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "ReleaseCreationStatusController"})),
 		batchJobLister: batchJobInformer.Lister(),
+		podClient:      podClient,
 	}
 
 	c.syncFn = c.sync
@@ -208,6 +215,11 @@ func (c *ReleaseCreationStatusController) sync(ctx context.Context, key string) 
 	default:
 		releasePayload.Status.ReleaseCreationJobResult.Status = computeReleaseCreationJobStatus(job)
 		releasePayload.Status.ReleaseCreationJobResult.Message = computeReleaseCreationJobMessage(job)
+		if releasePayload.Status.ReleaseCreationJobResult.Status == v1alpha1.ReleaseCreationJobFailed {
+			if msg := c.getTerminationMessage(ctx, job); len(msg) > 0 {
+				releasePayload.Status.ReleaseCreationJobResult.Message = msg
+			}
+		}
 	}
 
 	releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
@@ -258,4 +270,51 @@ func computeReleaseCreationJobMessage(job *batchv1.Job) string {
 		return ReleaseCreationJobPendingMessage
 	}
 	return ReleaseCreationJobUnknownMessage
+}
+
+func (c *ReleaseCreationStatusController) getTerminationMessage(ctx context.Context, job *batchv1.Job) string {
+	pods, err := c.podClient.Pods(job.Namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: "status.phase=Failed",
+		LabelSelector: labels.SelectorFromSet(labels.Set{"controller-uid": string(job.UID)}).String(),
+	})
+	if err != nil {
+		klog.V(4).Infof("Unable to list pods for job %s/%s: %v", job.Namespace, job.Name, err)
+		return ""
+	}
+	if len(pods.Items) == 0 {
+		return ""
+	}
+
+	var statuses []*corev1.ContainerStatus
+	for _, pod := range pods.Items {
+		if s := findContainerStatus(pod.Status.InitContainerStatuses, "build"); s != nil {
+			statuses = append(statuses, s)
+		} else if s := findContainerStatus(pod.Status.ContainerStatuses, "build"); s != nil {
+			statuses = append(statuses, s)
+		}
+	}
+
+	sort.Slice(statuses, func(i, j int) bool {
+		a, b := statuses[i], statuses[j]
+		if a.State.Terminated != nil && b.State.Terminated != nil {
+			return a.State.Terminated.FinishedAt.After(b.State.Terminated.FinishedAt.Time)
+		}
+		return a.State.Terminated != nil
+	})
+
+	for _, s := range statuses {
+		if s.State.Terminated != nil && len(s.State.Terminated.Message) > 0 {
+			return s.State.Terminated.Message
+		}
+	}
+	return ""
+}
+
+func findContainerStatus(statuses []corev1.ContainerStatus, name string) *corev1.ContainerStatus {
+	for i := range statuses {
+		if statuses[i].Name == name {
+			return &statuses[i]
+		}
+	}
+	return nil
 }

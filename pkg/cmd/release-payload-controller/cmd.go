@@ -179,7 +179,7 @@ func (o *Options) Run(ctx context.Context) error {
 	}
 
 	// Release Creation Status Controller
-	releaseCreationStatusController, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, o.controllerContext.EventRecorder)
+	releaseCreationStatusController, err := NewReleaseCreationStatusController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), batchJobInformer, kubeClient.CoreV1(), o.controllerContext.EventRecorder)
 	if err != nil {
 		return err
 	}
