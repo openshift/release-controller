@@ -2,7 +2,6 @@ package release_payload_controller
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -83,12 +82,6 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 }
 
 func (o *Options) Validate(_ context.Context) error {
-	if len(o.GoogleProjectID) == 0 {
-		return errors.New("--google-project-id flag must be set")
-	}
-	if len(o.GoogleServiceAccountCredentialFile) == 0 {
-		return errors.New("--google-service-account-credential-file flag must be set")
-	}
 	if err := o.jira.Validate(false); err != nil {
 		return fmt.Errorf("invalid jira options: %w", err)
 	}
@@ -151,17 +144,22 @@ func (o *Options) Run(ctx context.Context) error {
 		}
 	}
 
-	// BigQuery Client
-	bqc, err := bigquery.NewBigQueryClient(o.GoogleProjectID, o.GoogleServiceAccountCredentialFile)
-	if err != nil {
-		klog.Fatalf("Unable to configure bigquery client: %v", err)
-	}
-	defer bqc.Close()
-
-	var bqClient bigquery.ClientInterface = bqc
-	if o.BigQueryCacheTTL > 0 {
-		bqClient = bigquery.NewCachedClient(bqc, o.BigQueryCacheTTL)
-		klog.Infof("BigQuery caching enabled with TTL: %s", o.BigQueryCacheTTL)
+	// BigQuery Client (optional)
+	var bqClient bigquery.ClientInterface
+	if o.GoogleProjectID != "" && o.GoogleServiceAccountCredentialFile != "" {
+		bqc, err := bigquery.NewBigQueryClient(o.GoogleProjectID, o.GoogleServiceAccountCredentialFile)
+		if err != nil {
+			klog.Infof("BigQuery client not configured, job history lookups will be unavailable: %v", err)
+		} else {
+			defer bqc.Close()
+			bqClient = bqc
+			if o.BigQueryCacheTTL > 0 {
+				bqClient = bigquery.NewCachedClient(bqc, o.BigQueryCacheTTL)
+				klog.Infof("BigQuery caching enabled with TTL: %s", o.BigQueryCacheTTL)
+			}
+		}
+	} else {
+		klog.Infof("BigQuery client not configured, job history lookups will be unavailable")
 	}
 
 	// Jira Client (optional)
