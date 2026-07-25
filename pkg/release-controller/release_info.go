@@ -1551,8 +1551,8 @@ func (r *ExecReleaseFiles) specHash(image string) appsv1.StatefulSetSpec {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("50m"),
-								corev1.ResourceMemory: resource.MustParse("200Mi"),
+								corev1.ResourceCPU:    resource.MustParse("2.5"),
+								corev1.ResourceMemory: resource.MustParse("500Mi"),
 							},
 						},
 
