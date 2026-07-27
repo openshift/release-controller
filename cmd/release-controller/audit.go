@@ -84,7 +84,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	// we allow the auditor to pin to a specific CLI image for safety when verifying
 	image := c.cliImageForAudit
 	if len(image) == 0 {
-		image = release.Config.OverrideCLIImage
+		image = releasecontroller.ResolveImageReference(release, release.Source)
 	}
 	if len(image) == 0 {
 		klog.Warningf("Unable to audit release %s, no configured audit CLI image or overrideCLIImage defined on the stream", releaseName)
@@ -196,7 +196,7 @@ func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, re
 	}
 
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
-		cliImage := release.Config.OverrideCLIImage
+		cliImage := releasecontroller.ResolveImageReference(release, release.Source)
 
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
