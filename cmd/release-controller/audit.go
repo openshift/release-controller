@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	imagereference "github.com/openshift/library-go/pkg/image/reference"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -75,6 +76,13 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	if err != nil || release == nil {
 		return err
 	}
+	// Safe to mutate: ParseReleaseConfig returns a shallow copy of the cached
+	// ReleaseConfig, so overwriting a string field does not affect the cache.
+	// Do NOT mutate map/slice fields (Verify, Publish, etc.) — those share
+	// underlying data with the cached value.
+	if resolved := c.resolveOverrideCLIImage(release); len(resolved) > 0 {
+		release.Config.OverrideCLIImage = resolved
+	}
 
 	if c.auditStore.HasSignature(record.ID) {
 		klog.V(5).Infof("Release %s (%s) is already signed", record.ID, record.Name)
@@ -84,7 +92,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	// we allow the auditor to pin to a specific CLI image for safety when verifying
 	image := c.cliImageForAudit
 	if len(image) == 0 {
-		image = releasecontroller.ResolveImageReference(release, release.Source)
+		image = release.Config.OverrideCLIImage
 	}
 	if len(image) == 0 {
 		klog.Warningf("Unable to audit release %s, no configured audit CLI image or overrideCLIImage defined on the stream", releaseName)
@@ -181,6 +189,52 @@ func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.D
 		count++
 	}
 	return count < maximum, lastErr
+}
+
+// resolveOverrideCLIImage returns the image to use for audit jobs. It parses
+// OverrideCLIImage, looks up the imagestream it references, and if the tag is
+// a reference tag returns the dockerImageReference instead of the internal URL.
+func (c *Controller) resolveOverrideCLIImage(release *releasecontroller.Release) string {
+	override := release.Config.OverrideCLIImage
+	if len(override) == 0 {
+		return ""
+	}
+
+	ref, err := imagereference.Parse(override)
+	if err != nil || len(ref.Tag) == 0 {
+		return override
+	}
+
+	// Only resolve internal registry references. External tagged references
+	// (e.g. quay.io/org/repo:tag) should be used as-is even if an imagestream
+	// name happens to collide.
+	if release.Source == nil || len(release.Source.Status.DockerImageRepository) == 0 {
+		return override
+	}
+	srcRef, err := imagereference.Parse(release.Source.Status.DockerImageRepository)
+	if err != nil || ref.Registry != srcRef.Registry {
+		return override
+	}
+
+	is, err := c.imageClient.ImageStreams(ref.Namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
+	if err != nil {
+		klog.V(4).Infof("Unable to look up imagestream %s/%s for OverrideCLIImage resolution: %v", ref.Namespace, ref.Name, err)
+		return override
+	}
+
+	specTag := releasecontroller.FindSpecTag(is.Spec.Tags, ref.Tag)
+	if specTag == nil || !specTag.Reference {
+		return override
+	}
+
+	resolved := releasecontroller.FindImagePullSpec(is, ref.Tag)
+	if len(resolved) == 0 {
+		if specTag.From != nil && specTag.From.Kind == "DockerImage" && len(specTag.From.Name) > 0 {
+			return specTag.From.Name
+		}
+		return override
+	}
+	return resolved
 }
 
 func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord, cliImage string) (*batchv1.Job, error) {
