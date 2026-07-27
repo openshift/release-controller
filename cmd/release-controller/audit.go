@@ -110,7 +110,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 			return nil
 		}
 
-		job, err := c.ensureAuditVerifyJob(release, record)
+		job, err := c.ensureAuditVerifyJob(release, record, image)
 		if err != nil || job == nil {
 			return fmt.Errorf("unable to verify release before signing: %v", err)
 		}
@@ -183,7 +183,7 @@ func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.D
 	return count < maximum, lastErr
 }
 
-func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord) (*batchv1.Job, error) {
+func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord, cliImage string) (*batchv1.Job, error) {
 	// create a safe job name
 	name := record.ID
 	parts := strings.SplitN(record.ID, ":", 2)
@@ -196,8 +196,6 @@ func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, re
 	}
 
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
-		cliImage := releasecontroller.ResolveImageReference(release, release.Source)
-
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		// copy the contents of the release to the mirror
