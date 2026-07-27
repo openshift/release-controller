@@ -664,6 +664,34 @@ func IsReferenceReleaseTag(release *Release, tag *imagev1.TagReference) bool {
 		release.Config.ReferenceRelease != nil
 }
 
+// ResolveImageReference returns the OverrideCLIImage from the release config,
+// resolving it against the given imagestream when the release is
+// reference-based. For reference releases, the status tag event may have no
+// "image" (digest) field; in that case the dockerImageReference is returned
+// instead. For non-reference releases the OverrideCLIImage is returned as-is.
+func ResolveImageReference(release *Release, is *imagev1.ImageStream) string {
+	if release == nil || release.Config == nil {
+		return ""
+	}
+	image := release.Config.OverrideCLIImage
+	if len(image) == 0 || is == nil || !IsReferenceRelease(release) {
+		return image
+	}
+	for _, statusTag := range is.Status.Tags {
+		if len(statusTag.Items) == 0 {
+			continue
+		}
+		item := statusTag.Items[0]
+		if item.Image == image || item.DockerImageReference == image {
+			if len(item.Image) == 0 && len(item.DockerImageReference) > 0 {
+				return item.DockerImageReference
+			}
+			return image
+		}
+	}
+	return image
+}
+
 // ResolveCLIImage determines the CLI image to use for job creation.
 // For reference-based releases the CLI image is taken from the mirror's spec
 // tag "cli"; for traditional releases it comes from the mirror's
@@ -673,7 +701,7 @@ func ResolveCLIImage(release *Release, mirror *imagev1.ImageStream) (string, err
 		return "", fmt.Errorf("unable to determine CLI image: mirror imagestream is nil")
 	}
 	if len(release.Config.OverrideCLIImage) > 0 {
-		return release.Config.OverrideCLIImage, nil
+		return ResolveImageReference(release, mirror), nil
 	}
 	if IsReferenceRelease(release) {
 		if cliTag := FindSpecTag(mirror.Spec.Tags, "cli"); cliTag != nil && cliTag.From != nil && cliTag.From.Kind == "DockerImage" {

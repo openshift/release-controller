@@ -84,7 +84,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 	// we allow the auditor to pin to a specific CLI image for safety when verifying
 	image := c.cliImageForAudit
 	if len(image) == 0 {
-		image = release.Config.OverrideCLIImage
+		image = releasecontroller.ResolveImageReference(release, release.Source)
 	}
 	if len(image) == 0 {
 		klog.Warningf("Unable to audit release %s, no configured audit CLI image or overrideCLIImage defined on the stream", releaseName)
@@ -110,7 +110,7 @@ func (c *Controller) syncAuditTag(releaseName string) error {
 			return nil
 		}
 
-		job, err := c.ensureAuditVerifyJob(release, record)
+		job, err := c.ensureAuditVerifyJob(release, record, image)
 		if err != nil || job == nil {
 			return fmt.Errorf("unable to verify release before signing: %v", err)
 		}
@@ -183,7 +183,7 @@ func (c *Controller) ensureMaximumAuditVerifyJobs(maximum int, expireJobs time.D
 	return count < maximum, lastErr
 }
 
-func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord) (*batchv1.Job, error) {
+func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, record *AuditRecord, cliImage string) (*batchv1.Job, error) {
 	// create a safe job name
 	name := record.ID
 	parts := strings.SplitN(record.ID, ":", 2)
@@ -196,8 +196,6 @@ func (c *Controller) ensureAuditVerifyJob(release *releasecontroller.Release, re
 	}
 
 	return c.ensureJob(name, nil, func() (*batchv1.Job, error) {
-		cliImage := release.Config.OverrideCLIImage
-
 		job, prefix := newReleaseJobBase(name, cliImage, release.Config.PullSecretName)
 
 		// copy the contents of the release to the mirror
