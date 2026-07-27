@@ -44,6 +44,13 @@ func (c *Controller) sync(key queueKey) error {
 	if err != nil || release == nil {
 		return err
 	}
+	// Safe to mutate: ParseReleaseConfig returns a shallow copy of the cached
+	// ReleaseConfig, so overwriting a string field does not affect the cache.
+	// Do NOT mutate map/slice fields (Verify, Publish, etc.) — those share
+	// underlying data with the cached value.
+	if resolved := c.resolveOverrideCLIImage(release); len(resolved) > 0 {
+		release.Config.OverrideCLIImage = resolved
+	}
 	c.populatePayloadPhases(release)
 
 	if release.Config.EndOfLife {
