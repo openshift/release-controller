@@ -205,6 +205,17 @@ func (c *Controller) resolveOverrideCLIImage(release *releasecontroller.Release)
 		return override
 	}
 
+	// Only resolve internal registry references. External tagged references
+	// (e.g. quay.io/org/repo:tag) should be used as-is even if an imagestream
+	// name happens to collide.
+	if release.Source == nil || len(release.Source.Status.DockerImageRepository) == 0 {
+		return override
+	}
+	srcRef, err := imagereference.Parse(release.Source.Status.DockerImageRepository)
+	if err != nil || ref.Registry != srcRef.Registry {
+		return override
+	}
+
 	is, err := c.imageClient.ImageStreams(ref.Namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
 	if err != nil {
 		klog.V(4).Infof("Unable to look up imagestream %s/%s for OverrideCLIImage resolution: %v", ref.Namespace, ref.Name, err)

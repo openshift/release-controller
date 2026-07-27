@@ -13,30 +13,43 @@ import (
 )
 
 func TestResolveOverrideCLIImage(t *testing.T) {
+	internalRegistry := "image-registry.openshift-image-registry.svc:5000"
+	sourceImageStream := &imagev1.ImageStream{
+		ObjectMeta: metav1.ObjectMeta{Name: "4.23-art-latest", Namespace: "ocp"},
+		Status: imagev1.ImageStreamStatus{
+			DockerImageRepository: internalRegistry + "/ocp/4.23-art-latest",
+		},
+	}
+
 	tests := []struct {
 		name     string
 		override string
+		source   *imagev1.ImageStream
 		objects  []runtime.Object
 		want     string
 	}{
 		{
 			name:     "empty override returns empty",
 			override: "",
+			source:   sourceImageStream,
 			want:     "",
 		},
 		{
 			name:     "unparseable reference returns override as-is",
 			override: "@@invalid@@",
+			source:   sourceImageStream,
 			want:     "@@invalid@@",
 		},
 		{
 			name:     "imagestream not found returns override as-is",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
-			want:     "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
+			want:     internalRegistry + "/ocp/4.23:cli",
 		},
 		{
 			name:     "non-reference tag returns override as-is",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
 			objects: []runtime.Object{
 				&imagev1.ImageStream{
 					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
@@ -51,11 +64,12 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 					},
 				},
 			},
-			want: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			want: internalRegistry + "/ocp/4.23:cli",
 		},
 		{
 			name:     "reference tag resolves to dockerImageReference from status",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
 			objects: []runtime.Object{
 				&imagev1.ImageStream{
 					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
@@ -84,7 +98,8 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 		},
 		{
 			name:     "reference tag with no status falls back to spec From",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
 			objects: []runtime.Object{
 				&imagev1.ImageStream{
 					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
@@ -103,7 +118,8 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 		},
 		{
 			name:     "reference tag with no status and no spec From returns override",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
 			objects: []runtime.Object{
 				&imagev1.ImageStream{
 					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
@@ -117,11 +133,12 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 					},
 				},
 			},
-			want: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			want: internalRegistry + "/ocp/4.23:cli",
 		},
 		{
 			name:     "tag not found in imagestream returns override as-is",
-			override: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   sourceImageStream,
 			objects: []runtime.Object{
 				&imagev1.ImageStream{
 					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
@@ -136,12 +153,49 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 					},
 				},
 			},
-			want: "image-registry.openshift-image-registry.svc:5000/ocp/4.23:cli",
+			want: internalRegistry + "/ocp/4.23:cli",
 		},
 		{
 			name:     "external image reference without tag returns override as-is",
 			override: "quay.io/openshift-release-dev/ocp-v4.0-art-dev",
+			source:   sourceImageStream,
 			want:     "quay.io/openshift-release-dev/ocp-v4.0-art-dev",
+		},
+		{
+			name:     "external tagged reference preserved even when imagestream name collides",
+			override: "quay.io/ocp/4.23:cli",
+			source:   sourceImageStream,
+			objects: []runtime.Object{
+				&imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "4.23", Namespace: "ocp"},
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{
+								Name:      "cli",
+								Reference: true,
+								From:      &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/openshift-release-dev/ocp-v4.0-art-dev:cli"},
+							},
+						},
+					},
+					Status: imagev1.ImageStreamStatus{
+						Tags: []imagev1.NamedTagEventList{
+							{
+								Tag: "cli",
+								Items: []imagev1.TagEvent{
+									{DockerImageReference: "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:abcdef1234567890"},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: "quay.io/ocp/4.23:cli",
+		},
+		{
+			name:     "nil source imagestream returns override as-is",
+			override: internalRegistry + "/ocp/4.23:cli",
+			source:   nil,
+			want:     internalRegistry + "/ocp/4.23:cli",
 		},
 	}
 
@@ -152,6 +206,7 @@ func TestResolveOverrideCLIImage(t *testing.T) {
 				imageClient: fakeClient.ImageV1(),
 			}
 			release := &releasecontroller.Release{
+				Source: tt.source,
 				Config: &releasecontroller.ReleaseConfig{
 					OverrideCLIImage: tt.override,
 				},
