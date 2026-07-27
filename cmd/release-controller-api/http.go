@@ -1429,17 +1429,23 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	switch c.resolvePhase(*tagInfo.Info.Tag) {
 	case releasecontroller.ReleasePhaseFailed:
 		fmt.Fprintf(w, `<div class="alert alert-danger">`)
+		hasFailureMessage := false
 		if payload := c.GetReleasePayload(tagInfo.Tag); payload != nil {
 			if payload.Spec.PayloadOverride.Reason != "" {
 				fmt.Fprintf(w, `<p>%s</p>`, template.HTMLEscapeString(payload.Spec.PayloadOverride.Reason))
+				hasFailureMessage = true
 			} else if msg := payload.Status.ReleaseCreationJobResult.Message; msg != "" {
 				fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(msg))
+				hasFailureMessage = true
 			}
 		}
-		if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
-			fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
-		} else {
-			fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
+		// TODO: Remove once all historical releases with this annotation have aged out.
+		if !hasFailureMessage {
+			if log := tagInfo.Info.Tag.Annotations[releasecontroller.ReleaseAnnotationLog]; len(log) > 0 {
+				fmt.Fprintf(w, `<pre class="small">%s</pre>`, template.HTMLEscapeString(log))
+			} else {
+				fmt.Fprintf(w, `<div><em>No failure log was captured</em></div>`)
+			}
 		}
 		fmt.Fprintf(w, `</div>`)
 		return
