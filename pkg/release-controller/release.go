@@ -191,6 +191,14 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 				return nil, fmt.Errorf("imageStreamRef publish for %s has no name", name)
 			}
 		}
+		if publish.ExternalRegistry != nil {
+			if len(publish.ExternalRegistry.Registry) == 0 {
+				return nil, fmt.Errorf("externalRegistry publish for %s has no registry", name)
+			}
+			if len(publish.ExternalRegistry.SecretName) == 0 {
+				return nil, fmt.Errorf("externalRegistry publish for %s has no secretName", name)
+			}
+		}
 	}
 	copied := *cfg
 	if configCache != nil {

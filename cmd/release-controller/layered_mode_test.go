@@ -68,3 +68,82 @@ func TestLayeredModeConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestExternalRegistryPublishValidation(t *testing.T) {
+	testCases := []struct {
+		name        string
+		configJSON  string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Valid external registry publish configuration",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/repo", "secretName": "test-secret"}}}}`,
+			expectError: false,
+		},
+		{
+			name:        "External registry publish missing registry",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"secretName": "test-secret"}}}}`,
+			expectError: true,
+			errorMsg:    "externalRegistry publish for ext-mirror has no registry",
+		},
+		{
+			name:        "External registry publish missing secretName",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/repo"}}}}`,
+			expectError: true,
+			errorMsg:    "externalRegistry publish for ext-mirror has no secretName",
+		},
+		{
+			name:        "External registry publish with empty registry",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "", "secretName": "test-secret"}}}}`,
+			expectError: true,
+			errorMsg:    "externalRegistry publish for ext-mirror has no registry",
+		},
+		{
+			name:        "External registry publish with empty secretName",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/repo", "secretName": ""}}}}`,
+			expectError: true,
+			errorMsg:    "externalRegistry publish for ext-mirror has no secretName",
+		},
+		{
+			name:        "External registry publish with optional fields",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/repo", "secretName": "test-secret", "tags": ["latest", "v1.0"], "excludeTags": ["dev"]}}}}`,
+			expectError: false,
+		},
+		{
+			name:        "External registry publish with override CLI image",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/repo", "secretName": "test-secret", "overrideCLIImage": "quay.io/openshift/cli:latest"}}}}`,
+			expectError: false,
+		},
+		{
+			name:        "Layered mode with external registry and override CLI image",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "publish": {"ext-mirror": {"externalRegistry": {"registry": "quay.io/test/layered", "secretName": "test-secret", "overrideCLIImage": "registry.ci.openshift.org/ocp/4.17:cli"}}}}`,
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config, err := releasecontroller.ParseReleaseConfig(tc.configJSON, nil)
+
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+					return
+				}
+
+				if tc.errorMsg != "" && err.Error() != tc.errorMsg {
+					t.Errorf("Expected error message %q, got %q", tc.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+
+				if config == nil {
+					t.Errorf("Expected valid config but got nil")
+				}
+			}
+		})
+	}
+}

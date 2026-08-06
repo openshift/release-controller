@@ -587,6 +587,11 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 				errs = append(errs, fmt.Errorf("unable to update image stream for publish step %s: %v", name, err))
 				continue
 			}
+		case publishType.ExternalRegistry != nil:
+			if err := c.ensureExternalRegistryMirror(release, publishType.ExternalRegistry, newestAccepted.Name); err != nil {
+				errs = append(errs, fmt.Errorf("unable to mirror to external registry for publish step %s: %v", name, err))
+				continue
+			}
 		}
 	}
 	if len(errs) > 0 {
