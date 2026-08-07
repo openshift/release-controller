@@ -39,9 +39,11 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 			jobName = defaultAggregateProwJobName
 		}
 		aggregatorSuffix := "aggregator"
-		if retry, err := strconv.Atoi(verifySuffix); err == nil {
-			klog.V(6).Infof("Aggregator job has failed.  Retry count: %d", retry)
-			aggregatorSuffix = aggregatorSuffix + fmt.Sprintf("-%s", verifySuffix)
+		if after, ok := strings.CutPrefix(verifySuffix, "retry-"); ok {
+			if retry, err := strconv.Atoi(after); err == nil {
+				klog.V(6).Infof("Aggregator job has failed.  Retry count: %d", retry)
+				aggregatorSuffix = aggregatorSuffix + fmt.Sprintf("-%s", verifySuffix)
+			}
 		}
 		// Postfix the name to differentiate it from the analysis jobs
 		prowJobName = prow.GenerateSafeProwJobName(fullProwJobName, aggregatorSuffix)

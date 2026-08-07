@@ -111,14 +111,26 @@ func TestGenerateSafeProwJobName(t *testing.T) {
 		{
 			name:     "AggregatorJobWithRetry",
 			jobName:  "4.16.0-0.nightly-2024-02-07-125310-aggregated-hypershift-ovn-conformance-4.16",
-			suffix:   "aggregator-2",
-			expected: "4.16.0-0.nightly-2024-02-07-125310-aggrega-44j0w6k-aggregator-2",
+			suffix:   "aggregator-retry-2",
+			expected: "4.16.0-0.nightly-2024-02-07-125310-a-44j0w6k-aggregator-retry-2",
 		},
 		{
 			name:     "TruncationResultsInInvalidJobName",
 			jobName:  "4.19.0-0.nightly-2025-06-19-224840-aws-ovn-upgrade-4.19-micro-fips",
-			suffix:   "1",
-			expected: "4.19.0-0.nightly-2025-06-19-224840-aws-ovn-upgrade-4-mzdcpq2-1",
+			suffix:   "retry-1",
+			expected: "4.19.0-0.nightly-2025-06-19-224840-aws-ovn-upgr-mzdcpq2-retry-1",
+		},
+		{
+			name:     "RetryWithLongJobNameTriggersProperTruncation",
+			jobName:  "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10",
+			suffix:   "retry-2",
+			expected: "5.0.0-0.nightly-2026-07-20-081439-driver-toolkit-rhel10-retry-2",
+		},
+		{
+			name:     "RetryWithMaxLengthJobNameTruncates",
+			jobName:  "5.0.0-0.nightly-2026-07-20-081439-some-very-long-job-name-here",
+			suffix:   "retry-10",
+			expected: "5.0.0-0.nightly-2026-07-20-081439-some-very-lo-jn7w8wk-retry-10",
 		},
 	}
 

@@ -69,7 +69,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 			}
 			jobNameSuffix := ""
 			if jobRetries > 0 {
-				jobNameSuffix = fmt.Sprintf("%d", jobRetries)
+				jobNameSuffix = fmt.Sprintf("retry-%d", jobRetries)
 			}
 			jobLabels := map[string]string{
 				releasecontroller.ProwJobLabelCapability: "rce",

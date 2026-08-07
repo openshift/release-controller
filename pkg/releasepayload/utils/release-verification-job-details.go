@@ -17,11 +17,11 @@ const (
 var (
 	candidates  = regexp.MustCompile(`[efr]c.\d+`)
 	expressions = []*regexp.Regexp{
-		regexp.MustCompile(`^(?P<prerelease>[\d-]+)\.(?P<stream>okd-scos|okd|\w+)-(?P<architecture>\w+)?-?(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w-\\.]+?)(?:-(?P<count>\d+))?$`),
-		regexp.MustCompile(`^(?P<prerelease>[efr]c\.\d+)?-?upgrade-from-(?P<upgrade_from>[\d\\.]+(?:-[efr]c.\d+)?)-?(?P<job>\w+)-?(?P<count>\d+)?$`),
-		regexp.MustCompile(`^(?P<stream>okd-scos|okd)\.(?P<prerelease>(?:[erf]c\.\d+)+|\d+)-(?P<job>[\w-\\.]+?)(?:-(?P<count>\d+))?$`),
-		regexp.MustCompile(`^(?P<prerelease>(?:[erf]c|okd-scos|okd)\.\d+)-(?P<job>[\w-\\.]+?)(?:-(?P<count>\d+))?$`),
-		regexp.MustCompile(`^(?P<job>[\w-\\.]+?)(?:-(?P<count>\d+))?$`),
+		regexp.MustCompile(`^(?P<prerelease>[\d-]+)\.(?P<stream>okd-scos|okd|\w+)-(?P<architecture>\w+)?-?(?P<timestamp>\d{4}-\d{2}-\d{2}-\d{6})-(?P<job>[\w-\\.]+?)(?:-(?:retry-)?(?P<count>\d+))?$`),
+		regexp.MustCompile(`^(?P<prerelease>[efr]c\.\d+)?-?upgrade-from-(?P<upgrade_from>[\d\\.]+(?:-[efr]c.\d+)?)-?(?P<job>\w+)-?(?:retry-)?(?P<count>\d+)?$`),
+		regexp.MustCompile(`^(?P<stream>okd-scos|okd)\.(?P<prerelease>(?:[erf]c\.\d+)+|\d+)-(?P<job>[\w-\\.]+?)(?:-(?:retry-)?(?P<count>\d+))?$`),
+		regexp.MustCompile(`^(?P<prerelease>(?:[erf]c|okd-scos|okd)\.\d+)-(?P<job>[\w-\\.]+?)(?:-(?:retry-)?(?P<count>\d+))?$`),
+		regexp.MustCompile(`^(?P<job>[\w-\\.]+?)(?:-(?:retry-)?(?P<count>\d+))?$`),
 	}
 )
 
