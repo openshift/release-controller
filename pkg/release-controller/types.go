@@ -227,6 +227,8 @@ type ReleasePublish struct {
 	TagRef *PublishTagReference `json:"tagRef"`
 	// ImageStreamRef copies all images to another image stream in one transaction.
 	ImageStreamRef *PublishStreamReference `json:"imageStreamRef"`
+	// ExternalRegistry mirrors the release to an external image registry.
+	ExternalRegistry *PublishExternalRegistry `json:"externalRegistry"`
 	// VerifyIssue marks jira issues fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
 	VerifyIssues *PublishVerifyIssues `json:"verifyIssues"`
 }
@@ -252,6 +254,22 @@ type PublishStreamReference struct {
 	// ExcludeTags if set will explicitly not publish these tags. Is applied after the
 	// tags field is checked.
 	ExcludeTags []string `json:"excludeTags"`
+}
+
+// PublishExternalRegistry defines configuration for mirroring a release to an external registry
+type PublishExternalRegistry struct {
+	// Registry is the full path to the external image registry (e.g., "quay.io/openshift-release-dev/ocp-release")
+	Registry string `json:"registry"`
+	// SecretName is the name of the secret containing credentials to the registry.
+	// Secret must exist in job namespace and contain a config.json with valid Docker auths.
+	SecretName string `json:"secretName"`
+	// OverrideCLIImage may be used to override the CLI image used for the mirror job.
+	// This is particularly useful for layered releases where no CLI image is available in the mirror stream.
+	OverrideCLIImage string `json:"overrideCLIImage,omitempty"`
+	// Tags if set will limit mirroring to specific release tags. Defaults to the accepted release tag.
+	Tags []string `json:"tags,omitempty"`
+	// ExcludeTags if set will explicitly exclude these tags from mirroring.
+	ExcludeTags []string `json:"excludeTags,omitempty"`
 }
 
 // PublishVerifyIssues marks jira issue fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
@@ -556,6 +574,7 @@ const (
 	ReleaseVerificationStatePending   = "Pending"
 
 	ReleaseConfigModeStable = "Stable"
+	ReleaseConfigModeLayered = "Layered"
 
 	// ReferencePayloadTagPrefix is prepended to release names when pushing
 	// to ReferenceRepository, so that image cleanup tooling can identify

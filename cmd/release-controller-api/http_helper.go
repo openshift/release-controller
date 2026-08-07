@@ -717,7 +717,7 @@ func renderAlerts(release ReleaseStream) string {
 func releaseJoin(streams []ReleaseStream, showStableReleases bool) string {
 	releases := []string{}
 	for _, s := range streams {
-		if !showStableReleases && s.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+		if !showStableReleases && (s.Release.Config.As == releasecontroller.ReleaseConfigModeStable || s.Release.Config.As == releasecontroller.ReleaseConfigModeLayered) {
 			continue
 		}
 		releases = append(releases, fmt.Sprintf("<a href=\"#%s\">%s</a>", template.HTMLEscapeString(s.Release.Config.Name), template.HTMLEscapeString(s.Release.Config.Name)))
@@ -939,7 +939,7 @@ func (r preferredReleases) Less(i, j int) bool {
 	if a.Release.Config.Hide && !b.Release.Config.Hide {
 		return false
 	}
-	aStable, bStable := a.Release.Config.As == releasecontroller.ReleaseConfigModeStable, b.Release.Config.As == releasecontroller.ReleaseConfigModeStable
+	aStable, bStable := (a.Release.Config.As == releasecontroller.ReleaseConfigModeStable || a.Release.Config.As == releasecontroller.ReleaseConfigModeLayered), (b.Release.Config.As == releasecontroller.ReleaseConfigModeStable || b.Release.Config.As == releasecontroller.ReleaseConfigModeLayered)
 	if aStable && !bStable {
 		return true
 	}
@@ -1104,7 +1104,7 @@ func isStaleStatusTag(tag imagev1.NamedTagEventList, target *imagev1.ImageStream
 func pruneEndOfLifeTags(page *ReleasePage, endOfLifePrefixes sets.Set[string]) {
 	for i := range page.Streams {
 		stream := &page.Streams[i]
-		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+		if stream.Release.Config.As == releasecontroller.ReleaseConfigModeStable || stream.Release.Config.As == releasecontroller.ReleaseConfigModeLayered {
 			var tags []*imagev1.TagReference
 			for _, tag := range stream.Tags {
 				if version, err := releasecontroller.SemverParseTolerant(tag.Name); err == nil {

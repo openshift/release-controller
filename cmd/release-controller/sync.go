@@ -154,7 +154,8 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 	)
 	target := release.Target
 
-	shouldAdopt := release.Config.As == releasecontroller.ReleaseConfigModeStable
+	shouldAdopt := release.Config.As == releasecontroller.ReleaseConfigModeStable ||
+		release.Config.As == releasecontroller.ReleaseConfigModeLayered
 
 	tags := make([]*imagev1.TagReference, 0, len(target.Spec.Tags))
 	for i := range target.Spec.Tags {
@@ -177,7 +178,9 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 			continue
 		}
 		// check annotations when using the target as tag source
-		if release.Config.As != releasecontroller.ReleaseConfigModeStable && tag.Annotations[releasecontroller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
+		if release.Config.As != releasecontroller.ReleaseConfigModeStable &&
+			release.Config.As != releasecontroller.ReleaseConfigModeLayered &&
+			tag.Annotations[releasecontroller.ReleaseAnnotationSource] != fmt.Sprintf("%s/%s", release.Source.Namespace, release.Source.Name) {
 			continue
 		}
 		// if the name has changed, consider the tag abandoned (admin is responsible for cleaning it up)
@@ -244,7 +247,7 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 	}
 
 	switch release.Config.As {
-	case releasecontroller.ReleaseConfigModeStable:
+	case releasecontroller.ReleaseConfigModeStable, releasecontroller.ReleaseConfigModeLayered:
 		hasNewImages = false
 		inputImageHash = ""
 		removeTags = nil
@@ -399,6 +402,32 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			}
 		}
 		return nil
+
+	case releasecontroller.ReleaseConfigModeLayered:
+		// New layered mode - skip payload building, go directly to ready
+		for _, tag := range pendingTags {
+			if len(tag.Annotations[releasecontroller.ReleaseAnnotationImageHash]) == 0 {
+				// Set a hash based on the single input image
+				hash := fmt.Sprintf("layered-%s-%d", tag.Name, *tag.Generation)
+				if err := c.setReleaseAnnotation(release, tag.Annotations[releasecontroller.ReleaseAnnotationPhase],
+					map[string]string{releasecontroller.ReleaseAnnotationImageHash: hash}, tag.Name); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// Create ReleasePayload object for verification tracking
+			_, err = c.ensureReleasePayload(release, tag)
+			if err != nil {
+				return err
+			}
+
+			// Mark as ready immediately since we skip payload building
+			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	if len(pendingTags) > 1 {
@@ -465,15 +494,21 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
-		mirror, err := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
-		if err != nil {
-			klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
-		} else if _, err := c.ensureReleaseMirrorJob(release, releaseTag.Name, mirror); err != nil {
-			klog.Errorf("Failed to create release mirror job: %v", err)
+		// Skip mirroring for layered releases since they use pre-existing single images
+		if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
+			mirror, err := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
+			if err != nil {
+				klog.Errorf("Failed to identify `from` mirror for creation of release mirror job: %v", err)
+			} else if _, err := c.ensureReleaseMirrorJob(release, releaseTag.Name, mirror); err != nil {
+				klog.Errorf("Failed to create release mirror job: %v", err)
+			}
 		}
 
-		if err := c.ensureReleaseUpgradeJobs(release, releaseTag); err != nil {
-			klog.Errorf("unable to launch release upgrade jobs for %q: %v", releaseTag.Name, err)
+		// Skip upgrade jobs for layered releases since they represent single components
+		if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
+			if err := c.ensureReleaseUpgradeJobs(release, releaseTag); err != nil {
+				klog.Errorf("unable to launch release upgrade jobs for %q: %v", releaseTag.Name, err)
+			}
 		}
 
 		payload, verifyStatus, err := c.getReleasePayloadVerificationState(release, releaseTag.Name)
@@ -540,8 +575,21 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 			if len(ns) == 0 {
 				ns = release.Target.Namespace
 			}
-			if err := c.ensureImageStreamMatchesRelease(release, ns, publishType.ImageStreamRef.Name, newestAccepted.Name, publishType.ImageStreamRef.Tags, publishType.ImageStreamRef.ExcludeTags); err != nil {
+
+			// For layered releases, we need to publish the specific tag that was verified
+			// rather than all tags within the image stream.
+			tagNames := publishType.ImageStreamRef.Tags
+			if len(tagNames) == 0 && release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+				tagNames = []string{newestAccepted.Name}
+			}
+
+			if err := c.ensureImageStreamMatchesRelease(release, ns, publishType.ImageStreamRef.Name, newestAccepted.Name, tagNames, publishType.ImageStreamRef.ExcludeTags); err != nil {
 				errs = append(errs, fmt.Errorf("unable to update image stream for publish step %s: %v", name, err))
+				continue
+			}
+		case publishType.ExternalRegistry != nil:
+			if err := c.ensureExternalRegistryMirror(release, publishType.ExternalRegistry, newestAccepted.Name); err != nil {
+				errs = append(errs, fmt.Errorf("unable to mirror to external registry for publish step %s: %v", name, err))
 				continue
 			}
 		}
@@ -636,4 +684,3 @@ func getRejectionDetails(payload *v1alpha1.ReleasePayload) (string, string) {
 	}
 	return "VerificationFailed", "release verification failed"
 }
-

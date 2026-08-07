@@ -115,6 +115,30 @@ func (c *PayloadMirrorController) sync(ctx context.Context, key string) error {
 		return nil
 	}
 
+	// If we already have coordinates and no mirror config, then we skip the release mirror phase
+	// and assume that the release uses pre-existing images and doesn't need mirroring.
+	if originalReleasePayload.Spec.PayloadCoordinates != (v1alpha1.PayloadCoordinates{}) &&
+		originalReleasePayload.Spec.PayloadCreationConfig.ReleaseMirrorCoordinates == (v1alpha1.ReleaseMirrorCoordinates{}) {
+
+		preCreatedImageConditions := getPreCreatedImageMirrorConditions()
+
+		releasePayload := originalReleasePayload.DeepCopy()
+		for _, condition := range preCreatedImageConditions {
+			v1helpers.SetCondition(&releasePayload.Status.Conditions, condition)
+		}
+		releasepayloadhelpers.CanonicalizeReleasePayloadStatus(releasePayload)
+
+		if reflect.DeepEqual(originalReleasePayload, releasePayload) {
+			return nil
+		}
+
+		_, err := c.releasePayloadClient.ReleasePayloads(releasePayload.Namespace).UpdateStatus(ctx, releasePayload, metav1.UpdateOptions{})
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
 	createdCondition := &metav1.Condition{
 		Type:   v1alpha1.ConditionPayloadMirrored,
 		Status: metav1.ConditionUnknown,
@@ -160,4 +184,20 @@ func (c *PayloadMirrorController) sync(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+func getPreCreatedImageMirrorConditions() []metav1.Condition {
+	createdCondition := metav1.Condition{
+		Type:    v1alpha1.ConditionPayloadMirrored,
+		Status:  metav1.ConditionTrue,
+		Reason:  ReleasePayloadMirroredReason,
+		Message: "Release payload using pre-existing image, no mirror job needed",
+	}
+	failedCondition := metav1.Condition{
+		Type:    v1alpha1.ConditionPayloadMirrorFailed,
+		Status:  metav1.ConditionFalse,
+		Reason:  ReleasePayloadMirrorFailedReason,
+		Message: "Release payload using pre-existing image, no mirror job needed",
+	}
+	return []metav1.Condition{createdCondition, failedCondition}
 }

@@ -107,7 +107,7 @@ func (c *Controller) findReleaseStreamTags(includeStableTags bool, tags ...strin
 		// TODO: should be refactored to be unsortedSemanticReleaseTags
 		releaseTags := releasecontroller.SortedReleaseTags(r)
 		if includeStableTags {
-			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable {
+			if version, err := releasecontroller.SemverParseTolerant(r.Config.Name); err == nil || r.Config.As == releasecontroller.ReleaseConfigModeStable || r.Config.As == releasecontroller.ReleaseConfigModeLayered {
 				stable.Releases = append(stable.Releases, releasecontroller.StableRelease{
 					Release:  r,
 					Version:  version,
@@ -1702,7 +1702,7 @@ func (c *Controller) tableLink(config *releasecontroller.ReleaseConfig, tag imag
 		}
 		if strings.Contains(tag.Name, "nightly") && c.doesInconsistencyExist(tag.Name) {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a> <a href="/releasestream/%s/inconsistency/%s"><i title="Inconsistency detected! Click for more details" class="bi bi-exclamation-circle"></i></a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name))
-		} else if config.As == releasecontroller.ReleaseConfigModeStable {
+		} else if config.As == releasecontroller.ReleaseConfigModeStable || config.As == releasecontroller.ReleaseConfigModeLayered {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" style="padding-left:15px" href="/releasestream/%s/release/%s">%s</a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
 		} else {
 			return fmt.Sprintf(`<td class="text-monospace"><a class="%s" href="/releasestream/%s/release/%s">%s</a></td>`, alert, template.HTMLEscapeString(config.Name), template.HTMLEscapeString(tag.Name), template.HTMLEscapeString(tag.Name))
@@ -1747,7 +1747,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			"publishDescription": func(r *ReleaseStream) string {
 				streamMessage := generateStreamMessage(r)
 				if len(streamMessage) > 0 {
-					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable || r.Release.Config.As == releasecontroller.ReleaseConfigModeLayered {
 						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
 						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
 						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", streamMessage, searchFunctionPrefix, searchFunction)
@@ -1759,6 +1759,10 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
 						out = append(out, `<span>stable tags</span>`)
+					}
+				case releasecontroller.ReleaseConfigModeLayered:
+					if len(streamMessage) == 0 {
+						out = append(out, `<span>layered releases</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -1846,7 +1850,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
 			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
@@ -1857,7 +1861,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 		}
 		page.Streams = append(page.Streams, s)
@@ -2214,7 +2218,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 			"publishDescription": func(r *ReleaseStream) string {
 				streamMessage := generateStreamMessage(r)
 				if len(streamMessage) > 0 {
-					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable {
+					if r.Release.Config.As == releasecontroller.ReleaseConfigModeStable || r.Release.Config.As == releasecontroller.ReleaseConfigModeLayered {
 						searchFunctionPrefix := removeSpecialCharacters(r.Release.Config.Name)
 						searchFunction := fmt.Sprintf("searchTable_%s('%s')", searchFunctionPrefix, searchFunctionPrefix)
 						return fmt.Sprintf("<div class=\"container\">\n<div class=\"row d-flex justify-content-between\">\n<div><p>%s</p></div>\n<div class=\"form-outline\"><input type=\"search\" class=\"form-control\" id=\"%s\" onkeyup=\"%s\"  placeholder=\"Search\" aria-label=\"Search\"></div>\n</div>\n</div>", streamMessage, searchFunctionPrefix, searchFunction)
@@ -2226,6 +2230,10 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
 						out = append(out, `<span>stable tags</span>`)
+					}
+				case releasecontroller.ReleaseConfigModeLayered:
+					if len(streamMessage) == 0 {
+						out = append(out, `<span>layered releases</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -2305,7 +2313,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 		Tags:    releasecontroller.SortedReleaseTags(r),
 	}
 	var delays []string
-	if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+	if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
 		if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 			delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 		}
@@ -2316,7 +2324,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 	if len(delays) > 0 {
 		s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 	}
-	if r.Config.As != releasecontroller.ReleaseConfigModeStable {
+	if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 	}
 	page.TargetStream = s
@@ -2376,6 +2384,10 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 				case releasecontroller.ReleaseConfigModeStable:
 					if len(streamMessage) == 0 {
 						out = append(out, `<span>stable tags</span>`)
+					}
+				case releasecontroller.ReleaseConfigModeLayered:
+					if len(streamMessage) == 0 {
+						out = append(out, `<span>layered releases</span>`)
 					}
 				default:
 					out = append(out, fmt.Sprintf(`<span>updated when <code>%s/%s</code> changes</span>`, r.Release.Source.Namespace, r.Release.Source.Name))
@@ -2444,7 +2456,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
 		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && len(s.Tags) > 0 {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
 			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
 				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
 			}
@@ -2463,7 +2475,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 		if len(delays) > 0 {
 			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
 		}
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable {
+		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
 		}
 		page.Streams = append(page.Streams, s)
