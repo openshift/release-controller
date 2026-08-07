@@ -390,6 +390,13 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 					return err
 				}
 				c.precacheChangelog(release, tag)
+			case releasecontroller.ReleasePhaseAccepted:
+				if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+					return err
+				}
+				if err := c.markReleaseAccepted(release, nil, tag.Name); err != nil {
+					return err
+				}
 			case releasecontroller.ReleasePhaseFailed:
 				if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
 					return err
@@ -445,6 +452,13 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 				return err
 			}
 			c.precacheChangelog(release, tag)
+		case releasecontroller.ReleasePhaseAccepted:
+			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+				return err
+			}
+			if err := c.markReleaseAccepted(release, nil, tag.Name); err != nil {
+				return err
+			}
 		case releasecontroller.ReleasePhaseFailed:
 			if err := c.transitionReleasePhaseFailure(release, []string{releasecontroller.ReleasePhasePending}, releasecontroller.ReleasePhaseFailed, reasonAndMessage("CreateReleaseFailed", "Could not create the release image"), tag.Name); err != nil {
 				return err
@@ -518,6 +532,31 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 
 	if klog.V(5) && len(acceptedTags) > 0 {
 		klog.Infof("release=%s accepted=%v", release.Config.Name, releasecontroller.TagNames(acceptedTags))
+	}
+
+	for _, tag := range acceptedTags {
+		annotationPhase := tag.Annotations[releasecontroller.ReleaseAnnotationPhase]
+		if annotationPhase == releasecontroller.ReleasePhaseAccepted {
+			continue
+		}
+		klog.V(2).Infof("Reconciling phase for %s: annotation=%q, payload=Accepted", tag.Name, annotationPhase)
+		switch annotationPhase {
+		case releasecontroller.ReleasePhasePending, "":
+			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
+				return err
+			}
+			if err := c.markReleaseAccepted(release, nil, tag.Name); err != nil {
+				return err
+			}
+		case releasecontroller.ReleasePhaseReady:
+			if err := c.markReleaseAccepted(release, nil, tag.Name); err != nil {
+				return err
+			}
+		default:
+			klog.Warningf("Tag %s has payload Accepted but annotation phase %q; skipping reconciliation", tag.Name, annotationPhase)
+			continue
+		}
+		return nil
 	}
 
 	if len(release.Config.Publish) == 0 || len(acceptedTags) == 0 {

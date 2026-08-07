@@ -41,6 +41,7 @@ func (c *Controller) syncAudit(key queueKey) error {
 	if err != nil || release == nil {
 		return err
 	}
+	c.populatePayloadPhases(release)
 
 	klog.V(4).Infof("Audit %s", release.Config.Name)
 	c.auditTracker.Sync(release)
