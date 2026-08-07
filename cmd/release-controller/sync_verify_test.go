@@ -116,6 +116,94 @@ var reference4Preview = releasecontroller.StableRelease{
 	}},
 }
 
+func TestCandidateStreamName(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name                  string
+		version               string
+		stream                string
+		configTo              string
+		expectedStreamName    string
+		expectedVersionPrefix string
+	}{
+		{
+			name:                  "stable stream, empty configTo",
+			version:               "4.22",
+			stream:                "stable",
+			configTo:              "",
+			expectedStreamName:    "4-stable",
+			expectedVersionPrefix: "4.22.",
+		},
+		{
+			name:                  "stable stream, configTo=release",
+			version:               "4.22",
+			stream:                "stable",
+			configTo:              "release",
+			expectedStreamName:    "4-stable",
+			expectedVersionPrefix: "4.22.",
+		},
+		{
+			name:                  "stable stream, major version 5",
+			version:               "5.1",
+			stream:                "stable",
+			configTo:              "",
+			expectedStreamName:    "5-stable",
+			expectedVersionPrefix: "5.1.",
+		},
+		{
+			name:                  "stable stream, arm64 suffix",
+			version:               "4.22",
+			stream:                "stable",
+			configTo:              "release-arm64",
+			expectedStreamName:    "4-stable-arm64",
+			expectedVersionPrefix: "4.22.",
+		},
+		{
+			name:                  "nightly stream, configTo=release",
+			version:               "4.22",
+			stream:                "nightly",
+			configTo:              "release",
+			expectedStreamName:    "4.22.0-0.nightly",
+			expectedVersionPrefix: "",
+		},
+		{
+			name:                  "nightly stream, configTo=release-5",
+			version:               "4.22",
+			stream:                "nightly",
+			configTo:              "release-5",
+			expectedStreamName:    "4.22.0-0.nightly",
+			expectedVersionPrefix: "",
+		},
+		{
+			name:                  "ci stream",
+			version:               "4.22",
+			stream:                "ci",
+			configTo:              "release",
+			expectedStreamName:    "4.22.0-0.ci",
+			expectedVersionPrefix: "",
+		},
+		{
+			name:                  "nightly stream, arm64 suffix",
+			version:               "4.22",
+			stream:                "nightly",
+			configTo:              "release-arm64",
+			expectedStreamName:    "4.22.0-0.nightly-arm64",
+			expectedVersionPrefix: "",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			streamName, versionPrefix := candidateStreamName(tc.version, tc.stream, tc.configTo)
+			if streamName != tc.expectedStreamName {
+				t.Errorf("Expected stream name %q, got %q", tc.expectedStreamName, streamName)
+			}
+			if versionPrefix != tc.expectedVersionPrefix {
+				t.Errorf("Expected version prefix %q, got %q", tc.expectedVersionPrefix, versionPrefix)
+			}
+		})
+	}
+}
+
 func TestFindLatestStableForVersion(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
