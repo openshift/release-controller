@@ -107,14 +107,7 @@ func ReleaseDefinition(is *imagev1.ImageStream, releaseConfigCache *lru.Cache, e
 	}
 
 	switch cfg.As {
-	case ReleaseConfigModeStable:
-		r := &Release{
-			Source: is,
-			Target: is,
-			Config: cfg,
-		}
-		return r, true, nil
-	case ReleaseConfigModeLayered:
+	case ReleaseConfigModeStable, ReleaseConfigModeLayered:
 		r := &Release{
 			Source: is,
 			Target: is,
@@ -623,7 +616,7 @@ func GetImageInfo(releaseInfo ReleaseInfo, architecture, pullSpec string) (*imag
 }
 
 func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder, lister *MultiImageStreamLister, release *Release, releaseTag *imagev1.TagReference, artSuffix string) (map[string]ReleaseVerification, error) {
-	if release.Config.As != ReleaseConfigModeStable && release.Config.As != ReleaseConfigModeLayered || artSuffix == "" {
+	if release.Config.As != ReleaseConfigModeStable || artSuffix == "" {
 		return release.Config.Verify, nil
 	}
 	jobs := make(map[string]ReleaseVerification)

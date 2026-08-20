@@ -687,6 +687,10 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if tagInfo.isLayeredTag() {
+		generateChangelog = false
+	}
+
 	verificationJobs, msg := c.getVerificationJobs(*tagInfo.Info.Tag, tagInfo.Info.Release)
 	if len(msg) > 0 {
 		klog.V(4).Infof("Unable to retrieve verification job results for: %s", tagInfo.Tag)
@@ -1456,7 +1460,9 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 	case "multi":
 		renderMultiArchPullSpec(w, tagInfo.TagPullSpec)
 	default:
-		renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+		if !tagInfo.isLayeredTag() {
+			renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+		}
 	}
 
 	qualifierStatusAPI := fmt.Sprintf(`(<a href="/api/v1/releasetag/%s/qualifiers">status api</a>)`, template.HTMLEscapeString(url.PathEscape(tagInfo.Tag)))
@@ -1483,7 +1489,10 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	var missingUpgrades []string
 	upgradeFound := make(map[string]bool)
-	supportedUpgrades, _ := c.getSupportedUpgrades(tagInfo.TagPullSpec)
+	var supportedUpgrades []string
+	if !tagInfo.isLayeredTag() {
+		supportedUpgrades, _ = c.getSupportedUpgrades(tagInfo.TagPullSpec)
+	}
 	if len(supportedUpgrades) > 0 {
 		for _, u := range upgradesTo {
 			upgradeFound[u.From] = true
@@ -1605,47 +1614,50 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
-		fmt.Fprintln(w, "<hr>")
-		c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
-	}
+	// Layered releases do not currently support changelogs...
+	if !tagInfo.isLayeredTag() {
+		if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
+			fmt.Fprintln(w, "<hr>")
+			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
+		}
 
-	var options []string
-	for _, tag := range tagInfo.Info.Older {
-		var selected string
-		if tag.Name == tagInfo.Info.Previous.Name {
-			selected = `selected="true"`
-		}
-		if !endOfLifePrefixes.Has(pruneTagInfo(tag.Name)) {
-			options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
-		}
-	}
-	for _, release := range tagInfo.Info.Stable.Releases {
-		if release.Release == tagInfo.Info.Release {
-			continue
-		}
-		for j, version := range release.Versions {
-			if !endOfLifePrefixes.Has(pruneTagInfo(version.Tag.Name)) {
-				if j == 0 && len(options) > 0 {
-					options = append(options, `<option disabled>───</option>`)
-				}
-				var selected string
-				if tagInfo.Info.Previous != nil && version.Tag.Name == tagInfo.Info.Previous.Name {
-					selected = `selected="true"`
-				}
-				options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
+		var options []string
+		for _, tag := range tagInfo.Info.Older {
+			var selected string
+			if tag.Name == tagInfo.Info.Previous.Name {
+				selected = `selected="true"`
+			}
+			if !endOfLifePrefixes.Has(pruneTagInfo(tag.Name)) {
+				options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, tag.Name))
 			}
 		}
-	}
-	if len(options) > 0 {
-		fmt.Fprint(w, `<p><form class="form-inline" method="GET">`)
-		if tagInfo.Info.Previous != nil {
-			fmt.Fprintf(w, `<a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label>`, tagInfo.Info.Previous.Name, tagInfo.Info.Tag.Name)
-		} else {
-			fmt.Fprint(w, `<label for="from">change previous release:&nbsp;</label>`)
+		for _, release := range tagInfo.Info.Stable.Releases {
+			if release.Release == tagInfo.Info.Release {
+				continue
+			}
+			for j, version := range release.Versions {
+				if !endOfLifePrefixes.Has(pruneTagInfo(version.Tag.Name)) {
+					if j == 0 && len(options) > 0 {
+						options = append(options, `<option disabled>───</option>`)
+					}
+					var selected string
+					if tagInfo.Info.Previous != nil && version.Tag.Name == tagInfo.Info.Previous.Name {
+						selected = `selected="true"`
+					}
+					options = append(options, fmt.Sprintf(`<option %s>%s</option>`, selected, version.Tag.Name))
+				}
+			}
 		}
-		fmt.Fprintf(w, `<select onchange="this.form.submit()" id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare">`, strings.Join(options, ""))
-		fmt.Fprint(w, `</form></p>`)
+		if len(options) > 0 {
+			fmt.Fprint(w, `<p><form class="form-inline" method="GET">`)
+			if tagInfo.Info.Previous != nil {
+				fmt.Fprintf(w, `<a href="/changelog?from=%s&to=%s">View changelog in Markdown</a><span>&nbsp;or&nbsp;</span><label for="from">change previous release:&nbsp;</label>`, tagInfo.Info.Previous.Name, tagInfo.Info.Tag.Name)
+			} else {
+				fmt.Fprint(w, `<label for="from">change previous release:&nbsp;</label>`)
+			}
+			fmt.Fprintf(w, `<select onchange="this.form.submit()" id="from" class="form-control" name="from">%s</select> <input class="btn btn-link" type="submit" value="Compare">`, strings.Join(options, ""))
+			fmt.Fprint(w, `</form></p>`)
+		}
 	}
 }
 
@@ -3053,4 +3065,11 @@ func (c *Controller) apiReleaseApprovals(w http.ResponseWriter, req *http.Reques
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	fmt.Fprintln(w)
+}
+
+func (t *releaseTagInfo) isLayeredTag() bool {
+	if t.Info != nil && t.Info.Release != nil && t.Info.Release.Config != nil && t.Info.Release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+		return true
+	}
+	return false
 }
