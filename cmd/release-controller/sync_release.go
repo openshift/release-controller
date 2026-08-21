@@ -34,13 +34,24 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 			manifestListMode = "true"
 		}
 
-		job.Spec.Template.Spec.Containers[0].Command = []string{
-			"/bin/bash", "-c",
-			prefix + `
+		if len(release.Config.Metadata) > 0 {
+			job.Spec.Template.Spec.Containers[0].Command = []string{
+				"/bin/bash", "-c",
+				prefix + `
+			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6" "--metadata=$7"
+			`,
+				"",
+				name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, manifestListMode, string(release.Config.Metadata),
+			}
+		} else {
+			job.Spec.Template.Spec.Containers[0].Command = []string{
+				"/bin/bash", "-c",
+				prefix + `
 			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"
 			`,
-			"",
-			name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, manifestListMode,
+				"",
+				name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, manifestListMode,
+			}
 		}
 
 		job.Annotations[releasecontroller.ReleaseAnnotationSource] = mirror.Annotations[releasecontroller.ReleaseAnnotationSource]

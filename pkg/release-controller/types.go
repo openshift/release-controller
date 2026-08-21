@@ -1,6 +1,7 @@
 package releasecontroller
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -190,6 +191,12 @@ type ReleaseConfig struct {
 	// Currently, it's being added to work around a limitation with `oc` and images from konflux:
 	// https://issues.redhat.com/browse/OCPBUGS-50660
 	DisableManifestListMode bool `json:"disableManifestListMode"`
+
+	// Metadata is an optional JSON object that is passed as --metadata to `oc adm release new`
+	// when creating Integration (nightly) payloads. Use this to embed annotations that the
+	// Release Controller does not set automatically, such as release.openshift.io/architecture.
+	// When omitted, no --metadata flag is passed and the release tool uses its defaults.
+	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
 // ReferenceRelease holds configuration for reference-based releases that
