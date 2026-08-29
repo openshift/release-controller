@@ -47,7 +47,7 @@ const (
 
 const maxChunkSize = 450 // this seems to be the maximum Jira can handle, currently
 
-const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions.json"
+const coreosExtensionsMetadataPath = "usr/share/rpm-ostree/extensions/extensions.json"
 
 // MaxConcurrentRpmdbOCCalls limits parallel `oc adm release info` invocations that use
 // --rpmdb / --rpmdb-diff (heavy image pulls and RPM work). Additional callers get a clear error.
