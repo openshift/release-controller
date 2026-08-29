@@ -187,12 +187,11 @@ func (c *Controller) resolveUpgradeRelease(upgradeRelease *releasecontroller.Upg
 		pullSpec := releasecontroller.ReleasePullSpec(r, latest)
 		return tag, pullSpec, nil
 	} else if upgradeRelease.Candidate != nil {
-		// create blank semver.Range
 		var constraint semver.Range
-		stream := fmt.Sprintf("%s.0-0.%s%s", upgradeRelease.Candidate.Version, upgradeRelease.Candidate.Stream, TrimPrefixes(release.Config.To, "release-5", "release"))
-		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister, stream, constraint, upgradeRelease.Candidate.Relative, "")
+		streamName, versionPrefix := candidateStreamName(upgradeRelease.Candidate.Version, upgradeRelease.Candidate.Stream, release.Config.To)
+		r, latest, err := releasecontroller.LatestForStream(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister, streamName, constraint, upgradeRelease.Candidate.Relative, versionPrefix)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", stream, err)
+			return "", "", fmt.Errorf("failed to get latest tag for stream %s: %w", streamName, err)
 		}
 		tag := latest.Name
 		pullSpec := releasecontroller.ReleasePullSpec(r, latest)
@@ -216,4 +215,17 @@ func TrimPrefixes(s string, prefixes ...string) string {
 		}
 	}
 	return s
+}
+
+// candidateStreamName returns the release stream name and an optional version
+// prefix filter for a candidate upgrade source. Nightly and CI streams use
+// names like "4.22.0-0.nightly"; stable streams use "N-stable" (e.g. "4-stable")
+// and need the version prefix to filter to the requested minor version.
+func candidateStreamName(version, stream, configTo string) (streamName, versionPrefix string) {
+	suffix := TrimPrefixes(configTo, "release-5", "release")
+	if stream == "stable" {
+		major, _, _ := strings.Cut(version, ".")
+		return fmt.Sprintf("%s-stable%s", major, suffix), version + "."
+	}
+	return fmt.Sprintf("%s.0-0.%s%s", version, stream, suffix), ""
 }
