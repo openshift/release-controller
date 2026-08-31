@@ -109,7 +109,7 @@ func TestGetWindowSize(t *testing.T) {
 		{
 			name: "OverLastRuns specified",
 			escalation: jira.Escalation{
-				OverLastRuns: intPtr(20),
+				OverLastRuns: new(20),
 				Failures:     5,
 			},
 			want: 20,
@@ -580,8 +580,8 @@ func TestShouldTriggerEscalation(t *testing.T) {
 			name: "PassPercentage - threshold breached",
 			escalation: jira.Escalation{
 				Name:           "quality",
-				OverLastRuns:   intPtr(10),
-				PassPercentage: intPtr(60),
+				OverLastRuns:   new(10),
+				PassPercentage: new(60),
 				Priority:       "High",
 			},
 			jobHistory: []bigquery.ReleaseQualifiersProwjobSummaryResult{
@@ -618,7 +618,7 @@ func TestShouldTriggerEscalation(t *testing.T) {
 			escalation: jira.Escalation{
 				Name:         "window",
 				Failures:     5,
-				OverLastRuns: intPtr(10),
+				OverLastRuns: new(10),
 				Priority:     "High",
 			},
 			jobHistory: []bigquery.ReleaseQualifiersProwjobSummaryResult{
@@ -795,7 +795,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
 							Escalations: []jira.Escalation{
-								{Name: "quality", OverLastRuns: intPtr(20), OverPeriod: "2d", PassPercentage: intPtr(80), Priority: "Critical"},
+								{Name: "quality", OverLastRuns: new(20), OverPeriod: "2d", PassPercentage: new(80), Priority: "Critical"},
 							},
 						},
 					},
@@ -833,7 +833,7 @@ func TestCollectJobNamesWithEscalations(t *testing.T) {
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
 							Escalations: []jira.Escalation{
-								{Name: "weekly", Failures: 10, OverLastRuns: intPtr(50), OverPeriod: "1w", Priority: "Major"},
+								{Name: "weekly", Failures: 10, OverLastRuns: new(50), OverPeriod: "1w", Priority: "Major"},
 							},
 						},
 					},
@@ -999,10 +999,6 @@ func TestGroupHistoryByJob(t *testing.T) {
 	}
 }
 
-func intPtr(i int) *int {
-	return &i
-}
-
 func TestSync(t *testing.T) {
 	t.Parallel()
 
@@ -1166,8 +1162,8 @@ func TestSync(t *testing.T) {
 							Escalations: []jira.Escalation{
 								{
 									Name:           "quality",
-									OverLastRuns:   intPtr(10),
-									PassPercentage: intPtr(60),
+									OverLastRuns:   new(10),
+									PassPercentage: new(60),
 									Priority:       "High",
 								},
 							},
@@ -1491,7 +1487,7 @@ func TestBuildEscalationDescription(t *testing.T) {
 	})
 
 	t.Run("windowed failures", func(t *testing.T) {
-		escalation := jira.Escalation{Name: "high", Failures: 5, OverLastRuns: intPtr(10), Priority: "High"}
+		escalation := jira.Escalation{Name: "high", Failures: 5, OverLastRuns: new(10), Priority: "High"}
 		got := controller.buildEscalationDescription(releasePayload, job, "rosa", &jira.Notification{}, escalation)
 		if !strings.Contains(got, "5 failures over last 10 runs") {
 			t.Errorf("expected windowed failures text, got: %s", got)
@@ -1499,7 +1495,7 @@ func TestBuildEscalationDescription(t *testing.T) {
 	})
 
 	t.Run("pass percentage", func(t *testing.T) {
-		escalation := jira.Escalation{Name: "quality", PassPercentage: intPtr(60), OverLastRuns: intPtr(10), Priority: "High"}
+		escalation := jira.Escalation{Name: "quality", PassPercentage: new(60), OverLastRuns: new(10), Priority: "High"}
 		got := controller.buildEscalationDescription(releasePayload, job, "rosa", &jira.Notification{}, escalation)
 		if !strings.Contains(got, "Pass percentage below 60%") {
 			t.Errorf("expected pass percentage text, got: %s", got)
@@ -2134,7 +2130,7 @@ func TestDuplicatePrevention(t *testing.T) {
 		configAccessor: &mockConfigAccessor{
 			config: releasequalifierslib.ReleaseQualifiers{
 				"rosa": {
-					Enabled: releasequalifierslib.BoolPtr(true),
+					Enabled: new(true),
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
@@ -2227,7 +2223,7 @@ func TestFailedEscalationDoesNotSuppressRetry(t *testing.T) {
 		configAccessor: &mockConfigAccessor{
 			config: releasequalifierslib.ReleaseQualifiers{
 				"rosa": {
-					Enabled: releasequalifierslib.BoolPtr(true),
+					Enabled: new(true),
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
@@ -2335,7 +2331,7 @@ func TestAbatement(t *testing.T) {
 		configAccessor: &mockConfigAccessor{
 			config: releasequalifierslib.ReleaseQualifiers{
 				"rosa": {
-					Enabled: releasequalifierslib.BoolPtr(true),
+					Enabled: new(true),
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
@@ -2445,7 +2441,7 @@ func TestReEscalationAfterAbatement(t *testing.T) {
 		configAccessor: &mockConfigAccessor{
 			config: releasequalifierslib.ReleaseQualifiers{
 				"rosa": {
-					Enabled: releasequalifierslib.BoolPtr(true),
+					Enabled: new(true),
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
@@ -2538,7 +2534,7 @@ func TestEscalationUpgradeUpdatesState(t *testing.T) {
 		configAccessor: &mockConfigAccessor{
 			config: releasequalifierslib.ReleaseQualifiers{
 				"rosa": {
-					Enabled: releasequalifierslib.BoolPtr(true),
+					Enabled: new(true),
 					Notifications: &notifications.Notifications{
 						Jira: &jira.Notification{
 							Project: "OCPBUGS",
@@ -2967,7 +2963,7 @@ func TestDebugProcessJobsForEscalations_RealData(t *testing.T) {
 	// Global qualifier config from data/crt-qualifiers.yaml
 	qualifiersConfig := releasequalifierslib.ReleaseQualifiers{
 		"crt-odd": releasequalifierslib.ReleaseQualifier{
-			Enabled:   releasequalifierslib.BoolPtr(true),
+			Enabled:   new(true),
 			BadgeName: "CRT-ODD",
 			Notifications: &notifications.Notifications{
 				Jira: &jira.Notification{
@@ -2986,7 +2982,7 @@ func TestDebugProcessJobsForEscalations_RealData(t *testing.T) {
 			},
 		},
 		"crt-even": releasequalifierslib.ReleaseQualifier{
-			Enabled:   releasequalifierslib.BoolPtr(true),
+			Enabled:   new(true),
 			BadgeName: "CRT-EVEN",
 			Notifications: &notifications.Notifications{
 				Jira: &jira.Notification{

@@ -41,7 +41,7 @@ func (w *rowIteratorWrapper) Next(dst any) error {
 }
 
 func NewBigQueryClient(project, credentialsFile string) (*Client, error) {
-	bc, err := bigquery.NewClient(context.Background(), project, option.WithCredentialsFile(credentialsFile))
+	bc, err := bigquery.NewClient(context.Background(), project, option.WithAuthCredentialsFile(option.ServiceAccount, credentialsFile))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create BigQuery client: %v", err)
 	}

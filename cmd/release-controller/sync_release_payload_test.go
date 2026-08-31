@@ -627,7 +627,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 					Qualifiers: releasequalifiers.ReleaseQualifiers{
 						"qual-a": releasequalifiers.ReleaseQualifier{
-							Enabled:   releasequalifiers.BoolPtr(true),
+							Enabled:   new(true),
 							BadgeName: "QA",
 							Summary:   "Qualifier A",
 						},
@@ -665,7 +665,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "periodic-ci-openshift-release-master-nightly-4.12-e2e-aws-sdn-serial",
 								Qualifiers: releasequalifiers.ReleaseQualifiers{
 									"qual-a": releasequalifiers.ReleaseQualifier{
-										Enabled:   releasequalifiers.BoolPtr(true),
+										Enabled:   new(true),
 										BadgeName: "QA",
 										Summary:   "Qualifier A",
 									},
@@ -697,7 +697,7 @@ func TestNewReleasePayload(t *testing.T) {
 					},
 					Qualifiers: releasequalifiers.ReleaseQualifiers{
 						"qual-b": releasequalifiers.ReleaseQualifier{
-							Enabled:   releasequalifiers.BoolPtr(true),
+							Enabled:   new(true),
 							BadgeName: "QB",
 							Summary:   "Qualifier B",
 						},
@@ -735,7 +735,7 @@ func TestNewReleasePayload(t *testing.T) {
 								CIConfigurationJobName: "aggregated-job-with-qualifiers-release-openshift-release-analysis-aggregator",
 								Qualifiers: releasequalifiers.ReleaseQualifiers{
 									"qual-b": releasequalifiers.ReleaseQualifier{
-										Enabled:   releasequalifiers.BoolPtr(true),
+										Enabled:   new(true),
 										BadgeName: "QB",
 										Summary:   "Qualifier B",
 									},
@@ -749,7 +749,7 @@ func TestNewReleasePayload(t *testing.T) {
 								AnalysisJobCount:       10,
 								Qualifiers: releasequalifiers.ReleaseQualifiers{
 									"qual-b": releasequalifiers.ReleaseQualifier{
-										Enabled:   releasequalifiers.BoolPtr(true),
+										Enabled:   new(true),
 										BadgeName: "QB",
 										Summary:   "Qualifier B",
 									},
@@ -764,8 +764,8 @@ func TestNewReleasePayload(t *testing.T) {
 			},
 		},
 		{
-			name:          "RealWorldExample",
-			release:       &releasecontroller.Release{
+			name: "RealWorldExample",
+			release: &releasecontroller.Release{
 				Config: &releasecontroller.ReleaseConfig{
 					Name: "4.11-art-latest",
 				},

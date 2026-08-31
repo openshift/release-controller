@@ -19,10 +19,6 @@ func (m *mockConfigAccessor) Get() releasequalifiers.ReleaseQualifiers {
 	return m.config
 }
 
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 func TestComputeBadgeEarned(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -32,25 +28,25 @@ func TestComputeBadgeEarned(t *testing.T) {
 	}{
 		{
 			name:           "Enabled=true + AggregateState=Success → earned",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           true,
 		},
 		{
 			name:           "Enabled=true + AggregateState=Failure → not earned",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			aggregateState: v1alpha1.JobStateFailure,
 			want:           false,
 		},
 		{
 			name:           "Enabled=true + AggregateState=Pending → not earned",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			aggregateState: v1alpha1.JobStatePending,
 			want:           false,
 		},
 		{
 			name:           "Enabled=false + AggregateState=Success → not earned",
-			enabled:        boolPtr(false),
+			enabled:        new(false),
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           false,
 		},
@@ -80,49 +76,49 @@ func TestComputeBadgePropagated(t *testing.T) {
 	}{
 		{
 			name:           "Enabled=false → never propagated (regardless of BadgeStatus)",
-			enabled:        boolPtr(false),
+			enabled:        new(false),
 			badgeStatus:    releasequalifiers.BadgeStatusYes,
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           false,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusYes → always propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusYes,
 			aggregateState: v1alpha1.JobStateFailure,
 			want:           true,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusNo → never propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusNo,
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           false,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusOnSuccess + AggregateState=Success → propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusOnSuccess,
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           true,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusOnSuccess + AggregateState=Failure → not propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusOnSuccess,
 			aggregateState: v1alpha1.JobStateFailure,
 			want:           false,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusOnFailure + AggregateState=Failure → propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusOnFailure,
 			aggregateState: v1alpha1.JobStateFailure,
 			want:           true,
 		},
 		{
 			name:           "Enabled=true + BadgeStatusOnFailure + AggregateState=Success → not propagated",
-			enabled:        boolPtr(true),
+			enabled:        new(true),
 			badgeStatus:    releasequalifiers.BadgeStatusOnFailure,
 			aggregateState: v1alpha1.JobStateSuccess,
 			want:           false,
@@ -333,42 +329,42 @@ func createBasePayloadSpec() v1alpha1.ReleasePayloadSpec {
 func createBaseConfig() releasequalifiers.ReleaseQualifiers {
 	return releasequalifiers.ReleaseQualifiers{
 		"techpreview": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "Tech Preview",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "Tech Preview Features",
 			Description:        "Tests for technology preview features",
 		},
 		"fips": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "FIPS",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "FIPS Compliance",
 			Description:        "Tests for FIPS compliance",
 		},
 		"hypershift": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "HyperShift",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "HyperShift",
 			Description:        "Tests for HyperShift",
 		},
 		"metal": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "Metal",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "Bare Metal",
 			Description:        "Tests for bare metal",
 		},
 		"microshift": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "MicroShift",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "MicroShift",
 			Description:        "Tests for MicroShift",
 		},
 		"rosa": {
-			Enabled:            boolPtr(true),
+			Enabled:            new(true),
 			BadgeName:          "ROSA",
 			PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			Summary:            "ROSA",
@@ -673,7 +669,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -810,8 +806,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -850,8 +846,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -879,8 +875,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -919,8 +915,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -951,8 +947,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(false),
+						Enabled:            new(true),
+						Approval:           new(false),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -983,8 +979,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusYes,
 					},
@@ -1023,8 +1019,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "FIPS Approval",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -1078,13 +1074,13 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -1145,7 +1141,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -1196,13 +1192,13 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"fips-failed", "needs-attention"},
 					},
 					"metal": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "Metal",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"metal-failed"},
@@ -1276,7 +1272,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"fips-failed"},
@@ -1328,15 +1324,15 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"sdn-migration-rejected"},
 					},
 					"other-approval": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "Other Approval",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"other-rejected"},
@@ -1348,7 +1344,7 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 					Name:      "4.20.8",
 					Namespace: "ocp",
 					Labels: map[string]string{
-						"release.openshift.io/sdn-migration_state": "Rejected",
+						"release.openshift.io/sdn-migration_state":  "Rejected",
 						"release.openshift.io/other-approval_state": "Accepted",
 					},
 				},
@@ -1387,8 +1383,8 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnFailure,
 					},
@@ -1427,13 +1423,13 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"needs-attention", "fips-failed"},
 					},
 					"metal": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "Metal",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"metal-failed", "hardware-issue"},
@@ -1507,13 +1503,13 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"prevent_rc", "needs-attention"},
 					},
 					"metal": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "Metal",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"prevent_rc", "metal-failed"},
@@ -1587,14 +1583,14 @@ func TestGenerateQualifiersSummary(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"fips-failed"},
 					},
 					"sdn-migration": {
-						Enabled:            boolPtr(true),
-						Approval:           boolPtr(true),
+						Enabled:            new(true),
+						Approval:           new(true),
 						BadgeName:          "SDN Migration",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"sdn-rejected"},
@@ -1674,7 +1670,7 @@ func TestGenerateQualifiersSummary_PreservesJiraNotifications(t *testing.T) {
 	config := &mockConfigAccessor{
 		config: releasequalifiers.ReleaseQualifiers{
 			"rosa": {
-				Enabled:            boolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "ROSA",
 				PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			},
@@ -1745,7 +1741,7 @@ func TestGenerateQualifiersSummary_NilExistingSummary(t *testing.T) {
 	config := &mockConfigAccessor{
 		config: releasequalifiers.ReleaseQualifiers{
 			"rosa": {
-				Enabled:            boolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "ROSA",
 				PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			},

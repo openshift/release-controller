@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/openshift/release-controller/pkg/rhcos"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
+	"github.com/openshift/release-controller/pkg/rhcos"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/prow/pkg/jira"

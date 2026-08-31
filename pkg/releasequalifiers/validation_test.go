@@ -21,7 +21,7 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "non-approval qualifier with all fields is valid",
 			qualifier: ReleaseQualifier{
-				Enabled:            BoolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "TEST",
 				Summary:            "Test Summary",
 				Description:        "Test Description",
@@ -36,7 +36,7 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "approval=false with notifications is valid",
 			qualifier: ReleaseQualifier{
-				Approval: BoolPtr(false),
+				Approval: new(false),
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{Project: "TEST"},
 				},
@@ -46,8 +46,8 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "approval qualifier with only allowed fields is valid",
 			qualifier: ReleaseQualifier{
-				Approval:           BoolPtr(true),
-				Enabled:            BoolPtr(true),
+				Approval:           new(true),
+				Enabled:            new(true),
 				BadgeName:          "Approval Badge",
 				Summary:            "Team Approval",
 				Description:        "Earned via team approval",
@@ -58,8 +58,8 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "approval qualifier with failureLabels is invalid",
 			qualifier: ReleaseQualifier{
-				Approval:      BoolPtr(true),
-				Enabled:       BoolPtr(true),
+				Approval:      new(true),
+				Enabled:       new(true),
 				BadgeName:     "Approval Badge",
 				FailureLabels: []string{"some-label"},
 			},
@@ -68,8 +68,8 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "approval qualifier with notifications is invalid",
 			qualifier: ReleaseQualifier{
-				Approval:  BoolPtr(true),
-				Enabled:   BoolPtr(true),
+				Approval:  new(true),
+				Enabled:   new(true),
 				BadgeName: "Approval Badge",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{Project: "TEST"},
@@ -80,8 +80,8 @@ func TestReleaseQualifier_Validate(t *testing.T) {
 		{
 			name: "approval qualifier with empty failureLabels is valid",
 			qualifier: ReleaseQualifier{
-				Approval:      BoolPtr(true),
-				Enabled:       BoolPtr(true),
+				Approval:      new(true),
+				Enabled:       new(true),
 				FailureLabels: []string{},
 			},
 			wantErr: false,

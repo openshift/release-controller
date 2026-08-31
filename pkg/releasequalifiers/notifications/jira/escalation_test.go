@@ -41,7 +41,7 @@ priority: Normal
 			wantEscalation: Escalation{
 				Name:         "monitor",
 				Failures:     2,
-				OverLastRuns: intPtr(10),
+				OverLastRuns: new(10),
 				Priority:     "Normal",
 			},
 		},
@@ -55,8 +55,8 @@ priority: High
 `,
 			wantEscalation: Escalation{
 				Name:           "quality",
-				OverLastRuns:   intPtr(10),
-				PassPercentage: intPtr(60),
+				OverLastRuns:   new(10),
+				PassPercentage: new(60),
 				Priority:       "High",
 			},
 		},
@@ -73,9 +73,9 @@ needsInfo:
 `,
 			wantEscalation: Escalation{
 				Name:           "reliability",
-				OverLastRuns:   intPtr(20),
+				OverLastRuns:   new(20),
 				OverPeriod:     "2d",
-				PassPercentage: intPtr(80),
+				PassPercentage: new(80),
 				Priority:       "Critical",
 				NeedsInfo:      []string{"scuppett"},
 			},
@@ -91,7 +91,7 @@ priority: Blocker
 `,
 			wantEscalation: Escalation{
 				Name:         "critical",
-				OverLastRuns: intPtr(20),
+				OverLastRuns: new(20),
 				OverPeriod:   "2d",
 				Failures:     10,
 				Priority:     "Blocker",
@@ -129,8 +129,8 @@ needsInfo:
 `,
 			wantEscalation: Escalation{
 				Name:           "major",
-				OverLastRuns:   intPtr(15),
-				PassPercentage: intPtr(70),
+				OverLastRuns:   new(15),
+				PassPercentage: new(70),
 				Priority:       "Major",
 				Mentions:       []string{"oncall"},
 				NeedsInfo:      []string{"product-owner", "qa-lead"},
@@ -491,9 +491,4 @@ escalations:
 	if !cmp.Equal(critical.NeedsInfo, []string{"component-owner"}) {
 		t.Errorf("Expected escalation[3] needsInfo [component-owner], got %v", critical.NeedsInfo)
 	}
-}
-
-// intPtr is a helper function to create pointer to int
-func intPtr(i int) *int {
-	return &i
 }

@@ -76,8 +76,8 @@ func TestClient_GetReleaseQualifiersProwjobSummary(t *testing.T) {
 				query := buildExpectedQuery(project, jobNames)
 				fc.SetQueryResult(query, []any{})
 			},
-			wantResults: 0,
-			wantErr:     false,
+			wantResults:   0,
+			wantErr:       false,
 			validateQuery: func(t *testing.T, query string) {},
 		},
 		{

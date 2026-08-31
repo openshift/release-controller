@@ -7,12 +7,12 @@ import (
 	"math"
 	"net/http"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/andygrunwald/go-jira"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/prow/pkg/github"
 	"sigs.k8s.io/prow/pkg/github/fakegithub"
 	"sigs.k8s.io/prow/pkg/jira/fakejira"

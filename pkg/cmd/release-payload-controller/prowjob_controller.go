@@ -163,8 +163,8 @@ func (c *ProwJobStatusController) sync(ctx context.Context, key string) error {
 	}
 
 	labelSelector := labels.Set{
-		releasecontroller.ReleaseLabelVerify: "true",
-		releasecontroller.ReleaseLabelPayload:     originalReleasePayload.Name,
+		releasecontroller.ReleaseLabelVerify:  "true",
+		releasecontroller.ReleaseLabelPayload: originalReleasePayload.Name,
 	}
 
 	prowjobs, err := c.prowJobLister.ProwJobs(originalReleasePayload.Spec.PayloadCreationConfig.ProwCoordinates.Namespace).List(labels.SelectorFromSet(labelSelector))

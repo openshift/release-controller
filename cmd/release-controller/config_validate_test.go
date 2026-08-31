@@ -649,7 +649,7 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
 							"test": {
-								Enabled:            releasequalifiers.BoolPtr(false),
+								Enabled:            new(false),
 								BadgeName:          "TEST",
 								Description:        "An updated description when displaying badge details",
 								PayloadBadgeStatus: releasequalifiers.BadgeStatusNo,
@@ -672,8 +672,8 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
 							"sdn-migration": {
-								Approval:  releasequalifiers.BoolPtr(true),
-								Enabled:   releasequalifiers.BoolPtr(true),
+								Approval:  new(true),
+								Enabled:   new(true),
 								BadgeName: "SDN Migration",
 							},
 						},
@@ -694,7 +694,7 @@ func TestValidateQualifiersConfiguration(t *testing.T) {
 						},
 						Qualifiers: releasequalifiers.ReleaseQualifiers{
 							"sdn-migration": {
-								Approval:  releasequalifiers.BoolPtr(false),
+								Approval:  new(false),
 								BadgeName: "SDN Migration",
 							},
 						},

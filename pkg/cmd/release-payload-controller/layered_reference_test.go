@@ -17,23 +17,23 @@ import (
 func TestPayloadCreationWithoutCreationConfig(t *testing.T) {
 	testCases := []struct {
 		name                   string
-		hasCreationConfig     bool
+		hasCreationConfig      bool
 		expectCreatedCondition metav1.ConditionStatus
 		expectFailedCondition  metav1.ConditionStatus
-		expectMessage         string
+		expectMessage          string
 	}{
 		{
 			name:                   "Payload with creation config follows normal job-based flow",
-			hasCreationConfig:     true,
+			hasCreationConfig:      true,
 			expectCreatedCondition: metav1.ConditionUnknown, // Waits for job completion
 			expectFailedCondition:  metav1.ConditionUnknown,
 		},
 		{
 			name:                   "Payload without creation config marked as created immediately",
-			hasCreationConfig:     false,
+			hasCreationConfig:      false,
 			expectCreatedCondition: metav1.ConditionTrue, // Immediate success
 			expectFailedCondition:  metav1.ConditionFalse,
-			expectMessage:         "Release payload using pre-existing image, no creation job needed",
+			expectMessage:          "Release payload using pre-existing image, no creation job needed",
 		},
 	}
 

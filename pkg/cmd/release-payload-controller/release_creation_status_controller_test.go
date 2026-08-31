@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"k8s.io/apimachinery/pkg/types"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	"github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
@@ -18,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"

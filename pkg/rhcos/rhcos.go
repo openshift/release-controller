@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	rhelCoreOs           = "Red Hat Enterprise Linux CoreOS"
-	rhelCoreOs10         = "Red Hat Enterprise Linux CoreOS 10"
-	centosStreamCoreOs   = "CentOS Stream CoreOS"
+	rhelCoreOs         = "Red Hat Enterprise Linux CoreOS"
+	rhelCoreOs10       = "Red Hat Enterprise Linux CoreOS 10"
+	centosStreamCoreOs = "CentOS Stream CoreOS"
 	baseLayerAlertBox  = `<div class="alert alert-info" id="coreos-base-alert">
 		<p>The CoreOS links above are for <em>the base CoreOS layer</em> used to build
 		the OpenShift node image and do not contain OpenShift components. This is

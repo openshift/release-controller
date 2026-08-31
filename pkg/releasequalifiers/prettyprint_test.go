@@ -19,14 +19,14 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "pretty print with sorted keys and escalations",
 			qualifiers: ReleaseQualifiers{
 				"zebra": {
-					Enabled:            BoolPtr(true),
+					Enabled:            new(true),
 					BadgeName:          "ZEB",
 					Summary:            "Zebra Component",
 					Description:        "Detailed zebra description",
 					PayloadBadgeStatus: BadgeStatusOnSuccess,
 				},
 				"alpha": {
-					Enabled:     BoolPtr(false),
+					Enabled:     new(false),
 					BadgeName:   "ALP",
 					Summary:     "Alpha Component",
 					Description: "Detailed alpha description",
@@ -45,7 +45,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 					},
 				},
 				"beta": {
-					Enabled:   BoolPtr(true),
+					Enabled:   new(true),
 					BadgeName: "BET",
 					Summary:   "Beta Component",
 				},
@@ -61,7 +61,7 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "single qualifier with all fields",
 			qualifiers: ReleaseQualifiers{
 				"comprehensive": {
-					Enabled:            BoolPtr(true),
+					Enabled:            new(true),
 					BadgeName:          "COMP",
 					Summary:            "Comprehensive test",
 					Description:        "Full description",
@@ -88,16 +88,16 @@ func TestReleaseQualifiers_PrettyPrint(t *testing.T) {
 			name: "multiple qualifiers with varying complexity",
 			qualifiers: ReleaseQualifiers{
 				"simple": {
-					Enabled:   BoolPtr(false),
+					Enabled:   new(false),
 					BadgeName: "SIM",
 				},
 				"with-labels": {
-					Enabled:       BoolPtr(true),
+					Enabled:       new(true),
 					BadgeName:     "LAB",
 					FailureLabels: []string{"critical", "urgent"},
 				},
 				"with-payload": {
-					Enabled:            BoolPtr(true),
+					Enabled:            new(true),
 					BadgeName:          "PAY",
 					PayloadBadgeStatus: BadgeStatusOnFailure,
 				},
@@ -320,7 +320,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "minimal qualifier with only enabled",
 			qualifier: ReleaseQualifier{
-				Enabled: BoolPtr(true),
+				Enabled: new(true),
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
@@ -336,7 +336,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "full qualifier with all fields",
 			qualifier: ReleaseQualifier{
-				Enabled:            BoolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "TEST",
 				Summary:            "Test Summary",
 				Description:        "Test Description",
@@ -395,7 +395,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with jira notifications only",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(false),
+				Enabled:   new(false),
 				BadgeName: "JIRA-ONLY",
 				Summary:   "Jira Only Test",
 				Notifications: &notifications.Notifications{
@@ -430,7 +430,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with empty notifications",
 			qualifier: ReleaseQualifier{
-				Enabled:       BoolPtr(true),
+				Enabled:       new(true),
 				BadgeName:     "EMPTY",
 				Notifications: &notifications.Notifications{},
 			},
@@ -450,7 +450,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with escalations with mentions",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
+				Enabled:   new(true),
 				BadgeName: "MENTIONS",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
@@ -492,7 +492,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with description field",
 			qualifier: ReleaseQualifier{
-				Enabled:     BoolPtr(true),
+				Enabled:     new(true),
 				BadgeName:   "DESC-TEST",
 				Summary:     "Summary text",
 				Description: "This is a detailed description for the qualifier",
@@ -512,7 +512,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with payload badge",
 			qualifier: ReleaseQualifier{
-				Enabled:            BoolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "BADGE-TEST",
 				PayloadBadgeStatus: BadgeStatusYes,
 			},
@@ -531,7 +531,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with all jira fields",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
+				Enabled:   new(true),
 				BadgeName: "FULL-JIRA",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{
@@ -599,7 +599,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with labels",
 			qualifier: ReleaseQualifier{
-				Enabled:       BoolPtr(true),
+				Enabled:       new(true),
 				BadgeName:     "LABELS-TEST",
 				FailureLabels: []string{"bug", "priority-high", "team-a"},
 			},
@@ -618,7 +618,7 @@ func TestReleaseQualifier_PrettyPrint(t *testing.T) {
 		{
 			name: "qualifier with jira escalations without mentions",
 			qualifier: ReleaseQualifier{
-				Enabled:   BoolPtr(true),
+				Enabled:   new(true),
 				BadgeName: "JIRA-NO-MENTIONS",
 				Notifications: &notifications.Notifications{
 					Jira: &jira.Notification{

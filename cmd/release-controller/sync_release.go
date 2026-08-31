@@ -400,8 +400,8 @@ func newReleaseJobBase(name, cliImage, pullSecretName string) (*batchv1.Job, str
 			Annotations: map[string]string{},
 		},
 		Spec: batchv1.JobSpec{
-			Parallelism:  releasecontroller.Int32p(1),
-			BackoffLimit: releasecontroller.Int32p(3),
+			Parallelism:  new(int32(1)),
+			BackoffLimit: new(int32(3)),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "builder",

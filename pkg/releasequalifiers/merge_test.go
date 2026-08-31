@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	TRUE  = BoolPtr(true)
-	FALSE = BoolPtr(false)
+	TRUE  = new(true)
+	FALSE = new(false)
 )
 
 func TestReleaseQualifiers_Merge(t *testing.T) {

@@ -35,11 +35,18 @@ update-crd: update-codegen-script update-codegen-crds
 # Create CRD from scratch using the 'crd' generator instead of 'schemapatch'
 # This target can regenerate the CRD even if it doesn't exist, unlike update-crd
 # which uses 'schemapatch' and only patches existing CRDs.
+#
+# The 'crd' generator emits a different YAML format (leading '---', different list
+# indentation and field ordering) than 'schemapatch', which is what CI verifies via
+# verify-codegen-crds. Committing the raw 'crd' output therefore fails CI. To avoid
+# that trap, always follow up with update-codegen-crds (schemapatch) to normalize the
+# file into the canonical, CI-clean form before it lands in ./artifacts.
 create-crd: update-codegen-script ensure-controller-gen
 	'$(CONTROLLER_GEN)' \
 		crd \
 		paths="./pkg/apis/release/v1alpha1" \
 		'output:crd:dir=./artifacts'
+	$(MAKE) update-codegen-crds
 .PHONY: create-crd
 
 sonar-reports:

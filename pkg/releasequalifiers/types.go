@@ -62,6 +62,8 @@ const (
 
 // BoolPtr returns a pointer to the given bool value
 // This is a utility function for creating pointers to bool values
+//
+//go:fix inline
 func BoolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }

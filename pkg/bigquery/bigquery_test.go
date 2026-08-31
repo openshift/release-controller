@@ -255,4 +255,3 @@ func TestCopyToStruct_MapToNonStruct(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
-

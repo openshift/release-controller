@@ -463,7 +463,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 							CIConfigurationJobName: "blocking-prowjob",
 							Qualifiers: map[releasequalifiers.QualifierId]releasequalifiers.ReleaseQualifier{
 								"qualifier1": {
-									Enabled:            releasequalifiers.BoolPtr(true),
+									Enabled:            new(true),
 									BadgeName:          "ABC",
 									Summary:            "The ABC release qualifier",
 									PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
@@ -487,7 +487,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 							CIConfigurationJobName: "blocking-prowjob",
 							Qualifiers: map[releasequalifiers.QualifierId]releasequalifiers.ReleaseQualifier{
 								"qualifier1": {
-									Enabled:            releasequalifiers.BoolPtr(true),
+									Enabled:            new(true),
 									BadgeName:          "ABC",
 									Summary:            "The ABC release qualifier",
 									PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
@@ -521,7 +521,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 							CIConfigurationJobName: "blocking-prowjob",
 							Qualifiers: map[releasequalifiers.QualifierId]releasequalifiers.ReleaseQualifier{
 								"qualifier1": {
-									Enabled:     releasequalifiers.BoolPtr(false),
+									Enabled:     new(false),
 									Description: "Disabled release qualifier",
 									FailureLabels: []string{
 										"qualifier1-label=true",
@@ -546,7 +546,7 @@ func TestPayloadVerificationSync(t *testing.T) {
 							CIConfigurationJobName: "blocking-prowjob",
 							Qualifiers: map[releasequalifiers.QualifierId]releasequalifiers.ReleaseQualifier{
 								"qualifier1": {
-									Enabled:     releasequalifiers.BoolPtr(false),
+									Enabled:     new(false),
 									Description: "Disabled release qualifier",
 									FailureLabels: []string{
 										"qualifier1-label=true",

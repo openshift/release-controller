@@ -269,8 +269,9 @@ func TagNames(refs []*imagev1.TagReference) []string {
 	return names
 }
 
+//go:fix inline
 func Int32p(i int32) *int32 {
-	return &i
+	return new(i)
 }
 
 func ContainsTagReference(tags []*imagev1.TagReference, name string) bool {

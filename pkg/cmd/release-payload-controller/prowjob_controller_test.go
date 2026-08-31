@@ -58,8 +58,8 @@ func newProwJob(name, namespace, release, jobName, source, cluster string, state
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				releasecontroller.ReleaseLabelVerify: "true",
-				releasecontroller.ReleaseLabelPayload:     release,
+				releasecontroller.ReleaseLabelVerify:  "true",
+				releasecontroller.ReleaseLabelPayload: release,
 			},
 			Annotations: map[string]string{
 				kube.ProwJobAnnotation:                    jobName,

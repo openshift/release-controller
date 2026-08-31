@@ -573,7 +573,7 @@ const (
 	ReleaseVerificationStateFailed    = "Failed"
 	ReleaseVerificationStatePending   = "Pending"
 
-	ReleaseConfigModeStable = "Stable"
+	ReleaseConfigModeStable  = "Stable"
 	ReleaseConfigModeLayered = "Layered"
 
 	// ReferencePayloadTagPrefix is prepended to release names when pushing

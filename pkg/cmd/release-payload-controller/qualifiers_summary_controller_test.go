@@ -15,8 +15,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/cache"
 	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/clock"
 )
 
@@ -27,10 +27,6 @@ type mockConfigAccessor struct {
 
 func (m *mockConfigAccessor) Get() releasequalifiers.ReleaseQualifiers {
 	return m.config
-}
-
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 func TestQualifiersSummarySync(t *testing.T) {
@@ -46,12 +42,12 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"techpreview": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "Tech Preview",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -171,12 +167,12 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"techpreview": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "Tech Preview",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -383,7 +379,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -535,7 +531,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"hypershift": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "HyperShift",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -619,7 +615,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"prevent_rc", "needs-attention"},
@@ -706,7 +702,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"hcm": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "HCM",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 						FailureLabels:      []string{"prevent_ec"},
@@ -793,7 +789,7 @@ func TestQualifiersSummarySync(t *testing.T) {
 			configAccessor: &mockConfigAccessor{
 				config: releasequalifiers.ReleaseQualifiers{
 					"fips": {
-						Enabled:            boolPtr(true),
+						Enabled:            new(true),
 						BadgeName:          "FIPS",
 						PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 					},
@@ -1040,7 +1036,7 @@ func TestQualifiersSummarySyncUpdateStatusError(t *testing.T) {
 	configAccessor := &mockConfigAccessor{
 		config: releasequalifiers.ReleaseQualifiers{
 			"techpreview": {
-				Enabled:            boolPtr(true),
+				Enabled:            new(true),
 				BadgeName:          "Tech Preview",
 				PayloadBadgeStatus: releasequalifiers.BadgeStatusOnSuccess,
 			},
