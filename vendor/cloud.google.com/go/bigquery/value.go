@@ -28,6 +28,9 @@ import (
 	bq "google.golang.org/api/bigquery/v2"
 )
 
+// Utility functions to deal with byproducts of wrapper types in discovery.
+func int64ptr(v int64) *int64 { return &v }
+
 // Value stores the contents of a single cell from a BigQuery result.
 type Value interface{}
 
@@ -838,6 +841,18 @@ func parseCivilDateTime(s string) (civil.DateTime, error) {
 	return civil.ParseDateTime(parts[0] + "T" + parts[1])
 }
 
+func parseCivilDate(s string) (civil.Date, error) {
+	cdt, err := civil.ParseDate(s)
+	if err != nil {
+		t, err := time.Parse("2006-1-2", s)
+		if err != nil {
+			return civil.Date{}, err
+		}
+		return civil.DateOf(t), err
+	}
+	return cdt, nil
+}
+
 const (
 	// NumericPrecisionDigits is the maximum number of digits in a NUMERIC value.
 	NumericPrecisionDigits = 38
@@ -984,7 +999,7 @@ func convertBasicType(val string, typ FieldType) (Value, error) {
 		}
 		return time.UnixMicro(i).UTC(), nil
 	case DateFieldType:
-		return civil.ParseDate(val)
+		return parseCivilDate(val)
 	case TimeFieldType:
 		return civil.ParseTime(val)
 	case DateTimeFieldType:

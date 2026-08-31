@@ -62,6 +62,8 @@ type FakeClient struct {
 	CreatedStatuses            map[string][]github.Status
 	IssueEvents                map[int][]github.ListedIssueEvent
 	Commits                    map[string]github.RepositoryCommit
+	BlameData                  map[string][]github.BlameRange
+	MergeBaseSHA               string
 
 	// All Labels That Exist In The Repo
 	RepoLabelsExisting []string
@@ -155,6 +157,12 @@ type FakeClient struct {
 	PendingApprovalRuns map[string][]github.WorkflowRun
 	// ApprovedWorkflowRuns tracks approvals as "org/repo/runID"
 	ApprovedWorkflowRuns []string
+	// ApproveWorkflowRunErrors maps "org/repo/runID" to an error to return from ApproveGitHubWorkflowRun
+	ApproveWorkflowRunErrors map[string]error
+	// ReranWorkflowRuns tracks reruns as "org/repo/runID"
+	ReranWorkflowRuns []string
+	// ReranWorkflowRunErrors maps "org/repo/runID" to an error to return from TriggerGitHubWorkflow
+	ReranWorkflowRunErrors map[string]error
 
 	// lock to be thread safe
 	lock sync.RWMutex
@@ -537,6 +545,19 @@ func (f *FakeClient) DeleteRef(owner, repo, ref string) error {
 	defer f.lock.Unlock()
 	f.RefsDeleted = append(f.RefsDeleted, struct{ Org, Repo, Ref string }{Org: owner, Repo: repo, Ref: ref})
 	return nil
+}
+
+// GetBlame returns blame data for a file. Returns BlameData[path] if configured, nil otherwise.
+func (f *FakeClient) GetBlame(org, repo, ref, path string) ([]github.BlameRange, error) {
+	if f.BlameData != nil {
+		return f.BlameData[path], nil
+	}
+	return nil, nil
+}
+
+// GetMergeBase returns MergeBaseSHA if configured, or an empty string.
+func (f *FakeClient) GetMergeBase(org, repo, base, head string) (string, error) {
+	return f.MergeBaseSHA, nil
 }
 
 // GetSingleCommit returns a single commit.
@@ -1362,6 +1383,16 @@ func (f *FakeClient) GetFailedActionRunsByHeadBranch(org, repo, branchName, head
 }
 
 func (f *FakeClient) TriggerGitHubWorkflow(org, repo string, id int) error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	key := fmt.Sprintf("%s/%s/%d", org, repo, id)
+	if f.ReranWorkflowRunErrors != nil {
+		if err, ok := f.ReranWorkflowRunErrors[key]; ok {
+			return err
+		}
+	}
+	f.ReranWorkflowRuns = append(f.ReranWorkflowRuns, key)
 	return nil
 }
 
@@ -1385,6 +1416,11 @@ func (f *FakeClient) ApproveGitHubWorkflowRun(org, repo string, id int) error {
 	defer f.lock.Unlock()
 
 	key := fmt.Sprintf("%s/%s/%d", org, repo, id)
+	if f.ApproveWorkflowRunErrors != nil {
+		if err, ok := f.ApproveWorkflowRunErrors[key]; ok {
+			return err
+		}
+	}
 	f.ApprovedWorkflowRuns = append(f.ApprovedWorkflowRuns, key)
 	return nil
 }

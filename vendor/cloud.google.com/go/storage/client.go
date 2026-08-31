@@ -16,7 +16,6 @@ package storage
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -88,7 +87,7 @@ type storageClient interface {
 	RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error)
 
 	NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (*Reader, error)
-	OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error)
+	OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error)
 
 	// IAM methods.
 
@@ -110,6 +109,8 @@ type storageClient interface {
 	DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) error
 
 	NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error)
+
+	fetchBucketMetadata(ctx context.Context, bucket string) (resource string, location string, err error)
 }
 
 // settings contains transport-agnostic configuration for API calls made via
@@ -257,15 +258,25 @@ type openWriterParams struct {
 	// conds - see `Writer.o.conds`.
 	// Optional.
 	conds *Conditions
+	// appendGen -- object generation to write to.
+	// Optional; required for taking over appendable objects only
+	appendGen int64
 	// encryptionKey - see `Writer.o.encryptionKey`
 	// Optional.
 	encryptionKey []byte
 	// sendCRC32C - see `Writer.SendCRC32C`.
 	// Optional.
 	sendCRC32C bool
+	// disableAutoChecksum - see `Writer.DisableAutoChecksum`.
+	// Optional.
+	disableAutoChecksum bool
 	// append - Write with appendable object semantics.
 	// Optional.
 	append bool
+	// finalizeOnClose - Finalize the object when the storage.Writer is closed
+	// successfully.
+	// Optional.
+	finalizeOnClose bool
 
 	// Writer callbacks
 
@@ -281,27 +292,39 @@ type openWriterParams struct {
 	// setObj callback for reporting the resulting object - see `Writer.obj`.
 	// Required.
 	setObj func(*ObjectAttrs)
+	// setSize callback for updated the persisted size in Writer.obj.
+	setSize func(int64)
+	// setTakeoverOffset callback for returning offset to start writing from to Writer.
+	setTakeoverOffset func(int64)
 }
 
 type newMultiRangeDownloaderParams struct {
-	bucket        string
-	conds         *Conditions
-	encryptionKey []byte
-	gen           int64
-	object        string
-	handle        *ReadHandle
+	bucket                 string
+	conds                  *Conditions
+	disableMRDReadChecksum bool
+	encryptionKey          []byte
+	gen                    int64
+	handle                 *ReadHandle
+	object                 string
+
+	// Multistream settings.
+	minConnections      int
+	maxConnections      int
+	targetPendingRanges int
+	targetPendingBytes  int
 }
 
 type newRangeReaderParams struct {
-	bucket         string
-	conds          *Conditions
-	encryptionKey  []byte
-	gen            int64
-	length         int64
-	object         string
-	offset         int64
-	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
-	handle         *ReadHandle
+	bucket          string
+	conds           *Conditions
+	encryptionKey   []byte
+	gen             int64
+	length          int64
+	object          string
+	offset          int64
+	readCompressed  bool // Use accept-encoding: gzip. Only works for HTTP currently.
+	handle          *ReadHandle
+	disableCRCCheck bool
 }
 
 type getObjectParams struct {
@@ -337,11 +360,12 @@ type moveObjectParams struct {
 }
 
 type composeObjectRequest struct {
-	dstBucket     string
-	dstObject     destinationObject
-	srcs          []sourceObject
-	predefinedACL string
-	sendCRC32C    bool
+	dstBucket           string
+	dstObject           destinationObject
+	srcs                []sourceObject
+	predefinedACL       string
+	sendCRC32C          bool
+	deleteSourceObjects bool
 }
 
 type sourceObject struct {

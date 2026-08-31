@@ -68,12 +68,12 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	periodicConfig, ok := hasProwJob(config, jobName)
 	if !ok {
 		err := fmt.Errorf("the prow job %s is not valid: no job with that name", jobName)
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
+		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, releasecontroller.CreateTerminalError(err)
 	}
 	if err := validateProwJob(periodicConfig); err != nil {
 		err := fmt.Errorf("the prowjob %s is not valid: %v", jobName, err)
-		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
+		c.eventRecorder.Event(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, releasecontroller.CreateTerminalError(err)
 	}
 

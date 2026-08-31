@@ -231,6 +231,7 @@ func (d *Dataset) CreateWithOptions(ctx context.Context, md *DatasetMetadata, op
 	if ds.Location == "" {
 		ds.Location = d.c.Location
 	}
+	ctx = setProjectItemTraceMetadata(ctx, d.ProjectID, "datasets")
 	call := d.c.bqs.Datasets.Insert(d.ProjectID, ds).Context(ctx)
 	setClientHeader(call.Header())
 	if cOpt.accessPolicyVersion != nil {
@@ -255,23 +256,23 @@ func (dm *DatasetMetadata) toBQ() (*bq.Dataset, error) {
 	ds.StorageBillingModel = string(dm.StorageBillingModel)
 	ds.IsCaseInsensitive = dm.IsCaseInsensitive
 	ds.Labels = dm.Labels
+	// These fields are read-only, but we'll populate them should there be a change in the service behavior.
+	if !dm.CreationTime.IsZero() {
+		ds.CreationTime = dm.CreationTime.UnixMilli()
+	}
+	if !dm.LastModifiedTime.IsZero() {
+		ds.LastModifiedTime = dm.LastModifiedTime.UnixMilli()
+	}
+	ds.Etag = dm.ETag
+	ds.Id = dm.FullID
+
+	// access list
 	var err error
 	ds.Access, err = accessListToBQ(dm.Access)
 	if err != nil {
 		return nil, err
 	}
-	if !dm.CreationTime.IsZero() {
-		return nil, errors.New("bigquery: Dataset.CreationTime is not writable")
-	}
-	if !dm.LastModifiedTime.IsZero() {
-		return nil, errors.New("bigquery: Dataset.LastModifiedTime is not writable")
-	}
-	if dm.FullID != "" {
-		return nil, errors.New("bigquery: Dataset.FullID is not writable")
-	}
-	if dm.ETag != "" {
-		return nil, errors.New("bigquery: Dataset.ETag is not writable")
-	}
+
 	if dm.DefaultEncryptionConfig != nil {
 		ds.DefaultEncryptionConfiguration = dm.DefaultEncryptionConfig.toBQ()
 	}
@@ -307,6 +308,7 @@ func (d *Dataset) deleteInternal(ctx context.Context, deleteContents bool) (err 
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigquery.Dataset.Delete")
 	defer func() { trace.EndSpan(ctx, err) }()
 
+	ctx = setDatasetTraceMetadata(ctx, d.ProjectID, d.DatasetID)
 	call := d.c.bqs.Datasets.Delete(d.ProjectID, d.DatasetID).Context(ctx).DeleteContents(deleteContents)
 	setClientHeader(call.Header())
 	return runWithRetry(ctx, func() (err error) {
@@ -333,11 +335,16 @@ func (d *Dataset) MetadataWithOptions(ctx context.Context, opts ...DatasetOption
 		o(cOpt)
 	}
 
+	ctx = setDatasetTraceMetadata(ctx, d.ProjectID, d.DatasetID)
 	call := d.c.bqs.Datasets.Get(d.ProjectID, d.DatasetID).Context(ctx)
 	setClientHeader(call.Header())
 	if cOpt.accessPolicyVersion != nil {
 		call.AccessPolicyVersion(int64(optional.ToInt(cOpt.accessPolicyVersion)))
 	}
+	if cOpt.datasetView != nil {
+		call.DatasetView(optional.ToString(cOpt.datasetView))
+	}
+
 	var ds *bq.Dataset
 	if err := runWithRetry(ctx, func() (err error) {
 		sCtx := trace.StartSpan(ctx, "bigquery.datasets.get")
@@ -353,6 +360,8 @@ func (d *Dataset) MetadataWithOptions(ctx context.Context, opts ...DatasetOption
 // dsCallOption provides a general option holder for dataset RPCs
 type dsCallOption struct {
 	accessPolicyVersion optional.Int
+	datasetView         optional.String
+	updateMode          optional.String
 }
 
 // DatasetOption provides an option type for customizing requests against the Dataset
@@ -377,6 +386,62 @@ type DatasetOption func(*dsCallOption)
 func WithAccessPolicyVersion(apv int) DatasetOption {
 	return func(o *dsCallOption) {
 		o.accessPolicyVersion = apv
+	}
+}
+
+// DatasetView specifies which details about a dataset are desired.
+type DatasetView string
+
+const (
+	// DatasetMetadataView populates metadata information for the dataset,
+	// such as friendlyName, description, labels, etc.
+	DatasetMetadataView DatasetView = "METADATA"
+
+	// DatasetACLView populates information for the dataset, which defines
+	// dataset access for one or more entities.
+	DatasetACLView DatasetView = "ACL"
+
+	// DatasetFullView populates both dataset metadata and ACL information.
+	DatasetFullView DatasetView = "FULL"
+
+	// UnspecifiedDatasetView is the default value, which will be treated as DatasetFullView
+	UnspecifiedDatasetView DatasetView = "DATASET_VIEW_UNSPECIFIED"
+)
+
+// WithDatasetView specifies the view that determines which dataset information
+// is returned. By default, metadata and ACL information are returned.
+func WithDatasetView(view DatasetView) DatasetOption {
+	return func(o *dsCallOption) {
+		o.datasetView = string(view)
+	}
+}
+
+// DatasetUpdateMode specifies which fields of a dataset are going to be affected
+// by update/patch operations.
+type DatasetUpdateMode string
+
+const (
+	// DatasetMetadataUpdateMode targets metadata information for the dataset,
+	// such as friendlyName, description, labels, etc.
+	DatasetMetadataUpdateMode DatasetUpdateMode = "UPDATE_METADATA"
+
+	// DatasetACLUpdateMode targets ACL information for the dataset,
+	// which defines dataset access for one or more entities.
+	DatasetACLUpdateMode DatasetUpdateMode = "UPDATE_ACL"
+
+	// DatasetFullUpdateMode targets both dataset metadata and ACL
+	// information on update operations.
+	DatasetFullUpdateMode DatasetUpdateMode = "UPDATE_FULL"
+
+	// UnspecifiedDatasetUpdateMode is the default value, which will be treated as DatasetFullUpdateMode
+	UnspecifiedDatasetUpdateMode DatasetUpdateMode = "UPDATE_MODE_UNSPECIFIED"
+)
+
+// WithUpdateMode specifies the fields of dataset that the update/patch
+// operation is targeting. By default, both metadata and ACL fields are updated.
+func WithUpdateMode(mode DatasetUpdateMode) DatasetOption {
+	return func(o *dsCallOption) {
+		o.updateMode = string(mode)
 	}
 }
 
@@ -442,6 +507,7 @@ func (d *Dataset) UpdateWithOptions(ctx context.Context, dm DatasetMetadataToUpd
 		return nil, err
 	}
 
+	ctx = setDatasetTraceMetadata(ctx, d.ProjectID, d.DatasetID)
 	call := d.c.bqs.Datasets.Patch(d.ProjectID, d.DatasetID, ds).Context(ctx)
 	setClientHeader(call.Header())
 	if etag != "" {
@@ -450,6 +516,10 @@ func (d *Dataset) UpdateWithOptions(ctx context.Context, dm DatasetMetadataToUpd
 	if cOpt.accessPolicyVersion != nil {
 		call.AccessPolicyVersion(int64(optional.ToInt(cOpt.accessPolicyVersion)))
 	}
+	if cOpt.updateMode != nil {
+		call.UpdateMode(optional.ToString(cOpt.updateMode))
+	}
+
 	var ds2 *bq.Dataset
 	if err := runWithRetry(ctx, func() (err error) {
 		sCtx := trace.StartSpan(ctx, "bigquery.datasets.patch")
@@ -586,6 +656,7 @@ func (it *TableIterator) PageInfo() *iterator.PageInfo { return it.pageInfo }
 
 // listTables exists to aid testing.
 var listTables = func(it *TableIterator, pageSize int, pageToken string) (*bq.TableList, error) {
+	it.ctx = setDatasetItemTraceMetadata(it.ctx, it.dataset.ProjectID, it.dataset.DatasetID, "tables")
 	call := it.dataset.c.bqs.Tables.List(it.dataset.ProjectID, it.dataset.DatasetID).
 		PageToken(pageToken).
 		Context(it.ctx)
@@ -673,6 +744,7 @@ func (it *ModelIterator) PageInfo() *iterator.PageInfo { return it.pageInfo }
 
 // listTables exists to aid testing.
 var listModels = func(it *ModelIterator, pageSize int, pageToken string) (*bq.ListModelsResponse, error) {
+	it.ctx = setDatasetItemTraceMetadata(it.ctx, it.dataset.ProjectID, it.dataset.DatasetID, "models")
 	call := it.dataset.c.bqs.Models.List(it.dataset.ProjectID, it.dataset.DatasetID).
 		PageToken(pageToken).
 		Context(it.ctx)
@@ -762,6 +834,7 @@ func (it *RoutineIterator) PageInfo() *iterator.PageInfo { return it.pageInfo }
 
 // listRoutines exists to aid testing.
 var listRoutines = func(it *RoutineIterator, pageSize int, pageToken string) (*bq.ListRoutinesResponse, error) {
+	it.ctx = setDatasetItemTraceMetadata(it.ctx, it.dataset.ProjectID, it.dataset.DatasetID, "routines")
 	call := it.dataset.c.bqs.Routines.List(it.dataset.ProjectID, it.dataset.DatasetID).
 		PageToken(pageToken).
 		Context(it.ctx)
@@ -864,6 +937,7 @@ func (it *DatasetIterator) Next() (*Dataset, error) {
 
 // for testing
 var listDatasets = func(it *DatasetIterator, pageSize int, pageToken string) (*bq.DatasetList, error) {
+	it.ctx = setProjectItemTraceMetadata(it.ctx, it.ProjectID, "datasets")
 	call := it.c.bqs.Datasets.List(it.ProjectID).
 		Context(it.ctx).
 		PageToken(pageToken).

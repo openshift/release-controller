@@ -239,6 +239,7 @@ func (j *Job) Cancel(ctx context.Context) error {
 	// docs: "This call will return immediately, and the client will need
 	// to poll for the job status to see if the cancel completed
 	// successfully".  So it would be misleading to return a status.
+	ctx = setJobItemTraceMetadata(ctx, j.projectID, j.jobID, "cancel")
 	call := j.c.bqs.Jobs.Cancel(j.projectID, j.jobID).
 		Location(j.location).
 		Fields(). // We don't need any of the response data.
@@ -257,6 +258,7 @@ func (j *Job) Delete(ctx context.Context) (err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigquery.Job.Delete")
 	defer func() { trace.EndSpan(ctx, err) }()
 
+	ctx = setJobTraceMetadata(ctx, j.projectID, j.jobID)
 	call := j.c.bqs.Jobs.Delete(j.projectID, j.jobID).Context(ctx)
 	if j.location != "" {
 		call = call.Location(j.location)
@@ -352,8 +354,9 @@ func (j *Job) read(ctx context.Context, waitForQuery func(context.Context, strin
 // returns the total number of rows in the result set.
 func (j *Job) waitForQuery(ctx context.Context, projectID string) (Schema, uint64, error) {
 	// Use GetQueryResults only to wait for completion, not to read results.
+	ctx = setJobItemTraceMetadata(ctx, projectID, j.jobID, "getQueryResults")
 	call := j.c.bqs.Jobs.GetQueryResults(projectID, j.jobID).Location(j.location).Context(ctx).MaxResults(0)
-	call = call.FormatOptionsUseInt64Timestamp(true)
+	call = call.FormatOptionsUseInt64Timestamp(defaultUseInt64Timestamp)
 	setClientHeader(call.Header())
 	backoff := gax.Backoff{
 		Initial:    50 * time.Millisecond,
@@ -381,12 +384,35 @@ func (j *Job) waitForQuery(ctx context.Context, projectID string) (Schema, uint6
 
 // JobStatistics contains statistics about a job.
 type JobStatistics struct {
-	CreationTime        time.Time
-	StartTime           time.Time
-	EndTime             time.Time
+	// CreationTime is the creation time of this job.
+	// This field will be present on all jobs.
+	CreationTime time.Time
+
+	// StartTime is the start time of this job.
+	// This field will be present when the job transitions from the PENDING state to either RUNNING or DONE.
+	StartTime time.Time
+
+	// EndTime is the end time of this job.
+	// This field will be present whenever a job is in the DONE state.
+	EndTime time.Time
+
+	// TotalBytesProcessed is the total bytes processed for the job.
 	TotalBytesProcessed int64
 
+	// Details is the jobType-specific statistics for the job
 	Details Statistics
+
+	// TotalSlotDuration is the slot duration for the job.
+	TotalSlotDuration time.Duration
+
+	// ReservationUsage attributes slot consumption to reservations.
+	// This field reported misleading information and will no longer be populated.
+	ReservationUsage []*ReservationUsage
+
+	// ReservationID is the name of the primary reservation assigned to this job.
+	// Note that this could be different than reservations reported in the reservation
+	// usage field if parent reservations were used to execute this job.
+	ReservationID string
 
 	// NumChildJobs indicates the number of child jobs run as part of a script.
 	NumChildJobs int64
@@ -398,14 +424,22 @@ type JobStatistics struct {
 	// a script.
 	ScriptStatistics *ScriptStatistics
 
-	// ReservationUsage attributes slot consumption to reservations.
-	ReservationUsage []*ReservationUsage
-
 	// TransactionInfo indicates the transaction ID associated with the job, if any.
 	TransactionInfo *TransactionInfo
 
 	// SessionInfo contains information about the session if this job is part of one.
 	SessionInfo *SessionInfo
+
+	// FinalExecutionDuration is the duration of the execution of the final
+	// attempt of this job, as BigQuery may internally re-attempt to execute the job.
+	FinalExecutionDuration time.Duration
+
+	// Edition is the name of edition corresponding to the reservation for this job
+	// at the time of this update.
+	Edition ReservationEdition
+
+	// Job progress (0.0 -> 1.0) for LOAD and EXTRACT jobs.
+	CompletionRatio float64
 }
 
 // Statistics is one of ExtractStatistics, LoadStatistics or QueryStatistics.
@@ -493,6 +527,10 @@ type QueryStatistics struct {
 	// Slot-milliseconds consumed by this query job.
 	SlotMillis int64
 
+	// Total slot milliseconds for the job that runs on external services and is
+	// billed on the services SKU.
+	TotalServicesSkuSlotMillis int64
+
 	// Standard SQL: list of undeclared query parameter names detected during a
 	// dry run validation.
 	UndeclaredQueryParameterNames []string
@@ -509,6 +547,9 @@ type QueryStatistics struct {
 
 	// Statistics for the EXPORT DATA statement as part of Query Job.
 	ExportDataStatistics *ExportDataStatistics
+
+	// Performance insights.
+	PerformanceInsights *PerformanceInsights
 }
 
 // ExportDataStatistics represents statistics for
@@ -697,6 +738,23 @@ type QueryTimelineSample struct {
 	SlotMillis int64
 }
 
+// ReservationEdition is used to specify the name of edition corresponding to the reservation.
+type ReservationEdition string
+
+var (
+	// ReservationEditionUnspecified is the default value, which will be treated as ReservationEditionEnterprise
+	ReservationEditionUnspecified ReservationEdition = "RESERVATION_EDITION_UNSPECIFIED"
+
+	// ReservationEditionStandard represents the Standard edition.
+	ReservationEditionStandard ReservationEdition = "STANDARD"
+
+	// ReservationEditionEnterprise represents the Enterprise edition.
+	ReservationEditionEnterprise ReservationEdition = "ENTERPRISE"
+
+	// ReservationEditionEnterprisePlus represents the Enterprise Plus edition.
+	ReservationEditionEnterprisePlus ReservationEdition = "ENTERPRISE_PLUS"
+)
+
 // ReservationUsage contains information about a job's usage of a single reservation.
 type ReservationUsage struct {
 	// SlotMillis reports the slot milliseconds utilized within in the given reservation.
@@ -797,6 +855,194 @@ func bqToDMLStatistics(q *bq.DmlStatistics) *DMLStatistics {
 	}
 }
 
+// PerformanceInsights contains performance insights for the job.
+type PerformanceInsights struct {
+	// Average execution of previous runs.
+	AvgPreviousExecution time.Duration
+
+	// Standalone query stage performance insights, for exploring potential improvements.
+	StagePerformanceStandaloneInsights []*StagePerformanceStandaloneInsight
+
+	// jobs.query stage performance insights compared to previous runs, for diagnosing performance regression.
+	StagePerformanceChangeInsights []*StagePerformanceChangeInsight
+}
+
+func bqToPerformanceInsights(in *bq.PerformanceInsights) *PerformanceInsights {
+	if in == nil {
+		return nil
+	}
+
+	var standaloneInsights []*StagePerformanceStandaloneInsight
+	if sis := in.StagePerformanceStandaloneInsights; len(sis) > 0 {
+		standaloneInsights = make([]*StagePerformanceStandaloneInsight, 0, len(sis))
+		for _, si := range sis {
+			standaloneInsights = append(standaloneInsights, bqToStagePerformanceStandaloneInsight(si))
+		}
+	}
+
+	var changeInsights []*StagePerformanceChangeInsight
+	if cis := in.StagePerformanceChangeInsights; len(cis) > 0 {
+		changeInsights = make([]*StagePerformanceChangeInsight, 0, len(cis))
+		for _, ci := range cis {
+			changeInsights = append(changeInsights, bqToStagePerformanceChangeInsight(ci))
+		}
+	}
+
+	return &PerformanceInsights{
+		AvgPreviousExecution:               time.Duration(in.AvgPreviousExecutionMs) * time.Millisecond,
+		StagePerformanceStandaloneInsights: standaloneInsights,
+		StagePerformanceChangeInsights:     changeInsights,
+	}
+}
+
+// StagePerformanceStandaloneInsight describes standalone performance insights for a specific stage.
+type StagePerformanceStandaloneInsight struct {
+	// The stage id that the insight mapped to.
+	StageID int64
+
+	// If present, the stage had the following reasons for being disqualified from BI Engine execution.
+	BIEngineReasons []*BIEngineReason
+
+	// High cardinality joins in the stage.
+	HighCardinalityJoins []*HighCardinalityJoin
+
+	// True if the stage has a slot contention issue.
+	SlotContention bool
+
+	// True if the stage has insufficient shuffle quota.
+	InsufficientShuffleQuota bool
+
+	// Partition skew in the stage.
+	PartitionSkew *PartitionSkew
+}
+
+func bqToStagePerformanceStandaloneInsight(in *bq.StagePerformanceStandaloneInsight) *StagePerformanceStandaloneInsight {
+	if in == nil {
+		return nil
+	}
+
+	var biEngineReasons []*BIEngineReason
+	if bers := in.BiEngineReasons; len(bers) > 0 {
+		biEngineReasons = make([]*BIEngineReason, 0, len(bers))
+		for _, r := range bers {
+			biEngineReasons = append(biEngineReasons, bqToBIEngineReason(r))
+		}
+	}
+
+	var highCardinalityJoins []*HighCardinalityJoin
+	if hcjs := in.HighCardinalityJoins; len(hcjs) > 0 {
+		highCardinalityJoins = make([]*HighCardinalityJoin, 0, len(hcjs))
+		for _, hcj := range hcjs {
+			highCardinalityJoins = append(highCardinalityJoins, bqToHighCardinalityJoin(hcj))
+		}
+	}
+
+	return &StagePerformanceStandaloneInsight{
+		StageID:                  in.StageId,
+		BIEngineReasons:          biEngineReasons,
+		HighCardinalityJoins:     highCardinalityJoins,
+		SlotContention:           in.SlotContention,
+		InsufficientShuffleQuota: in.InsufficientShuffleQuota,
+		PartitionSkew:            bqToPartitionSkew(in.PartitionSkew),
+	}
+}
+
+// StagePerformanceChangeInsight contains performance insights compared to the previous executions for a specific stage.
+type StagePerformanceChangeInsight struct {
+	//  The stage id that the insight mapped to.
+	StageID int64
+
+	InputDataChange *InputDataChange
+}
+
+func bqToStagePerformanceChangeInsight(in *bq.StagePerformanceChangeInsight) *StagePerformanceChangeInsight {
+	if in == nil {
+		return nil
+	}
+
+	return &StagePerformanceChangeInsight{
+		StageID:         in.StageId,
+		InputDataChange: bqToInputDataChange(in.InputDataChange),
+	}
+}
+
+// HighCardinalityJoin contains high cardinality join detailed information.
+type HighCardinalityJoin struct {
+	// Count of left input rows.
+	LeftRows int64
+
+	// Count of right input rows.
+	RightRows int64
+
+	// Count of the output rows.
+	OutputRows int64
+
+	// The index of the join operator in the ExplainQueryStep lists.
+	StepIndex int64
+}
+
+func bqToHighCardinalityJoin(in *bq.HighCardinalityJoin) *HighCardinalityJoin {
+	if in == nil {
+		return nil
+	}
+
+	return &HighCardinalityJoin{
+		LeftRows:   in.LeftRows,
+		RightRows:  in.RightRows,
+		OutputRows: in.OutputRows,
+		StepIndex:  in.StepIndex,
+	}
+}
+
+// PartitionSkew contains partition skew detailed information.
+type PartitionSkew struct {
+	// Source stages which produce skewed data.
+	SkewSources []*SkewSource
+}
+
+func bqToPartitionSkew(in *bq.PartitionSkew) *PartitionSkew {
+	if in == nil {
+		return nil
+	}
+
+	var skewSources []*SkewSource
+	if sss := in.SkewSources; len(sss) > 0 {
+		skewSources = make([]*SkewSource, 0, len(sss))
+		for _, s := range sss {
+			skewSources = append(skewSources, bqToSkewSource(s))
+		}
+	}
+	return &PartitionSkew{SkewSources: skewSources}
+}
+
+// SkewSource contains details about source stages which produce skewed data.
+type SkewSource struct {
+	// Stage id of the skew source stage.
+	StageID int64
+}
+
+func bqToSkewSource(in *bq.SkewSource) *SkewSource {
+	if in == nil {
+		return nil
+	}
+
+	return &SkewSource{StageID: in.StageId}
+}
+
+// InputDataChange contains details about the input data change insight.
+type InputDataChange struct {
+	// Records read difference percentage compared to a previous run.
+	RecordsReadDiffPercentage float64
+}
+
+func bqToInputDataChange(in *bq.InputDataChange) *InputDataChange {
+	if in == nil {
+		return nil
+	}
+
+	return &InputDataChange{RecordsReadDiffPercentage: in.RecordsReadDiffPercentage}
+}
+
 func (*ExtractStatistics) implementsStatistics() {}
 func (*LoadStatistics) implementsStatistics()    {}
 func (*QueryStatistics) implementsStatistics()   {}
@@ -804,7 +1050,7 @@ func (*QueryStatistics) implementsStatistics()   {}
 // Jobs lists jobs within a project.
 func (c *Client) Jobs(ctx context.Context) *JobIterator {
 	it := &JobIterator{
-		ctx:       ctx,
+		ctx:       setProjectItemTraceMetadata(ctx, c.projectID, "jobs"),
 		c:         c,
 		ProjectID: c.projectID,
 	}
@@ -913,6 +1159,7 @@ func (c *Client) getJobInternal(ctx context.Context, jobID, location, projectID 
 	if proj == "" {
 		proj = c.projectID
 	}
+	ctx = setJobTraceMetadata(ctx, proj, jobID)
 	call := c.bqs.Jobs.Get(proj, jobID).Context(ctx)
 	if location != "" {
 		call = call.Location(location)
@@ -1014,16 +1261,21 @@ func (j *Job) setStatistics(s *bq.JobStatistics, c *Client) {
 		return
 	}
 	js := &JobStatistics{
-		CreationTime:        unixMillisToTime(s.CreationTime),
-		StartTime:           unixMillisToTime(s.StartTime),
-		EndTime:             unixMillisToTime(s.EndTime),
-		TotalBytesProcessed: s.TotalBytesProcessed,
-		NumChildJobs:        s.NumChildJobs,
-		ParentJobID:         s.ParentJobId,
-		ScriptStatistics:    bqToScriptStatistics(s.ScriptStatistics),
-		ReservationUsage:    bqToReservationUsage(s.ReservationUsage),
-		TransactionInfo:     bqToTransactionInfo(s.TransactionInfo),
-		SessionInfo:         bqToSessionInfo(s.SessionInfo),
+		CreationTime:           unixMillisToTime(s.CreationTime),
+		StartTime:              unixMillisToTime(s.StartTime),
+		EndTime:                unixMillisToTime(s.EndTime),
+		TotalBytesProcessed:    s.TotalBytesProcessed,
+		TotalSlotDuration:      time.Duration(s.TotalSlotMs) * time.Millisecond,
+		ReservationUsage:       bqToReservationUsage(s.ReservationUsage),
+		ReservationID:          s.ReservationId,
+		NumChildJobs:           s.NumChildJobs,
+		ParentJobID:            s.ParentJobId,
+		ScriptStatistics:       bqToScriptStatistics(s.ScriptStatistics),
+		TransactionInfo:        bqToTransactionInfo(s.TransactionInfo),
+		SessionInfo:            bqToSessionInfo(s.SessionInfo),
+		FinalExecutionDuration: time.Duration(s.FinalExecutionDurationMs) * time.Millisecond,
+		Edition:                ReservationEdition(s.Edition),
+		CompletionRatio:        s.CompletionRatio,
 	}
 	switch {
 	case s.Extract != nil:
@@ -1063,9 +1315,11 @@ func (j *Job) setStatistics(s *bq.JobStatistics, c *Client) {
 			QueryPlan:                     queryPlanFromProto(s.Query.QueryPlan),
 			Schema:                        bqToSchema(s.Query.Schema),
 			SlotMillis:                    s.Query.TotalSlotMs,
+			TotalServicesSkuSlotMillis:    s.Query.TotalServicesSkuSlotMs,
 			Timeline:                      timelineFromProto(s.Query.Timeline),
 			ReferencedTables:              tables,
 			UndeclaredQueryParameterNames: names,
+			PerformanceInsights:           bqToPerformanceInsights(s.Query.PerformanceInsights),
 		}
 	}
 	j.lastStatus.Statistics = js
