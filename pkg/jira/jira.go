@@ -231,6 +231,71 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 	return message, success, verifiedLater
 }
 
+// refreshChildPRs checks for child/clone bugs of the given issue and, for each
+// child that has a GitHub PR carrying the "jira/invalid-bug" label, posts a
+// "/jira refresh" comment so the jira-lifecycle-plugin re-evaluates the bug
+// status.  This is best-effort: errors are logged but never propagated to the
+// caller.
+func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
+	if issue.Fields == nil || len(issue.Fields.IssueLinks) == 0 {
+		klog.V(4).Infof("[%s] No issue links found; skipping child-PR refresh", issue.Key)
+		return
+	}
+
+	for _, link := range issue.Fields.IssueLinks {
+		// Only process "is cloned by" relationships (OutwardIssue on a Cloners link type).
+		if link.Type.Name != "Cloners" || link.OutwardIssue == nil {
+			continue
+		}
+		childKey := link.OutwardIssue.Key
+		klog.V(4).Infof("[%s] Found child/clone bug %s; checking for PRs to refresh", issue.Key, childKey)
+
+		remoteLinks, err := c.jiraClient.GetRemoteLinks(childKey)
+		if err != nil {
+			klog.Warningf("[%s] Failed to get remote links for child %s: %v", issue.Key, childKey, err)
+			continue
+		}
+
+		for _, rl := range remoteLinks {
+			if !strings.HasPrefix(rl.Object.URL, "https://github.com/") {
+				continue
+			}
+			org, repo, num, err := PullFromIdentifier(rl.Object.URL)
+			if err != nil {
+				klog.V(4).Infof("[%s] Skipping non-PR remote link for child %s: %v", issue.Key, childKey, err)
+				continue
+			}
+
+			// Only process PRs in openshift and openshift-eng organisations.
+			if org != "openshift" && org != "openshift-eng" {
+				klog.V(4).Infof("[%s] Skipping PR %s/%s#%d for child %s: org not in allowlist", issue.Key, org, repo, num, childKey)
+				continue
+			}
+
+			labels, err := c.ghClient.GetIssueLabels(org, repo, num)
+			if err != nil {
+				klog.Warningf("[%s] Failed to get labels for PR %s/%s#%d: %v", issue.Key, org, repo, num, err)
+				continue
+			}
+			if !hasLabel(labels, "jira/invalid-bug") {
+				klog.V(4).Infof("[%s] PR %s/%s#%d does not have jira/invalid-bug label; skipping", issue.Key, org, repo, num)
+				continue
+			}
+
+			// Use the existing commentOnPR helper for deduplication.
+			childPR := pr{org: org, repo: repo, prNum: num}
+			prErr, posted := c.commentOnPR(childPR, "/jira refresh")
+			if prErr != nil {
+				klog.Warningf("[%s] Failed to comment /jira refresh on PR %s/%s#%d: %v", issue.Key, org, repo, num, prErr)
+				continue
+			}
+			if posted {
+				klog.V(4).Infof("[%s] Posted /jira refresh on PR %s/%s#%d for child %s", issue.Key, org, repo, num, childKey)
+			}
+		}
+	}
+}
+
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
 // reviewed and lgtm'd by the bug's QA Contact
 
@@ -395,6 +460,11 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 				klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
 				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
 					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				} else {
+					// Best-effort: refresh child/clone PRs that may be blocked
+					// by a stale jira/invalid-bug label now that this parent
+					// bug has transitioned to VERIFIED.
+					c.refreshChildPRs(issue)
 				}
 			}
 		} else {

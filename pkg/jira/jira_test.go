@@ -1180,6 +1180,304 @@ const (
 `
 )
 
+func TestRefreshChildPRs(t *testing.T) {
+	// Helper to build an IssueLink representing "is cloned by" (Cloners outward).
+	clonersLink := func(childKey string) *jira.IssueLink {
+		return &jira.IssueLink{
+			Type: jira.IssueLinkType{
+				Name:    "Cloners",
+				Inward:  "is cloned by",
+				Outward: "clones",
+			},
+			OutwardIssue: &jira.Issue{Key: childKey},
+		}
+	}
+	// Helper for an inward Cloners link (i.e. "clones" direction — should be ignored).
+	clonersInwardLink := func(parentKey string) *jira.IssueLink {
+		return &jira.IssueLink{
+			Type: jira.IssueLinkType{
+				Name:    "Cloners",
+				Inward:  "is cloned by",
+				Outward: "clones",
+			},
+			InwardIssue: &jira.Issue{Key: parentKey},
+		}
+	}
+	// Helper for a "Blocks" link type — should be ignored.
+	blocksLink := func(blockedKey string) *jira.IssueLink {
+		return &jira.IssueLink{
+			Type: jira.IssueLinkType{
+				Name:    "Blocks",
+				Inward:  "is blocked by",
+				Outward: "blocks",
+			},
+			OutwardIssue: &jira.Issue{Key: blockedKey},
+		}
+	}
+
+	childRemoteLink := func(url string) jira.RemoteLink {
+		return jira.RemoteLink{
+			Object: &jira.RemoteLinkObject{URL: url},
+		}
+	}
+
+	testCases := []struct {
+		name string
+		// parentIssue is the verified parent issue whose IssueLinks we inspect.
+		parentIssue *jira.Issue
+		// childIssues are additional issues the fake Jira client should know about.
+		childIssues []*jira.Issue
+		// childLinks maps child issue key → remote links for that child.
+		childLinks map[string][]jira.RemoteLink
+		// ghLabels are the labels seeded in the fake GitHub client (format: "org/repo#num:label").
+		ghLabels []string
+		// ghComments are pre-existing GitHub comments (keyed by PR number).
+		ghComments map[int][]github.IssueComment
+		// expectComments maps PR number → expected comments after running refreshChildPRs.
+		expectComments map[int][]string
+	}{
+		{
+			name: "Happy path: child PR with jira/invalid-bug gets /jira refresh",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels: []string{"openshift/installer#42:jira/invalid-bug"},
+			expectComments: map[int][]string{
+				42: {"/jira refresh"},
+			},
+		},
+		{
+			name: "No children: parent with no issue links",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{},
+				},
+			},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR without jira/invalid-bug label: no comment posted",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:approved"},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR in wrong org: skipped",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/kubernetes/kubernetes/pull/99")},
+			},
+			ghLabels:       []string{"kubernetes/kubernetes#99:jira/invalid-bug"},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR in openshift-eng org: processed",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift-eng/ci-tools/pull/55")},
+			},
+			ghLabels: []string{"openshift-eng/ci-tools#55:jira/invalid-bug"},
+			expectComments: map[int][]string{
+				55: {"/jira refresh"},
+			},
+		},
+		{
+			name: "Duplicate comment prevention: /jira refresh already present",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels: []string{"openshift/installer#42:jira/invalid-bug"},
+			ghComments: map[int][]github.IssueComment{
+				42: {{Body: "/jira refresh"}},
+			},
+			// Comment already exists so nothing new should be added.
+			expectComments: map[int][]string{
+				42: {"/jira refresh"},
+			},
+		},
+		{
+			name: "Multiple children with multiple PRs: all get refreshed",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{
+						clonersLink("OCPBUGS-200"),
+						clonersLink("OCPBUGS-300"),
+					},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-200"},
+				{Key: "OCPBUGS-300"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/10")},
+				"OCPBUGS-300": {
+					childRemoteLink("https://github.com/openshift/machine-config-operator/pull/20"),
+					childRemoteLink("https://github.com/openshift-eng/ci-tools/pull/30"),
+				},
+			},
+			ghLabels: []string{
+				"openshift/installer#10:jira/invalid-bug",
+				"openshift/machine-config-operator#20:jira/invalid-bug",
+				"openshift-eng/ci-tools#30:jira/invalid-bug",
+			},
+			expectComments: map[int][]string{
+				10: {"/jira refresh"},
+				20: {"/jira refresh"},
+				30: {"/jira refresh"},
+			},
+		},
+		{
+			name: "Link type filtering: only Cloners outward processed, not inward or Blocks",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{
+						clonersInwardLink("OCPBUGS-50"),  // "clones" direction — skip
+						blocksLink("OCPBUGS-60"),         // Blocks type — skip
+						clonersLink("OCPBUGS-200"),       // correct: "is cloned by"
+					},
+				},
+			},
+			childIssues: []*jira.Issue{
+				{Key: "OCPBUGS-50"},
+				{Key: "OCPBUGS-60"},
+				{Key: "OCPBUGS-200"},
+			},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-50":  {childRemoteLink("https://github.com/openshift/installer/pull/1")},
+				"OCPBUGS-60":  {childRemoteLink("https://github.com/openshift/installer/pull/2")},
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/3")},
+			},
+			ghLabels: []string{
+				"openshift/installer#1:jira/invalid-bug",
+				"openshift/installer#2:jira/invalid-bug",
+				"openshift/installer#3:jira/invalid-bug",
+			},
+			// Only PR #3 should get a comment — the others are linked
+			// via wrong link type / direction.
+			expectComments: map[int][]string{
+				3: {"/jira refresh"},
+			},
+		},
+		{
+			name: "Error handling: missing child issue doesn't crash",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-MISSING")},
+				},
+			},
+			// No child issues registered → GetRemoteLinks will fail.
+			childIssues:    []*jira.Issue{},
+			expectComments: map[int][]string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Build the set of Jira issues.
+			issues := []*jira.Issue{tc.parentIssue}
+			issues = append(issues, tc.childIssues...)
+
+			existingLinks := make(map[string][]jira.RemoteLink)
+			for k, v := range tc.childLinks {
+				existingLinks[k] = v
+			}
+
+			jc := &fakejira.FakeClient{
+				Issues:        issues,
+				ExistingLinks: existingLinks,
+			}
+
+			ghComments := make(map[int][]github.IssueComment)
+			if tc.ghComments != nil {
+				for k, v := range tc.ghComments {
+					ghComments[k] = v
+				}
+			}
+
+			upstreamGH := &fakegithub.FakeClient{
+				IssueLabelsExisting: tc.ghLabels,
+				IssueComments:       ghComments,
+			}
+			gh := &fakeGHClient{FakeClient: upstreamGH}
+
+			v := NewVerifier(jc, gh, &plugins.Configuration{})
+			// Should not panic regardless of errors.
+			v.refreshChildPRs(tc.parentIssue)
+
+			// Verify expected comments.
+			for prNum, expectedBodies := range tc.expectComments {
+				actualComments := upstreamGH.IssueComments[prNum]
+				if len(actualComments) != len(expectedBodies) {
+					t.Errorf("PR #%d: expected %d comments, got %d", prNum, len(expectedBodies), len(actualComments))
+					continue
+				}
+				for i, body := range expectedBodies {
+					if actualComments[i].Body != body {
+						t.Errorf("PR #%d comment %d: expected %q, got %q", prNum, i, body, actualComments[i].Body)
+					}
+				}
+			}
+
+			// Verify no unexpected comments were posted.
+			for prNum, comments := range upstreamGH.IssueComments {
+				if _, expected := tc.expectComments[prNum]; !expected && len(comments) > 0 {
+					t.Errorf("PR #%d: unexpected %d comment(s) posted", prNum, len(comments))
+				}
+			}
+		})
+	}
+}
+
 func TestSumMapValues(t *testing.T) {
 	var testCases = []struct {
 		name   string
