@@ -1380,9 +1380,9 @@ func TestRefreshChildPRs(t *testing.T) {
 				Key: "OCPBUGS-100",
 				Fields: &jira.IssueFields{
 					IssueLinks: []*jira.IssueLink{
-						clonersInwardLink("OCPBUGS-50"),  // "clones" direction — skip
-						blocksLink("OCPBUGS-60"),         // Blocks type — skip
-						clonersLink("OCPBUGS-200"),       // correct: "is cloned by"
+						clonersInwardLink("OCPBUGS-50"), // "clones" direction — skip
+						blocksLink("OCPBUGS-60"),        // Blocks type — skip
+						clonersLink("OCPBUGS-200"),      // correct: "is cloned by"
 					},
 				},
 			},
