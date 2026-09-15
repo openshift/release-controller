@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"reflect"
@@ -1428,9 +1429,7 @@ func TestRefreshChildPRs(t *testing.T) {
 			issues = append(issues, tc.childIssues...)
 
 			existingLinks := make(map[string][]jira.RemoteLink)
-			for k, v := range tc.childLinks {
-				existingLinks[k] = v
-			}
+			maps.Copy(existingLinks, tc.childLinks)
 
 			jc := &fakejira.FakeClient{
 				Issues:        issues,
@@ -1439,9 +1438,7 @@ func TestRefreshChildPRs(t *testing.T) {
 
 			ghComments := make(map[int][]github.IssueComment)
 			if tc.ghComments != nil {
-				for k, v := range tc.ghComments {
-					ghComments[k] = v
-				}
+				maps.Copy(ghComments, tc.ghComments)
 			}
 
 			upstreamGH := &fakegithub.FakeClient{
