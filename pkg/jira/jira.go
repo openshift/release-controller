@@ -231,6 +231,84 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 	return message, success, verifiedLater
 }
 
+// refreshChildPRs checks for child bugs of the given issue and, for each
+// child that has a GitHub PR carrying the "jira/invalid-bug" label, posts a
+// "/jira refresh" comment so the jira-lifecycle-plugin re-evaluates the bug
+// status.  This is best-effort: errors are logged but never propagated to the
+// caller.
+func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
+	if issue.Fields == nil || len(issue.Fields.IssueLinks) == 0 {
+		klog.V(4).Infof("No issue links found for %s; skipping child-PR refresh", issue.Key)
+		return
+	}
+
+	for _, link := range issue.Fields.IssueLinks {
+		var childIssue *jiraBaseClient.Issue
+		// Mirror the jira-lifecycle-plugin's dependency detection,
+		// but from the parent's perspective (reversed direction).
+		if link.Type.Name == "Blocks" && link.OutwardIssue != nil {
+			childIssue = link.OutwardIssue
+		} else if link.Type.Name == "Depend" && link.InwardIssue != nil {
+			childIssue = link.InwardIssue
+		} else {
+			continue
+		}
+		childKey := childIssue.Key
+		klog.V(4).Infof("Found child bug %s for %s; checking for PRs to refresh", childKey, issue.Key)
+
+		remoteLinks, err := c.jiraClient.GetRemoteLinks(childKey)
+		if err != nil {
+			klog.Warningf("Failed to get remote links for child %s: %v", childKey, err)
+			continue
+		}
+
+		for _, rl := range remoteLinks {
+			if !strings.HasPrefix(rl.Object.URL, "https://github.com/") {
+				continue
+			}
+			org, repo, num, err := PullFromIdentifier(rl.Object.URL)
+			if err != nil {
+				klog.V(4).Infof("Skipping non-PR remote link for child %s: %v", childKey, err)
+				continue
+			}
+
+			// Only process PRs in openshift and openshift-eng organisations.
+			if org != "openshift" && org != "openshift-eng" {
+				klog.V(4).Infof("Skipping PR %s/%s#%d for child %s: org not in allowlist", org, repo, num, childKey)
+				continue
+			}
+
+			// Skip PRs that are closed or merged to avoid unnecessary
+			// comments and API calls (AlexNPavel review feedback).
+			prObj, err := c.ghClient.GetPullRequest(org, repo, num)
+			if err != nil {
+				klog.Warningf("Failed to get PR state for %s/%s#%d: %v", org, repo, num, err)
+				continue
+			}
+			if prObj.State != github.PullRequestStateOpen {
+				klog.V(4).Infof("PR %s/%s#%d is %s; skipping refresh", org, repo, num, prObj.State)
+				continue
+			}
+
+			labels, err := c.ghClient.GetIssueLabels(org, repo, num)
+			if err != nil {
+				klog.Warningf("Failed to get labels for PR %s/%s#%d: %v", org, repo, num, err)
+				continue
+			}
+			if !hasLabel(labels, "jira/invalid-bug") {
+				klog.V(4).Infof("PR %s/%s#%d does not have jira/invalid-bug label; skipping", org, repo, num)
+				continue
+			}
+
+			if err := c.ghClient.CreateComment(org, repo, num, "/jira refresh"); err != nil {
+				klog.Warningf("Failed to comment /jira refresh on PR %s/%s#%d: %v", org, repo, num, err)
+				continue
+			}
+			klog.Infof("Posted /jira refresh on PR %s/%s#%d for child %s", org, repo, num, childKey)
+		}
+	}
+}
+
 // VerifyIssues takes a list of jira issues IDs and for each issue changes the status to VERIFIED if the issue was
 // reviewed and lgtm'd by the bug's QA Contact
 
@@ -395,6 +473,11 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 				klog.V(4).Infof("Updating issue %s (current status %s) to VERIFIED status", issue.ID, issue.Fields.Status.Name)
 				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
 					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
+				} else {
+					// Best-effort: refresh child PRs that may be blocked
+					// by a stale jira/invalid-bug label now that this parent
+					// bug has transitioned to VERIFIED.
+					c.refreshChildPRs(issue)
 				}
 			}
 		} else {

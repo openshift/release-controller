@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"reflect"
@@ -1179,6 +1180,261 @@ const (
 ]
 `
 )
+
+func TestRefreshChildPRs(t *testing.T) {
+	blocksLink := func(childKey string) *jira.IssueLink {
+		return &jira.IssueLink{
+			Type:         jira.IssueLinkType{Name: "Blocks", Inward: "is blocked by", Outward: "blocks"},
+			OutwardIssue: &jira.Issue{Key: childKey},
+		}
+	}
+	dependLink := func(childKey string) *jira.IssueLink {
+		return &jira.IssueLink{
+			Type:        jira.IssueLinkType{Name: "Depend", Inward: "is depended on by", Outward: "depends on"},
+			InwardIssue: &jira.Issue{Key: childKey},
+		}
+	}
+	childRemoteLink := func(url string) jira.RemoteLink {
+		return jira.RemoteLink{Object: &jira.RemoteLinkObject{URL: url}}
+	}
+	openPR := func(num int) *github.PullRequest {
+		return &github.PullRequest{Number: num, State: github.PullRequestStateOpen}
+	}
+	closedPR := func(num int) *github.PullRequest {
+		return &github.PullRequest{Number: num, State: github.PullRequestStateClosed}
+	}
+	mergedPR := func(num int) *github.PullRequest {
+		return &github.PullRequest{Number: num, State: github.PullRequestStateClosed, Merged: true}
+	}
+
+	testCases := []struct {
+		name           string
+		parentIssue    *jira.Issue
+		childIssues    []*jira.Issue
+		childLinks     map[string][]jira.RemoteLink
+		ghLabels       []string
+		prs            map[int]*github.PullRequest
+		expectComments map[int][]string
+	}{
+		{
+			name: "Blocks child PR with jira/invalid-bug gets /jira refresh",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{42: openPR(42)},
+			expectComments: map[int][]string{42: {"/jira refresh"}},
+		},
+		{
+			name: "Depend child PR with jira/invalid-bug gets /jira refresh",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{dependLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{42: openPR(42)},
+			expectComments: map[int][]string{42: {"/jira refresh"}},
+		},
+		{
+			name: "No children: parent with no issue links",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{}},
+			},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR without jira/invalid-bug label: no comment posted",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:approved"},
+			prs:            map[int]*github.PullRequest{42: openPR(42)},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR in wrong org: skipped",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/kubernetes/kubernetes/pull/99")},
+			},
+			ghLabels:       []string{"kubernetes/kubernetes#99:jira/invalid-bug"},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Child PR in openshift-eng org: processed",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift-eng/ci-tools/pull/55")},
+			},
+			ghLabels:       []string{"openshift-eng/ci-tools#55:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{55: openPR(55)},
+			expectComments: map[int][]string{55: {"/jira refresh"}},
+		},
+		{
+			name: "Multiple children with mixed link types: all get refreshed",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{
+						blocksLink("OCPBUGS-200"),
+						dependLink("OCPBUGS-300"),
+					},
+				},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}, {Key: "OCPBUGS-300"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/10")},
+				"OCPBUGS-300": {
+					childRemoteLink("https://github.com/openshift/machine-config-operator/pull/20"),
+					childRemoteLink("https://github.com/openshift-eng/ci-tools/pull/30"),
+				},
+			},
+			ghLabels: []string{
+				"openshift/installer#10:jira/invalid-bug",
+				"openshift/machine-config-operator#20:jira/invalid-bug",
+				"openshift-eng/ci-tools#30:jira/invalid-bug",
+			},
+			prs: map[int]*github.PullRequest{
+				10: openPR(10),
+				20: openPR(20),
+				30: openPR(30),
+			},
+			expectComments: map[int][]string{
+				10: {"/jira refresh"},
+				20: {"/jira refresh"},
+				30: {"/jira refresh"},
+			},
+		},
+		{
+			name: "Unrecognized link type ignored",
+			parentIssue: &jira.Issue{
+				Key: "OCPBUGS-100",
+				Fields: &jira.IssueFields{
+					IssueLinks: []*jira.IssueLink{
+						{
+							Type:         jira.IssueLinkType{Name: "Related"},
+							OutwardIssue: &jira.Issue{Key: "OCPBUGS-50"},
+						},
+						blocksLink("OCPBUGS-200"),
+					},
+				},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-50"}, {Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-50":  {childRemoteLink("https://github.com/openshift/installer/pull/1")},
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/3")},
+			},
+			ghLabels: []string{
+				"openshift/installer#1:jira/invalid-bug",
+				"openshift/installer#3:jira/invalid-bug",
+			},
+			prs:            map[int]*github.PullRequest{3: openPR(3)},
+			expectComments: map[int][]string{3: {"/jira refresh"}},
+		},
+		{
+			name: "Error handling: missing child issue doesn't crash",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-MISSING")}},
+			},
+			childIssues:    []*jira.Issue{},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Closed child PR with jira/invalid-bug is skipped",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{42: closedPR(42)},
+			expectComments: map[int][]string{},
+		},
+		{
+			name: "Merged child PR with jira/invalid-bug is skipped",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {childRemoteLink("https://github.com/openshift/installer/pull/42")},
+			},
+			ghLabels:       []string{"openshift/installer#42:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{42: mergedPR(42)},
+			expectComments: map[int][]string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			issues := []*jira.Issue{tc.parentIssue}
+			issues = append(issues, tc.childIssues...)
+
+			existingLinks := make(map[string][]jira.RemoteLink)
+			maps.Copy(existingLinks, tc.childLinks)
+
+			jc := &fakejira.FakeClient{
+				Issues:        issues,
+				ExistingLinks: existingLinks,
+			}
+			upstreamGH := &fakegithub.FakeClient{
+				IssueLabelsExisting: tc.ghLabels,
+				IssueComments:       make(map[int][]github.IssueComment),
+				PullRequests:        tc.prs,
+			}
+			gh := &fakeGHClient{FakeClient: upstreamGH}
+
+			v := NewVerifier(jc, gh, &plugins.Configuration{})
+			v.refreshChildPRs(tc.parentIssue)
+
+			for prNum, expectedBodies := range tc.expectComments {
+				actualComments := upstreamGH.IssueComments[prNum]
+				if len(actualComments) != len(expectedBodies) {
+					t.Errorf("PR #%d: expected %d comments, got %d", prNum, len(expectedBodies), len(actualComments))
+					continue
+				}
+				for i, body := range expectedBodies {
+					if actualComments[i].Body != body {
+						t.Errorf("PR #%d comment %d: expected %q, got %q", prNum, i, body, actualComments[i].Body)
+					}
+				}
+			}
+			for prNum, comments := range upstreamGH.IssueComments {
+				if _, expected := tc.expectComments[prNum]; !expected && len(comments) > 0 {
+					t.Errorf("PR #%d: unexpected %d comment(s) posted", prNum, len(comments))
+				}
+			}
+		})
+	}
+}
 
 func TestSumMapValues(t *testing.T) {
 	var testCases = []struct {
