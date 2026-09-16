@@ -52,6 +52,7 @@ func (f fakeGHClient) GetIssueLabels(owner, repo string, number int) ([]github.L
 	return f.FakeClient.GetIssueLabels(owner, repo, number)
 }
 
+// TestCommentOnPR tests the commentOnPR method.
 func TestCommentOnPR(t *testing.T) {
 	// Set up the mock GitHub client with an empty map of comments
 	mockClient := fakegithub.NewFakeClient()

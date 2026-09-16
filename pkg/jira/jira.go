@@ -231,7 +231,7 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 	return message, success, verifiedLater
 }
 
-// refreshChildPRs checks for child/clone bugs of the given issue and, for each
+// refreshChildPRs checks for child bugs of the given issue and, for each
 // child that has a GitHub PR carrying the "jira/invalid-bug" label, posts a
 // "/jira refresh" comment so the jira-lifecycle-plugin re-evaluates the bug
 // status.  This is best-effort: errors are logged but never propagated to the
@@ -244,7 +244,7 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 
 	for _, link := range issue.Fields.IssueLinks {
 		var childIssue *jiraBaseClient.Issue
-		// Mirror the jira-lifecycle-plugin's dependency detection (server.go:594-597),
+		// Mirror the jira-lifecycle-plugin's dependency detection,
 		// but from the parent's perspective (reversed direction).
 		if link.Type.Name == "Blocks" && link.OutwardIssue != nil {
 			childIssue = link.OutwardIssue
@@ -462,7 +462,7 @@ func (c *Verifier) VerifyIssues(issues []string, tagName string) []error {
 				if err := c.jiraClient.UpdateStatus(issue.ID, jira.StatusVerified); err != nil {
 					errs = append(errs, fmt.Errorf("failed to update status for issue %s: %w", issue.Key, err))
 				} else {
-					// Best-effort: refresh child/clone PRs that may be blocked
+					// Best-effort: refresh child PRs that may be blocked
 					// by a stale jira/invalid-bug label now that this parent
 					// bug has transitioned to VERIFIED.
 					c.refreshChildPRs(issue)
