@@ -238,21 +238,25 @@ func (c *Verifier) verifyExtPRs(issue *jiraBaseClient.Issue, extPRs []pr, errs *
 // caller.
 func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 	if issue.Fields == nil || len(issue.Fields.IssueLinks) == 0 {
-		klog.V(4).Infof("[%s] No issue links found; skipping child-PR refresh", issue.Key)
+		klog.V(4).Infof("No issue links found for %s; skipping child-PR refresh", issue.Key)
 		return
 	}
 
 	for _, link := range issue.Fields.IssueLinks {
-		// Only process "is cloned by" relationships (OutwardIssue on a Cloners link type).
-		if link.Type.Name != "Cloners" || link.OutwardIssue == nil {
+		var childKey string
+		switch {
+		case link.Type.Name == "Cloners" && link.OutwardIssue != nil:
+			childKey = link.OutwardIssue.Key
+		case link.Type.Name == "Blocks" && link.InwardIssue != nil:
+			childKey = link.InwardIssue.Key
+		default:
 			continue
 		}
-		childKey := link.OutwardIssue.Key
-		klog.V(4).Infof("[%s] Found child/clone bug %s; checking for PRs to refresh", issue.Key, childKey)
+		klog.V(4).Infof("Found child/clone bug %s for %s; checking for PRs to refresh", childKey, issue.Key)
 
 		remoteLinks, err := c.jiraClient.GetRemoteLinks(childKey)
 		if err != nil {
-			klog.Warningf("[%s] Failed to get remote links for child %s: %v", issue.Key, childKey, err)
+			klog.Warningf("Failed to get remote links for child %s: %v", childKey, err)
 			continue
 		}
 
@@ -262,36 +266,31 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 			}
 			org, repo, num, err := PullFromIdentifier(rl.Object.URL)
 			if err != nil {
-				klog.V(4).Infof("[%s] Skipping non-PR remote link for child %s: %v", issue.Key, childKey, err)
+				klog.V(4).Infof("Skipping non-PR remote link for child %s: %v", childKey, err)
 				continue
 			}
 
 			// Only process PRs in openshift and openshift-eng organisations.
 			if org != "openshift" && org != "openshift-eng" {
-				klog.V(4).Infof("[%s] Skipping PR %s/%s#%d for child %s: org not in allowlist", issue.Key, org, repo, num, childKey)
+				klog.V(4).Infof("Skipping PR %s/%s#%d for child %s: org not in allowlist", org, repo, num, childKey)
 				continue
 			}
 
 			labels, err := c.ghClient.GetIssueLabels(org, repo, num)
 			if err != nil {
-				klog.Warningf("[%s] Failed to get labels for PR %s/%s#%d: %v", issue.Key, org, repo, num, err)
+				klog.Warningf("Failed to get labels for PR %s/%s#%d: %v", org, repo, num, err)
 				continue
 			}
 			if !hasLabel(labels, "jira/invalid-bug") {
-				klog.V(4).Infof("[%s] PR %s/%s#%d does not have jira/invalid-bug label; skipping", issue.Key, org, repo, num)
+				klog.V(4).Infof("PR %s/%s#%d does not have jira/invalid-bug label; skipping", org, repo, num)
 				continue
 			}
 
-			// Use the existing commentOnPR helper for deduplication.
-			childPR := pr{org: org, repo: repo, prNum: num}
-			prErr, posted := c.commentOnPR(childPR, "/jira refresh")
-			if prErr != nil {
-				klog.Warningf("[%s] Failed to comment /jira refresh on PR %s/%s#%d: %v", issue.Key, org, repo, num, prErr)
+			if err := c.ghClient.CreateComment(org, repo, num, "/jira refresh"); err != nil {
+				klog.Warningf("Failed to comment /jira refresh on PR %s/%s#%d: %v", org, repo, num, err)
 				continue
 			}
-			if posted {
-				klog.V(4).Infof("[%s] Posted /jira refresh on PR %s/%s#%d for child %s", issue.Key, org, repo, num, childKey)
-			}
+			klog.Infof("Posted /jira refresh on PR %s/%s#%d for child %s", org, repo, num, childKey)
 		}
 	}
 }
