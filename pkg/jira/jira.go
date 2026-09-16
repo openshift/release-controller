@@ -278,6 +278,18 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 				continue
 			}
 
+			// Skip PRs that are closed or merged to avoid unnecessary
+			// comments and API calls (AlexNPavel review feedback).
+			prObj, err := c.ghClient.GetPullRequest(org, repo, num)
+			if err != nil {
+				klog.Warningf("Failed to get PR state for %s/%s#%d: %v", org, repo, num, err)
+				continue
+			}
+			if prObj.State != github.PullRequestStateOpen {
+				klog.V(4).Infof("PR %s/%s#%d is %s; skipping refresh", org, repo, num, prObj.State)
+				continue
+			}
+
 			labels, err := c.ghClient.GetIssueLabels(org, repo, num)
 			if err != nil {
 				klog.Warningf("Failed to get labels for PR %s/%s#%d: %v", org, repo, num, err)
