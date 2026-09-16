@@ -52,6 +52,66 @@ func (f fakeGHClient) GetIssueLabels(owner, repo string, number int) ([]github.L
 	return f.FakeClient.GetIssueLabels(owner, repo, number)
 }
 
+func TestCommentOnPR(t *testing.T) {
+	// Set up the mock GitHub client with an empty map of comments
+	mockClient := fakegithub.NewFakeClient()
+
+	// Set up the Verifier instance with the mock GitHub client
+	verifier := &Verifier{ghClient: mockClient}
+
+	// Create a mock PR and message
+	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
+	message := "test message"
+
+	// Test the case where the message doesn't already exist
+	err, created := verifier.commentOnPR(extPR, message)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if !created {
+		t.Errorf("Expected comment to be created, but it wasn't")
+	}
+
+	// Test the case where the message already exists
+	err, created = verifier.commentOnPR(extPR, message)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if !created {
+		t.Errorf("Unexpected result while checking an already commented PR")
+	}
+}
+
+// TestCommentOnPRLegacyDedupe tests that commentOnPR does not post a duplicate
+// comment when an existing comment uses the legacy "accepted release" wording,
+// after the message was changed to "Fix included in release".
+func TestCommentOnPRLegacyDedupe(t *testing.T) {
+	tagName := "4.20.0-0.nightly-2026-04-01-022028"
+	newMessage := fmt.Sprintf("Fix included in release %s", tagName)
+	legacyMessage := fmt.Sprintf("Fix included in accepted release %s", tagName)
+
+	// Seed the fake client with an existing comment using the legacy wording
+	existingComments := map[int][]github.IssueComment{
+		1: {{Body: legacyMessage}},
+	}
+	mockClient := &fakegithub.FakeClient{IssueComments: existingComments}
+	verifier := &Verifier{ghClient: mockClient}
+	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
+
+	// commentOnPR should detect the legacy comment and not post a duplicate
+	err, created := verifier.commentOnPR(extPR, newMessage)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if !created {
+		t.Errorf("Expected created=true (comment already exists), but got false")
+	}
+	// Verify no new comment was posted
+	if len(mockClient.IssueComments[1]) != 1 {
+		t.Errorf("Expected 1 comment (no duplicate), but got %d", len(mockClient.IssueComments[1]))
+	}
+}
+
 func TestGetPRS(t *testing.T) {
 	issue := jira.Issue{ID: "OCPBUGS-0000"}
 	removeLinkArray := []jira.RemoteLink{
