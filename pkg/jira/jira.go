@@ -243,16 +243,18 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 	}
 
 	for _, link := range issue.Fields.IssueLinks {
-		var childKey string
-		switch {
-		case link.Type.Name == "Cloners" && link.OutwardIssue != nil:
-			childKey = link.OutwardIssue.Key
-		case link.Type.Name == "Blocks" && link.InwardIssue != nil:
-			childKey = link.InwardIssue.Key
-		default:
+		var childIssue *jiraBaseClient.Issue
+		// Mirror the jira-lifecycle-plugin's dependency detection (server.go:594-597),
+		// but from the parent's perspective (reversed direction).
+		if link.Type.Name == "Blocks" && link.OutwardIssue != nil {
+			childIssue = link.OutwardIssue
+		} else if link.Type.Name == "Depend" && link.InwardIssue != nil {
+			childIssue = link.InwardIssue
+		} else {
 			continue
 		}
-		klog.V(4).Infof("Found child/clone bug %s for %s; checking for PRs to refresh", childKey, issue.Key)
+		childKey := childIssue.Key
+		klog.V(4).Infof("Found child bug %s for %s; checking for PRs to refresh", childKey, issue.Key)
 
 		remoteLinks, err := c.jiraClient.GetRemoteLinks(childKey)
 		if err != nil {

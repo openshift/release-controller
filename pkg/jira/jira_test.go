@@ -52,67 +52,6 @@ func (f fakeGHClient) GetIssueLabels(owner, repo string, number int) ([]github.L
 	return f.FakeClient.GetIssueLabels(owner, repo, number)
 }
 
-// TestCommentOnPR tests the commentOnPR method.
-func TestCommentOnPR(t *testing.T) {
-	// Set up the mock GitHub client with an empty map of comments
-	mockClient := fakegithub.NewFakeClient()
-
-	// Set up the Verifier instance with the mock GitHub client
-	verifier := &Verifier{ghClient: mockClient}
-
-	// Create a mock PR and message
-	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
-	message := "test message"
-
-	// Test the case where the message doesn't already exist
-	err, created := verifier.commentOnPR(extPR, message)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if !created {
-		t.Errorf("Expected comment to be created, but it wasn't")
-	}
-
-	// Test the case where the message already exists
-	err, created = verifier.commentOnPR(extPR, message)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if !created {
-		t.Errorf("Unexpected result while checking an already commented PR")
-	}
-}
-
-// TestCommentOnPRLegacyDedupe tests that commentOnPR does not post a duplicate
-// comment when an existing comment uses the legacy "accepted release" wording,
-// after the message was changed to "Fix included in release".
-func TestCommentOnPRLegacyDedupe(t *testing.T) {
-	tagName := "4.20.0-0.nightly-2026-04-01-022028"
-	newMessage := fmt.Sprintf("Fix included in release %s", tagName)
-	legacyMessage := fmt.Sprintf("Fix included in accepted release %s", tagName)
-
-	// Seed the fake client with an existing comment using the legacy wording
-	existingComments := map[int][]github.IssueComment{
-		1: {{Body: legacyMessage}},
-	}
-	mockClient := &fakegithub.FakeClient{IssueComments: existingComments}
-	verifier := &Verifier{ghClient: mockClient}
-	extPR := pr{org: "testOrg", repo: "testRepo", prNum: 1}
-
-	// commentOnPR should detect the legacy comment and not post a duplicate
-	err, created := verifier.commentOnPR(extPR, newMessage)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if !created {
-		t.Errorf("Expected created=true (comment already exists), but got false")
-	}
-	// Verify no new comment was posted
-	if len(mockClient.IssueComments[1]) != 1 {
-		t.Errorf("Expected 1 comment (no duplicate), but got %d", len(mockClient.IssueComments[1]))
-	}
-}
-
 func TestGetPRS(t *testing.T) {
 	issue := jira.Issue{ID: "OCPBUGS-0000"}
 	removeLinkArray := []jira.RemoteLink{
@@ -1182,22 +1121,16 @@ const (
 )
 
 func TestRefreshChildPRs(t *testing.T) {
-	clonersLink := func(childKey string) *jira.IssueLink {
+	blocksLink := func(childKey string) *jira.IssueLink {
 		return &jira.IssueLink{
-			Type:         jira.IssueLinkType{Name: "Cloners", Inward: "is cloned by", Outward: "clones"},
+			Type:         jira.IssueLinkType{Name: "Blocks", Inward: "is blocked by", Outward: "blocks"},
 			OutwardIssue: &jira.Issue{Key: childKey},
 		}
 	}
-	blocksLink := func(childKey string) *jira.IssueLink {
+	dependLink := func(childKey string) *jira.IssueLink {
 		return &jira.IssueLink{
-			Type:        jira.IssueLinkType{Name: "Blocks", Inward: "is blocked by", Outward: "blocks"},
+			Type:        jira.IssueLinkType{Name: "Depend", Inward: "is depended on by", Outward: "depends on"},
 			InwardIssue: &jira.Issue{Key: childKey},
-		}
-	}
-	clonersInwardLink := func(parentKey string) *jira.IssueLink {
-		return &jira.IssueLink{
-			Type:        jira.IssueLinkType{Name: "Cloners", Inward: "is cloned by", Outward: "clones"},
-			InwardIssue: &jira.Issue{Key: parentKey},
 		}
 	}
 	childRemoteLink := func(url string) jira.RemoteLink {
@@ -1213,10 +1146,10 @@ func TestRefreshChildPRs(t *testing.T) {
 		expectComments map[int][]string
 	}{
 		{
-			name: "Cloners child PR with jira/invalid-bug gets /jira refresh",
+			name: "Blocks child PR with jira/invalid-bug gets /jira refresh",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
 			},
 			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
 			childLinks: map[string][]jira.RemoteLink{
@@ -1226,10 +1159,10 @@ func TestRefreshChildPRs(t *testing.T) {
 			expectComments: map[int][]string{42: {"/jira refresh"}},
 		},
 		{
-			name: "Blocks child PR with jira/invalid-bug gets /jira refresh",
+			name: "Depend child PR with jira/invalid-bug gets /jira refresh",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{dependLink("OCPBUGS-200")}},
 			},
 			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
 			childLinks: map[string][]jira.RemoteLink{
@@ -1250,7 +1183,7 @@ func TestRefreshChildPRs(t *testing.T) {
 			name: "Child PR without jira/invalid-bug label: no comment posted",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
 			},
 			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
 			childLinks: map[string][]jira.RemoteLink{
@@ -1263,7 +1196,7 @@ func TestRefreshChildPRs(t *testing.T) {
 			name: "Child PR in wrong org: skipped",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
 			},
 			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
 			childLinks: map[string][]jira.RemoteLink{
@@ -1276,7 +1209,7 @@ func TestRefreshChildPRs(t *testing.T) {
 			name: "Child PR in openshift-eng org: processed",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-200")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-200")}},
 			},
 			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
 			childLinks: map[string][]jira.RemoteLink{
@@ -1286,13 +1219,13 @@ func TestRefreshChildPRs(t *testing.T) {
 			expectComments: map[int][]string{55: {"/jira refresh"}},
 		},
 		{
-			name: "Multiple children with multiple PRs: all get refreshed",
+			name: "Multiple children with mixed link types: all get refreshed",
 			parentIssue: &jira.Issue{
 				Key: "OCPBUGS-100",
 				Fields: &jira.IssueFields{
 					IssueLinks: []*jira.IssueLink{
-						clonersLink("OCPBUGS-200"),
-						clonersLink("OCPBUGS-300"),
+						blocksLink("OCPBUGS-200"),
+						dependLink("OCPBUGS-300"),
 					},
 				},
 			},
@@ -1316,13 +1249,16 @@ func TestRefreshChildPRs(t *testing.T) {
 			},
 		},
 		{
-			name: "Link type filtering: Cloners inward and Blocks outward ignored",
+			name: "Unrecognized link type ignored",
 			parentIssue: &jira.Issue{
 				Key: "OCPBUGS-100",
 				Fields: &jira.IssueFields{
 					IssueLinks: []*jira.IssueLink{
-						clonersInwardLink("OCPBUGS-50"),
-						clonersLink("OCPBUGS-200"),
+						{
+							Type:         jira.IssueLinkType{Name: "Related"},
+							OutwardIssue: &jira.Issue{Key: "OCPBUGS-50"},
+						},
+						blocksLink("OCPBUGS-200"),
 					},
 				},
 			},
@@ -1341,7 +1277,7 @@ func TestRefreshChildPRs(t *testing.T) {
 			name: "Error handling: missing child issue doesn't crash",
 			parentIssue: &jira.Issue{
 				Key:    "OCPBUGS-100",
-				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{clonersLink("OCPBUGS-MISSING")}},
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{blocksLink("OCPBUGS-MISSING")}},
 			},
 			childIssues:    []*jira.Issue{},
 			expectComments: map[int][]string{},
