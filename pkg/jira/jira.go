@@ -242,6 +242,7 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 		return
 	}
 
+	refreshed := sets.New[string]()
 	for _, link := range issue.Fields.IssueLinks {
 		var childIssue *jiraBaseClient.Issue
 		// Mirror the jira-lifecycle-plugin's dependency detection,
@@ -271,6 +272,14 @@ func (c *Verifier) refreshChildPRs(issue *jiraBaseClient.Issue) {
 				klog.V(4).Infof("Skipping non-PR remote link for child %s: %v", childKey, err)
 				continue
 			}
+
+			// Deduplicate: Jira may list the same PR in multiple remote
+			// links for a single child bug.  Skip if we already refreshed.
+			prKey := fmt.Sprintf("%s/%s#%d", org, repo, num)
+			if refreshed.Has(prKey) {
+				continue
+			}
+			refreshed.Insert(prKey)
 
 			// Only process PRs in openshift and openshift-eng organisations.
 			if org != "openshift" && org != "openshift-eng" {

@@ -1391,6 +1391,23 @@ func TestRefreshChildPRs(t *testing.T) {
 			prs:            map[int]*github.PullRequest{42: mergedPR(42)},
 			expectComments: map[int][]string{},
 		},
+		{
+			name: "Duplicate remote links: different URL formats for the same PR only gets one /jira refresh",
+			parentIssue: &jira.Issue{
+				Key:    "OCPBUGS-100",
+				Fields: &jira.IssueFields{IssueLinks: []*jira.IssueLink{dependLink("OCPBUGS-200")}},
+			},
+			childIssues: []*jira.Issue{{Key: "OCPBUGS-200"}},
+			childLinks: map[string][]jira.RemoteLink{
+				"OCPBUGS-200": {
+					childRemoteLink("https://github.com/openshift/installer/pull/42"),
+					childRemoteLink("https://github.com/openshift/installer/pull/42/files"),
+				},
+			},
+			ghLabels:       []string{"openshift/installer#42:jira/invalid-bug"},
+			prs:            map[int]*github.PullRequest{42: openPR(42)},
+			expectComments: map[int][]string{42: {"/jira refresh"}},
+		},
 	}
 
 	for _, tc := range testCases {
