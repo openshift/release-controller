@@ -529,6 +529,23 @@ def discover_verify_prowjobs(ctx, options, prow_namespace, release):
     return prowjobs
 
 
+def current_keep_annotation(ctx, options, target):
+    """Re-read the release tag's release.openshift.io/keep annotation.
+
+    Called immediately before deletion so a "keep" added after discovery still
+    protects the resources (guards against a check-then-act race).
+    """
+    with oc.options(ctx), oc.tracking(), oc.timeout(30):
+        with oc.project(target['namespace']), oc.options(options):
+            stream_obj = oc.selector(f'imagestream/{target["stream"]}').object(ignore_not_found=True)
+            if stream_obj is None:
+                return None
+            for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
+                if spec_tag.get('name') == target['release']:
+                    return (spec_tag.get('annotations') or {}).get('release.openshift.io/keep')
+    return None
+
+
 def render_reset_report(release, targets, prowjobs, prow_namespace):
     """Human-readable report of everything a reset would remove for a release."""
     lines = [f'===== reset report: {release} =====']
@@ -610,7 +627,12 @@ def delete_reset_target(ctx, options, target):
             if rp is not None:
                 logger.info(f'Deleting releasepayload: {ns}/{release}')
                 rp.delete(ignore_not_found=True)
-            if target['tag_present']:
+            # Re-check the spec tag live (rather than trusting discovery-time state)
+            # so an already-removed tag does not abort the run.
+            stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
+            tag_exists = stream_obj is not None and any(
+                st.get('name') == release for st in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []))
+            if tag_exists:
                 logger.info(f'Deleting release tag: {ns}/{stream}:{release}')
                 oc.invoke('tag', cmd_args=['--delete', f'{stream}:{release}'])
             payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
@@ -677,8 +699,19 @@ def reset_releases(ctx, options, product, private, prow_namespace, arches, relea
             logger.info(f'{release}: report and backups written to {output_dir}; no resources deleted.')
             continue
 
+        # Re-read the keep annotation immediately before deleting (guards against a
+        # keep added between discovery and now). Verify ProwJobs are release-wide
+        # (not arch-scoped), so they are retained whenever ANY selected arch is
+        # keep-annotated; per-arch resources are still gated individually.
+        for target in targets:
+            target['keep'] = current_keep_annotation(ctx, options, target)
+        kept = [target for target in targets if target['keep']]
+
         if not keep_prowjobs:
-            delete_verify_prowjobs(ctx, options, prow_namespace, release)
+            if kept:
+                logger.warning(f'{release}: retaining shared verify ProwJobs; keep-annotated arch(es): {", ".join(t["arch"] for t in kept)}')
+            else:
+                delete_verify_prowjobs(ctx, options, prow_namespace, release)
         for target in targets:
             delete_reset_target(ctx, options, target)
         logger.info(f'{release}: reset complete. Backups in {output_dir}.')
