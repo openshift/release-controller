@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import dataclasses
+import enum
 import json
 import logging
 import os.path
@@ -430,27 +432,102 @@ def reimport(ctx, namespace, imagestream, execute):
 # ReleasePayload -> fresh verification, without bumping the version number. The
 # ART assembly/source imagestream (...-art-assembly-...) is never touched.
 
-RESET_VERIFY_LABELS = {'release.openshift.io/verify': 'true'}
-RESET_ACTIVE_PROWJOB_STATES = ('triggered', 'pending', 'running')
+# Release-controller annotation / label keys and Kubernetes condition values.
+ANNOTATION_PHASE = 'release.openshift.io/phase'
+ANNOTATION_KEEP = 'release.openshift.io/keep'
+LABEL_PAYLOAD = 'release.openshift.io/payload'
+LABEL_VERIFY = 'release.openshift.io/verify'
+IMPORT_SUCCESS_CONDITION = 'ImportSuccess'
+CONDITION_STATUS_TRUE = 'True'
+CONDITION_STATUS_FALSE = 'False'
 
 
-def _payload_phase(payload_primitive):
+class ReleasePhase(str, enum.Enum):
+    """Phases reported by the release-controller's GetReleasePhase()."""
+    ACCEPTED = 'Accepted'
+    REJECTED = 'Rejected'
+    FAILED = 'Failed'
+    READY = 'Ready'
+    PENDING = 'Pending'
+
+
+class PayloadConditionType(str, enum.Enum):
+    """ReleasePayload status condition types consulted for the phase."""
+    ACCEPTED = 'PayloadAccepted'
+    REJECTED = 'PayloadRejected'
+    FAILED = 'PayloadFailed'
+    CREATED = 'PayloadCreated'
+
+
+class ProwJobState(str, enum.Enum):
+    """The prow job states that indicate an in-flight (not terminal) run."""
+    TRIGGERED = 'triggered'
+    PENDING = 'pending'
+    RUNNING = 'running'
+
+
+ACTIVE_PROWJOB_STATES = frozenset(state.value for state in ProwJobState)
+
+
+class ResetChoice(str, enum.Enum):
+    """Result of the per-release confirmation gate."""
+    DELETE = 'y'
+    WRITE_ONLY = 'w'
+    SKIP = 'n'
+
+
+@dataclasses.dataclass
+class ResetTarget:
+    """The release-controller resources for a single (release, architecture)."""
+    release: str
+    arch: str
+    namespace: str
+    stream: str
+    job_namespace: str
+    job_name: str
+    payload_is_present: bool = False
+    status_tags: int = 0
+    import_failures: int = 0
+    releasepayload_present: bool = False
+    rp_phase: typing.Optional[ReleasePhase] = None
+    tag_present: bool = False
+    tag_phase: typing.Optional[str] = None
+    keep: typing.Optional[str] = None
+    job_present: bool = False
+    job_status: typing.Optional[str] = None
+
+
+@dataclasses.dataclass
+class VerifyProwJob:
+    """A release-controller verify ProwJob and its current state."""
+    name: str
+    state: str
+
+
+def verify_prowjob_labels(release: str) -> typing.Dict[str, str]:
+    """Label selector identifying a release's verify ProwJobs (not arch-scoped)."""
+    return {LABEL_VERIFY: 'true', LABEL_PAYLOAD: release}
+
+
+def payload_phase(payload_primitive: dict) -> ReleasePhase:
     """Replicate the release-controller GetReleasePhase() precedence from a ReleasePayload."""
     created = False
     for condition in (payload_primitive.get('status', {}).get('conditions') or []):
-        ctype, cstatus = condition.get('type'), condition.get('status')
-        if ctype == 'PayloadAccepted' and cstatus == 'True':
-            return 'Accepted'
-        if ctype == 'PayloadRejected' and cstatus == 'True':
-            return 'Rejected'
-        if ctype == 'PayloadFailed' and cstatus == 'True':
-            return 'Failed'
-        if ctype == 'PayloadCreated' and cstatus == 'True':
+        if condition.get('status') != CONDITION_STATUS_TRUE:
+            continue
+        condition_type = condition.get('type')
+        if condition_type == PayloadConditionType.ACCEPTED:
+            return ReleasePhase.ACCEPTED
+        if condition_type == PayloadConditionType.REJECTED:
+            return ReleasePhase.REJECTED
+        if condition_type == PayloadConditionType.FAILED:
+            return ReleasePhase.FAILED
+        if condition_type == PayloadConditionType.CREATED:
             created = True
-    return 'Ready' if created else 'Pending'
+    return ReleasePhase.READY if created else ReleasePhase.PENDING
 
 
-def discover_reset_target(ctx, options, product, private, release, arch):
+def discover_reset_target(ctx: dict, options: dict, product: str, private: bool, release: str, arch: str) -> ResetTarget:
     """Gather the per-arch release-controller resources for a single (release, arch).
 
     Coordinates are read from the live ReleasePayload when present (so naming
@@ -458,121 +535,117 @@ def discover_reset_target(ctx, options, product, private, release, arch):
     conventional fallbacks derived from generate_resource_values().
     """
     namespace, stream = generate_resource_values(product, 'release', arch, private)
-    target = {
-        'release': release, 'arch': arch, 'namespace': namespace, 'stream': stream,
-        'job_namespace': ('ci-release' if arch == 'amd64' else f'ci-release-{arch}'),
-        'job_name': release,
-        'payload_is_present': False, 'status_tags': 0, 'import_failures': 0,
-        'releasepayload_present': False, 'rp_phase': None,
-        'tag_present': False, 'tag_phase': None, 'keep': None,
-        'job_present': False, 'job_status': None,
-    }
+    target = ResetTarget(
+        release=release, arch=arch, namespace=namespace, stream=stream,
+        job_namespace=('ci-release' if arch == 'amd64' else f'ci-release-{arch}'),
+        job_name=release,
+    )
 
     with oc.options(ctx), oc.tracking(), oc.timeout(60):
         with oc.project(namespace), oc.options(options):
             rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
             if rp is not None:
                 prim = rp.model._primitive()
-                target['releasepayload_present'] = True
-                target['rp_phase'] = _payload_phase(prim)
+                target.releasepayload_present = True
+                target.rp_phase = payload_phase(prim)
                 coords = prim.get('spec', {}).get('payloadCoordinates', {}) or {}
                 if coords.get('imagestreamName'):
-                    target['stream'] = coords['imagestreamName']
+                    target.stream = coords['imagestreamName']
                 job_coords = (prim.get('status', {}).get('releaseCreationJobResult', {}) or {}).get('coordinates', {}) or {}
                 if job_coords.get('namespace'):
-                    target['job_namespace'] = job_coords['namespace']
+                    target.job_namespace = job_coords['namespace']
                 if job_coords.get('name'):
-                    target['job_name'] = job_coords['name']
+                    target.job_name = job_coords['name']
 
             payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
             if payload_is is not None:
-                target['payload_is_present'] = True
+                target.payload_is_present = True
                 status_tags = payload_is.model._primitive().get('status', {}).get('tags', []) or []
-                target['status_tags'] = len(status_tags)
-                target['import_failures'] = sum(
-                    1 for st in status_tags for c in (st.get('conditions') or [])
-                    if c.get('type') == 'ImportSuccess' and c.get('status') == 'False')
+                target.status_tags = len(status_tags)
+                target.import_failures = sum(
+                    1 for st in status_tags for condition in (st.get('conditions') or [])
+                    if condition.get('type') == IMPORT_SUCCESS_CONDITION and condition.get('status') == CONDITION_STATUS_FALSE)
 
-            stream_obj = oc.selector(f'imagestream/{target["stream"]}').object(ignore_not_found=True)
+            stream_obj = oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True)
             if stream_obj is not None:
                 for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
                     if spec_tag.get('name') == release:
                         annotations = spec_tag.get('annotations') or {}
-                        target['tag_present'] = True
-                        target['tag_phase'] = annotations.get('release.openshift.io/phase')
-                        target['keep'] = annotations.get('release.openshift.io/keep')
+                        target.tag_present = True
+                        target.tag_phase = annotations.get(ANNOTATION_PHASE)
+                        target.keep = annotations.get(ANNOTATION_KEEP)
                         break
 
-        with oc.project(target['job_namespace']), oc.options(options):
-            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
             if job is not None:
-                target['job_present'] = True
+                target.job_present = True
                 js = job.model._primitive().get('status', {})
-                target['job_status'] = f"succeeded={js.get('succeeded', 0)} active={js.get('active', 0)} failed={js.get('failed', 0)}"
+                target.job_status = f"succeeded={js.get('succeeded', 0)} active={js.get('active', 0)} failed={js.get('failed', 0)}"
 
     return target
 
 
-def discover_verify_prowjobs(ctx, options, prow_namespace, release):
+def discover_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str) -> typing.List[VerifyProwJob]:
     """List the verify ProwJobs for a release (label-selected; not arch-scoped)."""
-    prowjobs = []
-    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+    prowjobs: typing.List[VerifyProwJob] = []
     with oc.options(ctx), oc.tracking(), oc.timeout(60):
         with oc.project(prow_namespace), oc.options(options):
-            selector = oc.selector('prowjobs', labels=labels)
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
             for obj in selector.objects(ignore_not_found=True):
                 prim = obj.model._primitive()
-                prowjobs.append({
-                    'name': prim.get('metadata', {}).get('name'),
-                    'state': prim.get('status', {}).get('state', 'unknown'),
-                })
+                prowjobs.append(VerifyProwJob(
+                    name=prim.get('metadata', {}).get('name'),
+                    state=prim.get('status', {}).get('state', 'unknown'),
+                ))
     return prowjobs
 
 
-def current_keep_annotation(ctx, options, target):
-    """Re-read the release tag's release.openshift.io/keep annotation.
+def current_keep_annotation(ctx: dict, options: dict, target: ResetTarget) -> typing.Optional[str]:
+    """Re-read the release tag's keep annotation.
 
     Called immediately before deletion so a "keep" added after discovery still
     protects the resources (guards against a check-then-act race).
     """
     with oc.options(ctx), oc.tracking(), oc.timeout(30):
-        with oc.project(target['namespace']), oc.options(options):
-            stream_obj = oc.selector(f'imagestream/{target["stream"]}').object(ignore_not_found=True)
+        with oc.project(target.namespace), oc.options(options):
+            stream_obj = oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True)
             if stream_obj is None:
                 return None
             for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
-                if spec_tag.get('name') == target['release']:
-                    return (spec_tag.get('annotations') or {}).get('release.openshift.io/keep')
+                if spec_tag.get('name') == target.release:
+                    return (spec_tag.get('annotations') or {}).get(ANNOTATION_KEEP)
     return None
 
 
-def render_reset_report(release, targets, prowjobs, prow_namespace):
+def render_reset_report(release: str, targets: typing.List[ResetTarget],
+                        prowjobs: typing.List[VerifyProwJob], prow_namespace: str) -> str:
     """Human-readable report of everything a reset would remove for a release."""
     lines = [f'===== reset report: {release} =====']
-    for t in targets:
-        bits = [f'  [{t["arch"]:<8}] ns={t["namespace"]}']
-        if t['payload_is_present']:
-            bits.append(f'payloadIS=yes(tags={t["status_tags"]},importFail={t["import_failures"]})')
+    for target in targets:
+        bits = [f'  [{target.arch:<8}] ns={target.namespace}']
+        if target.payload_is_present:
+            bits.append(f'payloadIS=yes(tags={target.status_tags},importFail={target.import_failures})')
         else:
             bits.append('payloadIS=absent')
-        bits.append(f'releaseTag={t["tag_phase"] if t["tag_present"] else "absent"}')
-        bits.append(f'releasePayload={t["rp_phase"] or "absent"}')
-        bits.append(f'creationJob={"[" + t["job_status"] + "]" if t["job_present"] else "absent"}')
-        if t['keep']:
+        bits.append(f'releaseTag={target.tag_phase if target.tag_present else "absent"}')
+        bits.append(f'releasePayload={target.rp_phase.value if target.rp_phase else "absent"}')
+        bits.append(f'creationJob=[{target.job_status}]' if target.job_present else 'creationJob=absent')
+        if target.keep:
             bits.append('KEEP-ANNOTATED(will be skipped)')
         lines.append(' '.join(bits))
-    states = Counter(p['state'] for p in prowjobs)
-    summary = ', '.join(f'{k}={v}' for k, v in sorted(states.items())) if prowjobs else 'none'
+    states = Counter(prowjob.state for prowjob in prowjobs)
+    summary = ', '.join(f'{state}={count}' for state, count in sorted(states.items())) if prowjobs else 'none'
     lines.append(f'  verify prowjobs in {prow_namespace} ({len(prowjobs)}): {summary}')
-    active = [p for p in prowjobs if p['state'] in RESET_ACTIVE_PROWJOB_STATES]
+    active = [prowjob for prowjob in prowjobs if prowjob.state in ACTIVE_PROWJOB_STATES]
     if active:
         lines.append(f'  WARNING: {len(active)} verify prowjob(s) still active — deletion will terminate them')
     return '\n'.join(lines)
 
 
-def backup_reset_target(ctx, options, target, output_dir):
+def backup_reset_target(ctx: dict, options: dict, target: ResetTarget, output_dir: str) -> None:
     """Back up every present resource for a (release, arch) to output_dir."""
-    ns, release, stream = target['namespace'], target['release'], target['stream']
+    ns, release, stream = target.namespace, target.release, target.stream
     with oc.options(ctx), oc.tracking(), oc.timeout(60):
         with oc.project(ns), oc.options(options):
             payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
@@ -593,34 +666,34 @@ def backup_reset_target(ctx, options, target, output_dir):
                 }
                 path = write_backup_file(output_dir, f'{ns}_{stream}-tag', release, entry)
                 logger.info(f'Backup written to: {path}')
-        with oc.project(target['job_namespace']), oc.options(options):
-            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
             if job is not None:
-                path = write_backup_file(output_dir, f'{target["job_namespace"]}_job', target['job_name'], job.model._primitive())
+                path = write_backup_file(output_dir, f'{target.job_namespace}_job', target.job_name, job.model._primitive())
                 logger.info(f'Backup written to: {path}')
 
 
-def backup_verify_prowjobs(ctx, options, prow_namespace, release, output_dir):
-    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+def backup_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str, output_dir: str) -> None:
     with oc.options(ctx), oc.tracking(), oc.timeout(60):
         with oc.project(prow_namespace), oc.options(options):
-            objs = [o.model._primitive() for o in oc.selector('prowjobs', labels=labels).objects(ignore_not_found=True)]
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
+            objs = [obj.model._primitive() for obj in selector.objects(ignore_not_found=True)]
             if objs:
                 path = write_backup_file(output_dir, f'{prow_namespace}_prowjobs', release, objs)
                 logger.info(f'Backup written to: {path}')
 
 
-def delete_reset_target(ctx, options, target):
+def delete_reset_target(ctx: dict, options: dict, target: ResetTarget) -> None:
     """Delete the per-arch resources: creation job, ReleasePayload, release tag, payload IS."""
-    ns, release, stream = target['namespace'], target['release'], target['stream']
-    if target['keep']:
+    ns, release, stream = target.namespace, target.release, target.stream
+    if target.keep:
         logger.warning(f'{ns}/{stream}:{release} is flagged "keep" — skipping this arch.')
         return
     with oc.options(ctx), oc.tracking(), oc.timeout(120):
-        with oc.project(target['job_namespace']), oc.options(options):
-            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
             if job is not None:
-                logger.info(f'Deleting job: {target["job_namespace"]}/{target["job_name"]}')
+                logger.info(f'Deleting job: {target.job_namespace}/{target.job_name}')
                 job.delete(ignore_not_found=True)
         with oc.project(ns), oc.options(options):
             rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
@@ -641,34 +714,35 @@ def delete_reset_target(ctx, options, target):
                 payload_is.delete(ignore_not_found=True)
 
 
-def delete_verify_prowjobs(ctx, options, prow_namespace, release):
-    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+def delete_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str) -> None:
     with oc.options(ctx), oc.tracking(), oc.timeout(300):
         with oc.project(prow_namespace), oc.options(options):
-            selector = oc.selector('prowjobs', labels=labels)
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
             count = len(selector.objects(ignore_not_found=True))
             if count > 0:
                 logger.info(f'Deleting {count} verify prowjob(s) in {prow_namespace} for {release}')
                 selector.delete(ignore_not_found=True)
 
 
-def confirm_reset(release):
+def confirm_reset(release: str) -> ResetChoice:
     """Per-release gate: [y]es delete / [w]rite backups only / [n]o skip."""
     i = 1
     while i <= 5:
         answer = input(f'Reset {release}?  [y] delete  /  [w] write backups only  /  [n] skip: ').strip().lower()
         if answer in ('y', 'yes'):
-            return 'y'
+            return ResetChoice.DELETE
         if answer in ('w', 'write'):
-            return 'w'
+            return ResetChoice.WRITE_ONLY
         if answer in ('n', 'no', ''):
-            return 'n'
+            return ResetChoice.SKIP
         print('Please enter y, w, or n')
         i += 1
-    return 'n'
+    return ResetChoice.SKIP
 
 
-def reset_releases(ctx, options, product, private, prow_namespace, arches, releases, execute, assume_yes, keep_prowjobs, output_dir):
+def reset_releases(ctx: dict, options: dict, product: str, private: bool, prow_namespace: str,
+                   arches: typing.List[str], releases: typing.List[str], execute: bool,
+                   assume_yes: bool, keep_prowjobs: bool, output_dir: str) -> None:
     for release in releases:
         targets = [discover_reset_target(ctx, options, product, private, release, arch) for arch in arches]
         prowjobs = discover_verify_prowjobs(ctx, options, prow_namespace, release)
@@ -680,8 +754,8 @@ def reset_releases(ctx, options, product, private, prow_namespace, arches, relea
             logger.warning(f'[dry-run] {release}: no changes made. Specify "--execute" to apply.')
             continue
 
-        choice = 'y' if assume_yes else confirm_reset(release)
-        if choice == 'n':
+        choice = ResetChoice.DELETE if assume_yes else confirm_reset(release)
+        if choice == ResetChoice.SKIP:
             logger.info(f'{release}: skipped, no changes made.')
             continue
 
@@ -695,7 +769,7 @@ def reset_releases(ctx, options, product, private, prow_namespace, arches, relea
             handle.write(report + '\n')
         logger.info(f'Report written to: {report_file}')
 
-        if choice == 'w':
+        if choice == ResetChoice.WRITE_ONLY:
             logger.info(f'{release}: report and backups written to {output_dir}; no resources deleted.')
             continue
 
@@ -704,12 +778,12 @@ def reset_releases(ctx, options, product, private, prow_namespace, arches, relea
         # (not arch-scoped), so they are retained whenever ANY selected arch is
         # keep-annotated; per-arch resources are still gated individually.
         for target in targets:
-            target['keep'] = current_keep_annotation(ctx, options, target)
-        kept = [target for target in targets if target['keep']]
+            target.keep = current_keep_annotation(ctx, options, target)
+        kept = [target for target in targets if target.keep]
 
         if not keep_prowjobs:
             if kept:
-                logger.warning(f'{release}: retaining shared verify ProwJobs; keep-annotated arch(es): {", ".join(t["arch"] for t in kept)}')
+                logger.warning(f'{release}: retaining shared verify ProwJobs; keep-annotated arch(es): {", ".join(target.arch for target in kept)}')
             else:
                 delete_verify_prowjobs(ctx, options, prow_namespace, release)
         for target in targets:
