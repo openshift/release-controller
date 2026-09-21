@@ -654,7 +654,7 @@ const (
 	ReleaseLabelPayload = "release.openshift.io/payload"
 
 	// ProwJobResultsURLPrefix the URL prefix for ProwJob Results
-	ProwJobResultsURLPrefix = "https://prow.ci.openshift.org/view/gs/test-platform-results/logs"
+	ProwJobResultsURLPrefix = "https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs"
 
 	// ProwJobLabelCapability adds a label to determine cluster for dispatcher/scheduler
 	ProwJobLabelCapability = "capability/rce"
