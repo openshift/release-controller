@@ -509,20 +509,86 @@ def verify_prowjob_labels(release: str) -> typing.Dict[str, str]:
     return {LABEL_VERIFY: 'true', LABEL_PAYLOAD: release}
 
 
-def payload_phase(payload_primitive: dict) -> ReleasePhase:
-    """Replicate the release-controller GetReleasePhase() precedence from a ReleasePayload."""
-    created = False
-    for condition in (payload_primitive.get('status', {}).get('conditions') or []):
-        if condition.get('status') != CONDITION_STATUS_TRUE:
+def find_spec_tag(stream_obj, name: str):
+    """Return the spec tag Model entry named `name` from a release imagestream, or None.
+
+    `stream_obj` is an APIObject (or None). Uses openshift_client Model attribute
+    access; absent paths yield the Missing sentinel rather than raising.
+    """
+    if stream_obj is None:
+        return None
+    spec_tags = stream_obj.model.spec.tags
+    if spec_tags is Missing:
+        return None
+    for spec_tag in spec_tags:
+        if spec_tag.name == name:
+            return spec_tag
+    return None
+
+
+def find_status_tag(stream_obj, name: str):
+    """Return the status tag Model entry whose `tag` is `name`, or None."""
+    if stream_obj is None:
+        return None
+    status_tags = stream_obj.model.status.tags
+    if status_tags is Missing:
+        return None
+    for status_tag in status_tags:
+        if status_tag.tag == name:
+            return status_tag
+    return None
+
+
+def tag_annotation(spec_tag, key: str) -> typing.Optional[str]:
+    """Return a spec tag annotation value, or None when absent."""
+    if spec_tag is None:
+        return None
+    value = spec_tag.annotations[key]
+    return None if value is Missing else value
+
+
+def count_import_failures(payload_is) -> typing.Tuple[int, int]:
+    """Return (total status tags, count of tags whose ImportSuccess is False)."""
+    status_tags = payload_is.model.status.tags
+    if status_tags is Missing:
+        return 0, 0
+    total = 0
+    failures = 0
+    for status_tag in status_tags:
+        total += 1
+        if status_tag.conditions is Missing:
             continue
-        condition_type = condition.get('type')
-        if condition_type == PayloadConditionType.ACCEPTED:
+        for condition in status_tag.conditions:
+            if condition.type == IMPORT_SUCCESS_CONDITION and condition.status == CONDITION_STATUS_FALSE:
+                failures += 1
+    return total, failures
+
+
+def job_status_summary(job) -> str:
+    """Render a batch job's succeeded/active/failed counts."""
+    status = job.model.status
+    succeeded = 0 if status.succeeded is Missing else status.succeeded
+    active = 0 if status.active is Missing else status.active
+    failed = 0 if status.failed is Missing else status.failed
+    return f'succeeded={succeeded} active={active} failed={failed}'
+
+
+def payload_phase(payload) -> ReleasePhase:
+    """Replicate the release-controller GetReleasePhase() precedence from a ReleasePayload."""
+    conditions = payload.model.status.conditions
+    if conditions is Missing:
+        return ReleasePhase.PENDING
+    created = False
+    for condition in conditions:
+        if condition.status != CONDITION_STATUS_TRUE:
+            continue
+        if condition.type == PayloadConditionType.ACCEPTED:
             return ReleasePhase.ACCEPTED
-        if condition_type == PayloadConditionType.REJECTED:
+        if condition.type == PayloadConditionType.REJECTED:
             return ReleasePhase.REJECTED
-        if condition_type == PayloadConditionType.FAILED:
+        if condition.type == PayloadConditionType.FAILED:
             return ReleasePhase.FAILED
-        if condition_type == PayloadConditionType.CREATED:
+        if condition.type == PayloadConditionType.CREATED:
             created = True
     return ReleasePhase.READY if created else ReleasePhase.PENDING
 
@@ -545,43 +611,34 @@ def discover_reset_target(ctx: dict, options: dict, product: str, private: bool,
         with oc.project(namespace), oc.options(options):
             rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
             if rp is not None:
-                prim = rp.model._primitive()
                 target.releasepayload_present = True
-                target.rp_phase = payload_phase(prim)
-                coords = prim.get('spec', {}).get('payloadCoordinates', {}) or {}
-                if coords.get('imagestreamName'):
-                    target.stream = coords['imagestreamName']
-                job_coords = (prim.get('status', {}).get('releaseCreationJobResult', {}) or {}).get('coordinates', {}) or {}
-                if job_coords.get('namespace'):
-                    target.job_namespace = job_coords['namespace']
-                if job_coords.get('name'):
-                    target.job_name = job_coords['name']
+                target.rp_phase = payload_phase(rp)
+                stream_name = rp.model.spec.payloadCoordinates.imagestreamName
+                if stream_name is not Missing:
+                    target.stream = stream_name
+                job_namespace = rp.model.status.releaseCreationJobResult.coordinates.namespace
+                if job_namespace is not Missing:
+                    target.job_namespace = job_namespace
+                job_name = rp.model.status.releaseCreationJobResult.coordinates.name
+                if job_name is not Missing:
+                    target.job_name = job_name
 
             payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
             if payload_is is not None:
                 target.payload_is_present = True
-                status_tags = payload_is.model._primitive().get('status', {}).get('tags', []) or []
-                target.status_tags = len(status_tags)
-                target.import_failures = sum(
-                    1 for st in status_tags for condition in (st.get('conditions') or [])
-                    if condition.get('type') == IMPORT_SUCCESS_CONDITION and condition.get('status') == CONDITION_STATUS_FALSE)
+                target.status_tags, target.import_failures = count_import_failures(payload_is)
 
-            stream_obj = oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True)
-            if stream_obj is not None:
-                for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
-                    if spec_tag.get('name') == release:
-                        annotations = spec_tag.get('annotations') or {}
-                        target.tag_present = True
-                        target.tag_phase = annotations.get(ANNOTATION_PHASE)
-                        target.keep = annotations.get(ANNOTATION_KEEP)
-                        break
+            spec_tag = find_spec_tag(oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True), release)
+            if spec_tag is not None:
+                target.tag_present = True
+                target.tag_phase = tag_annotation(spec_tag, ANNOTATION_PHASE)
+                target.keep = tag_annotation(spec_tag, ANNOTATION_KEEP)
 
         with oc.project(target.job_namespace), oc.options(options):
             job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
             if job is not None:
                 target.job_present = True
-                js = job.model._primitive().get('status', {})
-                target.job_status = f"succeeded={js.get('succeeded', 0)} active={js.get('active', 0)} failed={js.get('failed', 0)}"
+                target.job_status = job_status_summary(job)
 
     return target
 
@@ -593,10 +650,10 @@ def discover_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, rele
         with oc.project(prow_namespace), oc.options(options):
             selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
             for obj in selector.objects(ignore_not_found=True):
-                prim = obj.model._primitive()
+                state = obj.model.status.state
                 prowjobs.append(VerifyProwJob(
-                    name=prim.get('metadata', {}).get('name'),
-                    state=prim.get('status', {}).get('state', 'unknown'),
+                    name=obj.model.metadata.name,
+                    state='unknown' if state is Missing else state,
                 ))
     return prowjobs
 
@@ -609,13 +666,8 @@ def current_keep_annotation(ctx: dict, options: dict, target: ResetTarget) -> ty
     """
     with oc.options(ctx), oc.tracking(), oc.timeout(30):
         with oc.project(target.namespace), oc.options(options):
-            stream_obj = oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True)
-            if stream_obj is None:
-                return None
-            for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
-                if spec_tag.get('name') == target.release:
-                    return (spec_tag.get('annotations') or {}).get(ANNOTATION_KEEP)
-    return None
+            spec_tag = find_spec_tag(oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True), target.release)
+            return tag_annotation(spec_tag, ANNOTATION_KEEP)
 
 
 def render_reset_report(release: str, targets: typing.List[ResetTarget],
@@ -657,12 +709,14 @@ def backup_reset_target(ctx: dict, options: dict, target: ResetTarget, output_di
                 path = write_backup_file(output_dir, f'{ns}_releasepayload', release, rp.model._primitive())
                 logger.info(f'Backup written to: {path}')
             stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
-            if stream_obj is not None:
-                sp = stream_obj.model._primitive()
+            spec_tag = find_spec_tag(stream_obj, release)
+            status_tag = find_status_tag(stream_obj, release)
+            if spec_tag is not None or status_tag is not None:
                 entry = {
-                    'stream': stream, 'namespace': ns,
-                    'spec_tag': next((x for x in (sp.get('spec', {}).get('tags', []) or []) if x.get('name') == release), None),
-                    'status_tag': next((x for x in (sp.get('status', {}).get('tags', []) or []) if x.get('tag') == release), None),
+                    'stream': stream,
+                    'namespace': ns,
+                    'spec_tag': None if spec_tag is None else spec_tag._primitive(),
+                    'status_tag': None if status_tag is None else status_tag._primitive(),
                 }
                 path = write_backup_file(output_dir, f'{ns}_{stream}-tag', release, entry)
                 logger.info(f'Backup written to: {path}')
@@ -703,9 +757,7 @@ def delete_reset_target(ctx: dict, options: dict, target: ResetTarget) -> None:
             # Re-check the spec tag live (rather than trusting discovery-time state)
             # so an already-removed tag does not abort the run.
             stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
-            tag_exists = stream_obj is not None and any(
-                st.get('name') == release for st in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []))
-            if tag_exists:
+            if find_spec_tag(stream_obj, release) is not None:
                 logger.info(f'Deleting release tag: {ns}/{stream}:{release}')
                 oc.invoke('tag', cmd_args=['--delete', f'{stream}:{release}'])
             payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
