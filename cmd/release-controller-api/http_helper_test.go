@@ -505,3 +505,57 @@ func TestPullSpecFromCoordinates(t *testing.T) {
 		})
 	}
 }
+
+func Test_preferredReleases(t *testing.T) {
+	type stream struct {
+		name string
+		as   string
+		hide bool
+	}
+	tests := []struct {
+		name    string
+		streams []stream
+		want    []string
+	}{
+		{
+			name: "stable streams order by version, newest first",
+			streams: []stream{
+				{name: "4-stable", as: releasecontroller.ReleaseConfigModeStable},
+				{name: "5-stable", as: releasecontroller.ReleaseConfigModeStable},
+				{name: "4-scos-stable", as: releasecontroller.ReleaseConfigModeStable},
+				{name: "5-scos-stable", as: releasecontroller.ReleaseConfigModeStable},
+			},
+			want: []string{"5-scos-stable", "5-stable", "4-scos-stable", "4-stable"},
+		},
+		{
+			name: "stable and layered sort ahead of the rest, hidden streams last",
+			streams: []stream{
+				{name: "4.21.0-0.nightly"},
+				{name: "5.0.0-0.nightly"},
+				{name: "4.20.0-0.ci", hide: true},
+				{name: "4-stable", as: releasecontroller.ReleaseConfigModeStable},
+				{name: "5-stable", as: releasecontroller.ReleaseConfigModeStable},
+				{name: "4-dev-preview", as: releasecontroller.ReleaseConfigModeLayered},
+			},
+			want: []string{"5-stable", "4-dev-preview", "4-stable", "5.0.0-0.nightly", "4.21.0-0.nightly", "4.20.0-0.ci"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			releases := make(preferredReleases, 0, len(tt.streams))
+			for _, s := range tt.streams {
+				releases = append(releases, ReleaseStream{Release: &releasecontroller.Release{
+					Config: &releasecontroller.ReleaseConfig{Name: s.name, As: s.as, Hide: s.hide},
+				}})
+			}
+			sort.Sort(releases)
+			got := make([]string, 0, len(releases))
+			for _, r := range releases {
+				got = append(got, r.Release.Config.Name)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("unexpected order (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

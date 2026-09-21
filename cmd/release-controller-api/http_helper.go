@@ -931,6 +931,24 @@ func filterWithPrefix(summaries []releasecontroller.UpgradeHistory, prefix strin
 
 type preferredReleases []ReleaseStream
 
+// releaseStreamVersion returns the major/minor/patch of a release stream's configured
+// name, for ordering purposes only. Stream names such as "4-stable" or "4-dev-preview"
+// are not parseable as semver -- a short version may not carry pre-release metadata --
+// so fall back to the numeric prefix of the name ("4-stable" -> 4.0.0). Without this,
+// every dash-named stream collapses to 0.0.0 and the streams end up ordered
+// lexicographically by name instead of by version.
+func releaseStreamVersion(name string) semver.Version {
+	v, err := semver.ParseTolerant(name)
+	if err != nil {
+		if v, err = semver.ParseTolerant(strings.SplitN(name, "-", 2)[0]); err != nil {
+			return semver.Version{}
+		}
+	}
+	v.Pre = nil
+	v.Build = nil
+	return v
+}
+
 func (r preferredReleases) Less(i, j int) bool {
 	a, b := r[i], r[j]
 	if !a.Release.Config.Hide && b.Release.Config.Hide {
@@ -946,17 +964,14 @@ func (r preferredReleases) Less(i, j int) bool {
 	if !aStable && bStable {
 		return false
 	}
-	aV, _ := semver.ParseTolerant(a.Release.Config.Name)
-	bV, _ := semver.ParseTolerant(b.Release.Config.Name)
-	aV.Pre = nil
-	bV.Pre = nil
+	aV, bV := releaseStreamVersion(a.Release.Config.Name), releaseStreamVersion(b.Release.Config.Name)
 	switch aV.Compare(bV) {
 	case 1:
 		return true
 	case -1:
 		return false
 	}
-	return a.Release.Config.Name <= b.Release.Config.Name
+	return a.Release.Config.Name < b.Release.Config.Name
 }
 
 func (r preferredReleases) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
