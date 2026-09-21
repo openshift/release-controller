@@ -8,6 +8,7 @@ import re
 import tempfile
 import time
 import typing
+from collections import Counter
 
 import openshift_client as oc
 from openshift_client import OpenShiftPythonException, Missing
@@ -408,6 +409,281 @@ def reimport(ctx, namespace, imagestream, execute):
             raise e
 
 
+# ----------------------------------------------------------------------------- #
+# reset: purge a release's controller state so it can be cleanly re-promoted
+# ----------------------------------------------------------------------------- #
+#
+# When a promoted release fails its creation job or its blocking verification
+# jobs, its controller state becomes "burned" and a same-name re-import will not
+# re-run cleanly, because:
+#   - the ReleasePayload records terminal / retry-exhausted job results (the retry
+#     gate then skips relaunching),
+#   - the release tag stays adopted (keeps release.openshift.io/{source,phase}) so
+#     the controller never re-adopts it and never creates a fresh ReleasePayload,
+#   - the verify ProwJobs are named deterministically (<tag>-<verify>[-<retry>]) and
+#     are adopted by name on retry; they are NOT GC'd by the release-controller
+#     (only by prow's sinker, ~24h), so a re-import re-adopts the old FAILED runs.
+#
+# This removes all of that (payload imagestream, release tag, ReleasePayload,
+# creation job, verify ProwJobs) across the requested arches, after backing each
+# up, so a subsequent ART re-import yields a fresh tag -> re-adopt -> fresh
+# ReleasePayload -> fresh verification, without bumping the version number. The
+# ART assembly/source imagestream (...-art-assembly-...) is never touched.
+
+RESET_VERIFY_LABELS = {'release.openshift.io/verify': 'true'}
+RESET_ACTIVE_PROWJOB_STATES = ('triggered', 'pending', 'running')
+
+
+def _payload_phase(payload_primitive):
+    """Replicate the release-controller GetReleasePhase() precedence from a ReleasePayload."""
+    created = False
+    for condition in (payload_primitive.get('status', {}).get('conditions') or []):
+        ctype, cstatus = condition.get('type'), condition.get('status')
+        if ctype == 'PayloadAccepted' and cstatus == 'True':
+            return 'Accepted'
+        if ctype == 'PayloadRejected' and cstatus == 'True':
+            return 'Rejected'
+        if ctype == 'PayloadFailed' and cstatus == 'True':
+            return 'Failed'
+        if ctype == 'PayloadCreated' and cstatus == 'True':
+            created = True
+    return 'Ready' if created else 'Pending'
+
+
+def discover_reset_target(ctx, options, product, private, release, arch):
+    """Gather the per-arch release-controller resources for a single (release, arch).
+
+    Coordinates are read from the live ReleasePayload when present (so naming
+    variants like release-5-multi / ci-release-multi resolve correctly), with
+    conventional fallbacks derived from generate_resource_values().
+    """
+    namespace, stream = generate_resource_values(product, 'release', arch, private)
+    target = {
+        'release': release, 'arch': arch, 'namespace': namespace, 'stream': stream,
+        'job_namespace': ('ci-release' if arch == 'amd64' else f'ci-release-{arch}'),
+        'job_name': release,
+        'payload_is_present': False, 'status_tags': 0, 'import_failures': 0,
+        'releasepayload_present': False, 'rp_phase': None,
+        'tag_present': False, 'tag_phase': None, 'keep': None,
+        'job_present': False, 'job_status': None,
+    }
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(namespace), oc.options(options):
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                prim = rp.model._primitive()
+                target['releasepayload_present'] = True
+                target['rp_phase'] = _payload_phase(prim)
+                coords = prim.get('spec', {}).get('payloadCoordinates', {}) or {}
+                if coords.get('imagestreamName'):
+                    target['stream'] = coords['imagestreamName']
+                job_coords = (prim.get('status', {}).get('releaseCreationJobResult', {}) or {}).get('coordinates', {}) or {}
+                if job_coords.get('namespace'):
+                    target['job_namespace'] = job_coords['namespace']
+                if job_coords.get('name'):
+                    target['job_name'] = job_coords['name']
+
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                target['payload_is_present'] = True
+                status_tags = payload_is.model._primitive().get('status', {}).get('tags', []) or []
+                target['status_tags'] = len(status_tags)
+                target['import_failures'] = sum(
+                    1 for st in status_tags for c in (st.get('conditions') or [])
+                    if c.get('type') == 'ImportSuccess' and c.get('status') == 'False')
+
+            stream_obj = oc.selector(f'imagestream/{target["stream"]}').object(ignore_not_found=True)
+            if stream_obj is not None:
+                for spec_tag in (stream_obj.model._primitive().get('spec', {}).get('tags', []) or []):
+                    if spec_tag.get('name') == release:
+                        annotations = spec_tag.get('annotations') or {}
+                        target['tag_present'] = True
+                        target['tag_phase'] = annotations.get('release.openshift.io/phase')
+                        target['keep'] = annotations.get('release.openshift.io/keep')
+                        break
+
+        with oc.project(target['job_namespace']), oc.options(options):
+            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+            if job is not None:
+                target['job_present'] = True
+                js = job.model._primitive().get('status', {})
+                target['job_status'] = f"succeeded={js.get('succeeded', 0)} active={js.get('active', 0)} failed={js.get('failed', 0)}"
+
+    return target
+
+
+def discover_verify_prowjobs(ctx, options, prow_namespace, release):
+    """List the verify ProwJobs for a release (label-selected; not arch-scoped)."""
+    prowjobs = []
+    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(prow_namespace), oc.options(options):
+            selector = oc.selector('prowjobs', labels=labels)
+            for obj in selector.objects(ignore_not_found=True):
+                prim = obj.model._primitive()
+                prowjobs.append({
+                    'name': prim.get('metadata', {}).get('name'),
+                    'state': prim.get('status', {}).get('state', 'unknown'),
+                })
+    return prowjobs
+
+
+def render_reset_report(release, targets, prowjobs, prow_namespace):
+    """Human-readable report of everything a reset would remove for a release."""
+    lines = [f'===== reset report: {release} =====']
+    for t in targets:
+        bits = [f'  [{t["arch"]:<8}] ns={t["namespace"]}']
+        if t['payload_is_present']:
+            bits.append(f'payloadIS=yes(tags={t["status_tags"]},importFail={t["import_failures"]})')
+        else:
+            bits.append('payloadIS=absent')
+        bits.append(f'releaseTag={t["tag_phase"] if t["tag_present"] else "absent"}')
+        bits.append(f'releasePayload={t["rp_phase"] or "absent"}')
+        bits.append(f'creationJob={"[" + t["job_status"] + "]" if t["job_present"] else "absent"}')
+        if t['keep']:
+            bits.append('KEEP-ANNOTATED(will be skipped)')
+        lines.append(' '.join(bits))
+    states = Counter(p['state'] for p in prowjobs)
+    summary = ', '.join(f'{k}={v}' for k, v in sorted(states.items())) if prowjobs else 'none'
+    lines.append(f'  verify prowjobs in {prow_namespace} ({len(prowjobs)}): {summary}')
+    active = [p for p in prowjobs if p['state'] in RESET_ACTIVE_PROWJOB_STATES]
+    if active:
+        lines.append(f'  WARNING: {len(active)} verify prowjob(s) still active — deletion will terminate them')
+    return '\n'.join(lines)
+
+
+def backup_reset_target(ctx, options, target, output_dir):
+    """Back up every present resource for a (release, arch) to output_dir."""
+    ns, release, stream = target['namespace'], target['release'], target['stream']
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(ns), oc.options(options):
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                path = write_backup_file(output_dir, f'{ns}_is', release, payload_is.model._primitive())
+                logger.info(f'Backup written to: {path}')
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                path = write_backup_file(output_dir, f'{ns}_releasepayload', release, rp.model._primitive())
+                logger.info(f'Backup written to: {path}')
+            stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
+            if stream_obj is not None:
+                sp = stream_obj.model._primitive()
+                entry = {
+                    'stream': stream, 'namespace': ns,
+                    'spec_tag': next((x for x in (sp.get('spec', {}).get('tags', []) or []) if x.get('name') == release), None),
+                    'status_tag': next((x for x in (sp.get('status', {}).get('tags', []) or []) if x.get('tag') == release), None),
+                }
+                path = write_backup_file(output_dir, f'{ns}_{stream}-tag', release, entry)
+                logger.info(f'Backup written to: {path}')
+        with oc.project(target['job_namespace']), oc.options(options):
+            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+            if job is not None:
+                path = write_backup_file(output_dir, f'{target["job_namespace"]}_job', target['job_name'], job.model._primitive())
+                logger.info(f'Backup written to: {path}')
+
+
+def backup_verify_prowjobs(ctx, options, prow_namespace, release, output_dir):
+    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(prow_namespace), oc.options(options):
+            objs = [o.model._primitive() for o in oc.selector('prowjobs', labels=labels).objects(ignore_not_found=True)]
+            if objs:
+                path = write_backup_file(output_dir, f'{prow_namespace}_prowjobs', release, objs)
+                logger.info(f'Backup written to: {path}')
+
+
+def delete_reset_target(ctx, options, target):
+    """Delete the per-arch resources: creation job, ReleasePayload, release tag, payload IS."""
+    ns, release, stream = target['namespace'], target['release'], target['stream']
+    if target['keep']:
+        logger.warning(f'{ns}/{stream}:{release} is flagged "keep" — skipping this arch.')
+        return
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(target['job_namespace']), oc.options(options):
+            job = oc.selector(f'job/{target["job_name"]}').object(ignore_not_found=True)
+            if job is not None:
+                logger.info(f'Deleting job: {target["job_namespace"]}/{target["job_name"]}')
+                job.delete(ignore_not_found=True)
+        with oc.project(ns), oc.options(options):
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                logger.info(f'Deleting releasepayload: {ns}/{release}')
+                rp.delete(ignore_not_found=True)
+            if target['tag_present']:
+                logger.info(f'Deleting release tag: {ns}/{stream}:{release}')
+                oc.invoke('tag', cmd_args=['--delete', f'{stream}:{release}'])
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                logger.info(f'Deleting payload imagestream: {ns}/{release}')
+                payload_is.delete(ignore_not_found=True)
+
+
+def delete_verify_prowjobs(ctx, options, prow_namespace, release):
+    labels = dict(RESET_VERIFY_LABELS, **{'release.openshift.io/payload': release})
+    with oc.options(ctx), oc.tracking(), oc.timeout(300):
+        with oc.project(prow_namespace), oc.options(options):
+            selector = oc.selector('prowjobs', labels=labels)
+            count = len(selector.objects(ignore_not_found=True))
+            if count > 0:
+                logger.info(f'Deleting {count} verify prowjob(s) in {prow_namespace} for {release}')
+                selector.delete(ignore_not_found=True)
+
+
+def confirm_reset(release):
+    """Per-release gate: [y]es delete / [w]rite backups only / [n]o skip."""
+    i = 1
+    while i <= 5:
+        answer = input(f'Reset {release}?  [y] delete  /  [w] write backups only  /  [n] skip: ').strip().lower()
+        if answer in ('y', 'yes'):
+            return 'y'
+        if answer in ('w', 'write'):
+            return 'w'
+        if answer in ('n', 'no', ''):
+            return 'n'
+        print('Please enter y, w, or n')
+        i += 1
+    return 'n'
+
+
+def reset_releases(ctx, options, product, private, prow_namespace, arches, releases, execute, assume_yes, keep_prowjobs, output_dir):
+    for release in releases:
+        targets = [discover_reset_target(ctx, options, product, private, release, arch) for arch in arches]
+        prowjobs = discover_verify_prowjobs(ctx, options, prow_namespace, release)
+
+        report = render_reset_report(release, targets, prowjobs, prow_namespace)
+        logger.info('\n' + report)
+
+        if not execute:
+            logger.warning(f'[dry-run] {release}: no changes made. Specify "--execute" to apply.')
+            continue
+
+        choice = 'y' if assume_yes else confirm_reset(release)
+        if choice == 'n':
+            logger.info(f'{release}: skipped, no changes made.')
+            continue
+
+        # Back up everything (for both "write-only" and "delete").
+        for target in targets:
+            backup_reset_target(ctx, options, target, output_dir)
+        backup_verify_prowjobs(ctx, options, prow_namespace, release, output_dir)
+        ts = int(round(time.time() * 1000))
+        report_file = f'{output_dir}/reset-report_{release}-{ts}.txt'
+        with open(report_file, mode='w', encoding='utf-8') as handle:
+            handle.write(report + '\n')
+        logger.info(f'Report written to: {report_file}')
+
+        if choice == 'w':
+            logger.info(f'{release}: report and backups written to {output_dir}; no resources deleted.')
+            continue
+
+        if not keep_prowjobs:
+            delete_verify_prowjobs(ctx, options, prow_namespace, release)
+        for target in targets:
+            delete_reset_target(ctx, options, target)
+        logger.info(f'{release}: reset complete. Backups in {output_dir}.')
+
+
 class NightlyComponents(typing.NamedTuple):
     major_minor: str
     arch: str
@@ -728,6 +1004,18 @@ if __name__ == '__main__':
     import_parser.set_defaults(action='import')
     import_parser.add_argument('imagestream', help='The name of the imagestream to process (e.g. 4.13-art-latest)')
 
+    reset_parser = subparsers.add_parser('reset',
+                                         help='Purge a release\'s controller state (payload imagestream, release tag, '
+                                              'ReleasePayload, creation job, verify ProwJobs) across arches so it can be '
+                                              'cleanly re-promoted without a version bump')
+    reset_parser.set_defaults(action='reset')
+    reset_parser.add_argument('releases', help='Version(s) to reset (e.g. 4.19.48 5.0.0-rc.3)', nargs='+', type=str)
+    reset_parser.add_argument('--arches', help='Arches to process (default: all supported)', nargs='+',
+                              choices=SUPPORTED_ARCHITECTURES, default=SUPPORTED_ARCHITECTURES)
+    reset_parser.add_argument('--prow-namespace', help='Namespace holding verify ProwJobs (default: "ci")', default='ci')
+    reset_parser.add_argument('-y', '--yes', help='Skip the per-release prompt (assume "y"/delete)', action='store_true')
+    reset_parser.add_argument('--keep-prowjobs', help='Do not delete verify ProwJobs', action='store_true')
+
     keep_parser = subparsers.add_parser('keep',
                                         help='Add/Delete the keep annotation from the respective release or list all imagestreamtags with keep annotation if no options are specified')
     keep_parser.set_defaults(action='keep')
@@ -827,6 +1115,9 @@ if __name__ == '__main__':
         archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'import':
         reimport(context, release_namespace, release_image_stream, args['execute'])
+    elif args['action'] == 'reset':
+        reset_releases(context, options, args['name'], args['private'], args['prow_namespace'], args['arches'],
+                       args['releases'], args['execute'], args['yes'], args['keep_prowjobs'], output_dir)
     elif args['action'] == 'revert':
         revert(context, args['to_nightly'], args['component'], args['execute'])
     elif args['action'] == 'bypass':
