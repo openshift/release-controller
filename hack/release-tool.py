@@ -859,11 +859,23 @@ def reset_releases(ctx: dict, options: dict, product: str, private: bool, prow_n
 # read cannot leave a tag deleted without a backup.
 
 @dataclasses.dataclass
-class StuckTag:
-    """A release tag selected for deletion by reset-tags."""
+class StreamTag:
+    """A release tag in a stream, carrying both its annotation phase and its
+    ReleasePayload (CRD) phase so reset-tags can decide safely."""
     name: str
-    phase: typing.Optional[str]
+    annotation_phase: typing.Optional[str]
+    crd_phase: typing.Optional[str]  # None when no ReleasePayload exists (orphaned)
     keep: typing.Optional[str]
+
+    @property
+    def effective_phase(self) -> typing.Optional[str]:
+        # Mirrors GetTagPhase: the CRD phase wins when present, else the annotation.
+        return self.crd_phase if self.crd_phase is not None else self.annotation_phase
+
+    @property
+    def desynced(self) -> bool:
+        return (self.crd_phase is not None and self.annotation_phase is not None
+                and self.crd_phase != self.annotation_phase)
 
 
 def discover_release_imagestream(ctx: dict, options: dict, namespace: str, stream: str) -> typing.Optional[str]:
@@ -880,9 +892,17 @@ def discover_release_imagestream(ctx: dict, options: dict, namespace: str, strea
     return None
 
 
-def select_stuck_tags(stream_obj, stream: str, phases: typing.Set[str]) -> typing.List[StuckTag]:
-    """Select spec tags belonging to `stream` whose phase is in `phases` (from one snapshot)."""
-    tags: typing.List[StuckTag] = []
+def releasepayload_phase(ctx: dict, options: dict, namespace: str, name: str) -> typing.Optional[ReleasePhase]:
+    """Return the ReleasePayload (CRD) phase for a tag, or None when no ReleasePayload exists."""
+    with oc.options(ctx), oc.tracking(), oc.timeout(30):
+        with oc.project(namespace), oc.options(options):
+            rp = oc.selector(f'releasepayload/{name}').object(ignore_not_found=True)
+            return None if rp is None else payload_phase(rp)
+
+
+def collect_stream_tags(ctx: dict, options: dict, namespace: str, stream_obj, stream: str) -> typing.List[StreamTag]:
+    """All tags of `stream` (from the imagestream snapshot), each annotated with its CRD phase."""
+    tags: typing.List[StreamTag] = []
     spec_tags = stream_obj.model.spec.tags
     if spec_tags is Missing:
         return tags
@@ -890,10 +910,13 @@ def select_stuck_tags(stream_obj, stream: str, phases: typing.Set[str]) -> typin
         name = spec_tag.name
         if name != stream and not name.startswith(f'{stream}-'):
             continue
-        phase = tag_annotation(spec_tag, ANNOTATION_PHASE)
-        if phases and phase not in phases:
-            continue
-        tags.append(StuckTag(name=name, phase=phase, keep=tag_annotation(spec_tag, ANNOTATION_KEEP)))
+        crd = releasepayload_phase(ctx, options, namespace, name)
+        tags.append(StreamTag(
+            name=name,
+            annotation_phase=tag_annotation(spec_tag, ANNOTATION_PHASE),
+            crd_phase=(crd.value if crd is not None else None),
+            keep=tag_annotation(spec_tag, ANNOTATION_KEEP),
+        ))
     return tags
 
 
@@ -954,15 +977,34 @@ def reset_tags(ctx: dict, options: dict, product: str, private: bool, arch: str,
         return
 
     phase_filter = set(phases)
-    candidates = select_stuck_tags(stream_obj, stream, phase_filter)
-    deletable = [tag for tag in candidates if not tag.keep]
-    kept = [tag for tag in candidates if tag.keep]
+    tags = collect_stream_tags(ctx, options, namespace, stream_obj, stream)
+    if not tags:
+        logger.info(f'No tags found for stream "{stream}" in {namespace}/{imagestream}.')
+        return
 
-    logger.info(f'Stream "{stream}" in {namespace}/{imagestream}: {len(candidates)} tag(s) in phases '
-                f'{sorted(phase_filter)} ({len(deletable)} to delete, {len(kept)} kept)')
-    for tag in candidates:
-        marker = ' [KEEP — skipped]' if tag.keep else ''
-        logger.info(f'  {tag.name}  phase={tag.phase}{marker}')
+    # Decide per tag using the EFFECTIVE (CRD-first) phase, never the annotation alone.
+    # An Accepted ReleasePayload is a good release and is never deleted, regardless of a
+    # stale Pending annotation (the OCPCRT-598 desync).
+    deletable: typing.List[StreamTag] = []
+    skipped: typing.List[typing.Tuple[StreamTag, str]] = []
+    for tag in tags:
+        if tag.keep:
+            skipped.append((tag, 'keep annotation'))
+        elif tag.crd_phase == ReleasePhase.ACCEPTED.value:
+            skipped.append((tag, 'ReleasePayload Accepted — refusing to delete a good release'))
+        elif tag.effective_phase not in phase_filter:
+            skipped.append((tag, f'effective phase "{tag.effective_phase}" not in target {sorted(phase_filter)}'))
+        else:
+            deletable.append(tag)
+
+    logger.info(f'Stream "{stream}" in {namespace}/{imagestream}: {len(tags)} tag(s); target phases '
+                f'{sorted(phase_filter)}; {len(deletable)} to delete, {len(skipped)} skipped')
+    for tag in tags:
+        decision = 'DELETE' if tag in deletable else 'skip'
+        desync = '  [DESYNC annotation!=CRD]' if tag.desynced else ''
+        logger.info(f'  [{decision:<6}] {tag.name}  annotation={tag.annotation_phase} crd={tag.crd_phase or "none"}{desync}')
+    for tag, reason in skipped:
+        logger.info(f'    skipped {tag.name}: {reason}')
 
     if not deletable:
         logger.info('Nothing to delete.')
