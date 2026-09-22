@@ -843,6 +843,146 @@ def reset_releases(ctx: dict, options: dict, product: str, private: bool, prow_n
         logger.info(f'{release}: reset complete. Backups in {output_dir}.')
 
 
+# ----------------------------------------------------------------------------- #
+# reset-tags: delete stuck release tags from a stream so it regenerates
+# ----------------------------------------------------------------------------- #
+#
+# A lighter-weight companion to "reset". Nightly (and CI) streams have
+# maxUnreadyReleases: a single tag stuck in Pending occupies the slot and freezes
+# the stream, so no new payloads are created. Deleting the stuck tag(s) frees the
+# slot; the release-controller then regenerates the stream and GCs the orphaned
+# ReleasePayload / mirror / creation job on its own.
+#
+# Unlike "reset" this does NOT touch ReleasePayloads, creation jobs or verify
+# ProwJobs. It fetches the release imagestream exactly once and drives both the
+# selection and the per-tag backups from that single snapshot, so a transient API
+# read cannot leave a tag deleted without a backup.
+
+@dataclasses.dataclass
+class StuckTag:
+    """A release tag selected for deletion by reset-tags."""
+    name: str
+    phase: typing.Optional[str]
+    keep: typing.Optional[str]
+
+
+def discover_release_imagestream(ctx: dict, options: dict, namespace: str, stream: str) -> typing.Optional[str]:
+    """Find the imagestream in `namespace` that holds `stream`'s release tags."""
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(namespace), oc.options(options):
+            for imagestream in oc.selector('imagestreams').objects(ignore_not_found=True):
+                spec_tags = imagestream.model.spec.tags
+                if spec_tags is Missing:
+                    continue
+                for spec_tag in spec_tags:
+                    if spec_tag.name == stream or spec_tag.name.startswith(f'{stream}-'):
+                        return imagestream.name()
+    return None
+
+
+def select_stuck_tags(stream_obj, stream: str, phases: typing.Set[str]) -> typing.List[StuckTag]:
+    """Select spec tags belonging to `stream` whose phase is in `phases` (from one snapshot)."""
+    tags: typing.List[StuckTag] = []
+    spec_tags = stream_obj.model.spec.tags
+    if spec_tags is Missing:
+        return tags
+    for spec_tag in spec_tags:
+        name = spec_tag.name
+        if name != stream and not name.startswith(f'{stream}-'):
+            continue
+        phase = tag_annotation(spec_tag, ANNOTATION_PHASE)
+        if phases and phase not in phases:
+            continue
+        tags.append(StuckTag(name=name, phase=phase, keep=tag_annotation(spec_tag, ANNOTATION_KEEP)))
+    return tags
+
+
+def backup_stream_tag(stream_obj, namespace: str, imagestream: str, name: str, output_dir: str) -> None:
+    """Back up a tag's spec+status entry from an already-fetched imagestream snapshot."""
+    spec_tag = find_spec_tag(stream_obj, name)
+    status_tag = find_status_tag(stream_obj, name)
+    entry = {
+        'stream': imagestream,
+        'namespace': namespace,
+        'spec_tag': None if spec_tag is None else spec_tag._primitive(),
+        'status_tag': None if status_tag is None else status_tag._primitive(),
+    }
+    path = write_backup_file(output_dir, f'{namespace}_{imagestream}-tag', name, entry)
+    logger.info(f'Backup written to: {path}')
+
+
+def delete_stream_tag(ctx: dict, options: dict, namespace: str, imagestream: str, name: str) -> None:
+    logger.info(f'Deleting tag: {namespace}/{imagestream}:{name}')
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(namespace), oc.options(options):
+            oc.invoke('tag', cmd_args=['--delete', f'{imagestream}:{name}'])
+
+
+def confirm_delete_batch(count: int, description: str) -> bool:
+    """Single confirmation for a batch tag deletion."""
+    i = 1
+    while i <= 5:
+        answer = input(f'Delete {count} tag(s) from {description}? (yes or no) ').strip().lower()
+        if answer in ('yes', 'y', 'ye'):
+            return True
+        if answer in ('no', 'n', '0', ''):
+            return False
+        print('Please enter yes or no')
+        i += 1
+    return False
+
+
+def reset_tags(ctx: dict, options: dict, product: str, private: bool, arch: str,
+               imagestream: typing.Optional[str], stream: str, phases: typing.List[str],
+               execute: bool, assume_yes: bool, output_dir: str) -> None:
+    namespace, _ = generate_resource_values(product, 'release', arch, private)
+
+    if imagestream is None:
+        imagestream = discover_release_imagestream(ctx, options, namespace, stream)
+        if imagestream is None:
+            logger.error(f'Unable to find an imagestream in {namespace} holding tags for stream "{stream}". '
+                         f'Specify one with -i/--imagestream.')
+            return
+        logger.info(f'Discovered imagestream: {namespace}/{imagestream}')
+
+    # Fetch the imagestream exactly once; drive selection and backups from it.
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(namespace), oc.options(options):
+            stream_obj = oc.selector(f'imagestream/{imagestream}').object(ignore_not_found=True)
+    if stream_obj is None:
+        logger.error(f'Imagestream not found: {namespace}/{imagestream}')
+        return
+
+    phase_filter = set(phases)
+    candidates = select_stuck_tags(stream_obj, stream, phase_filter)
+    deletable = [tag for tag in candidates if not tag.keep]
+    kept = [tag for tag in candidates if tag.keep]
+
+    logger.info(f'Stream "{stream}" in {namespace}/{imagestream}: {len(candidates)} tag(s) in phases '
+                f'{sorted(phase_filter)} ({len(deletable)} to delete, {len(kept)} kept)')
+    for tag in candidates:
+        marker = ' [KEEP — skipped]' if tag.keep else ''
+        logger.info(f'  {tag.name}  phase={tag.phase}{marker}')
+
+    if not deletable:
+        logger.info('Nothing to delete.')
+        return
+
+    if not execute:
+        logger.warning(f'[dry-run] would delete {len(deletable)} tag(s). Specify "--execute" to apply.')
+        return
+
+    if not assume_yes and not confirm_delete_batch(len(deletable), f'{namespace}/{imagestream} [{stream}]'):
+        logger.info('Aborted, no changes made.')
+        return
+
+    for tag in deletable:
+        backup_stream_tag(stream_obj, namespace, imagestream, tag.name, output_dir)
+        delete_stream_tag(ctx, options, namespace, imagestream, tag.name)
+    logger.info(f'reset-tags complete: deleted {len(deletable)} tag(s) from {namespace}/{imagestream}. '
+                f'Backups in {output_dir}.')
+
+
 class NightlyComponents(typing.NamedTuple):
     major_minor: str
     arch: str
@@ -1175,6 +1315,16 @@ if __name__ == '__main__':
     reset_parser.add_argument('-y', '--yes', help='Skip the per-release prompt (assume "y"/delete)', action='store_true')
     reset_parser.add_argument('--keep-prowjobs', help='Do not delete verify ProwJobs', action='store_true')
 
+    reset_tags_parser = subparsers.add_parser('reset-tags',
+                                              help='Delete stuck release tags (default: Pending) from a stream so the '
+                                                   'release-controller regenerates it (frees the maxUnreadyReleases slot). '
+                                                   'Fetches the imagestream once and backs up each tag before deletion.')
+    reset_tags_parser.set_defaults(action='reset-tags')
+    reset_tags_parser.add_argument('stream', help='The release stream whose stuck tags to delete (e.g. 5.1.0-0.nightly-arm64)')
+    reset_tags_parser.add_argument('--phases', help='Only delete tags in these phases (default: Pending)', nargs='+',
+                                   default=[ReleasePhase.PENDING.value])
+    reset_tags_parser.add_argument('-y', '--yes', help='Skip the confirmation prompt', action='store_true')
+
     keep_parser = subparsers.add_parser('keep',
                                         help='Add/Delete the keep annotation from the respective release or list all imagestreamtags with keep annotation if no options are specified')
     keep_parser.set_defaults(action='keep')
@@ -1277,6 +1427,9 @@ if __name__ == '__main__':
     elif args['action'] == 'reset':
         reset_releases(context, options, args['name'], args['private'], args['prow_namespace'], args['arches'],
                        args['releases'], args['execute'], args['yes'], args['keep_prowjobs'], output_dir)
+    elif args['action'] == 'reset-tags':
+        reset_tags(context, options, args['name'], args['private'], args['architecture'], args['imagestream'],
+                   args['stream'], args['phases'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'revert':
         revert(context, args['to_nightly'], args['component'], args['execute'])
     elif args['action'] == 'bypass':
