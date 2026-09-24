@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/openshift/release-controller/pkg/prow"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -504,6 +506,23 @@ func (c *Controller) ensureReleaseMirrorJob(release *releasecontroller.Release, 
 	})
 }
 
+// releaseMirrorJobName generates the name of the mirror job for the specified tag.
 func releaseMirrorJobName(tagName string) string {
-	return fmt.Sprintf("%s-alternate-mirror", tagName)
+	return safeJobName(fmt.Sprintf("%s-alternate-mirror", tagName))
+}
+
+// maxJobNameLength is the maximum length of a job name.  Kubernetes copies the job's name into the
+// pod template's "job-name" label and label values are limited to 63 characters.
+const maxJobNameLength = 63
+
+// safeJobName returns name unchanged when it fits within maxJobNameLength.  Otherwise, it deterministically
+// truncates it and appends a hash of the original name, so that long names (i.e. ART, multi-arch, or dated
+// nightly tags) remain unique and valid.
+func safeJobName(name string) string {
+	if len(name) <= maxJobNameLength {
+		return name
+	}
+	suffix := fmt.Sprintf("-%s", prow.ProwjobSafeHash(name))
+	truncated := strings.TrimRight(name[:maxJobNameLength-len(suffix)], "-.")
+	return fmt.Sprintf("%s%s", truncated, suffix)
 }
