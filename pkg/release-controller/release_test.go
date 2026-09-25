@@ -1,6 +1,7 @@
 package releasecontroller
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -8,6 +9,46 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestSortedReleaseTags(t *testing.T) {
+	tags := []imagev1.TagReference{
+		{Name: "4.18.0", Annotations: map[string]string{
+			ReleaseAnnotationSource: "test/releases", ReleaseAnnotationName: "test-release",
+			ReleaseAnnotationCreationTimestamp: "2026-09-03T00:00:00Z",
+		}},
+		{Name: "4.19.0", Annotations: map[string]string{
+			ReleaseAnnotationSource: "test/releases", ReleaseAnnotationName: "test-release",
+			ReleaseAnnotationCreationTimestamp: "2026-09-02T00:00:00Z",
+		}},
+		{Name: "4.20.0", Annotations: map[string]string{
+			ReleaseAnnotationSource: "test/releases", ReleaseAnnotationName: "test-release",
+			ReleaseAnnotationCreationTimestamp: "2026-09-01T00:00:00Z",
+		}},
+	}
+	for _, tc := range []struct {
+		mode string
+		want []string
+	}{
+		{mode: ReleaseConfigModeStable, want: []string{"4.20.0", "4.19.0", "4.18.0"}},
+		{mode: ReleaseConfigModeLayered, want: []string{"4.20.0", "4.19.0", "4.18.0"}},
+		{mode: "Integration", want: []string{"4.18.0", "4.19.0", "4.20.0"}},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			release := &Release{
+				Source: &imagev1.ImageStream{ObjectMeta: metav1.ObjectMeta{Namespace: "test", Name: "releases"}},
+				Target: &imagev1.ImageStream{Spec: imagev1.ImageStreamSpec{Tags: tags}},
+				Config: &ReleaseConfig{Name: "test-release", As: tc.mode},
+			}
+			var got []string
+			for _, tag := range SortedReleaseTags(release) {
+				got = append(got, tag.Name)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("SortedReleaseTags() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestIsReferenceRelease(t *testing.T) {
 	testCases := []struct {
