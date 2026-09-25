@@ -440,12 +440,12 @@ func FirstTagWithMajorMinorSemanticVersion(versions SemanticVersions, version se
 }
 
 // SortedReleaseTags returns the tags for a given release in the most appropriate order -
-// by creation date for iterative streams, by semantic version for stable streams. If
+// by creation date for iterative streams, by semantic version for stable and layered streams. If
 // phase is specified the list will be filtered.
 func SortedReleaseTags(release *Release, phases ...string) []*imagev1.TagReference {
 	versions := UnsortedSemanticReleaseTags(release, phases...)
 	switch release.Config.As {
-	case ReleaseConfigModeStable:
+	case ReleaseConfigModeStable, ReleaseConfigModeLayered:
 		sort.Sort(versions)
 		return versions.Tags()
 	default:
