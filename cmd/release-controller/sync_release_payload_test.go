@@ -8,6 +8,7 @@ import (
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasequalifiers"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -1137,6 +1138,147 @@ func TestNewReleasePayload(t *testing.T) {
 			payload := newReleasePayload(tc.release, tc.releaseTag, tc.payloadName, tc.jobNamespace, tc.prowNamespace, tc.verificationJobs, tc.upgradeJobs, tc.dataSource, tc.payloadType)
 			if !reflect.DeepEqual(payload, tc.expected) {
 				t.Errorf("%s: Expected %v, got %v", tc.name, tc.expected, payload)
+			}
+		})
+	}
+}
+
+func TestNewLayeredReleasePayloadCoordinates(t *testing.T) {
+	const digest = "sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	tests := []struct {
+		name      string
+		tag       *imagev1.TagReference
+		status    imagev1.ImageStreamStatus
+		expected  v1alpha1.ReleaseCoordinates
+		wantCoord bool
+	}{
+		{
+			name: "reference digest source",
+			tag: &imagev1.TagReference{
+				Name:      "1.2.3",
+				Reference: true,
+				From: &corev1.ObjectReference{
+					Kind: "DockerImage",
+					Name: "quay.io/redhat-user-workloads/example/layered@" + digest,
+				},
+			},
+			expected: v1alpha1.ReleaseCoordinates{
+				Repository: "quay.io/redhat-user-workloads/example/layered",
+				Digest:     digest,
+			},
+			wantCoord: true,
+		},
+		{
+			name: "non-reference tagged source",
+			tag: &imagev1.TagReference{
+				Name: "1.2.3",
+				From: &corev1.ObjectReference{
+					Kind: "DockerImage",
+					Name: "quay.io/example/layered:v1.2.3",
+				},
+			},
+			expected: v1alpha1.ReleaseCoordinates{
+				Repository: "quay.io/example/layered",
+				Tag:        "v1.2.3",
+			},
+			wantCoord: true,
+		},
+		{
+			name: "missing source",
+			tag:  &imagev1.TagReference{Name: "1.2.3", Reference: true},
+		},
+		{
+			name: "legacy imported source",
+			tag:  &imagev1.TagReference{Name: "1.2.3"},
+			status: imagev1.ImageStreamStatus{
+				PublicDockerImageRepository: "registry.example.com/layered",
+				Tags: []imagev1.NamedTagEventList{{
+					Tag:   "1.2.3",
+					Items: []imagev1.TagEvent{{DockerImageReference: "registry.internal/layered@sha256:legacy"}},
+				}},
+			},
+			expected:  v1alpha1.ReleaseCoordinates{Repository: "registry.example.com/layered", Tag: "1.2.3"},
+			wantCoord: true,
+		},
+		{
+			name: "wrong source kind",
+			tag: &imagev1.TagReference{
+				Name:      "1.2.3",
+				Reference: true,
+				From:      &corev1.ObjectReference{Kind: "ImageStreamTag", Name: "layered:source"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			release := &releasecontroller.Release{
+				Target: &imagev1.ImageStream{
+					ObjectMeta: metav1.ObjectMeta{Name: "layered", Namespace: "ocp"},
+					Status:     tt.status,
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "layered",
+					As:   releasecontroller.ReleaseConfigModeLayered,
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PullRepository: "quay-proxy.ci.openshift.org/openshift/ci",
+					},
+				},
+			}
+			payload := newReleasePayload(
+				release,
+				tt.tag,
+				tt.tag.Name,
+				"ci-release",
+				"ci",
+				map[string]releasecontroller.ReleaseVerification{},
+				map[string]releasecontroller.UpgradeVerification{},
+				v1alpha1.PayloadVerificationDataSourceBuildFarm,
+				v1alpha1.PayloadTypeReference,
+			)
+			if !tt.wantCoord {
+				if len(payload.Spec.ReleaseCoordinates) != 0 {
+					t.Fatalf("expected no release coordinates, got %#v", payload.Spec.ReleaseCoordinates)
+				}
+				return
+			}
+			if len(payload.Spec.ReleaseCoordinates) != 1 || payload.Spec.ReleaseCoordinates[0] != tt.expected {
+				t.Fatalf("expected coordinates %#v, got %#v", tt.expected, payload.Spec.ReleaseCoordinates)
+			}
+		})
+	}
+}
+
+func TestReleaseCoordinatesFromPullSpec(t *testing.T) {
+	const digest = "sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	tests := []struct {
+		name     string
+		pullSpec string
+		expected v1alpha1.ReleaseCoordinates
+		ok       bool
+	}{
+		{
+			name:     "digest",
+			pullSpec: "quay.io/example/layered@" + digest,
+			expected: v1alpha1.ReleaseCoordinates{Repository: "quay.io/example/layered", Digest: digest},
+			ok:       true,
+		},
+		{
+			name:     "tag",
+			pullSpec: "quay.io/example/layered:v1.2.3",
+			expected: v1alpha1.ReleaseCoordinates{Repository: "quay.io/example/layered", Tag: "v1.2.3"},
+			ok:       true,
+		},
+		{name: "empty"},
+		{name: "invalid", pullSpec: "not a pull spec"},
+		{name: "unqualified repository", pullSpec: "quay.io/example/layered"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, ok := releaseCoordinatesFromPullSpec(tt.pullSpec)
+			if ok != tt.ok || actual != tt.expected {
+				t.Fatalf("releaseCoordinatesFromPullSpec(%q) = (%#v, %t), want (%#v, %t)", tt.pullSpec, actual, ok, tt.expected, tt.ok)
 			}
 		})
 	}

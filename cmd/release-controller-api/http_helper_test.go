@@ -11,6 +11,7 @@ import (
 	"github.com/blang/semver"
 	"github.com/google/go-cmp/cmp"
 	imagev1 "github.com/openshift/api/image/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func Test_calculateReleaseUpgrades(t *testing.T) {
@@ -313,6 +314,44 @@ func TestResolveReleasePullSpec(t *testing.T) {
 		want    string
 	}{
 		{
+			name: "layered reference tag resolves to DockerImage source",
+			release: &releasecontroller.Release{
+				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{Tags: []imagev1.TagReference{{
+						Name:      "1.2.3",
+						Reference: true,
+						From: &corev1.ObjectReference{
+							Kind: "DockerImage",
+							Name: "quay.io/example/layered@sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c",
+						},
+					}}},
+					Status: imagev1.ImageStreamStatus{PublicDockerImageRepository: "quay-proxy.ci.openshift.org/openshift/ci"},
+				},
+				Config: &releasecontroller.ReleaseConfig{
+					As: releasecontroller.ReleaseConfigModeLayered,
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PullRepository: "quay-proxy.ci.openshift.org/openshift/ci",
+					},
+				},
+			},
+			tag:  "1.2.3",
+			want: "quay.io/example/layered@sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c",
+		},
+		{
+			name: "layered non-reference tag resolves to DockerImage source without status",
+			release: &releasecontroller.Release{
+				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{Tags: []imagev1.TagReference{{
+						Name: "1.2.3",
+						From: &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/example/layered:v1.2.3"},
+					}}},
+				},
+				Config: &releasecontroller.ReleaseConfig{As: releasecontroller.ReleaseConfigModeLayered},
+			},
+			tag:  "1.2.3",
+			want: "quay.io/example/layered:v1.2.3",
+		},
+		{
 			name: "reference tag in Target resolves to external repo",
 			release: &releasecontroller.Release{
 				Source: &imagev1.ImageStream{
@@ -501,6 +540,65 @@ func TestPullSpecFromCoordinates(t *testing.T) {
 			got := pullSpecFromCoordinates(tt.coords)
 			if got != tt.want {
 				t.Errorf("pullSpecFromCoordinates() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReleaseGraphPullSpec(t *testing.T) {
+	const source = "quay.io/example/layered@sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	tests := []struct {
+		name    string
+		release *releasecontroller.Release
+		tag     *imagev1.TagReference
+		want    string
+	}{
+		{
+			name: "layered release uses DockerImage source even when status has an image ID",
+			tag: &imagev1.TagReference{
+				Name: "1.2.3",
+				From: &corev1.ObjectReference{Kind: "DockerImage", Name: source},
+			},
+			release: &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{As: releasecontroller.ReleaseConfigModeLayered},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "quay-proxy.ci.openshift.org/openshift/ci",
+						Tags: []imagev1.NamedTagEventList{{
+							Tag:   "1.2.3",
+							Items: []imagev1.TagEvent{{Image: "sha256:status"}},
+						}},
+					},
+				},
+			},
+			want: source,
+		},
+		{
+			name: "local release preserves public repository digest",
+			tag:  &imagev1.TagReference{Name: "4.20.0"},
+			release: &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/release",
+						Tags: []imagev1.NamedTagEventList{{
+							Tag:   "4.20.0",
+							Items: []imagev1.TagEvent{{Image: "sha256:local"}},
+						}},
+					},
+				},
+			},
+			want: "registry.ci.openshift.org/ocp/release@sha256:local",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+				tt.release.Target.Spec.Tags = []imagev1.TagReference{*tt.tag}
+			}
+			if got := releaseGraphPullSpec(tt.release, tt.tag); got != tt.want {
+				t.Fatalf("releaseGraphPullSpec() = %q, want %q", got, tt.want)
 			}
 		})
 	}

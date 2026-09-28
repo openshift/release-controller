@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -57,17 +58,10 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 		for _, s := range streams {
 			for _, tag := range s.Tags {
 				nodesByName[tag.Name] = len(nodes)
-				if id := releasecontroller.FindImageIDForTag(s.Release.Target, tag.Name); len(id) > 0 {
-					nodes = append(nodes, ReleaseNode{
-						Version: tag.Name,
-						Payload: s.Release.Target.Status.PublicDockerImageRepository + "@" + id,
-					})
-				} else {
-					nodes = append(nodes, ReleaseNode{
-						Version: tag.Name,
-						Payload: resolveReleasePullSpec(s.Release, tag.Name),
-					})
-				}
+				nodes = append(nodes, ReleaseNode{
+					Version: tag.Name,
+					Payload: releaseGraphPullSpec(s.Release, tag),
+				})
 			}
 		}
 
@@ -155,4 +149,13 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 	default:
 		http.Error(w, "Unsupported ?format, must be 'cincinnati' (default)", http.StatusBadRequest)
 	}
+}
+
+func releaseGraphPullSpec(release *releasecontroller.Release, tag *imagev1.TagReference) string {
+	if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
+		if id := releasecontroller.FindImageIDForTag(release.Target, tag.Name); len(id) > 0 {
+			return release.Target.Status.PublicDockerImageRepository + "@" + id
+		}
+	}
+	return resolveReleasePullSpec(release, tag.Name)
 }

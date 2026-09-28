@@ -142,6 +142,38 @@ func TestAddReleaseEnvToProwJobSpec_Reference(t *testing.T) {
 	}
 }
 
+func TestAddReleaseEnvToProwJobSpec_LayeredReference(t *testing.T) {
+	const pullSpec = "quay.io/redhat-user-workloads/example/layered@sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	release := newRelease(true, "quay-proxy.ci.openshift.org/openshift/ci")
+	release.Config.As = releasecontroller.ReleaseConfigModeLayered
+	tag := &imagev1.TagReference{
+		Name:      "1.2.3",
+		Reference: true,
+		From:      &corev1.ObjectReference{Kind: "DockerImage", Name: pullSpec},
+	}
+	spec := prowjobv1.ProwJobSpec{
+		PodSpec: &corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "test"}},
+		},
+	}
+
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+
+	env := spec.PodSpec.Containers[0].Env
+	if val, found := findEnv(env, "RELEASE_IMAGE_LATEST"); !found || val != pullSpec {
+		t.Errorf("RELEASE_IMAGE_LATEST: expected %q, got %q (found=%v)", pullSpec, val, found)
+	}
+	if val, found := findEnv(env, "RELEASE_IMAGE_INITIAL"); !found || val != pullSpec {
+		t.Errorf("RELEASE_IMAGE_INITIAL: expected %q, got %q (found=%v)", pullSpec, val, found)
+	}
+}
+
 func TestAddReleaseEnvToProwJobSpec_ReferenceUpgrade(t *testing.T) {
 	release := newRelease(true, "quay.io/openshift-release-dev/ocp-release")
 	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true}

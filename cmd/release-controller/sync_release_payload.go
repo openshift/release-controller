@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	imagev1 "github.com/openshift/api/image/v1"
+	imagereference "github.com/openshift/library-go/pkg/image/reference"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -77,7 +78,11 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 		}
 	}
 
-	if releasecontroller.IsReferenceReleaseTag(release, tag) {
+	if release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+		if coordinates, ok := releaseCoordinatesFromPullSpec(releasecontroller.ReleasePullSpec(release, tag)); ok {
+			payload.Spec.ReleaseCoordinates = []v1alpha1.ReleaseCoordinates{coordinates}
+		}
+	} else if releasecontroller.IsReferenceReleaseTag(release, tag) {
 		payload.Spec.ReleaseCoordinates = []v1alpha1.ReleaseCoordinates{{
 			Repository: release.Config.ReferenceRelease.PullRepository,
 			Tag:        releasecontroller.ReferencePayloadTag(name),
@@ -156,4 +161,22 @@ func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagRefer
 		payload.Spec.PayloadVerificationConfig.UpgradeJobs = append(payload.Spec.PayloadVerificationConfig.UpgradeJobs, ciConfig)
 	}
 	return &payload
+}
+
+// releaseCoordinatesFromPullSpec converts a tagged or digest-pinned image
+// reference into the structured form used by ReleasePayload consumers.
+func releaseCoordinatesFromPullSpec(pullSpec string) (v1alpha1.ReleaseCoordinates, bool) {
+	ref, err := imagereference.Parse(pullSpec)
+	if err != nil || ref.Name == "" || (ref.Tag == "" && ref.ID == "") {
+		return v1alpha1.ReleaseCoordinates{}, false
+	}
+	repository := ref.AsRepository().Exact()
+	if repository == "" {
+		return v1alpha1.ReleaseCoordinates{}, false
+	}
+	return v1alpha1.ReleaseCoordinates{
+		Repository: repository,
+		Tag:        ref.Tag,
+		Digest:     ref.ID,
+	}, true
 }

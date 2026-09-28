@@ -725,13 +725,26 @@ func ResolveCLIImage(release *Release, mirror *imagev1.ImageStream) (string, err
 }
 
 // ReleasePullSpec returns the correct pull spec for a release payload tag.
-// For reference-based tags the payload lives in the external ReferenceRepository;
-// for traditional tags it lives in the Target imagestream.
+// Layered releases use a pre-existing image and therefore resolve directly to
+// the DockerImage configured on the tag. For reference-based tags the payload
+// lives in the external ReferenceRepository; for traditional tags it lives in
+// the Target imagestream.
 // Pass the actual tag reference so that legacy tags in a transitioning stream
 // are resolved against the local Target rather than the external repository.
 // Returns an empty string if tag is nil.
 func ReleasePullSpec(release *Release, tag *imagev1.TagReference) string {
-	if tag == nil {
+	if release == nil || tag == nil {
+		return ""
+	}
+	if release.Config != nil && release.Config.As == ReleaseConfigModeLayered {
+		if tag.From != nil && tag.From.Kind == "DockerImage" && tag.From.Name != "" {
+			return tag.From.Name
+		}
+		// Older layered streams may use imported tags instead of direct
+		// DockerImage references. Preserve their status-based resolution.
+		if release.Target != nil {
+			return FindPublicImagePullSpec(release.Target, tag.Name)
+		}
 		return ""
 	}
 	if IsReferenceReleaseTag(release, tag) {
@@ -740,7 +753,7 @@ func ReleasePullSpec(release *Release, tag *imagev1.TagReference) string {
 		}
 		return fmt.Sprintf("%s:%s", release.Config.ReferenceRelease.PullRepository, ReferencePayloadTag(tag.Name))
 	}
-	if release.Target.Status.PublicDockerImageRepository == "" {
+	if release.Target == nil || release.Target.Status.PublicDockerImageRepository == "" {
 		return ""
 	}
 	return release.Target.Status.PublicDockerImageRepository + ":" + tag.Name

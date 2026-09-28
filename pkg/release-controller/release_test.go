@@ -387,6 +387,82 @@ func TestReleasePullSpec(t *testing.T) {
 			expected: "",
 		},
 		{
+			name: "layered reference tag uses its digest-pinned DockerImage source",
+			release: &Release{
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "quay-proxy.ci.openshift.org/openshift/ci",
+						Tags: []imagev1.NamedTagEventList{{
+							Tag: "1.2.3",
+							Items: []imagev1.TagEvent{{
+								DockerImageReference: "quay-proxy.ci.openshift.org/openshift/ci@sha256:status",
+							}},
+						}},
+					},
+				},
+				Config: &ReleaseConfig{
+					As: ReleaseConfigModeLayered,
+					ReferenceRelease: &ReferenceRelease{
+						PullRepository: "quay-proxy.ci.openshift.org/openshift/ci",
+					},
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name:      "1.2.3",
+				Reference: true,
+				From: &corev1.ObjectReference{
+					Kind: "DockerImage",
+					Name: "quay.io/example/layered@sha256:source",
+				},
+			},
+			expected: "quay.io/example/layered@sha256:source",
+		},
+		{
+			name: "layered non-reference tag uses its DockerImage source",
+			release: &Release{
+				Target: &imagev1.ImageStream{},
+				Config: &ReleaseConfig{As: ReleaseConfigModeLayered},
+			},
+			tag: &imagev1.TagReference{
+				Name: "1.2.3",
+				From: &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/example/layered:v1.2.3"},
+			},
+			expected: "quay.io/example/layered:v1.2.3",
+		},
+		{
+			name: "layered tag without DockerImage source falls back to imported status",
+			release: &Release{
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.example.com/layered",
+						Tags: []imagev1.NamedTagEventList{{
+							Tag:   "1.2.3",
+							Items: []imagev1.TagEvent{{DockerImageReference: "registry.internal/layered@sha256:legacy"}},
+						}},
+					},
+				},
+				Config: &ReleaseConfig{As: ReleaseConfigModeLayered},
+			},
+			tag:      &imagev1.TagReference{Name: "1.2.3"},
+			expected: "registry.example.com/layered:1.2.3",
+		},
+		{
+			name: "layered tag with wrong source kind and no status returns empty string",
+			release: &Release{
+				Target: &imagev1.ImageStream{},
+				Config: &ReleaseConfig{
+					As:               ReleaseConfigModeLayered,
+					ReferenceRelease: &ReferenceRelease{PullRepository: "quay.io/example/reference"},
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name:      "1.2.3",
+				Reference: true,
+				From:      &corev1.ObjectReference{Kind: "ImageStreamTag", Name: "layered:source"},
+			},
+			expected: "",
+		},
+		{
 			name: "tag with Reference false uses Target pull spec",
 			release: &Release{
 				Target: &imagev1.ImageStream{
