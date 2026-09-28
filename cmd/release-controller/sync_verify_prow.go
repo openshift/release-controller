@@ -91,7 +91,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *releasecontroller.Relea
 	}
 
 	mirror, _ := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
-	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture)
+	ok, err = addReleaseEnvToProwJobSpec(&spec, release, mirror, releaseTag, previousReleasePullSpec, verifyType.Upgrade, c.graph.Architecture, verifyType.LayeredImageEnvVar)
 	if err != nil {
 		return nil, err
 	}
@@ -161,10 +161,25 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecontroller.Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool, architecture string) (bool, error) {
+// addReleaseEnvToProwJobSpec parameterizes a prow job spec with the images under test.
+//
+// Layered releases are handled separately from every other kind of release. The
+// image of a layered release is a single pre-built component, not a release
+// payload, so injecting it as RELEASE_IMAGE_LATEST would break the install.
+// Instead it is injected into the configured layered image environment variable
+// and passed through as a ci-operator multi stage parameter, leaving the job to
+// install OpenShift from the release in its own configuration and to override
+// just that one image within its steps.
+//
+// layeredImageEnvVarOverride is the verification step's override of the stream
+// wide variable name, and is ignored for non layered releases.
+func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecontroller.Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string, isUpgrade bool, architecture, layeredImageEnvVarOverride string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
+	}
+	if releasecontroller.IsLayeredRelease(release) {
+		return addLayeredImageEnvToProwJobSpec(spec, release, releaseTag, layeredImageEnvVarOverride)
 	}
 	hasReleaseImage := false
 	hasUpgradeImage := false
@@ -256,18 +271,61 @@ func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecon
 				c.Env = append(c.Env, corev1.EnvVar{Name: "RELEASE_IMAGE_INITIAL", Value: previousReleasePullSpec})
 			}
 		}
-		// This environment variable is being added, to all release-controller jobs, to override the default value
-		// of "true", specified in the Step definition.  Why? The variable is being added as a cost saving mechanism
-		// that forces everyone to utilize Public worker nodes and bypassing any NAT Gateway expenses on their
-		// clusters.  The release-controller must run its verification tests against "real" clusters and therefore,
-		// we're overriding this value.
-		c.Env = append(c.Env, corev1.EnvVar{Name: "OPENSHIFT_INSTALL_AWS_PUBLIC_ONLY", Value: "false"})
-
-		// Include an environment variable for any step logic that wants to know if the release controller
-		// triggered the job.
-		c.Args = append(c.Args, "--multi-stage-param=RELEASE_CONTROLLER_JOB=true")
+		addCommonEnvToContainer(c)
 	}
 	return true, nil
+}
+
+// addLayeredImageEnvToProwJobSpec injects the pre-built image of a layered
+// release into the configured environment variable, and passes it through to
+// ci-operator as a multi stage parameter so that the job's steps can use it to
+// override a single image. No RELEASE_IMAGE_* variables are set, the job
+// installs OpenShift from the release named in its own configuration.
+func addLayeredImageEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *releasecontroller.Release, releaseTag *imagev1.TagReference, layeredImageEnvVarOverride string) (bool, error) {
+	image := releasecontroller.LayeredReleaseImage(releaseTag)
+	if len(image) == 0 {
+		return false, fmt.Errorf("unable to determine the layered image for prow job %s: tag %s does not reference an image", spec.Job, releaseTag.Name)
+	}
+	name := releasecontroller.LayeredImageEnvVar(release, layeredImageEnvVarOverride)
+
+	for i := range spec.PodSpec.Containers {
+		c := &spec.PodSpec.Containers[i]
+		setContainerEnv(c, name, image)
+		c.Args = append(c.Args, fmt.Sprintf("--multi-stage-param=%s=%s", name, image))
+		addCommonEnvToContainer(c)
+	}
+	return true, nil
+}
+
+// addCommonEnvToContainer applies the parameters that every release-controller
+// triggered job receives, regardless of the kind of release under test.
+func addCommonEnvToContainer(c *corev1.Container) {
+	// This environment variable is being added, to all release-controller jobs, to override the default value
+	// of "true", specified in the Step definition.  Why? The variable is being added as a cost saving mechanism
+	// that forces everyone to utilize Public worker nodes and bypassing any NAT Gateway expenses on their
+	// clusters.  The release-controller must run its verification tests against "real" clusters and therefore,
+	// we're overriding this value.
+	c.Env = append(c.Env, corev1.EnvVar{Name: "OPENSHIFT_INSTALL_AWS_PUBLIC_ONLY", Value: "false"})
+
+	// Include an environment variable for any step logic that wants to know if the release controller
+	// triggered the job.
+	c.Args = append(c.Args, "--multi-stage-param=RELEASE_CONTROLLER_JOB=true")
+}
+
+// setContainerEnv sets an environment variable on a container, replacing any
+// value the job already declared for it. Any source the job declared is cleared
+// as well: an environment variable that specifies both a value and a valueFrom
+// is rejected by the API server, so leaving the source in place would produce a
+// pod that cannot be created.
+func setContainerEnv(c *corev1.Container, name, value string) {
+	for j := range c.Env {
+		if c.Env[j].Name == name {
+			c.Env[j].Value = value
+			c.Env[j].ValueFrom = nil
+			return
+		}
+	}
+	c.Env = append(c.Env, corev1.EnvVar{Name: name, Value: value})
 }
 
 // To ensure that we do not modify anything returned from the ProwConfigLoader, I've added a DeepCopy here...

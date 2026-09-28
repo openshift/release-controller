@@ -39,6 +39,34 @@ func TestLayeredModeConfiguration(t *testing.T) {
 			configJSON:  `{"name": "test-integration", "to": "releases"}`,
 			expectError: false,
 		},
+		{
+			name:        "Layered mode with a stream wide layeredImageEnvVar is valid",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "layeredImageEnvVar": "HYPERSHIFT_OPERATOR_IMAGE"}`,
+			expectError: false,
+		},
+		{
+			name:        "Layered mode with a per job layeredImageEnvVar is valid",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "verify": {"e2e": {"layeredImageEnvVar": "HYPERSHIFT_OPERATOR_IMAGE", "prowJob": {"name": "e2e-job"}}}}`,
+			expectError: false,
+		},
+		{
+			name:        "Layered mode with an invalid stream wide layeredImageEnvVar should error",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "layeredImageEnvVar": "not a valid name"}`,
+			expectError: true,
+			errorMsg:    "release has an invalid layeredImageEnvVar: not a valid name",
+		},
+		{
+			name:        "Layered mode with an invalid per job layeredImageEnvVar should error",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "verify": {"e2e": {"layeredImageEnvVar": "IMAGE=OVERRIDE", "prowJob": {"name": "e2e-job"}}}}`,
+			expectError: true,
+			errorMsg:    "verify config e2e has an invalid layeredImageEnvVar: IMAGE=OVERRIDE",
+		},
+		{
+			name:        "Layered mode with an invalid periodic layeredImageEnvVar should error",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "periodic": {"nightly": {"layeredImageEnvVar": "1_BAD_NAME", "prowJob": {"name": "nightly-job"}}}}`,
+			expectError: true,
+			errorMsg:    "periodic config nightly has an invalid layeredImageEnvVar: 1_BAD_NAME",
+		},
 	}
 
 	for _, tc := range testCases {
