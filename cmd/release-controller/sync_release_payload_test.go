@@ -1,15 +1,22 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
+	releasefake "github.com/openshift/release-controller/pkg/client/clientset/versioned/fake"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"github.com/openshift/release-controller/pkg/releasequalifiers"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	clienttesting "k8s.io/client-go/testing"
 )
 
 var (
@@ -1281,5 +1288,175 @@ func TestReleaseCoordinatesFromPullSpec(t *testing.T) {
 				t.Fatalf("releaseCoordinatesFromPullSpec(%q) = (%#v, %t), want (%#v, %t)", tt.pullSpec, actual, ok, tt.expected, tt.ok)
 			}
 		})
+	}
+}
+
+func TestEnsureReleasePayloadReconcilesExistingLayeredCoordinates(t *testing.T) {
+	const (
+		payloadName = "4.20.0-0.layered-2026-09-28-120000"
+		digest      = "sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	)
+	desired := v1alpha1.ReleaseCoordinates{Repository: "quay.io/example/layered", Digest: digest}
+	synthetic := v1alpha1.ReleaseCoordinates{
+		Repository: "quay-proxy.ci.openshift.org/openshift/ci",
+		Tag:        releasecontroller.ReferencePayloadTag(payloadName),
+	}
+	humanCoordinate := v1alpha1.ReleaseCoordinates{Repository: "registry.example.com/archive", Tag: "approved"}
+
+	tests := []struct {
+		name            string
+		mode            string
+		coordinates     []v1alpha1.ReleaseCoordinates
+		wantCoordinates []v1alpha1.ReleaseCoordinates
+		wantUpdates     int
+	}{
+		{
+			name:            "stale synthetic coordinate is replaced without touching human coordinate",
+			mode:            releasecontroller.ReleaseConfigModeLayered,
+			coordinates:     []v1alpha1.ReleaseCoordinates{synthetic, humanCoordinate},
+			wantCoordinates: []v1alpha1.ReleaseCoordinates{desired, humanCoordinate},
+			wantUpdates:     1,
+		},
+		{
+			name:            "correct layered coordinate is unchanged",
+			mode:            releasecontroller.ReleaseConfigModeLayered,
+			coordinates:     []v1alpha1.ReleaseCoordinates{desired},
+			wantCoordinates: []v1alpha1.ReleaseCoordinates{desired},
+		},
+		{
+			name:            "non-layered synthetic coordinate is unchanged",
+			mode:            releasecontroller.ReleaseConfigModeStable,
+			coordinates:     []v1alpha1.ReleaseCoordinates{synthetic},
+			wantCoordinates: []v1alpha1.ReleaseCoordinates{synthetic},
+		},
+		{
+			name:            "layered human coordinate is unchanged",
+			mode:            releasecontroller.ReleaseConfigModeLayered,
+			coordinates:     []v1alpha1.ReleaseCoordinates{humanCoordinate},
+			wantCoordinates: []v1alpha1.ReleaseCoordinates{humanCoordinate},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &v1alpha1.ReleasePayload{
+				ObjectMeta: metav1.ObjectMeta{Name: payloadName, Namespace: "ocp"},
+				Spec: v1alpha1.ReleasePayloadSpec{
+					PayloadOverride: v1alpha1.ReleasePayloadOverride{
+						Override: v1alpha1.ReleasePayloadOverrideAccepted,
+						Reason:   "manually approved",
+					},
+					ReleaseCoordinates: append([]v1alpha1.ReleaseCoordinates(nil), tt.coordinates...),
+				},
+				Status: v1alpha1.ReleasePayloadStatus{Conditions: []metav1.Condition{{
+					Type:   v1alpha1.ConditionPayloadAccepted,
+					Status: metav1.ConditionTrue,
+					Reason: "TestsPassed",
+				}}},
+			}
+			client := releasefake.NewSimpleClientset(existing)
+			controller := &Controller{releasePayloadClient: client.ReleaseV1alpha1()}
+			release := &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{
+					Name: "layered",
+					As:   tt.mode,
+					ReferenceRelease: &releasecontroller.ReferenceRelease{
+						PullRepository: synthetic.Repository,
+					},
+				},
+				Target: &imagev1.ImageStream{ObjectMeta: metav1.ObjectMeta{Name: "layered", Namespace: "ocp"}},
+			}
+			tag := &imagev1.TagReference{
+				Name:      payloadName,
+				Reference: true,
+				From:      &corev1.ObjectReference{Kind: "DockerImage", Name: desired.Repository + "@" + digest},
+			}
+
+			got, err := controller.ensureReleasePayload(release, tag)
+			if err != nil {
+				t.Fatalf("ensureReleasePayload returned an error: %v", err)
+			}
+			if !reflect.DeepEqual(got.Spec.ReleaseCoordinates, tt.wantCoordinates) {
+				t.Fatalf("coordinates = %#v, want %#v", got.Spec.ReleaseCoordinates, tt.wantCoordinates)
+			}
+			if got.Spec.PayloadOverride != existing.Spec.PayloadOverride {
+				t.Fatalf("payload override changed: got %#v, want %#v", got.Spec.PayloadOverride, existing.Spec.PayloadOverride)
+			}
+			if !reflect.DeepEqual(got.Status, existing.Status) {
+				t.Fatalf("payload status changed: got %#v, want %#v", got.Status, existing.Status)
+			}
+			updates := 0
+			for _, action := range client.Actions() {
+				if action.GetVerb() == "update" {
+					updates++
+				}
+			}
+			if updates != tt.wantUpdates {
+				t.Fatalf("update actions = %d, want %d; actions: %#v", updates, tt.wantUpdates, client.Actions())
+			}
+			stored, err := client.ReleaseV1alpha1().ReleasePayloads("ocp").Get(context.Background(), payloadName, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get reconciled payload: %v", err)
+			}
+			if !reflect.DeepEqual(stored.Spec.ReleaseCoordinates, tt.wantCoordinates) {
+				t.Fatalf("stored coordinates = %#v, want %#v", stored.Spec.ReleaseCoordinates, tt.wantCoordinates)
+			}
+		})
+	}
+}
+
+func TestEnsureReleasePayloadRetriesCoordinateUpdateConflicts(t *testing.T) {
+	const (
+		payloadName = "4.20.0-0.layered-2026-09-28-120000"
+		digest      = "sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	)
+	synthetic := v1alpha1.ReleaseCoordinates{
+		Repository: "quay-proxy.ci.openshift.org/openshift/ci",
+		Tag:        releasecontroller.ReferencePayloadTag(payloadName),
+	}
+	existing := &v1alpha1.ReleasePayload{
+		ObjectMeta: metav1.ObjectMeta{Name: payloadName, Namespace: "ocp", ResourceVersion: "1"},
+		Spec:       v1alpha1.ReleasePayloadSpec{ReleaseCoordinates: []v1alpha1.ReleaseCoordinates{synthetic}},
+	}
+	client := releasefake.NewSimpleClientset(existing)
+	updateAttempts := 0
+	client.PrependReactor("update", "releasepayloads", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		updateAttempts++
+		if updateAttempts == 1 {
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Group: v1alpha1.GroupName, Resource: "releasepayloads"},
+				payloadName,
+				errors.New("concurrent update"),
+			)
+		}
+		return false, nil, nil
+	})
+	controller := &Controller{releasePayloadClient: client.ReleaseV1alpha1()}
+	release := &releasecontroller.Release{
+		Config: &releasecontroller.ReleaseConfig{
+			Name: "layered",
+			As:   releasecontroller.ReleaseConfigModeLayered,
+			ReferenceRelease: &releasecontroller.ReferenceRelease{
+				PullRepository: synthetic.Repository,
+			},
+		},
+		Target: &imagev1.ImageStream{ObjectMeta: metav1.ObjectMeta{Name: "layered", Namespace: "ocp"}},
+	}
+	tag := &imagev1.TagReference{
+		Name:      payloadName,
+		Reference: true,
+		From:      &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/example/layered@" + digest},
+	}
+
+	got, err := controller.ensureReleasePayload(release, tag)
+	if err != nil {
+		t.Fatalf("ensureReleasePayload returned an error after a conflict: %v", err)
+	}
+	if updateAttempts != 2 {
+		t.Fatalf("update attempts = %d, want 2", updateAttempts)
+	}
+	want := []v1alpha1.ReleaseCoordinates{{Repository: "quay.io/example/layered", Digest: digest}}
+	if !reflect.DeepEqual(got.Spec.ReleaseCoordinates, want) {
+		t.Fatalf("coordinates = %#v, want %#v", got.Spec.ReleaseCoordinates, want)
 	}
 }

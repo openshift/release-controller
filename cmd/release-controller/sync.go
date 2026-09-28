@@ -494,6 +494,12 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 	}
 
 	for _, releaseTag := range readyTags {
+		if release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+			if _, err := c.ensureReleasePayload(release, releaseTag); err != nil {
+				return fmt.Errorf("unable to reconcile Layered ReleasePayload %q: %w", releaseTag.Name, err)
+			}
+		}
+
 		// Skip mirroring for layered releases since they use pre-existing single images
 		if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
 			mirror, err := releasecontroller.GetMirror(release, releaseTag.Name, c.releaseLister)
@@ -553,6 +559,13 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 
 	if klog.V(5) && len(acceptedTags) > 0 {
 		klog.Infof("release=%s accepted=%v", release.Config.Name, releasecontroller.TagNames(acceptedTags))
+	}
+	if release.Config.As == releasecontroller.ReleaseConfigModeLayered {
+		for _, releaseTag := range acceptedTags {
+			if _, err := c.ensureReleasePayload(release, releaseTag); err != nil {
+				return fmt.Errorf("unable to reconcile Layered ReleasePayload %q: %w", releaseTag.Name, err)
+			}
+		}
 	}
 
 	if len(release.Config.Publish) == 0 || len(acceptedTags) == 0 {

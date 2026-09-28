@@ -11,6 +11,7 @@ import (
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 )
 
@@ -29,9 +30,80 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 		return payload, nil
 	}
 	if errors.IsAlreadyExists(err) {
-		return c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Get(context.TODO(), releaseTag.Name, metav1.GetOptions{})
+		payload, err := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace).Get(context.TODO(), releaseTag.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return c.reconcileLayeredReleasePayloadCoordinates(release, releaseTag, payload)
 	}
 	return nil, err
+}
+
+// reconcileLayeredReleasePayloadCoordinates corrects coordinates written by
+// the old reference-release path for Layered payloads. Those rc_payload__ tags
+// were never created for Layered releases, which use the tag's DockerImage
+// directly. Other coordinates and all other spec and status fields may be
+// user-managed and are left untouched.
+func (c *Controller) reconcileLayeredReleasePayloadCoordinates(release *releasecontroller.Release, releaseTag *imagev1.TagReference, payload *v1alpha1.ReleasePayload) (*v1alpha1.ReleasePayload, error) {
+	if release == nil || release.Config == nil || release.Config.As != releasecontroller.ReleaseConfigModeLayered || release.Target == nil || releaseTag == nil || payload == nil {
+		return payload, nil
+	}
+	desired, ok := releaseCoordinatesFromPullSpec(releasecontroller.ReleasePullSpec(release, releaseTag))
+	if !ok || isSyntheticLayeredCoordinate(desired, payload.Name) {
+		return payload, nil
+	}
+	if _, changed := correctedLayeredReleaseCoordinates(payload.Spec.ReleaseCoordinates, payload.Name, desired); !changed {
+		return payload, nil
+	}
+
+	client := c.releasePayloadClient.ReleasePayloads(release.Target.Namespace)
+	result := payload
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current, err := client.Get(context.TODO(), payload.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		coordinates, changed := correctedLayeredReleaseCoordinates(current.Spec.ReleaseCoordinates, current.Name, desired)
+		if !changed {
+			result = current
+			return nil
+		}
+		updated := current.DeepCopy()
+		updated.Spec.ReleaseCoordinates = coordinates
+		result, err = client.Update(context.TODO(), updated, metav1.UpdateOptions{})
+		return err
+	})
+	return result, err
+}
+
+func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, payloadName string, desired v1alpha1.ReleaseCoordinates) ([]v1alpha1.ReleaseCoordinates, bool) {
+	desiredPresent := false
+	for _, coordinates := range current {
+		if coordinates == desired {
+			desiredPresent = true
+			break
+		}
+	}
+
+	corrected := make([]v1alpha1.ReleaseCoordinates, 0, len(current))
+	changed := false
+	desiredInserted := desiredPresent
+	for _, coordinates := range current {
+		if !isSyntheticLayeredCoordinate(coordinates, payloadName) {
+			corrected = append(corrected, coordinates)
+			continue
+		}
+		changed = true
+		if !desiredInserted {
+			corrected = append(corrected, desired)
+			desiredInserted = true
+		}
+	}
+	return corrected, changed
+}
+
+func isSyntheticLayeredCoordinate(coordinates v1alpha1.ReleaseCoordinates, payloadName string) bool {
+	return coordinates.Digest == "" && coordinates.Tag == releasecontroller.ReferencePayloadTag(payloadName)
 }
 
 func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagReference, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource, payloadType v1alpha1.PayloadType) *v1alpha1.ReleasePayload {
