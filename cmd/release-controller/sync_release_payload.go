@@ -45,14 +45,15 @@ func (c *Controller) ensureReleasePayload(release *releasecontroller.Release, re
 // directly. Other coordinates and all other spec and status fields may be
 // user-managed and are left untouched.
 func (c *Controller) reconcileLayeredReleasePayloadCoordinates(release *releasecontroller.Release, releaseTag *imagev1.TagReference, payload *v1alpha1.ReleasePayload) (*v1alpha1.ReleasePayload, error) {
-	if release == nil || release.Config == nil || release.Config.As != releasecontroller.ReleaseConfigModeLayered || release.Target == nil || releaseTag == nil || payload == nil {
+	if !canReconcileLayeredReleasePayloadCoordinates(release, releaseTag, payload) {
 		return payload, nil
 	}
+	legacyRepository := release.Config.ReferenceRelease.PullRepository
 	desired, ok := releaseCoordinatesFromPullSpec(releasecontroller.ReleasePullSpec(release, releaseTag))
-	if !ok || isSyntheticLayeredCoordinate(desired, payload.Name) {
+	if !ok || isSyntheticLayeredCoordinate(desired, payload.Name, legacyRepository) {
 		return payload, nil
 	}
-	if _, changed := correctedLayeredReleaseCoordinates(payload.Spec.ReleaseCoordinates, payload.Name, desired); !changed {
+	if _, changed := correctedLayeredReleaseCoordinates(payload.Spec.ReleaseCoordinates, payload.Name, legacyRepository, desired); !changed {
 		return payload, nil
 	}
 
@@ -63,7 +64,11 @@ func (c *Controller) reconcileLayeredReleasePayloadCoordinates(release *releasec
 		if err != nil {
 			return err
 		}
-		coordinates, changed := correctedLayeredReleaseCoordinates(current.Spec.ReleaseCoordinates, current.Name, desired)
+		if !canReconcileLayeredReleasePayloadCoordinates(release, releaseTag, current) {
+			result = current
+			return nil
+		}
+		coordinates, changed := correctedLayeredReleaseCoordinates(current.Spec.ReleaseCoordinates, current.Name, legacyRepository, desired)
 		if !changed {
 			result = current
 			return nil
@@ -76,7 +81,26 @@ func (c *Controller) reconcileLayeredReleasePayloadCoordinates(release *releasec
 	return result, err
 }
 
-func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, payloadName string, desired v1alpha1.ReleaseCoordinates) ([]v1alpha1.ReleaseCoordinates, bool) {
+func canReconcileLayeredReleasePayloadCoordinates(release *releasecontroller.Release, releaseTag *imagev1.TagReference, payload *v1alpha1.ReleasePayload) bool {
+	if release == nil || release.Config == nil || release.Config.As != releasecontroller.ReleaseConfigModeLayered || release.Target == nil || releaseTag == nil || payload == nil {
+		return false
+	}
+	if !releasecontroller.IsReferenceReleaseTag(release, releaseTag) || release.Config.ReferenceRelease.PullRepository == "" {
+		return false
+	}
+	if payload.Namespace != release.Target.Namespace || payload.Name != releaseTag.Name || payload.Spec.PayloadType != v1alpha1.PayloadTypeReference {
+		return false
+	}
+	expectedOwner := v1alpha1.PayloadCoordinates{
+		Namespace:          release.Target.Namespace,
+		ImagestreamName:    release.Target.Name,
+		ImagestreamTagName: releaseTag.Name,
+		StreamName:         release.Config.Name,
+	}
+	return payload.Spec.PayloadCoordinates == expectedOwner
+}
+
+func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, payloadName, legacyRepository string, desired v1alpha1.ReleaseCoordinates) ([]v1alpha1.ReleaseCoordinates, bool) {
 	desiredPresent := false
 	for _, coordinates := range current {
 		if coordinates == desired {
@@ -89,7 +113,7 @@ func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, p
 	changed := false
 	desiredInserted := desiredPresent
 	for _, coordinates := range current {
-		if !isSyntheticLayeredCoordinate(coordinates, payloadName) {
+		if !isSyntheticLayeredCoordinate(coordinates, payloadName, legacyRepository) {
 			corrected = append(corrected, coordinates)
 			continue
 		}
@@ -102,8 +126,10 @@ func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, p
 	return corrected, changed
 }
 
-func isSyntheticLayeredCoordinate(coordinates v1alpha1.ReleaseCoordinates, payloadName string) bool {
-	return coordinates.Digest == "" && coordinates.Tag == releasecontroller.ReferencePayloadTag(payloadName)
+func isSyntheticLayeredCoordinate(coordinates v1alpha1.ReleaseCoordinates, payloadName, legacyRepository string) bool {
+	return coordinates.Digest == "" &&
+		coordinates.Repository == legacyRepository &&
+		coordinates.Tag == releasecontroller.ReferencePayloadTag(payloadName)
 }
 
 func newReleasePayload(release *releasecontroller.Release, tag *imagev1.TagReference, name, jobNamespace, prowNamespace string, verificationJobs map[string]releasecontroller.ReleaseVerification, upgradeJobs map[string]releasecontroller.UpgradeVerification, dataSource v1alpha1.PayloadVerificationDataSource, payloadType v1alpha1.PayloadType) *v1alpha1.ReleasePayload {
