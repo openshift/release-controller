@@ -547,6 +547,7 @@ func TestPullSpecFromCoordinates(t *testing.T) {
 
 func TestReleaseGraphPullSpec(t *testing.T) {
 	const source = "quay.io/example/layered@sha256:e08883ade89b50664c14f2a9434018921a012c4506dde92e8779e482e025ea4c"
+	generation := int64(1)
 	tests := []struct {
 		name    string
 		release *releasecontroller.Release
@@ -572,6 +573,44 @@ func TestReleaseGraphPullSpec(t *testing.T) {
 				},
 			},
 			want: source,
+		},
+		{
+			name: "legacy imported layered release preserves public repository digest",
+			tag:  &imagev1.TagReference{Name: "1.2.3", Generation: &generation},
+			release: &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{As: releasecontroller.ReleaseConfigModeLayered},
+				Target: &imagev1.ImageStream{
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.example.com/layered",
+						Tags: []imagev1.NamedTagEventList{{
+							Tag:   "1.2.3",
+							Items: []imagev1.TagEvent{{Image: "sha256:0123456789abcdef", Generation: generation}},
+						}},
+					},
+				},
+			},
+			want: "registry.example.com/layered@sha256:0123456789abcdef",
+		},
+		{
+			name: "layered release with wrong source kind and no status remains unresolved",
+			tag: &imagev1.TagReference{
+				Name: "1.2.3",
+				From: &corev1.ObjectReference{Kind: "ImageStreamTag", Name: "layered:source"},
+			},
+			release: &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{As: releasecontroller.ReleaseConfigModeLayered},
+				Target: &imagev1.ImageStream{},
+			},
+			want: "",
+		},
+		{
+			name: "layered release with missing source and no status remains unresolved",
+			tag:  &imagev1.TagReference{Name: "1.2.3"},
+			release: &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{As: releasecontroller.ReleaseConfigModeLayered},
+				Target: &imagev1.ImageStream{},
+			},
+			want: "",
 		},
 		{
 			name: "local release preserves public repository digest",

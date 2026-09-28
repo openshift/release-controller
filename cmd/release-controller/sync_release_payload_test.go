@@ -1334,6 +1334,17 @@ func TestEnsureReleasePayloadReconcilesExistingLayeredCoordinates(t *testing.T) 
 			wantUpdates:     1,
 		},
 		{
+			name:            "stale synthetic coordinate is replaced in place when desired coordinate exists later",
+			mode:            releasecontroller.ReleaseConfigModeLayered,
+			referenceTag:    true,
+			owner:           owner,
+			payloadType:     v1alpha1.PayloadTypeReference,
+			desiredPullSpec: desired.Repository + "@" + digest,
+			coordinates:     []v1alpha1.ReleaseCoordinates{synthetic, humanCoordinate, desired},
+			wantCoordinates: []v1alpha1.ReleaseCoordinates{desired, humanCoordinate},
+			wantUpdates:     1,
+		},
+		{
 			name:            "correct layered coordinate is unchanged",
 			mode:            releasecontroller.ReleaseConfigModeLayered,
 			referenceTag:    true,

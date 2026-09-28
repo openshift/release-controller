@@ -101,27 +101,28 @@ func canReconcileLayeredReleasePayloadCoordinates(release *releasecontroller.Rel
 }
 
 func correctedLayeredReleaseCoordinates(current []v1alpha1.ReleaseCoordinates, payloadName, legacyRepository string, desired v1alpha1.ReleaseCoordinates) ([]v1alpha1.ReleaseCoordinates, bool) {
-	desiredPresent := false
-	for _, coordinates := range current {
-		if coordinates == desired {
-			desiredPresent = true
-			break
-		}
-	}
-
 	corrected := make([]v1alpha1.ReleaseCoordinates, 0, len(current))
 	changed := false
-	desiredInserted := desiredPresent
+	desiredSeen := false
+	desiredInsertedAtSynthetic := false
 	for _, coordinates := range current {
-		if !isSyntheticLayeredCoordinate(coordinates, payloadName, legacyRepository) {
-			corrected = append(corrected, coordinates)
+		if isSyntheticLayeredCoordinate(coordinates, payloadName, legacyRepository) {
+			changed = true
+			if !desiredSeen {
+				corrected = append(corrected, desired)
+				desiredSeen = true
+				desiredInsertedAtSynthetic = true
+			}
 			continue
 		}
-		changed = true
-		if !desiredInserted {
-			corrected = append(corrected, desired)
-			desiredInserted = true
+		if coordinates == desired {
+			if desiredInsertedAtSynthetic {
+				changed = true
+				continue
+			}
+			desiredSeen = true
 		}
+		corrected = append(corrected, coordinates)
 	}
 	return corrected, changed
 }

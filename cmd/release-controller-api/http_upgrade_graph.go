@@ -152,7 +152,9 @@ func (c *Controller) graphHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func releaseGraphPullSpec(release *releasecontroller.Release, tag *imagev1.TagReference) string {
-	if release.Config.As != releasecontroller.ReleaseConfigModeLayered {
+	hasLayeredSource := release.Config.As == releasecontroller.ReleaseConfigModeLayered &&
+		tag.From != nil && tag.From.Kind == "DockerImage" && tag.From.Name != ""
+	if !hasLayeredSource {
 		if id := releasecontroller.FindImageIDForTag(release.Target, tag.Name); len(id) > 0 {
 			return release.Target.Status.PublicDockerImageRepository + "@" + id
 		}
