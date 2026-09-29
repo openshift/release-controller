@@ -1423,6 +1423,73 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:        "NightlyJobWithGitDescribePrefix",
+			prowjobName: "0.1.85-84-g784e295941.nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+			want: &ReleaseVerificationJobDetails{
+				Name: "0.1.85-84-g784e295941.nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+				Version: semver.Version{
+					Major: 0,
+					Minor: 1,
+					Patch: 85,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "84-g784e295941",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "84-g784e295941",
+					Stream:              "nightly",
+					Timestamp:           "2026-09-29-062032",
+					CIConfigurationName: "multi-aws-ovn-upgrade",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			// A git describe hash is hexadecimal and so can contain "ec" or "fc".
+			// The stream must still come from the name, not from a candidate
+			// prerelease pattern matching a fragment of the hash.
+			name:        "NightlyJobWithGitDescribePrefixContainingCandidatePrefix",
+			prowjobName: "0.1.85-84-g784efc12ab.nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+			want: &ReleaseVerificationJobDetails{
+				Name: "0.1.85-84-g784efc12ab.nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+				Version: semver.Version{
+					Major: 0,
+					Minor: 1,
+					Patch: 85,
+					Pre: []semver.PRVersion{
+						{
+							VersionStr: "84-g784efc12ab",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+						{
+							VersionStr: "nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+							VersionNum: 0,
+							IsNum:      false,
+						},
+					},
+				},
+				PreReleaseDetails: &PreReleaseDetails{
+					PreRelease:          "84-g784efc12ab",
+					Stream:              "nightly",
+					Timestamp:           "2026-09-29-062032",
+					CIConfigurationName: "multi-aws-ovn-upgrade",
+					Count:               "",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1432,7 +1499,7 @@ func TestNewReleaseVerificationJobName(t *testing.T) {
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewReleaseVerificationJobDetails() got = %v, want %v", got, tt.want)
+				t.Errorf("NewReleaseVerificationJobDetails() got = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -1579,6 +1646,18 @@ func Test_parse(t *testing.T) {
 			want: map[string]string{
 				"job":   "aws-serial-1234567",
 				"count": "",
+			},
+		},
+		{
+			name: "NightlyJobWithGitDescribePrefix",
+			line: "84-g784e295941.nightly-2026-09-29-062032-multi-aws-ovn-upgrade",
+			want: map[string]string{
+				"prerelease":   "84-g784e295941",
+				"stream":       "nightly",
+				"architecture": "",
+				"timestamp":    "2026-09-29-062032",
+				"job":          "multi-aws-ovn-upgrade",
+				"count":        "",
 			},
 		},
 	}
