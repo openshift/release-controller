@@ -114,6 +114,15 @@ type ReleaseConfig struct {
 	// Integration. This field is ignored when As is Stable.
 	To string `json:"to"`
 
+	// LayeredImageEnvVar is the name of the environment variable that the pre-built
+	// image of a layered release is injected into when launching verification jobs.
+	// Layered images are not release payloads, so they are never injected as
+	// RELEASE_IMAGE_LATEST; jobs install OpenShift as normal and use this variable
+	// to override a single image within a ci-operator step. Individual verification
+	// steps may override this with their own LayeredImageEnvVar. Defaults to
+	// DefaultLayeredImageEnvVar. This field is only used when As is Layered.
+	LayeredImageEnvVar string `json:"layeredImageEnvVar,omitempty"`
+
 	// MaxUnreadyReleases blocks creating new releases if there are more than this many
 	// releases in non-terminal (Failed, Accepted, Rejected) states.
 	MaxUnreadyReleases int `json:"maxUnreadyReleases"`
@@ -326,6 +335,11 @@ type ReleaseVerification struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+	// LayeredImageEnvVar overrides the stream wide ReleaseConfig.LayeredImageEnvVar
+	// for this verification step, allowing each job to override a different image
+	// within its ci-operator steps. This field is only used when the release's As
+	// is Layered.
+	LayeredImageEnvVar string `json:"layeredImageEnvVar,omitempty"`
 	// Maximum retry attempts for the job. Defaults to 0 - do not retry on fail
 	MaxRetries int `json:"maxRetries,omitempty"`
 	// AggregatedProwJob defines the prow job used to run release analysis verification
@@ -396,6 +410,10 @@ type ReleasePeriodic struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+	// LayeredImageEnvVar overrides the stream wide ReleaseConfig.LayeredImageEnvVar
+	// for this periodic, allowing each job to override a different image within its
+	// ci-operator steps. This field is only used when the release's As is Layered.
+	LayeredImageEnvVar string `json:"layeredImageEnvVar,omitempty"`
 }
 
 type UpgradeRelease struct {
@@ -575,6 +593,10 @@ const (
 
 	ReleaseConfigModeStable  = "Stable"
 	ReleaseConfigModeLayered = "Layered"
+
+	// DefaultLayeredImageEnvVar is the environment variable that the pre-built image
+	// of a layered release is injected into when no other name is configured.
+	DefaultLayeredImageEnvVar = "LAYERED_IMAGE_LATEST"
 
 	// ReferencePayloadTagPrefix is prepended to release names when pushing
 	// to ReferenceRepository, so that image cleanup tooling can identify

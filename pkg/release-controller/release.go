@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -29,6 +30,16 @@ var (
 	ErrStreamNotFound    = fmt.Errorf("no release configuration exists with the requested name")
 	ErrStreamTagNotFound = fmt.Errorf("no tags exist within the release that satisfy the request")
 )
+
+// validEnvVarName matches the names that can safely be injected into a prow job
+// as both an environment variable and a ci-operator multi stage parameter.
+var validEnvVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// isValidEnvVarName reports whether name can be used as an environment variable
+// name. An empty name is valid, callers treat it as unset.
+func isValidEnvVarName(name string) bool {
+	return len(name) == 0 || validEnvVarName.MatchString(name)
+}
 
 type StableReferences struct {
 	Releases StableReleases
@@ -155,9 +166,15 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 	if len(cfg.To) == 0 && cfg.As != ReleaseConfigModeStable && cfg.As != ReleaseConfigModeLayered {
 		return nil, fmt.Errorf("release must specify 'to' unless 'as' is 'Stable' or 'Layered'")
 	}
+	if !isValidEnvVarName(cfg.LayeredImageEnvVar) {
+		return nil, fmt.Errorf("release has an invalid layeredImageEnvVar: %s", cfg.LayeredImageEnvVar)
+	}
 	for name, verify := range cfg.Verify {
 		if len(name) == 0 {
 			return nil, fmt.Errorf("verify config has no name")
+		}
+		if !isValidEnvVarName(verify.LayeredImageEnvVar) {
+			return nil, fmt.Errorf("verify config %s has an invalid layeredImageEnvVar: %s", name, verify.LayeredImageEnvVar)
 		}
 		switch verify.UpgradeFrom {
 		case ReleaseUpgradeFromPreviousMinor, ReleaseUpgradeFromPreviousPatch, ReleaseUpgradeFromPrevious, "":
@@ -168,6 +185,11 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 			if len(verify.ProwJob.Name) == 0 {
 				return nil, fmt.Errorf("prow job for %s has no name", name)
 			}
+		}
+	}
+	for name, periodic := range cfg.Periodic {
+		if !isValidEnvVarName(periodic.LayeredImageEnvVar) {
+			return nil, fmt.Errorf("periodic config %s has an invalid layeredImageEnvVar: %s", name, periodic.LayeredImageEnvVar)
 		}
 	}
 	for name, publish := range cfg.Publish {
@@ -649,6 +671,41 @@ func GetVerificationJobs(rcCache *lru.Cache, eventRecorder record.EventRecorder,
 		}
 	}
 	return jobs, nil
+}
+
+// IsLayeredRelease returns true when the release is configured as a layered
+// release. Layered releases are not built or mirrored by the controller; each
+// tag points directly at a pre-built image in an external repository.
+func IsLayeredRelease(release *Release) bool {
+	return release != nil &&
+		release.Config != nil &&
+		release.Config.As == ReleaseConfigModeLayered
+}
+
+// LayeredReleaseImage returns the external image that a layered release tag
+// was created from. Layered tags are reference tags whose "from" is the
+// pre-built image pushed by the build system, so the source of the tag is the
+// pull spec of the payload. Returns an empty string when the tag does not
+// reference a DockerImage.
+func LayeredReleaseImage(tag *imagev1.TagReference) string {
+	if tag == nil || tag.From == nil || tag.From.Kind != "DockerImage" {
+		return ""
+	}
+	return tag.From.Name
+}
+
+// LayeredImageEnvVar returns the name of the environment variable that the
+// image of a layered release should be injected into. A non-empty override
+// from the verification step wins over the stream wide configuration, which in
+// turn wins over DefaultLayeredImageEnvVar.
+func LayeredImageEnvVar(release *Release, override string) string {
+	if len(override) > 0 {
+		return override
+	}
+	if release != nil && release.Config != nil && len(release.Config.LayeredImageEnvVar) > 0 {
+		return release.Config.LayeredImageEnvVar
+	}
+	return DefaultLayeredImageEnvVar
 }
 
 // IsReferenceRelease returns true when the release is configured to use

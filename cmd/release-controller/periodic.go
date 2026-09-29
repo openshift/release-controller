@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	imagev1 "github.com/openshift/api/image/v1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,6 +28,7 @@ type PeriodicWithRelease struct {
 	Upgrade            bool
 	UpgradeFrom        string
 	UpgradeFromRelease *releasecontroller.UpgradeRelease
+	LayeredImageEnvVar string
 }
 
 func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, stopCh <-chan struct{}) {
@@ -89,6 +91,7 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 					Upgrade:            releasePeriodic.Upgrade,
 					UpgradeFrom:        releasePeriodic.UpgradeFrom,
 					UpgradeFromRelease: releasePeriodic.UpgradeFromRelease,
+					LayeredImageEnvVar: releasePeriodic.LayeredImageEnvVar,
 				}
 				cronConfig.Periodics = append(cronConfig.Periodics, updatedPeriodicConfig)
 			}
@@ -157,9 +160,14 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		return fmt.Errorf("no accepted tags found for release %s", release.Config.Name)
 	}
 	latestTag := acceptedTags[0]
-	mirror, err := releasecontroller.GetMirror(release, latestTag.Name, c.releaseLister)
-	if err != nil {
-		return fmt.Errorf("failed to get mirror for release %s tag %s: %v", release.Config.Name, latestTag.Name, err)
+	// Layered releases are never mirrored, the tag references the pre-built image directly.
+	var mirror *imagev1.ImageStream
+	var err error
+	if !releasecontroller.IsLayeredRelease(release) {
+		mirror, err = releasecontroller.GetMirror(release, latestTag.Name, c.releaseLister)
+		if err != nil {
+			return fmt.Errorf("failed to get mirror for release %s tag %s: %v", release.Config.Name, latestTag.Name, err)
+		}
 	}
 	var previousTag, previousReleasePullSpec string
 	if periodicWithRelease.Upgrade {
@@ -169,7 +177,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 		}
 	}
 	spec := pjutil.PeriodicSpec(*periodicWithRelease.Periodic)
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec, periodicWithRelease.Upgrade, c.graph.Architecture)
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, mirror, latestTag, previousReleasePullSpec, periodicWithRelease.Upgrade, c.graph.Architecture, periodicWithRelease.LayeredImageEnvVar)
 	if err != nil || !ok {
 		return fmt.Errorf("failed to add release env to periodic %s: %v", periodicWithRelease.Periodic.Name, err)
 	}

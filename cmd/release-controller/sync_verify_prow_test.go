@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	imagev1 "github.com/openshift/api/image/v1"
@@ -97,7 +98,7 @@ func TestAddReleaseEnvToProwJobSpec_NonReference(t *testing.T) {
 		},
 	}
 
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64")
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestAddReleaseEnvToProwJobSpec_Reference(t *testing.T) {
 		},
 	}
 
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64")
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestAddReleaseEnvToProwJobSpec_ReferenceUpgrade(t *testing.T) {
 		},
 	}
 
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, prevPullSpec, true, "amd64")
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, prevPullSpec, true, "amd64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,7 +219,7 @@ func TestAddReleaseEnvToProwJobSpec_ArchVariants(t *testing.T) {
 					},
 				}
 
-				ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, tc.arch)
+				ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, tc.arch, "")
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -255,6 +256,197 @@ func TestAddReleaseEnvToProwJobSpec_ArchVariants(t *testing.T) {
 	}
 }
 
+const layeredImage = "quay.io/redhat-user-workloads/crt-redhat-acm-tenant/hypershift-operator/hypershift-operator-main@sha256:9651b2b8c64bd9ac53b6318101f4a0c849ebc1641e9ab0be5f69eed70c3e0c63"
+
+func newLayeredRelease(streamEnvVar string) *releasecontroller.Release {
+	return &releasecontroller.Release{
+		Source: &imagev1.ImageStream{},
+		Target: &imagev1.ImageStream{
+			Status: imagev1.ImageStreamStatus{
+				PublicDockerImageRepository: "registry.ci.openshift.org/hypershift/hypershift",
+			},
+		},
+		Config: &releasecontroller.ReleaseConfig{
+			Name:               "hypershift",
+			As:                 releasecontroller.ReleaseConfigModeLayered,
+			LayeredImageEnvVar: streamEnvVar,
+		},
+	}
+}
+
+func newLayeredTag(image string) *imagev1.TagReference {
+	tag := &imagev1.TagReference{
+		Name:      "0.0.1-0.nightly-2026-09-28-020433",
+		Reference: true,
+	}
+	if len(image) > 0 {
+		tag.From = &corev1.ObjectReference{Kind: "DockerImage", Name: image}
+	}
+	return tag
+}
+
+func TestAddReleaseEnvToProwJobSpec_Layered(t *testing.T) {
+	testCases := []struct {
+		name        string
+		streamVar   string
+		jobVar      string
+		expectedVar string
+	}{
+		{
+			name:        "defaults when nothing is configured",
+			expectedVar: releasecontroller.DefaultLayeredImageEnvVar,
+		},
+		{
+			name:        "stream wide variable is used",
+			streamVar:   "HYPERSHIFT_OPERATOR_IMAGE",
+			expectedVar: "HYPERSHIFT_OPERATOR_IMAGE",
+		},
+		{
+			name:        "job variable overrides the stream wide variable",
+			streamVar:   "HYPERSHIFT_OPERATOR_IMAGE",
+			jobVar:      "HYPERSHIFT_CONTROL_PLANE_OPERATOR_IMAGE",
+			expectedVar: "HYPERSHIFT_CONTROL_PLANE_OPERATOR_IMAGE",
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := prowjobv1.ProwJobSpec{
+				PodSpec: &corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name: "test",
+						Env: []corev1.EnvVar{
+							{Name: "IMAGE_FORMAT", Value: "placeholder"},
+							{Name: "IMAGE_HYPERSHIFT_OPERATOR", Value: "placeholder"},
+						},
+					}},
+				},
+			}
+
+			// Layered releases are never mirrored, so no mirror imagestream exists.
+			ok, err := addReleaseEnvToProwJobSpec(&spec, newLayeredRelease(tc.streamVar), nil, newLayeredTag(layeredImage), "", false, "amd64", tc.jobVar)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !ok {
+				t.Fatal("expected ok=true")
+			}
+
+			container := spec.PodSpec.Containers[0]
+			if val, found := findEnv(container.Env, tc.expectedVar); !found || val != layeredImage {
+				t.Errorf("%s: expected %q, got %q (found=%v)", tc.expectedVar, layeredImage, val, found)
+			}
+			expectedArg := fmt.Sprintf("--multi-stage-param=%s=%s", tc.expectedVar, layeredImage)
+			if !slices.Contains(container.Args, expectedArg) {
+				t.Errorf("expected arg %q, got %v", expectedArg, container.Args)
+			}
+			if !slices.Contains(container.Args, "--multi-stage-param=RELEASE_CONTROLLER_JOB=true") {
+				t.Errorf("expected the release controller job param to be set, got %v", container.Args)
+			}
+			// Layered images are not payloads, the job installs OpenShift as normal.
+			for _, name := range []string{"RELEASE_IMAGE_LATEST", "RELEASE_IMAGE_INITIAL"} {
+				if val, found := findEnv(container.Env, name); found {
+					t.Errorf("%s: expected to be unset, got %q", name, val)
+				}
+			}
+			for _, name := range []string{"IMAGE_FORMAT", "IMAGE_HYPERSHIFT_OPERATOR"} {
+				if val, _ := findEnv(container.Env, name); val != "placeholder" {
+					t.Errorf("%s: expected to be left untouched, got %q", name, val)
+				}
+			}
+		})
+	}
+}
+
+func TestAddReleaseEnvToProwJobSpec_LayeredReplacesDeclaredEnvVar(t *testing.T) {
+	spec := prowjobv1.ProwJobSpec{
+		PodSpec: &corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name: "test",
+				Env:  []corev1.EnvVar{{Name: releasecontroller.DefaultLayeredImageEnvVar, Value: "placeholder"}},
+			}},
+		},
+	}
+
+	ok, err := addReleaseEnvToProwJobSpec(&spec, newLayeredRelease(""), nil, newLayeredTag(layeredImage), "", false, "amd64", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+
+	env := spec.PodSpec.Containers[0].Env
+	if val, found := findEnv(env, releasecontroller.DefaultLayeredImageEnvVar); !found || val != layeredImage {
+		t.Errorf("%s: expected %q, got %q (found=%v)", releasecontroller.DefaultLayeredImageEnvVar, layeredImage, val, found)
+	}
+	var count int
+	for _, e := range env {
+		if e.Name == releasecontroller.DefaultLayeredImageEnvVar {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected %s to be declared once, got %d times", releasecontroller.DefaultLayeredImageEnvVar, count)
+	}
+}
+
+// An environment variable that specifies both a value and a valueFrom is
+// rejected by the API server, so overwriting a variable the job sourced from
+// elsewhere must clear the source as well.
+func TestAddReleaseEnvToProwJobSpec_LayeredClearsDeclaredValueFrom(t *testing.T) {
+	spec := prowjobv1.ProwJobSpec{
+		PodSpec: &corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name: "test",
+				Env: []corev1.EnvVar{{
+					Name: releasecontroller.DefaultLayeredImageEnvVar,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "some-secret"},
+							Key:                  "some-key",
+						},
+					},
+				}},
+			}},
+		},
+	}
+
+	ok, err := addReleaseEnvToProwJobSpec(&spec, newLayeredRelease(""), nil, newLayeredTag(layeredImage), "", false, "amd64", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+
+	for _, e := range spec.PodSpec.Containers[0].Env {
+		if e.Name != releasecontroller.DefaultLayeredImageEnvVar {
+			continue
+		}
+		if e.Value != layeredImage {
+			t.Errorf("%s: expected %q, got %q", e.Name, layeredImage, e.Value)
+		}
+		if e.ValueFrom != nil {
+			t.Errorf("%s: expected valueFrom to be cleared, got %+v", e.Name, e.ValueFrom)
+		}
+	}
+}
+
+func TestAddReleaseEnvToProwJobSpec_LayeredWithoutImage(t *testing.T) {
+	spec := prowjobv1.ProwJobSpec{
+		Job: "periodic-hypershift-e2e",
+		PodSpec: &corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "test"}},
+		},
+	}
+
+	if _, err := addReleaseEnvToProwJobSpec(&spec, newLayeredRelease(""), nil, newLayeredTag(""), "", false, "amd64", ""); err == nil {
+		t.Fatal("expected an error when the tag does not reference an image")
+	}
+}
+
 func TestAddReleaseEnvToProwJobSpec_ExistingEnvVar(t *testing.T) {
 	release := newRelease(true, "quay.io/openshift-release-dev/ocp-release")
 	tag := &imagev1.TagReference{Name: "4.17.0-0.nightly-2025-01-01-000000", Reference: true}
@@ -269,7 +461,7 @@ func TestAddReleaseEnvToProwJobSpec_ExistingEnvVar(t *testing.T) {
 		},
 	}
 
-	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64")
+	ok, err := addReleaseEnvToProwJobSpec(&spec, release, nil, tag, "", false, "amd64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

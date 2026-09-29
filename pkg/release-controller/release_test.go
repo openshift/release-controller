@@ -366,6 +366,52 @@ func TestIsReferenceReleaseTag(t *testing.T) {
 	}
 }
 
+func TestLayeredReleaseImage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		tag      *imagev1.TagReference
+		expected string
+	}{
+		{
+			name:     "nil tag returns empty string",
+			tag:      nil,
+			expected: "",
+		},
+		{
+			name:     "tag without a source returns empty string",
+			tag:      &imagev1.TagReference{Name: "0.0.1-0.nightly-2025-01-01-000000"},
+			expected: "",
+		},
+		{
+			name: "tag sourced from an imagestream tag returns empty string",
+			tag: &imagev1.TagReference{
+				Name: "0.0.1-0.nightly-2025-01-01-000000",
+				From: &corev1.ObjectReference{Kind: "ImageStreamTag", Name: "hypershift:latest"},
+			},
+			expected: "",
+		},
+		{
+			name: "tag sourced from a docker image returns the image",
+			tag: &imagev1.TagReference{
+				Name:      "0.0.1-0.nightly-2025-01-01-000000",
+				Reference: true,
+				From:      &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/redhat-user-workloads/tenant/hypershift-operator@sha256:9651b2b8c64bd9ac53b6318101f4a0c849ebc1641e9ab0be5f69eed70c3e0c63"},
+			},
+			expected: "quay.io/redhat-user-workloads/tenant/hypershift-operator@sha256:9651b2b8c64bd9ac53b6318101f4a0c849ebc1641e9ab0be5f69eed70c3e0c63",
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := LayeredReleaseImage(tc.tag)
+			if actual != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, actual)
+			}
+		})
+	}
+}
+
 func TestReleasePullSpec(t *testing.T) {
 	testCases := []struct {
 		name     string
