@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	imagev1 "github.com/openshift/api/image/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -541,6 +542,180 @@ func TestReleasePullSpec(t *testing.T) {
 			actual := ReleasePullSpec(tc.release, tc.tag)
 			if actual != tc.expected {
 				t.Errorf("expected %q, got %q", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestIsReleaseDelayedForInterval(t *testing.T) {
+	// recentTimestamp is always within the 1-hour interval used in test cases.
+	recentTimestamp := time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
+	// oldTimestamp is always outside the 1-hour interval.
+	oldTimestamp := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+
+	testCases := []struct {
+		name        string
+		release     *Release
+		tag         *imagev1.TagReference
+		wantDelayed bool
+	}{
+		{
+			name: "no delay when MinCreationIntervalSeconds is 0",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 0,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: false,
+		},
+		{
+			name: "no delay when tag is nil",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+			},
+			tag:         nil,
+			wantDelayed: false,
+		},
+		{
+			name: "delay enforced when latest tag is Accepted and interval has not elapsed",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhaseAccepted,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: true,
+		},
+		{
+			name: "delay enforced when latest tag is Pending and interval has not elapsed",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhasePending,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: true,
+		},
+		{
+			name: "delay enforced when latest tag is Ready and interval has not elapsed",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhaseReady,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: true,
+		},
+		{
+			name: "no delay when latest tag is Rejected even if interval has not elapsed",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhaseRejected,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: false,
+		},
+		{
+			name: "no delay when latest tag is Failed even if interval has not elapsed",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhaseFailed,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: recentTimestamp,
+				},
+			},
+			wantDelayed: false,
+		},
+		{
+			name: "no delay when interval has elapsed regardless of phase",
+			release: &Release{
+				Config: &ReleaseConfig{
+					Name:                       "4.17.0-0.nightly",
+					MinCreationIntervalSeconds: 3600,
+				},
+				PayloadPhases: map[string]string{
+					"4.17.0-0.nightly-2025-01-01-000000": ReleasePhaseAccepted,
+				},
+			},
+			tag: &imagev1.TagReference{
+				Name: "4.17.0-0.nightly-2025-01-01-000000",
+				Annotations: map[string]string{
+					ReleaseAnnotationCreationTimestamp: oldTimestamp,
+				},
+			},
+			wantDelayed: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			delayed, msg, remaining := IsReleaseDelayedForInterval(tc.release, tc.tag)
+			if delayed != tc.wantDelayed {
+				t.Errorf("IsReleaseDelayedForInterval() delayed = %v, want %v (msg=%q, remaining=%s)", delayed, tc.wantDelayed, msg, remaining)
+			}
+			if delayed && msg == "" {
+				t.Error("expected a non-empty message when delayed is true")
+			}
+			if delayed && remaining <= 0 {
+				t.Error("expected a positive remaining duration when delayed is true")
+			}
+			if !delayed && remaining != 0 {
+				t.Errorf("expected zero remaining duration when not delayed, got %s", remaining)
 			}
 		})
 	}

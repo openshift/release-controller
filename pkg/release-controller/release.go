@@ -515,6 +515,12 @@ func IsReleaseDelayedForInterval(release *Release, tag *imagev1.TagReference) (b
 	if tag == nil {
 		return false, "", 0
 	}
+	// If the latest tag has been rejected or failed, skip the interval delay
+	// so that a new nightly can be created immediately.
+	phase := GetTagPhase(release, tag)
+	if phase == ReleasePhaseRejected || phase == ReleasePhaseFailed {
+		return false, "", 0
+	}
 	created, err := time.Parse(time.RFC3339, tag.Annotations[ReleaseAnnotationCreationTimestamp])
 	if err != nil {
 		return false, "", 0
