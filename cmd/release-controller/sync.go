@@ -73,10 +73,22 @@ func (c *Controller) sync(key queueKey) error {
 	}
 
 	now := time.Now()
-	adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter := calculateSyncActions(release, now)
+	adoptTags, skipTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter := calculateSyncActions(release, now)
 
 	if klog.V(4) {
-		klog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v removeTags=%v pendingTags=%v queueAfter=%s", release.Source.Name, hasNewImages, inputImageHash, releasecontroller.TagNames(adoptTags), releasecontroller.TagNames(removeTags), releasecontroller.TagNames(pendingTags), queueAfter)
+		klog.Infof("name=%s hasNewImages=%t inputImageHash=%s adoptTags=%v skipTags=%v removeTags=%v pendingTags=%v queueAfter=%s", release.Source.Name, hasNewImages, inputImageHash, releasecontroller.TagNames(adoptTags), releasecontroller.TagNames(skipTags), releasecontroller.TagNames(removeTags), releasecontroller.TagNames(pendingTags), queueAfter)
+	}
+
+	// mark tags that were superseded before they could be adopted, so that they
+	// are not reconsidered on the next sync
+	if len(skipTags) > 0 && len(adoptTags) > 0 {
+		changed, err := c.syncSkipped(release, skipTags, adoptTags[0].Name)
+		if err != nil {
+			return err
+		}
+		if changed {
+			return nil
+		}
 	}
 
 	// take any tags that need to be given annotations now
@@ -143,7 +155,7 @@ func (c *Controller) sync(key queueKey) error {
 	return nil
 }
 
-func calculateSyncActions(release *releasecontroller.Release, now time.Time) (adoptTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
+func calculateSyncActions(release *releasecontroller.Release, now time.Time) (adoptTags, skipTags, pendingTags, removeTags []*imagev1.TagReference, hasNewImages bool, inputImageHash string, queueAfter time.Duration) {
 	hasNewImages = true
 	inputImageHash = releasecontroller.HashSpecTagImageDigests(release.Source)
 	var (
@@ -167,7 +179,12 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 	removeFailuresAfter, removeRejectedAfter := -1, -1
 	for _, tag := range tags {
 		if shouldAdopt {
-			if len(tag.Annotations[releasecontroller.ReleaseAnnotationSource]) == 0 && len(tag.Annotations[releasecontroller.ReleaseAnnotationPhase]) == 0 {
+			if len(tag.Annotations[releasecontroller.ReleaseAnnotationSource]) == 0 &&
+				len(tag.Annotations[releasecontroller.ReleaseAnnotationPhase]) == 0 &&
+				// A skipped tag was superseded before it was ever adopted.  It stays
+				// out of the release lifecycle, and must not be offered for adoption
+				// again on the next sync.
+				len(tag.Annotations[releasecontroller.ReleaseAnnotationSkipped]) == 0 {
 				adoptTags = append(adoptTags, tag)
 				continue
 			}
@@ -247,15 +264,34 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 	}
 
 	switch release.Config.As {
-	case releasecontroller.ReleaseConfigModeStable, releasecontroller.ReleaseConfigModeLayered:
+	case releasecontroller.ReleaseConfigModeLayered:
+		hasNewImages = false
+		inputImageHash = ""
+
+		// A layered release may run only one cycle at a time, so a backlog that built up
+		// while adoption was gated must not turn into a queue of release cycles.
+		if release.Config.MaxUnreadyReleases > 0 || release.Config.MinCreationIntervalSeconds > 0 {
+			adoptTags, skipTags = selectLayeredAdoption(release.Source, adoptTags)
+		}
+	case releasecontroller.ReleaseConfigModeStable:
 		hasNewImages = false
 		inputImageHash = ""
 		removeTags = nil
+	}
+
+	switch release.Config.As {
+	case releasecontroller.ReleaseConfigModeStable:
+		// Exclude stable mode from MaxUnready and release delay intervals
 	default:
 		// gate creating new releases when we already are at max unready or in the cooldown interval
 		if release.Config.MaxUnreadyReleases > 0 && unreadyTagCount >= release.Config.MaxUnreadyReleases {
 			klog.V(2).Infof("Release %s at max %d unready releases, will not launch new tags", release.Config.Name, release.Config.MaxUnreadyReleases)
 			hasNewImages = false
+			// A layered release is adopted from the stream rather than created from
+			// the source images, so holding back adoption is what stops a new
+			// release cycle from starting.
+			adoptTags = nil
+			skipTags = nil
 		}
 		if firstTag != nil {
 			delay, msg, interval := releasecontroller.IsReleaseDelayedForInterval(release, firstTag)
@@ -263,11 +299,89 @@ func calculateSyncActions(release *releasecontroller.Release, now time.Time) (ad
 				queueAfter = interval
 				klog.V(2).Info(msg)
 				hasNewImages = false
+				// See above, adoption is how a layered release cycle starts.
+				adoptTags = nil
+				skipTags = nil
 			}
 		}
 	}
 
-	return adoptTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter
+	return adoptTags, skipTags, pendingTags, removeTags, hasNewImages, inputImageHash, queueAfter
+}
+
+// selectLayeredAdoption picks the single most recently imported tag to adopt and
+// returns the tags it supersedes, which are to be marked skipped rather than
+// taken through a release cycle of their own.
+//
+// Tags whose image has not been imported yet are left out of both lists: their
+// age is unknown, so they can be neither adopted in preference to an older tag
+// nor safely declared superseded.  They are reconsidered once the import lands.
+func selectLayeredAdoption(is *imagev1.ImageStream, candidates []*imagev1.TagReference) (adopt, skip []*imagev1.TagReference) {
+	type importedTag struct {
+		tag      *imagev1.TagReference
+		imported time.Time
+	}
+
+	imported := make([]importedTag, 0, len(candidates))
+	for _, tag := range candidates {
+		at, ok := releasecontroller.SpecTagImportTime(is, tag.Name)
+		if !ok {
+			klog.V(4).Infof("Tag %s/%s:%s has no imported image yet, deferring adoption", is.Namespace, is.Name, tag.Name)
+			continue
+		}
+		imported = append(imported, importedTag{tag: tag, imported: at})
+	}
+	if len(imported) == 0 {
+		return nil, nil
+	}
+
+	// Newest first.  Imagestream timestamps have second granularity, so ties are
+	// broken on the tag name to keep the choice stable from one sync to the next.
+	sort.Slice(imported, func(i, j int) bool {
+		if !imported[i].imported.Equal(imported[j].imported) {
+			return imported[i].imported.After(imported[j].imported)
+		}
+		return imported[i].tag.Name > imported[j].tag.Name
+	})
+
+	adopt = []*imagev1.TagReference{imported[0].tag}
+	for _, superseded := range imported[1:] {
+		skip = append(skip, superseded.tag)
+	}
+	return adopt, skip
+}
+
+// syncSkipped records that a tag was superseded before the controller adopted
+// it.  The tag is deliberately left outside the release lifecycle: it is given
+// no phase, no ReleasePayload and no jobs.  The annotation is written purely so
+// that the tag stops being offered for adoption on every subsequent sync.
+func (c *Controller) syncSkipped(release *releasecontroller.Release, skipTags []*imagev1.TagReference, supersededBy string) (changed bool, err error) {
+	target := release.Target.DeepCopy()
+	for _, skipped := range skipTags {
+		tag := releasecontroller.FindTagReference(target, skipped.Name)
+		if tag == nil {
+			continue
+		}
+		if len(tag.Annotations[releasecontroller.ReleaseAnnotationSkipped]) > 0 {
+			continue
+		}
+		if tag.Annotations == nil {
+			tag.Annotations = make(map[string]string)
+		}
+		tag.Annotations[releasecontroller.ReleaseAnnotationSkipped] = supersededBy
+		changed = true
+		klog.V(2).Infof("Skipping release %s, superseded by %s", tag.Name, supersededBy)
+	}
+	if !changed {
+		return false, nil
+	}
+
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
+	if err != nil {
+		return false, err
+	}
+	updateReleaseTarget(release, is)
+	return true, nil
 }
 
 func (c *Controller) syncAdopted(release *releasecontroller.Release, adoptTags []*imagev1.TagReference, now time.Time) (changed bool, err error) {

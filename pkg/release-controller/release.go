@@ -327,6 +327,28 @@ func FindTagReference(is *imagev1.ImageStream, name string) *imagev1.TagReferenc
 	return nil
 }
 
+// SpecTagImportTime returns the time at which the image currently behind the
+// named spec tag was imported into the stream.
+//
+// Layered release tags are pushed by an external build system, so until the
+// controller adopts a tag and stamps its own creation timestamp onto it the
+// import time is the only signal available for ordering one tag against
+// another.  Returns false when the tag has no imported image yet, in which case
+// its age is simply unknown.
+func SpecTagImportTime(is *imagev1.ImageStream, name string) (time.Time, bool) {
+	for i := range is.Status.Tags {
+		tag := &is.Status.Tags[i]
+		if tag.Tag != name {
+			continue
+		}
+		if len(tag.Items) == 0 {
+			return time.Time{}, false
+		}
+		return tag.Items[0].Created.Time, true
+	}
+	return time.Time{}, false
+}
+
 func FindImageIDForTag(is *imagev1.ImageStream, name string) string {
 	for i := range is.Status.Tags {
 		tag := &is.Status.Tags[i]

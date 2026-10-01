@@ -628,6 +628,11 @@ const (
 	ReleaseAnnotationPhase             = "release.openshift.io/phase"
 	ReleaseAnnotationCreationTimestamp = "release.openshift.io/creationTimestamp"
 	ReleaseAnnotationVerify            = "release.openshift.io/verify"
+	// ReleaseAnnotationSkipped names the release that superseded this tag before the
+	// controller adopted it.  A skipped tag is deliberately left outside the release
+	// lifecycle: it has no phase, no ReleasePayload and no jobs.  The annotation
+	// exists so the tag is not offered for adoption again on every sync.
+	ReleaseAnnotationSkipped = "release.openshift.io/skipped"
 	// ReleaseAnnotationRewrite if true, the release controller should rewrite this release
 	ReleaseAnnotationRewrite = "release.openshift.io/rewrite"
 	// ReleaseAnnotationHasReleases an image stream with this annotation holds release tags
