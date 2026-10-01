@@ -374,7 +374,10 @@ func reasonAndMessage(reason, message string) map[string]string {
 }
 
 func updateReleaseTarget(release *releasecontroller.Release, is *imagev1.ImageStream) {
-	if release.Config.As == releasecontroller.ReleaseConfigModeStable {
+	// Stable and layered releases read and write the same stream, so the source
+	// has to move with the target or it is left pointing at a stale copy.
+	if release.Config.As == releasecontroller.ReleaseConfigModeStable ||
+		release.Config.As == releasecontroller.ReleaseConfigModeLayered {
 		release.Source = is
 	}
 	release.Target = is
