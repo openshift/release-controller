@@ -123,6 +123,11 @@ type ReleaseConfig struct {
 	// DefaultLayeredImageEnvVar. This field is only used when As is Layered.
 	LayeredImageEnvVar string `json:"layeredImageEnvVar,omitempty"`
 
+	// ChangelogGeneration selects how changelogs are generated for this release stream.
+	// When empty, Layered streams default to ChangelogGenerationDisabled and every other
+	// mode defaults to ChangelogGenerationFromImageReferences.
+	ChangelogGeneration ChangelogGenerationMode `json:"changelogGeneration,omitempty"`
+
 	// MaxUnreadyReleases blocks creating new releases if there are more than this many
 	// releases in non-terminal (Failed, Accepted, Rejected) states.
 	MaxUnreadyReleases int `json:"maxUnreadyReleases"`
@@ -200,6 +205,22 @@ type ReleaseConfig struct {
 	// https://issues.redhat.com/browse/OCPBUGS-50660
 	DisableManifestListMode bool `json:"disableManifestListMode"`
 }
+
+// ChangelogGenerationMode describes how changelogs are generated for the
+// releases of a stream.
+type ChangelogGenerationMode string
+
+const (
+	// ChangelogGenerationFromImageReferences builds changelogs by diffing the image
+	// references of the two releases, which is how `oc adm release info --changelog`
+	// works. Both releases must be release payloads that embed the source commit of
+	// every image they reference.
+	ChangelogGenerationFromImageReferences ChangelogGenerationMode = "FromImageReferences"
+
+	// ChangelogGenerationDisabled generates no changelog. This is the default for
+	// Layered streams, whose images are not release payloads.
+	ChangelogGenerationDisabled ChangelogGenerationMode = "Disabled"
+)
 
 // ReferenceRelease holds configuration for reference-based releases that
 // live in an external image repository rather than in a local imagestream.

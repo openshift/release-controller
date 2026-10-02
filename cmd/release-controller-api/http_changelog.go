@@ -26,7 +26,7 @@ type renderResult struct {
 	err error
 }
 
-func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chNodeInfo chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string) {
+func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chNodeInfo chan renderResult, fromPull string, fromTag string, toPull string, toTag string, format string, nodeImageInfo bool) {
 	fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPull)
 	if err != nil {
 		ch <- renderResult{err: err}
@@ -89,6 +89,13 @@ func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chN
 		return
 	}
 
+	// Skip node image info when the releases are not release payloads, there is no
+	// machine-OS image to inspect.
+	if !nodeImageInfo {
+		chNodeInfo <- renderResult{}
+		return
+	}
+
 	// Skip node image info for 4.18 and earlier: rpmdb collection requires
 	// pulling the entire rhel-coreos image for those releases.
 	if !releasecontroller.ReleaseTagHasCheapRpmdb(toTag) {
@@ -123,7 +130,7 @@ func (c *Controller) getChangeLog(ctx context.Context, ch chan renderResult, chN
 	chNodeInfo <- renderResult{out: nodeMD}
 }
 
-func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string) {
+func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fromTag string, toPull string, toTag string, format string, nodeImageInfo bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		flusher = nopFlusher{}
@@ -140,7 +147,7 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	chNodeInfo := make(chan renderResult, 1)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(ctx, ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format)
+	go c.getChangeLog(ctx, ch, chNodeInfo, fromPull, fromTag, toPull, toTag, format, nodeImageInfo)
 
 	var render renderResult
 	select {
@@ -196,6 +203,12 @@ func (c *Controller) renderChangeLog(w http.ResponseWriter, fromPull string, fro
 	} else {
 		// if we don't get a valid result within limits, just show the simpler informational view
 		fmt.Fprintf(w, `<p class="alert alert-danger">%s</p>`, fmt.Sprintf("Unable to show full changelog: %s", render.err))
+	}
+
+	// Skip node image info when the releases are not release payloads, there is no
+	// machine-OS image to inspect.
+	if !nodeImageInfo {
+		return
 	}
 
 	needsNode := strings.Contains(render.out, "#node-image-info")

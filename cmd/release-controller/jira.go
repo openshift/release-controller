@@ -266,6 +266,17 @@ func (c *Controller) syncJira(key queueKey) error {
 		return fmt.Errorf("jira: release target %s does not have a configured registry", release.Target.Name)
 	}
 
+	// Both the bug list and the changelog are read from the images, so wait for them
+	// to finish importing. The deferred requeue above brings us back to try again.
+	if !releasecontroller.ChangelogImageReady(release, tag) {
+		klog.V(4).Infof("jira: the image for %s has not finished importing, waiting before generating its changelog", tag.Name)
+		return nil
+	}
+	if !releasecontroller.ChangelogImageReady(prevReleaseForPullSpec, prevTag) {
+		klog.V(4).Infof("jira: the image for the previous release %s has not finished importing, waiting before generating the changelog of %s", prevTag.Name, tag.Name)
+		return nil
+	}
+
 	issues, err := c.releaseInfo.Bugs(prevPullSpec, curPullSpec)
 	var issueList []string
 	for _, issue := range issues {

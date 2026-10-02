@@ -540,6 +540,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
+			c.precacheChangelog(release, tag)
 		}
 		return nil
 	}
@@ -605,6 +606,15 @@ func (c *Controller) syncReady(release *releasecontroller.Release) error {
 
 	if klog.V(5) && len(readyTags) > 0 {
 		klog.Infof("ready=%v", releasecontroller.TagNames(readyTags))
+	}
+
+	if len(readyTags) > 0 {
+		// The changelog of a release is pre-cached as it becomes ready, but the
+		// images it is read from may not have finished importing by then. Retry
+		// here so that the first request for the release page does not have to
+		// generate the changelog itself. Pre-caching a changelog that is already
+		// cached does no work.
+		c.precacheChangelog(release, readyTags[0])
 	}
 
 	for _, releaseTag := range readyTags {
@@ -715,35 +725,78 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 }
 
 func (c *Controller) precacheChangelog(release *releasecontroller.Release, tag *imagev1.TagReference) {
-	if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
-		go func() {
-			fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
-			if len(fromPullSpec) == 0 {
-				klog.Errorf("Unable to determine pullspec for fromImage: %s", tags[0].Name)
-				return
-			}
-			fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
-			if err != nil {
-				klog.Errorf("Unable to get from image info for release %s: %v", tags[0].Name, err)
-				return
-			}
-
-			toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
-			if len(toPullSpec) == 0 {
-				klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
-				return
-			}
-			toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
-			if err != nil {
-				klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
-				return
-			}
-
-			if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
-				klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
-			}
-		}()
+	if !releasecontroller.ChangelogEnabled(release.Config) {
+		return
 	}
+	// The changelog is read from the images themselves, so there is nothing to
+	// pre-cache until both of them have finished importing. A later sync, or the
+	// first request for the changelog, will generate it once the import lands.
+	if !releasecontroller.ChangelogImageReady(release, tag) {
+		klog.V(4).Infof("Not pre-caching changelog for %s: the image has not finished importing", tag.Name)
+		return
+	}
+	previous := previousReleaseForChangelog(release, tag)
+	if previous == nil {
+		return
+	}
+	if !releasecontroller.ChangelogImageReady(release, previous) {
+		klog.V(4).Infof("Not pre-caching changelog for %s: the image of the previous release %s has not finished importing", tag.Name, previous.Name)
+		return
+	}
+	go func() {
+		fromPullSpec := releasecontroller.ReleasePullSpec(release, previous)
+		if len(fromPullSpec) == 0 {
+			klog.Errorf("Unable to determine pullspec for fromImage: %s", previous.Name)
+			return
+		}
+		fromImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, fromPullSpec)
+		if err != nil {
+			klog.Errorf("Unable to get from image info for release %s: %v", previous.Name, err)
+			return
+		}
+
+		toPullSpec := releasecontroller.ReleasePullSpec(release, tag)
+		if len(toPullSpec) == 0 {
+			klog.Errorf("Unable to determine pullspec for toImage: %s", tag.Name)
+			return
+		}
+		toImage, err := releasecontroller.GetImageInfo(c.releaseInfo, c.architecture, toPullSpec)
+		if err != nil {
+			klog.Errorf("Unable to get to image info for release %s: %v", tag.Name, err)
+			return
+		}
+
+		if _, err := c.releaseInfo.ChangeLog(fromImage.GenerateDigestPullSpec(), toImage.GenerateDigestPullSpec(), false); err != nil {
+			klog.V(4).Infof("Unable to pre-cache changelog for new ready release %s: %v", tag.Name, err)
+		}
+	}()
+}
+
+// previousReleaseForChangelog returns the release that the release page compares
+// tag against: the most recent accepted release older than it, or the most recent
+// release of any phase when nothing older has been accepted yet.
+//
+// The tag itself has to be excluded. Marking a release ready refreshes the target
+// image stream, so by the time the changelog is pre-cached the new release is
+// already the newest ready tag of the stream.
+func previousReleaseForChangelog(release *releasecontroller.Release, tag *imagev1.TagReference) *imagev1.TagReference {
+	created := tag.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp]
+	var newest *imagev1.TagReference
+	for _, candidate := range releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady, releasecontroller.ReleasePhaseAccepted) {
+		if candidate.Name == tag.Name {
+			continue
+		}
+		if len(created) > 0 && candidate.Annotations[releasecontroller.ReleaseAnnotationCreationTimestamp] >= created {
+			continue
+		}
+		if releasecontroller.GetTagPhase(release, candidate) == releasecontroller.ReleasePhaseAccepted {
+			return candidate
+		}
+		if newest == nil {
+			newest = candidate
+		}
+	}
+	return newest
 }
 
 func (c *Controller) populatePayloadPhases(release *releasecontroller.Release) {

@@ -25,6 +25,16 @@ type Comparison struct {
 	Type     ComparisonType
 	PullSpec string
 	Tag      *v1.TagReference
+	Release  *releasecontroller.Release
+}
+
+// changelogEnabled returns true when the stream this comparison was resolved
+// from generates changelogs. Layered streams must opt in.
+func (c *Comparison) changelogEnabled() bool {
+	if c.Release == nil {
+		return true
+	}
+	return releasecontroller.ChangelogEnabled(c.Release.Config)
 }
 
 type ComparisonPage struct {
@@ -110,9 +120,11 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 				case fromRelease:
 					fromComparison.PullSpec = pullSpec
 					fromComparison.Tag = tag
+					fromComparison.Release = stream.Release
 				case toRelease:
 					toComparison.PullSpec = pullSpec
 					toComparison.Tag = tag
+					toComparison.Release = stream.Release
 				}
 			}
 			page.Tags = append(page.Tags, tag)
@@ -152,7 +164,23 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 	fmt.Fprintln(w, "<hr>")
 
 	if fromComparison.Tag != nil && toComparison.Tag != nil {
-		c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name, format)
+		// The changelog is read from the images, so both of them must have been imported.
+		var importing []string
+		for _, comparison := range []*Comparison{fromComparison, toComparison} {
+			if !releasecontroller.ChangelogImageReady(comparison.Release, comparison.Tag) {
+				importing = append(importing, comparison.Tag.Name)
+			}
+		}
+		switch {
+		case !fromComparison.changelogEnabled() || !toComparison.changelogEnabled():
+			// one of these releases does not generate changelogs
+		case len(importing) > 0:
+			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image(s) for %s have finished importing.", html.EscapeString(strings.Join(importing, ", "))))
+		default:
+			// Layered releases are not release payloads, so they have no node image to inspect.
+			nodeImageInfo := !releasecontroller.IsLayeredRelease(fromComparison.Release) && !releasecontroller.IsLayeredRelease(toComparison.Release)
+			c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name, format, nodeImageInfo)
+		}
 	} else {
 		var unsupported []string
 		if fromComparison.Tag == nil && len(fromRelease) > 0 {

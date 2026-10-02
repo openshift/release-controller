@@ -687,7 +687,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if tagInfo.isLayeredTag() {
+	if !tagInfo.changelogEnabled() || !tagInfo.imageImported() || !tagInfo.previousImageImported() {
 		generateChangelog = false
 	}
 
@@ -718,6 +718,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 
 		wg.Go(func() {
+			// Layered releases are single images rather than release payloads, so
+			// they have no machine-OS image to inspect.
+			if tagInfo.isLayeredTag() {
+				return
+			}
 			// Skip node image info for 4.18 and earlier: rpmdb collection requires
 			// pulling the entire rhel-coreos image for those releases.
 			if !releasecontroller.ReleaseTagHasCheapRpmdb(tagInfo.Tag) {
@@ -846,7 +851,7 @@ func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagIn
 	ch := make(chan renderResult)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(context.Background(), ch, nil, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format)
+	go c.getChangeLog(context.Background(), ch, nil, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format, false)
 
 	select {
 	case *result = <-ch:
@@ -916,6 +921,18 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	if len(toPullSpec) == 0 {
 		http.Error(w, fmt.Sprintf("release target %s does not have a configured registry", tags[to].Release.Target.Name), http.StatusBadRequest)
 		return
+	}
+	for _, name := range []string{from, to} {
+		// Both releases must opt into changelog generation.
+		if !releasecontroller.ChangelogEnabled(tags[name].Release.Config) {
+			http.Error(w, fmt.Sprintf("changelogs are not generated for release %s", name), http.StatusBadRequest)
+			return
+		}
+		// The changelog is read from the images, so both of them must have been imported.
+		if !releasecontroller.ChangelogImageReady(tags[name].Release, tags[name].Tag) {
+			http.Error(w, fmt.Sprintf("the image for release %s has not finished importing, try again later", name), http.StatusServiceUnavailable)
+			return
+		}
 	}
 
 	out, err := c.releaseInfo.ChangeLog(fromPullSpec, toPullSpec, isJson)
@@ -1614,17 +1631,26 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	// Layered releases do not currently support changelogs...
-	if !tagInfo.isLayeredTag() {
-		if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
+	// Layered releases only support changelogs when they opt into them...
+	if tagInfo.changelogEnabled() {
+		switch {
+		case tagInfo.Info.Previous == nil || len(tagInfo.PreviousTagPullSpec) == 0 || len(tagInfo.TagPullSpec) == 0:
+			// there is nothing to compare this release against
+		case !tagInfo.imageImported():
 			fmt.Fprintln(w, "<hr>")
-			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
+			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image for %s has finished importing.", template.HTMLEscapeString(tagInfo.Info.Tag.Name)))
+		case !tagInfo.previousImageImported():
+			fmt.Fprintln(w, "<hr>")
+			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image for %s has finished importing.", template.HTMLEscapeString(tagInfo.Info.Previous.Name)))
+		default:
+			fmt.Fprintln(w, "<hr>")
+			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html", !tagInfo.isLayeredTag())
 		}
 
 		var options []string
 		for _, tag := range tagInfo.Info.Older {
 			var selected string
-			if tag.Name == tagInfo.Info.Previous.Name {
+			if tagInfo.Info.Previous != nil && tag.Name == tagInfo.Info.Previous.Name {
 				selected = `selected="true"`
 			}
 			if !endOfLifePrefixes.Has(pruneTagInfo(tag.Name)) {
@@ -3039,4 +3065,31 @@ func (t *releaseTagInfo) isLayeredTag() bool {
 		return true
 	}
 	return false
+}
+
+// changelogEnabled returns true when the stream this tag belongs to generates
+// changelogs. Layered streams must opt in.
+func (t *releaseTagInfo) changelogEnabled() bool {
+	if t.Info == nil || t.Info.Release == nil {
+		return true
+	}
+	return releasecontroller.ChangelogEnabled(t.Info.Release.Config)
+}
+
+// imageImported returns true when the image of this tag has finished importing
+// and can be inspected to build a changelog.
+func (t *releaseTagInfo) imageImported() bool {
+	if t.Info == nil {
+		return false
+	}
+	return releasecontroller.ChangelogImageReady(t.Info.Release, t.Info.Tag)
+}
+
+// previousImageImported returns true when the image of the release this tag is
+// compared against has finished importing.
+func (t *releaseTagInfo) previousImageImported() bool {
+	if t.Info == nil {
+		return false
+	}
+	return releasecontroller.ChangelogImageReady(t.Info.PreviousRelease, t.Info.Previous)
 }
