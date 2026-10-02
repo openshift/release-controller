@@ -245,6 +245,71 @@ func TestTransformMarkDownOutputDualRHCOSLines(t *testing.T) {
 	}
 }
 
+func TestTransformMarkDownOutputHeaders(t *testing.T) {
+	testCases := []struct {
+		name            string
+		markdown        string
+		fromTag         string
+		toTag           string
+		expected        string
+		expectedMissing []string
+	}{{
+		// A release payload names itself after the version in its metadata,
+		// which is the tag the release controller knows it by.
+		name: "release payload",
+		markdown: `# 4.21.0
+
+Created: 2026-09-30 00:00:00 +0000 UTC
+
+Image Digest: ` + "`sha256:abc`" + `
+
+## Changes from 4.20.0
+
+### Components
+`,
+		fromTag:         "4.20.0",
+		toTag:           "4.21.0",
+		expected:        "## Changes from [4.20.0](/releasetag/4.20.0)\n",
+		expectedMissing: []string{"# 4.21.0"},
+	}, {
+		// An image that is not a release payload has no metadata to name
+		// itself from, so oc falls back to the name of the image stream in its
+		// image-references file, here the name of the component.
+		name: "layered release named after its image references",
+		markdown: `# hypershift
+
+Created: 2026-09-30 00:00:00 +0000 UTC
+
+Image Digest: ` + "`sha256:abc`" + `
+
+## Changes from hypershift
+
+### Components
+`,
+		fromTag:         "0.0.1-a",
+		toTag:           "0.0.1-b",
+		expected:        "## Changes from [0.0.1-a](/releasetag/0.0.1-a)\n",
+		expectedMissing: []string{"# hypershift", "Changes from hypershift"},
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := TransformMarkDownOutput(tc.markdown, tc.fromTag, tc.toTag, "x86_64", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(out, tc.expected) {
+				t.Errorf("Expected the changelog to start with %q, got:\n%s", tc.expected, out)
+			}
+			for _, missing := range tc.expectedMissing {
+				if strings.Contains(out, missing) {
+					t.Errorf("Expected the changelog not to contain %q, got:\n%s", missing, out)
+				}
+			}
+		})
+	}
+}
+
 func TestTransformJsonOutputDualCoreOS(t *testing.T) {
 	j := `{
   "components": [

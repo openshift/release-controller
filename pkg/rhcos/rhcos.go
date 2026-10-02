@@ -35,6 +35,14 @@ var (
 
 	reMdPromotedFrom = regexp.MustCompile("Promoted from (.*):(.*)")
 
+	// oc titles a changelog with the name each release gives itself: the version
+	// from its payload metadata, or, for an image that is not a release payload,
+	// the name of the image stream in its image-references file. Neither has to
+	// be the tag the release controller knows the release by, so the headings are
+	// matched by their shape rather than by the expected name.
+	reMdTitle       = regexp.MustCompile(`(?m)^# .*\n`)
+	reMdChangesFrom = regexp.MustCompile(`(?m)^## Changes from .*\n`)
+
 	// Handle both old format (no RHEL version) and new format (with RHEL version like "9.8")
 	// Old: "* Red Hat Enterprise Linux CoreOS upgraded from 9.8.20260312-0 to 9.8.20260227-0"
 	// New: "* Red Hat Enterprise Linux CoreOS 9.8 upgraded from 9.8.20260305-0 to 9.8.20260312-0"
@@ -65,9 +73,10 @@ func TransformMarkDownOutput(markdown, fromTag, toTag, architecture, architectur
 		return "", err
 	}
 
-	// do a best effort replacement to change out the headers
-	markdown = strings.ReplaceAll(markdown, fmt.Sprintf(`# %s`, toTag), "")
-	if changed := strings.ReplaceAll(markdown, fmt.Sprintf(`## Changes from %s`, fromTag), ""); len(changed) != len(markdown) {
+	// do a best effort replacement to change out the headers, the page already
+	// titles itself with the release this changelog is for
+	markdown = reMdTitle.ReplaceAllString(markdown, "")
+	if changed := reMdChangesFrom.ReplaceAllString(markdown, ""); len(changed) != len(markdown) {
 		markdown = fmt.Sprintf("## Changes from %s\n%s", fromTag, changed)
 	}
 	markdown = rePrevious.ReplaceAllString(markdown, fmt.Sprintf("$1[%s](/releasetag/%s)$2", fromTag, fromTag))
