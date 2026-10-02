@@ -23,12 +23,13 @@ import (
 )
 
 type PeriodicWithRelease struct {
-	Periodic           *config.Periodic
-	Release            *releasecontroller.Release
-	Upgrade            bool
-	UpgradeFrom        string
-	UpgradeFromRelease *releasecontroller.UpgradeRelease
-	LayeredImageEnvVar string
+	Periodic              *config.Periodic
+	Release               *releasecontroller.Release
+	Upgrade               bool
+	UpgradeFrom           string
+	UpgradeFromRelease    *releasecontroller.UpgradeRelease
+	PreviousMinorOverride *releasecontroller.PreviousMinorOverride
+	LayeredImageEnvVar    string
 }
 
 func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, stopCh <-chan struct{}) {
@@ -86,12 +87,13 @@ func (c *Controller) syncPeriodicJobs(prowInformers cache.SharedIndexInformer, s
 				}
 				updatedPeriodicConfig.Cron = releasePeriodic.Cron
 				releasePeriodics[periodicConfig.Name] = PeriodicWithRelease{
-					Periodic:           &updatedPeriodicConfig,
-					Release:            r,
-					Upgrade:            releasePeriodic.Upgrade,
-					UpgradeFrom:        releasePeriodic.UpgradeFrom,
-					UpgradeFromRelease: releasePeriodic.UpgradeFromRelease,
-					LayeredImageEnvVar: releasePeriodic.LayeredImageEnvVar,
+					Periodic:              &updatedPeriodicConfig,
+					Release:               r,
+					Upgrade:               releasePeriodic.Upgrade,
+					UpgradeFrom:           releasePeriodic.UpgradeFrom,
+					UpgradeFromRelease:    releasePeriodic.UpgradeFromRelease,
+					PreviousMinorOverride: releasePeriodic.PreviousMinorOverride,
+					LayeredImageEnvVar:    releasePeriodic.LayeredImageEnvVar,
 				}
 				cronConfig.Periodics = append(cronConfig.Periodics, updatedPeriodicConfig)
 			}
@@ -171,7 +173,7 @@ func (c *Controller) createProwJobFromPeriodicWithRelease(periodicWithRelease Pe
 	}
 	var previousTag, previousReleasePullSpec string
 	if periodicWithRelease.Upgrade {
-		previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, latestTag, periodicWithRelease.Periodic.Name, periodicWithRelease.UpgradeFrom, periodicWithRelease.UpgradeFromRelease, true)
+		previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, latestTag, periodicWithRelease.Periodic.Name, periodicWithRelease.UpgradeFrom, periodicWithRelease.UpgradeFromRelease, periodicWithRelease.PreviousMinorOverride, true)
 		if err != nil {
 			return fmt.Errorf("failed to get previous release spec and tag for release %s tag %s: %v", release.Config.Name, latestTag.Name, err)
 		}
