@@ -366,6 +366,122 @@ func TestIsReferenceReleaseTag(t *testing.T) {
 	}
 }
 
+func TestChangelogImageReady(t *testing.T) {
+	const tagName = "0.0.1-0.nightly-2025-01-01-000000"
+	layeredTag := &imagev1.TagReference{
+		Name: tagName,
+		From: &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/openshift/layered@sha256:1111"},
+	}
+	// A spec tag and the matching status tag, as the image stream reports them
+	// once the import of generation 2 has completed.
+	specTags := func(generation int64) []imagev1.TagReference {
+		return []imagev1.TagReference{{Name: tagName, Generation: &generation, From: layeredTag.From}}
+	}
+	importedItems := []imagev1.TagEvent{{Image: "sha256:1111", Generation: 2, DockerImageReference: "quay.io/openshift/layered@sha256:1111"}}
+
+	testCases := []struct {
+		name     string
+		release  *Release
+		tag      *imagev1.TagReference
+		expected bool
+	}{
+		{
+			name:     "nil release is not ready",
+			release:  nil,
+			tag:      layeredTag,
+			expected: false,
+		},
+		{
+			name:     "nil tag is not ready",
+			release:  &Release{Config: &ReleaseConfig{}, Target: &imagev1.ImageStream{}},
+			tag:      nil,
+			expected: false,
+		},
+		{
+			name: "tag that the image stream has no status for is not ready",
+			release: &Release{
+				Config: &ReleaseConfig{},
+				Target: &imagev1.ImageStream{Spec: imagev1.ImageStreamSpec{Tags: specTags(2)}},
+			},
+			tag:      layeredTag,
+			expected: false,
+		},
+		{
+			name: "tag that has not imported an image yet is not ready",
+			release: &Release{
+				Config: &ReleaseConfig{},
+				Target: &imagev1.ImageStream{
+					Spec:   imagev1.ImageStreamSpec{Tags: specTags(2)},
+					Status: imagev1.ImageStreamStatus{Tags: []imagev1.NamedTagEventList{{Tag: tagName}}},
+				},
+			},
+			tag:      layeredTag,
+			expected: false,
+		},
+		{
+			name: "tag whose import failed is not ready",
+			release: &Release{
+				Config: &ReleaseConfig{},
+				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{Tags: specTags(2)},
+					Status: imagev1.ImageStreamStatus{Tags: []imagev1.NamedTagEventList{{
+						Tag:        tagName,
+						Items:      importedItems,
+						Conditions: []imagev1.TagEventCondition{{Type: imagev1.ImportSuccess, Status: corev1.ConditionFalse}},
+					}}},
+				},
+			},
+			tag:      layeredTag,
+			expected: false,
+		},
+		{
+			name: "tag whose latest generation has not imported yet is not ready",
+			release: &Release{
+				Config: &ReleaseConfig{},
+				Target: &imagev1.ImageStream{
+					Spec:   imagev1.ImageStreamSpec{Tags: specTags(3)},
+					Status: imagev1.ImageStreamStatus{Tags: []imagev1.NamedTagEventList{{Tag: tagName, Items: importedItems}}},
+				},
+			},
+			tag:      layeredTag,
+			expected: false,
+		},
+		{
+			name: "fully imported tag is ready",
+			release: &Release{
+				Config: &ReleaseConfig{},
+				Target: &imagev1.ImageStream{
+					Spec:   imagev1.ImageStreamSpec{Tags: specTags(2)},
+					Status: imagev1.ImageStreamStatus{Tags: []imagev1.NamedTagEventList{{Tag: tagName, Items: importedItems}}},
+				},
+			},
+			tag:      layeredTag,
+			expected: true,
+		},
+		{
+			name: "reference release tag is ready without being imported",
+			release: &Release{
+				Config: &ReleaseConfig{
+					ReferenceRelease: &ReferenceRelease{PullRepository: "quay.io/openshift-release-dev/ocp-release"},
+				},
+				Target: &imagev1.ImageStream{},
+			},
+			tag:      &imagev1.TagReference{Name: tagName, Reference: true},
+			expected: true,
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := ChangelogImageReady(tc.release, tc.tag)
+			if actual != tc.expected {
+				t.Errorf("expected %t, got %t", tc.expected, actual)
+			}
+		})
+	}
+}
+
 func TestLayeredReleaseImage(t *testing.T) {
 	testCases := []struct {
 		name     string

@@ -719,7 +719,18 @@ func (c *Controller) precacheChangelog(release *releasecontroller.Release, tag *
 	if !releasecontroller.ChangelogEnabled(release.Config) {
 		return
 	}
+	// The changelog is read from the images themselves, so there is nothing to
+	// pre-cache until both of them have finished importing. A later sync, or the
+	// first request for the changelog, will generate it once the import lands.
+	if !releasecontroller.ChangelogImageReady(release, tag) {
+		klog.V(4).Infof("Not pre-caching changelog for %s: the image has not finished importing", tag.Name)
+		return
+	}
 	if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
+		if !releasecontroller.ChangelogImageReady(release, tags[0]) {
+			klog.V(4).Infof("Not pre-caching changelog for %s: the image of the previous release %s has not finished importing", tag.Name, tags[0].Name)
+			return
+		}
 		go func() {
 			fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
 			if len(fromPullSpec) == 0 {

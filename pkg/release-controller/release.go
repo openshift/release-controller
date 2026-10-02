@@ -732,6 +732,29 @@ func ChangelogEnabled(config *ReleaseConfig) bool {
 	return ChangelogGeneration(config) != ChangelogGenerationDisabled
 }
 
+// TagImportComplete returns true when the image stream has finished importing the
+// named tag: the tag has an imported image, the most recent import succeeded, and
+// the import is not older than the spec tag that triggered it.
+func TagImportComplete(is *imagev1.ImageStream, name string) bool {
+	return is != nil && len(FindImageIDForTag(is, name)) > 0
+}
+
+// ChangelogImageReady returns true when the image behind a release tag can be
+// inspected to build a changelog. Changelogs are generated from the image
+// digests, so a tag that is still importing, or whose import failed, resolves to
+// a pull spec that cannot be read yet. Reference release tags are never imported
+// into the release image stream, they are read straight from the external
+// repository, so they are ready as soon as the tag exists.
+func ChangelogImageReady(release *Release, tag *imagev1.TagReference) bool {
+	if release == nil || tag == nil {
+		return false
+	}
+	if IsReferenceReleaseTag(release, tag) {
+		return true
+	}
+	return TagImportComplete(release.Target, tag.Name)
+}
+
 // LayeredReleaseImage returns the external image that a layered release tag
 // was created from. Layered tags are reference tags whose "from" is the
 // pre-built image pushed by the build system, so the source of the tag is the

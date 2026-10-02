@@ -687,7 +687,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !tagInfo.changelogEnabled() {
+	if !tagInfo.changelogEnabled() || !tagInfo.imageImported() || !tagInfo.previousImageImported() {
 		generateChangelog = false
 	}
 
@@ -916,6 +916,18 @@ func (c *Controller) httpReleaseChangelog(w http.ResponseWriter, req *http.Reque
 	if len(toPullSpec) == 0 {
 		http.Error(w, fmt.Sprintf("release target %s does not have a configured registry", tags[to].Release.Target.Name), http.StatusBadRequest)
 		return
+	}
+	for _, name := range []string{from, to} {
+		// Both releases must opt into changelog generation.
+		if !releasecontroller.ChangelogEnabled(tags[name].Release.Config) {
+			http.Error(w, fmt.Sprintf("changelogs are not generated for release %s", name), http.StatusBadRequest)
+			return
+		}
+		// The changelog is read from the images, so both of them must have been imported.
+		if !releasecontroller.ChangelogImageReady(tags[name].Release, tags[name].Tag) {
+			http.Error(w, fmt.Sprintf("the image for release %s has not finished importing, try again later", name), http.StatusServiceUnavailable)
+			return
+		}
 	}
 
 	out, err := c.releaseInfo.ChangeLog(fromPullSpec, toPullSpec, isJson)
@@ -1616,7 +1628,16 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 
 	// Layered releases only support changelogs when they opt into them...
 	if tagInfo.changelogEnabled() {
-		if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
+		switch {
+		case tagInfo.Info.Previous == nil || len(tagInfo.PreviousTagPullSpec) == 0 || len(tagInfo.TagPullSpec) == 0:
+			// there is nothing to compare this release against
+		case !tagInfo.imageImported():
+			fmt.Fprintln(w, "<hr>")
+			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image for %s has finished importing.", template.HTMLEscapeString(tagInfo.Info.Tag.Name)))
+		case !tagInfo.previousImageImported():
+			fmt.Fprintln(w, "<hr>")
+			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image for %s has finished importing.", template.HTMLEscapeString(tagInfo.Info.Previous.Name)))
+		default:
 			fmt.Fprintln(w, "<hr>")
 			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
 		}
@@ -3081,4 +3102,22 @@ func (t *releaseTagInfo) changelogEnabled() bool {
 		return true
 	}
 	return releasecontroller.ChangelogEnabled(t.Info.Release.Config)
+}
+
+// imageImported returns true when the image of this tag has finished importing
+// and can be inspected to build a changelog.
+func (t *releaseTagInfo) imageImported() bool {
+	if t.Info == nil {
+		return false
+	}
+	return releasecontroller.ChangelogImageReady(t.Info.Release, t.Info.Tag)
+}
+
+// previousImageImported returns true when the image of the release this tag is
+// compared against has finished importing.
+func (t *releaseTagInfo) previousImageImported() bool {
+	if t.Info == nil {
+		return false
+	}
+	return releasecontroller.ChangelogImageReady(t.Info.PreviousRelease, t.Info.Previous)
 }
