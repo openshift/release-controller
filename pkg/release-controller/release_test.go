@@ -412,6 +412,64 @@ func TestLayeredReleaseImage(t *testing.T) {
 	}
 }
 
+func TestChangelogGeneration(t *testing.T) {
+	testCases := []struct {
+		name           string
+		config         *ReleaseConfig
+		expected       ChangelogGenerationMode
+		expectedEnable bool
+	}{
+		{
+			name:           "nil config generates changelogs from image references",
+			config:         nil,
+			expected:       ChangelogGenerationFromImageReferences,
+			expectedEnable: true,
+		},
+		{
+			name:           "integration release generates changelogs from image references",
+			config:         &ReleaseConfig{Name: "4.21.0-0.nightly"},
+			expected:       ChangelogGenerationFromImageReferences,
+			expectedEnable: true,
+		},
+		{
+			name:           "stable release generates changelogs from image references",
+			config:         &ReleaseConfig{Name: "4-stable", As: ReleaseConfigModeStable},
+			expected:       ChangelogGenerationFromImageReferences,
+			expectedEnable: true,
+		},
+		{
+			name:           "release that disables changelogs",
+			config:         &ReleaseConfig{Name: "4-stable", As: ReleaseConfigModeStable, ChangelogGeneration: ChangelogGenerationDisabled},
+			expected:       ChangelogGenerationDisabled,
+			expectedEnable: false,
+		},
+		{
+			name:           "layered release does not generate changelogs by default",
+			config:         &ReleaseConfig{Name: "4.21.0-0.hypershift", As: ReleaseConfigModeLayered},
+			expected:       ChangelogGenerationDisabled,
+			expectedEnable: false,
+		},
+		{
+			name:           "layered release generates changelogs when opted in",
+			config:         &ReleaseConfig{Name: "4.21.0-0.hypershift", As: ReleaseConfigModeLayered, ChangelogGeneration: ChangelogGenerationFromImageReferences},
+			expected:       ChangelogGenerationFromImageReferences,
+			expectedEnable: true,
+		},
+	}
+
+	t.Parallel()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if actual := ChangelogGeneration(tc.config); actual != tc.expected {
+				t.Errorf("expected mode %q, got %q", tc.expected, actual)
+			}
+			if actual := ChangelogEnabled(tc.config); actual != tc.expectedEnable {
+				t.Errorf("expected enabled %t, got %t", tc.expectedEnable, actual)
+			}
+		})
+	}
+}
+
 func TestReleasePullSpec(t *testing.T) {
 	testCases := []struct {
 		name     string

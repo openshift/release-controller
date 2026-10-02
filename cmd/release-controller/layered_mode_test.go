@@ -45,6 +45,22 @@ func TestLayeredModeConfiguration(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "Layered mode opting into changelog generation is valid",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "changelogGeneration": "FromImageReferences"}`,
+			expectError: false,
+		},
+		{
+			name:        "Layered mode disabling changelog generation is valid",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "changelogGeneration": "Disabled"}`,
+			expectError: false,
+		},
+		{
+			name:        "Layered mode with an unknown changelogGeneration should error",
+			configJSON:  `{"name": "test-layered", "as": "Layered", "changelogGeneration": "FromGitTags"}`,
+			expectError: true,
+			errorMsg:    "release has an invalid changelogGeneration: FromGitTags",
+		},
+		{
 			name:        "Layered mode with a per job layeredImageEnvVar is valid",
 			configJSON:  `{"name": "test-layered", "as": "Layered", "verify": {"e2e": {"layeredImageEnvVar": "HYPERSHIFT_OPERATOR_IMAGE", "prowJob": {"name": "e2e-job"}}}}`,
 			expectError: false,

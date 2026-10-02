@@ -169,6 +169,11 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 	if !isValidEnvVarName(cfg.LayeredImageEnvVar) {
 		return nil, fmt.Errorf("release has an invalid layeredImageEnvVar: %s", cfg.LayeredImageEnvVar)
 	}
+	switch cfg.ChangelogGeneration {
+	case ChangelogGenerationFromImageReferences, ChangelogGenerationDisabled, "":
+	default:
+		return nil, fmt.Errorf("release has an invalid changelogGeneration: %s", cfg.ChangelogGeneration)
+	}
 	for name, verify := range cfg.Verify {
 		if len(name) == 0 {
 			return nil, fmt.Errorf("verify config has no name")
@@ -702,6 +707,29 @@ func IsLayeredRelease(release *Release) bool {
 	return release != nil &&
 		release.Config != nil &&
 		release.Config.As == ReleaseConfigModeLayered
+}
+
+// ChangelogGeneration returns the changelog generation mode of a stream. When the
+// stream does not configure one, Layered streams default to
+// ChangelogGenerationDisabled, because their images are not release payloads, and
+// every other mode defaults to ChangelogGenerationFromImageReferences.
+func ChangelogGeneration(config *ReleaseConfig) ChangelogGenerationMode {
+	if config == nil {
+		return ChangelogGenerationFromImageReferences
+	}
+	if len(config.ChangelogGeneration) > 0 {
+		return config.ChangelogGeneration
+	}
+	if config.As == ReleaseConfigModeLayered {
+		return ChangelogGenerationDisabled
+	}
+	return ChangelogGenerationFromImageReferences
+}
+
+// ChangelogEnabled returns true when changelogs should be generated for the
+// releases of this stream.
+func ChangelogEnabled(config *ReleaseConfig) bool {
+	return ChangelogGeneration(config) != ChangelogGenerationDisabled
 }
 
 // LayeredReleaseImage returns the external image that a layered release tag

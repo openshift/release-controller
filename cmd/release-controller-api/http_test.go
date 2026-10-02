@@ -37,6 +37,47 @@ var reference4Preview = releasecontroller.StableRelease{
 	}},
 }
 
+func TestChangelogEnabled(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name     string
+		tagInfo  releaseTagInfo
+		expected bool
+	}{{
+		name:     "tag without release info",
+		tagInfo:  releaseTagInfo{Tag: "4.13.0-rc.0"},
+		expected: true,
+	}, {
+		name: "tag of a non layered stream",
+		tagInfo: releaseTagInfo{
+			Tag:  "4.13.0-rc.0",
+			Info: &ReleaseStreamTag{Release: &releasecontroller.Release{Config: &releasecontroller.ReleaseConfig{Name: "4-stable", As: releasecontroller.ReleaseConfigModeStable}}},
+		},
+		expected: true,
+	}, {
+		name: "tag of a layered stream",
+		tagInfo: releaseTagInfo{
+			Tag:  "0.0.1-0.nightly-2025-01-01-000000",
+			Info: &ReleaseStreamTag{Release: &releasecontroller.Release{Config: &releasecontroller.ReleaseConfig{Name: "hypershift", As: releasecontroller.ReleaseConfigModeLayered}}},
+		},
+		expected: false,
+	}, {
+		name: "tag of a layered stream that opted into changelogs",
+		tagInfo: releaseTagInfo{
+			Tag:  "0.0.1-0.nightly-2025-01-01-000000",
+			Info: &ReleaseStreamTag{Release: &releasecontroller.Release{Config: &releasecontroller.ReleaseConfig{Name: "hypershift", As: releasecontroller.ReleaseConfigModeLayered, ChangelogGeneration: releasecontroller.ChangelogGenerationFromImageReferences}}},
+		},
+		expected: true,
+	}}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if actual := tc.tagInfo.changelogEnabled(); actual != tc.expected {
+				t.Errorf("Expected %t, got %t", tc.expected, actual)
+			}
+		})
+	}
+}
+
 func TestNextMinor(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {

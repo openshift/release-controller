@@ -687,7 +687,7 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if tagInfo.isLayeredTag() {
+	if !tagInfo.changelogEnabled() {
 		generateChangelog = false
 	}
 
@@ -1614,8 +1614,8 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, `</ul>`)
 	}
 
-	// Layered releases do not currently support changelogs...
-	if !tagInfo.isLayeredTag() {
+	// Layered releases only support changelogs when they opt into them...
+	if tagInfo.changelogEnabled() {
 		if tagInfo.Info.Previous != nil && len(tagInfo.PreviousTagPullSpec) > 0 && len(tagInfo.TagPullSpec) > 0 {
 			fmt.Fprintln(w, "<hr>")
 			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
@@ -1624,7 +1624,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		var options []string
 		for _, tag := range tagInfo.Info.Older {
 			var selected string
-			if tag.Name == tagInfo.Info.Previous.Name {
+			if tagInfo.Info.Previous != nil && tag.Name == tagInfo.Info.Previous.Name {
 				selected = `selected="true"`
 			}
 			if !endOfLifePrefixes.Has(pruneTagInfo(tag.Name)) {
@@ -3072,4 +3072,13 @@ func (t *releaseTagInfo) isLayeredTag() bool {
 		return true
 	}
 	return false
+}
+
+// changelogEnabled returns true when the stream this tag belongs to generates
+// changelogs. Layered streams must opt in.
+func (t *releaseTagInfo) changelogEnabled() bool {
+	if t.Info == nil || t.Info.Release == nil {
+		return true
+	}
+	return releasecontroller.ChangelogEnabled(t.Info.Release.Config)
 }

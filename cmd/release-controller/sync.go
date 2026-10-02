@@ -540,6 +540,7 @@ func (c *Controller) syncPending(release *releasecontroller.Release, pendingTags
 			if err := c.markReleaseReady(release, nil, tag.Name); err != nil {
 				return err
 			}
+			c.precacheChangelog(release, tag)
 		}
 		return nil
 	}
@@ -715,6 +716,9 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 }
 
 func (c *Controller) precacheChangelog(release *releasecontroller.Release, tag *imagev1.TagReference) {
+	if !releasecontroller.ChangelogEnabled(release.Config) {
+		return
+	}
 	if tags := releasecontroller.SortedRawReleaseTags(release, releasecontroller.ReleasePhaseReady); len(tags) > 0 {
 		go func() {
 			fromPullSpec := releasecontroller.ReleasePullSpec(release, tags[0])
