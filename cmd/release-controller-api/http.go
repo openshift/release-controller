@@ -718,6 +718,11 @@ func (c *Controller) apiReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		}
 
 		wg.Go(func() {
+			// Layered releases are single images rather than release payloads, so
+			// they have no machine-OS image to inspect.
+			if tagInfo.isLayeredTag() {
+				return
+			}
 			// Skip node image info for 4.18 and earlier: rpmdb collection requires
 			// pulling the entire rhel-coreos image for those releases.
 			if !releasecontroller.ReleaseTagHasCheapRpmdb(tagInfo.Tag) {
@@ -846,7 +851,7 @@ func (c *Controller) changeLogWorker(result *renderResult, tagInfo *releaseTagIn
 	ch := make(chan renderResult)
 
 	// run the changelog in a goroutine because it may take significant time
-	go c.getChangeLog(context.Background(), ch, nil, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format)
+	go c.getChangeLog(context.Background(), ch, nil, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, format, false)
 
 	select {
 	case *result = <-ch:
@@ -1639,7 +1644,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image for %s has finished importing.", template.HTMLEscapeString(tagInfo.Info.Previous.Name)))
 		default:
 			fmt.Fprintln(w, "<hr>")
-			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html")
+			c.renderChangeLog(w, tagInfo.PreviousTagPullSpec, tagInfo.Info.Previous.Name, tagInfo.TagPullSpec, tagInfo.Info.Tag.Name, "html", !tagInfo.isLayeredTag())
 		}
 
 		var options []string

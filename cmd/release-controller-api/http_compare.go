@@ -177,7 +177,9 @@ func (c *Controller) httpDashboardCompare(w http.ResponseWriter, req *http.Reque
 		case len(importing) > 0:
 			fmt.Fprintf(w, `<p class="alert alert-info">%s</p>`, fmt.Sprintf("The changelog will be available once the image(s) for %s have finished importing.", html.EscapeString(strings.Join(importing, ", "))))
 		default:
-			c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name, format)
+			// Layered releases are not release payloads, so they have no node image to inspect.
+			nodeImageInfo := !releasecontroller.IsLayeredRelease(fromComparison.Release) && !releasecontroller.IsLayeredRelease(toComparison.Release)
+			c.renderChangeLog(w, fromComparison.PullSpec, fromComparison.Tag.Name, toComparison.PullSpec, toComparison.Tag.Name, format, nodeImageInfo)
 		}
 	} else {
 		var unsupported []string
