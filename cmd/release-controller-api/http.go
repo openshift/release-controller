@@ -1861,18 +1861,7 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 			Release: r,
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
-		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
-			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
-				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
-			}
-			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
-				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
-			}
-		}
-		if len(delays) > 0 {
-			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
-		}
+		s.Delayed = releaseDelay(r, s.Tags)
 		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 		}
@@ -2324,18 +2313,7 @@ func (c *Controller) httpReleaseStreamTable(w http.ResponseWriter, req *http.Req
 		Release: r,
 		Tags:    releasecontroller.SortedReleaseTags(r),
 	}
-	var delays []string
-	if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
-		if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
-			delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
-		}
-		if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
-			delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
-		}
-	}
-	if len(delays) > 0 {
-		s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
-	}
+	s.Delayed = releaseDelay(r, s.Tags)
 	if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 		s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, false)
 	}
@@ -2467,15 +2445,6 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			Release: r,
 			Tags:    releasecontroller.SortedReleaseTags(r),
 		}
-		var delays []string
-		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered && len(s.Tags) > 0 {
-			if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, s.Tags[0]); ok {
-				delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
-			}
-			if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, s.Tags) >= r.Config.MaxUnreadyReleases {
-				delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
-			}
-		}
 		phases := make([]string, len(s.Tags))
 		for i, tag := range s.Tags {
 			phases[i] = c.resolvePhase(*tag)
@@ -2484,9 +2453,7 @@ func (c *Controller) httpDashboardOverview(w http.ResponseWriter, req *http.Requ
 			s.Failing = true
 		}
 
-		if len(delays) > 0 {
-			s.Delayed = &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
-		}
+		s.Delayed = releaseDelay(r, s.Tags)
 		if r.Config.As != releasecontroller.ReleaseConfigModeStable && r.Config.As != releasecontroller.ReleaseConfigModeLayered {
 			s.Upgrades = calculateReleaseUpgrades(r, s.Tags, c.graph, true)
 		}
