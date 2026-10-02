@@ -3,7 +3,9 @@ package main
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/openshift/release-controller/pkg/apis/release/v1alpha1"
 	releasecontroller "github.com/openshift/release-controller/pkg/release-controller"
@@ -11,6 +13,7 @@ import (
 	"github.com/blang/semver"
 	"github.com/google/go-cmp/cmp"
 	imagev1 "github.com/openshift/api/image/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func Test_calculateReleaseUpgrades(t *testing.T) {
@@ -555,6 +558,100 @@ func Test_preferredReleases(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("unexpected order (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_releaseDelay(t *testing.T) {
+	pendingTag := func(name string, created time.Time) *imagev1.TagReference {
+		return &imagev1.TagReference{
+			Name: name,
+			Annotations: map[string]string{
+				releasecontroller.ReleaseAnnotationName:              "test",
+				releasecontroller.ReleaseAnnotationSource:            "ocp/test",
+				releasecontroller.ReleaseAnnotationCreationTimestamp: created.Format(time.RFC3339),
+			},
+		}
+	}
+	tests := []struct {
+		name                       string
+		as                         string
+		maxUnreadyReleases         int
+		minCreationIntervalSeconds int
+		tags                       []*imagev1.TagReference
+		want                       string
+		// wantPrefix matches want against the start of the message, for the delay
+		// that counts down and cannot be compared exactly.
+		wantPrefix bool
+	}{
+		{
+			name: "no tags",
+			want: "",
+		},
+		{
+			name:               "layered stream at the maximum unready releases",
+			as:                 releasecontroller.ReleaseConfigModeLayered,
+			maxUnreadyReleases: 1,
+			tags:               []*imagev1.TagReference{pendingTag("0.0.1-0.nightly-2026-10-02-000000", time.Now().Add(-time.Hour))},
+			want:               "Next release may not start: no more than 1 pending",
+		},
+		{
+			name:                       "layered stream within the minimum creation interval",
+			as:                         releasecontroller.ReleaseConfigModeLayered,
+			minCreationIntervalSeconds: 3600,
+			tags:                       []*imagev1.TagReference{pendingTag("0.0.1-0.nightly-2026-10-02-000000", time.Now().Add(-30*time.Minute))},
+			want:                       "Next release may not start: waiting for 29m5",
+			wantPrefix:                 true,
+		},
+		{
+			name:               "integration stream at the maximum unready releases",
+			maxUnreadyReleases: 1,
+			tags:               []*imagev1.TagReference{pendingTag("4.21.0-0.nightly-2026-10-02-000000", time.Now().Add(-time.Hour))},
+			want:               "Next release may not start: no more than 1 pending",
+		},
+		{
+			name:               "stable streams are never delayed",
+			as:                 releasecontroller.ReleaseConfigModeStable,
+			maxUnreadyReleases: 1,
+			tags:               []*imagev1.TagReference{pendingTag("4.21.0", time.Now().Add(-time.Hour))},
+			want:               "",
+		},
+		{
+			name:               "layered stream below the maximum unready releases",
+			as:                 releasecontroller.ReleaseConfigModeLayered,
+			maxUnreadyReleases: 2,
+			tags:               []*imagev1.TagReference{pendingTag("0.0.1-0.nightly-2026-10-02-000000", time.Now().Add(-time.Hour))},
+			want:               "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phases := make(map[string]string, len(tt.tags))
+			for _, tag := range tt.tags {
+				phases[tag.Name] = releasecontroller.ReleasePhasePending
+			}
+			release := &releasecontroller.Release{
+				Config: &releasecontroller.ReleaseConfig{
+					Name:                       "test",
+					As:                         tt.as,
+					MaxUnreadyReleases:         tt.maxUnreadyReleases,
+					MinCreationIntervalSeconds: tt.minCreationIntervalSeconds,
+				},
+				Source:        &imagev1.ImageStream{ObjectMeta: metav1.ObjectMeta{Namespace: "ocp", Name: "test"}},
+				Target:        &imagev1.ImageStream{ObjectMeta: metav1.ObjectMeta{Namespace: "ocp", Name: "test"}},
+				PayloadPhases: phases,
+			}
+			var got string
+			if delay := releaseDelay(release, tt.tags); delay != nil {
+				got = delay.Message
+			}
+			if tt.wantPrefix {
+				if !strings.HasPrefix(got, tt.want) {
+					t.Errorf("releaseDelay() = %q, want prefix %q", got, tt.want)
+				}
+			} else if got != tt.want {
+				t.Errorf("releaseDelay() = %q, want %q", got, tt.want)
 			}
 		})
 	}

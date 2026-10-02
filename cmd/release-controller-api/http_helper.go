@@ -86,6 +86,27 @@ type ReleaseDelay struct {
 	Message string
 }
 
+// releaseDelay describes why the controller will not start a new release for a
+// stream yet, or returns nil when nothing is holding it back. Stable streams are
+// excluded because their releases are imported rather than created here, which
+// is the same exclusion the controller makes when it applies these gates.
+func releaseDelay(r *releasecontroller.Release, tags []*imagev1.TagReference) *ReleaseDelay {
+	if r.Config.As == releasecontroller.ReleaseConfigModeStable || len(tags) == 0 {
+		return nil
+	}
+	var delays []string
+	if ok, _, queueAfter := releasecontroller.IsReleaseDelayedForInterval(r, tags[0]); ok {
+		delays = append(delays, fmt.Sprintf("waiting for %s", queueAfter.Truncate(time.Second)))
+	}
+	if r.Config.MaxUnreadyReleases > 0 && releasecontroller.CountUnreadyReleases(r, tags) >= r.Config.MaxUnreadyReleases {
+		delays = append(delays, fmt.Sprintf("no more than %d pending", r.Config.MaxUnreadyReleases))
+	}
+	if len(delays) == 0 {
+		return nil
+	}
+	return &ReleaseDelay{Message: fmt.Sprintf("Next release may not start: %s", strings.Join(delays, ", "))}
+}
+
 type ReleaseCheckResult struct {
 	Name     string
 	Errors   []string
