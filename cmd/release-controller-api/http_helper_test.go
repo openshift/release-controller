@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"reflect"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/blang/semver"
 	"github.com/google/go-cmp/cmp"
 	imagev1 "github.com/openshift/api/image/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -309,6 +311,7 @@ func Test_takeUpgradesFromNames(t *testing.T) {
 }
 
 func TestResolveReleasePullSpec(t *testing.T) {
+	layeredTagGeneration := int64(2)
 	tests := []struct {
 		name    string
 		release *releasecontroller.Release
@@ -413,6 +416,38 @@ func TestResolveReleasePullSpec(t *testing.T) {
 			want: "registry.ci.openshift.org/ocp/release:4.18.0-0.nightly-2025-01-01-000000",
 		},
 		{
+			// A layered release is pushed to the stream as a reference to the
+			// repository it was built in, which is where it has to be pulled
+			// from, rather than being mirrored into the release repository.
+			name: "layered release resolves to the repository it was sourced from",
+			release: &releasecontroller.Release{
+				Target: &imagev1.ImageStream{
+					Spec: imagev1.ImageStreamSpec{
+						Tags: []imagev1.TagReference{
+							{
+								Name:       "0.0.1-a",
+								Reference:  true,
+								Generation: &layeredTagGeneration,
+								From:       &corev1.ObjectReference{Kind: "DockerImage", Name: "quay.io/example/hypershift@sha256:abc123"},
+							},
+						},
+					},
+					Status: imagev1.ImageStreamStatus{
+						PublicDockerImageRepository: "registry.ci.openshift.org/ocp/hypershift",
+						Tags: []imagev1.NamedTagEventList{
+							{
+								Tag:   "0.0.1-a",
+								Items: []imagev1.TagEvent{{DockerImageReference: "quay.io/example/hypershift@sha256:abc123", Image: "sha256:abc123", Generation: 2}},
+							},
+						},
+					},
+				},
+				Config: &releasecontroller.ReleaseConfig{Name: "hypershift-ci", As: releasecontroller.ReleaseConfigModeLayered},
+			},
+			tag:  "0.0.1-a",
+			want: "quay.io/example/hypershift@sha256:abc123",
+		},
+		{
 			name: "local release uses FindPublicImagePullSpec",
 			release: &releasecontroller.Release{
 				Source: &imagev1.ImageStream{
@@ -444,6 +479,76 @@ func TestResolveReleasePullSpec(t *testing.T) {
 			got := resolveReleasePullSpec(tt.release, tt.tag)
 			if got != tt.want {
 				t.Errorf("resolveReleasePullSpec() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_renderPullSpecOrInstallInstructions(t *testing.T) {
+	tagInfo := func(mode string, pullSpec string) *releaseTagInfo {
+		return &releaseTagInfo{
+			Tag: "0.0.1-a",
+			Info: &ReleaseStreamTag{
+				Release: &releasecontroller.Release{Config: &releasecontroller.ReleaseConfig{Name: "a-stream", As: mode}},
+				Tag:     &imagev1.TagReference{Name: "0.0.1-a"},
+			},
+			TagPullSpec: pullSpec,
+		}
+	}
+	const pullSpec = "quay.io/example/hypershift@sha256:abc123"
+
+	testCases := []struct {
+		name            string
+		architecture    string
+		tagInfo         *releaseTagInfo
+		expected        []string
+		expectedMissing []string
+	}{{
+		name:            "a layered release is pulled from where it was built",
+		architecture:    "amd64",
+		tagInfo:         tagInfo(releasecontroller.ReleaseConfigModeLayered, pullSpec),
+		expected:        []string{"PullSpec:", pullSpec},
+		expectedMissing: []string{"release extract"},
+	}, {
+		name:            "a layered release on a multi arch instance is rendered the same way",
+		architecture:    "multi",
+		tagInfo:         tagInfo(releasecontroller.ReleaseConfigModeLayered, pullSpec),
+		expected:        []string{"PullSpec:", pullSpec},
+		expectedMissing: []string{"release extract"},
+	}, {
+		name:         "a layered release that has nowhere to be pulled from says so",
+		architecture: "amd64",
+		tagInfo:      tagInfo(releasecontroller.ReleaseConfigModeLayered, ""),
+		expected:     []string{"No public location to pull this image from"},
+	}, {
+		name:         "a release payload is installed from",
+		architecture: "amd64",
+		tagInfo:      tagInfo(releasecontroller.ReleaseConfigModeStable, pullSpec),
+		expected:     []string{"oc adm release extract --tools " + pullSpec},
+	}, {
+		name:            "a release payload on a multi arch instance has no installer",
+		architecture:    "multi",
+		tagInfo:         tagInfo(releasecontroller.ReleaseConfigModeStable, pullSpec),
+		expected:        []string{"PullSpec:", pullSpec},
+		expectedMissing: []string{"release extract"},
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Controller{architecture: tc.architecture}
+			out := &bytes.Buffer{}
+
+			c.renderPullSpecOrInstallInstructions(out, tc.tagInfo)
+
+			for _, expected := range tc.expected {
+				if !strings.Contains(out.String(), expected) {
+					t.Errorf("Expected the page to contain %q, got:\n%s", expected, out.String())
+				}
+			}
+			for _, missing := range tc.expectedMissing {
+				if strings.Contains(out.String(), missing) {
+					t.Errorf("Expected the page not to contain %q, got:\n%s", missing, out.String())
+				}
 			}
 		})
 	}

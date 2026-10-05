@@ -998,6 +998,22 @@ func (r preferredReleases) Less(i, j int) bool {
 func (r preferredReleases) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
 func (r preferredReleases) Len() int      { return len(r) }
 
+// renderPullSpecOrInstallInstructions describes how to get hold of a release:
+// where to download the installer from for a release payload, or simply where
+// to pull the image from for a release that is not installed from.
+func (c *Controller) renderPullSpecOrInstallInstructions(w io.Writer, tagInfo *releaseTagInfo) {
+	switch {
+	// A layered release is a single image built elsewhere rather than a payload
+	// to install a cluster from, so the repository it was sourced from is the
+	// only instruction that applies. Manifest list based releases have no
+	// installer to download either.
+	case tagInfo.isLayeredTag(), c.architecture == "multi":
+		renderPullSpec(w, tagInfo.TagPullSpec)
+	default:
+		renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
+	}
+}
+
 func renderInstallInstructions(w io.Writer, tag *imagev1.TagReference, tagPull, artifactsHost string) {
 	if len(tagPull) == 0 {
 		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
@@ -1010,7 +1026,7 @@ func renderInstallInstructions(w io.Writer, tag *imagev1.TagReference, tagPull, 
 	fmt.Fprintf(w, `<p><a href="%s">Download the installer</a> for your operating system or run <pre class="ml-4">oc adm release extract --tools %s</pre>`, template.HTMLEscapeString(fmt.Sprintf("https://%s/%s", artifactsHost, tag.Name)), template.HTMLEscapeString(tagPull))
 }
 
-func renderMultiArchPullSpec(w io.Writer, tagPull string) {
+func renderPullSpec(w io.Writer, tagPull string) {
 	if len(tagPull) == 0 {
 		fmt.Fprintf(w, `<p class="alert alert-warning">No public location to pull this image from</p>`)
 		return

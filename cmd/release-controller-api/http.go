@@ -1472,15 +1472,7 @@ func (c *Controller) httpReleaseInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Disable the installation instructions for manifest list based releases
-	switch c.architecture {
-	case "multi":
-		renderMultiArchPullSpec(w, tagInfo.TagPullSpec)
-	default:
-		if !tagInfo.isLayeredTag() {
-			renderInstallInstructions(w, tagInfo.Info.Tag, tagInfo.TagPullSpec, c.artifactsHost)
-		}
-	}
+	c.renderPullSpecOrInstallInstructions(w, tagInfo)
 
 	qualifierStatusAPI := fmt.Sprintf(`(<a href="/api/v1/releasetag/%s/qualifiers">status api</a>)`, template.HTMLEscapeString(url.PathEscape(tagInfo.Tag)))
 	qualifierBadges := c.renderQualifierBadges(tagInfo.Tag, true)
