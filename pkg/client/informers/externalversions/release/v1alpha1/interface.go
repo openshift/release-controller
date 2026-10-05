@@ -9,7 +9,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// ReleasePayloads returns a ReleasePayloadInformer.
-	ReleasePayloads() ReleasePayloadInformer
+	ReleasePayloads() TypedReleasePayloadInformer
 }
 
 type version struct {
@@ -23,7 +23,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// ReleasePayloads returns a ReleasePayloadInformer.
-func (v *version) ReleasePayloads() ReleasePayloadInformer {
+// ReleasePayloads returns a TypedReleasePayloadInformer.
+func (v *version) ReleasePayloads() TypedReleasePayloadInformer {
 	return &releasePayloadInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
