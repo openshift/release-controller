@@ -163,6 +163,14 @@ type FakeClient struct {
 	ReranWorkflowRuns []string
 	// ReranWorkflowRunErrors maps "org/repo/runID" to an error to return from TriggerGitHubWorkflow
 	ReranWorkflowRunErrors map[string]error
+	// FailedActionRuns maps "org/repo/branch/sha" to failed workflow runs
+	FailedActionRuns map[string][]github.WorkflowRun
+	// FailedActionRunsError is returned from GetFailedActionRunsByHeadBranch if set
+	FailedActionRunsError error
+	// TriggeredFailedWorkflowRuns tracks the re-runs of the failed jobs as "org/repo/runID"
+	TriggeredFailedWorkflowRuns []string
+	// TriggerFailedWorkflowRunErrors maps "org/repo/runID" to an error to return from TriggerFailedGitHubWorkflow
+	TriggerFailedWorkflowRunErrors map[string]error
 
 	// lock to be thread safe
 	lock sync.RWMutex
@@ -1379,6 +1387,16 @@ func (f *FakeClient) MutateWithGitHubAppsSupport(ctx context.Context, m interfac
 }
 
 func (f *FakeClient) GetFailedActionRunsByHeadBranch(org, repo, branchName, headSHA string) ([]github.WorkflowRun, error) {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	if f.FailedActionRunsError != nil {
+		return nil, f.FailedActionRunsError
+	}
+	key := fmt.Sprintf("%s/%s/%s/%s", org, repo, branchName, headSHA)
+	if runs, ok := f.FailedActionRuns[key]; ok {
+		return runs, nil
+	}
 	return []github.WorkflowRun{}, nil
 }
 
@@ -1397,6 +1415,14 @@ func (f *FakeClient) TriggerGitHubWorkflow(org, repo string, id int) error {
 }
 
 func (f *FakeClient) TriggerFailedGitHubWorkflow(org, repo string, id int) error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	key := fmt.Sprintf("%s/%s/%d", org, repo, id)
+	if err, ok := f.TriggerFailedWorkflowRunErrors[key]; ok {
+		return err
+	}
+	f.TriggeredFailedWorkflowRuns = append(f.TriggeredFailedWorkflowRuns, key)
 	return nil
 }
 
@@ -1428,4 +1454,34 @@ func (f *FakeClient) ApproveGitHubWorkflowRun(org, repo string, id int) error {
 func (f *FakeClient) RequestReview(org, repo string, number int, logins []string) error {
 	f.ReviewersRequested = logins
 	return nil
+}
+
+// Organization roles stubs
+
+func (f *FakeClient) ListOrganizationRoles(org string) ([]github.OrganizationRole, error) {
+	return nil, nil
+}
+
+func (f *FakeClient) AssignOrganizationRoleToTeam(org, teamSlug string, roleID int) error {
+	return nil
+}
+
+func (f *FakeClient) RemoveOrganizationRoleFromTeam(org, teamSlug string, roleID int) error {
+	return nil
+}
+
+func (f *FakeClient) AssignOrganizationRoleToUser(org, user string, roleID int) error {
+	return nil
+}
+
+func (f *FakeClient) RemoveOrganizationRoleFromUser(org, user string, roleID int) error {
+	return nil
+}
+
+func (f *FakeClient) ListTeamsWithRole(org string, roleID int) ([]github.OrganizationRoleAssignment, error) {
+	return nil, nil
+}
+
+func (f *FakeClient) ListUsersWithRole(org string, roleID int) ([]github.OrganizationRoleAssignment, error) {
+	return nil, nil
 }

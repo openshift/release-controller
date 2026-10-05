@@ -18,11 +18,39 @@ import (
 )
 
 // ReleasePayloadInformer provides access to a shared informer and lister for
-// ReleasePayloads.
+// ReleasePayloads. Prefer using the type-safe variant (see [TypedReleasePayloadInformer]).
 type ReleasePayloadInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() releasev1alpha1.ReleasePayloadLister
 }
+
+// TypedReleasePayloadInformer provides access to a shared informer and lister for
+// ReleasePayloads, including the type-safe TypedInformer variant.
+// It is a superset of ReleasePayloadInformer.
+type TypedReleasePayloadInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() ReleasePayloadIndexInformer
+	Lister() releasev1alpha1.ReleasePayloadLister
+}
+
+// ReleasePayloadIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type ReleasePayloadIndexInformer cache.TypedSharedIndexInformer[*apisreleasev1alpha1.ReleasePayload]
+
+// ReleasePayloadHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for ReleasePayload.
+type ReleasePayloadHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisreleasev1alpha1.ReleasePayload]
+
+// ReleasePayloadDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for ReleasePayload.
+type ReleasePayloadDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisreleasev1alpha1.ReleasePayload]
+
+// ReleasePayloadFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for ReleasePayload.
+type ReleasePayloadFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisreleasev1alpha1.ReleasePayload]
+
+// ReleasePayloadIndexers is a specialization of [cache.TypedIndexers] for ReleasePayload.
+type ReleasePayloadIndexers = cache.TypedIndexers[*apisreleasev1alpha1.ReleasePayload]
+
+// DeletedReleasePayload is a specialization of [cache.DeletedObject] for ReleasePayload.
+type DeletedReleasePayload = cache.DeletedObject[*apisreleasev1alpha1.ReleasePayload]
 
 type releasePayloadInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -33,25 +61,49 @@ type releasePayloadInformer struct {
 // NewReleasePayloadInformer constructs a new informer for ReleasePayload type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedReleasePayloadInformer]).
 func NewReleasePayloadInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewReleasePayloadInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedReleasePayloadInformer constructs a new informer for ReleasePayload type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedReleasePayloadInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ReleasePayloadIndexers) ReleasePayloadIndexInformer {
+	return NewTypedReleasePayloadInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredReleasePayloadInformer constructs a new informer for ReleasePayload type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredReleasePayloadInformer]).
 func NewFilteredReleasePayloadInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewReleasePayloadInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedReleasePayloadInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredReleasePayloadInformer constructs a new informer for ReleasePayload type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredReleasePayloadInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ReleasePayloadIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) ReleasePayloadIndexInformer {
+	return NewTypedReleasePayloadInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewReleasePayloadInformerWithOptions constructs a new informer for ReleasePayload type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedReleasePayloadInformerWithOptions]).
 func NewReleasePayloadInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedReleasePayloadInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedReleasePayloadInformerWithOptions constructs a new informer for ReleasePayload type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedReleasePayloadInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) ReleasePayloadIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "release.openshift.io", Version: "v1alpha1", Resource: "releasepayloads"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisreleasev1alpha1.ReleasePayload](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -84,17 +136,57 @@ func NewReleasePayloadInformerWithOptions(client versioned.Interface, namespace 
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *releasePayloadInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewReleasePayloadInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedReleasePayloadInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *releasePayloadInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisreleasev1alpha1.ReleasePayload{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *releasePayloadInformer) TypedInformer() ReleasePayloadIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisreleasev1alpha1.ReleasePayload](f.factory.InformerFor(&apisreleasev1alpha1.ReleasePayload{}, f.defaultInformer))
 }
 
 func (f *releasePayloadInformer) Lister() releasev1alpha1.ReleasePayloadLister {
 	return releasev1alpha1.NewReleasePayloadLister(f.Informer().GetIndexer())
+}
+
+// ToTypedReleasePayloadInformer converts an untyped informer into a TypedReleasePayloadInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *ReleasePayload. If that is not the case, calling type-safe methods of the returned
+// TypedReleasePayloadInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedReleasePayloadInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedReleasePayloadInformer(informer ReleasePayloadInformer) TypedReleasePayloadInformer {
+	if informer, ok := informer.(TypedReleasePayloadInformer); ok {
+		return informer
+	}
+	return &releasePayloadTypedInformerAdapter{informer}
+}
+
+type releasePayloadTypedInformerAdapter struct {
+	ReleasePayloadInformer
+}
+
+func (a *releasePayloadTypedInformerAdapter) TypedInformer() ReleasePayloadIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisreleasev1alpha1.ReleasePayload](a.Informer())
+}
+
+// ToReleasePayloadIndexInformer converts an untyped informer into a ReleasePayloadIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *ReleasePayload. If that is not the case, calling type-safe methods of the returned
+// ReleasePayloadIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a ReleasePayloadIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToReleasePayloadIndexInformer(informer cache.SharedIndexInformer) ReleasePayloadIndexInformer {
+	if informer, ok := informer.(ReleasePayloadIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisreleasev1alpha1.ReleasePayload](informer)
 }
