@@ -257,6 +257,12 @@ func (o *Options) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Legacy Release Coordinates Controller (temporary backfill)
+	legacyReleaseCoordinatesController, err := NewLegacyReleaseCoordinatesController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), imageStreamInformer, o.controllerContext.EventRecorder)
+	if err != nil {
+		return err
+	}
+
 	// Payload Mirror Controller
 	payloadMirrorController, err := NewPayloadMirrorController(releasePayloadInformer, releasePayloadClient.ReleaseV1alpha1(), o.controllerContext.EventRecorder)
 	if err != nil {
@@ -298,6 +304,7 @@ func (o *Options) Run(ctx context.Context) error {
 	go aggregateStateController.RunWorkers(ctx, 10)
 	go jobQualifiersSummaryController.RunWorkers(ctx, 10)
 	go legacyResultsController.RunWorkers(ctx, 10)
+	go legacyReleaseCoordinatesController.RunWorkers(ctx, 10)
 	go payloadMirrorController.RunWorkers(ctx, 10)
 	go releaseMirrorJobsController.RunWorkers(ctx, 10)
 	go releaseMirrorJobStatusController.RunWorkers(ctx, 10)
