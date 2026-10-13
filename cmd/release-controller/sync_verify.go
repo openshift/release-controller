@@ -62,7 +62,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 			var previousTag, previousReleasePullSpec string
 			if verifyType.Upgrade {
 				var err error
-				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, verifyType.UpgradeFromRelease, false)
+				previousTag, previousReleasePullSpec, err = c.getUpgradeTagAndPullSpec(release, releaseTag, name, verifyType.UpgradeFrom, verifyType.UpgradeFromRelease, verifyType.PreviousMinorOverride, false)
 				if err != nil {
 					return err
 				}
@@ -109,7 +109,7 @@ func (c *Controller) ensureVerificationJobs(release *releasecontroller.Release, 
 	return nil
 }
 
-func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *releasecontroller.UpgradeRelease, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
+func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release, releaseTag *imagev1.TagReference, name, upgradeFrom string, upgradeFromRelease *releasecontroller.UpgradeRelease, previousMinorOverride *releasecontroller.PreviousMinorOverride, periodic bool) (previousTag, previousReleasePullSpec string, err error) {
 	if upgradeFromRelease != nil {
 		return c.resolveUpgradeRelease(upgradeFromRelease, release)
 	}
@@ -137,6 +137,19 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 			previousReleasePullSpec = releasecontroller.ReleasePullSpec(release, tags[1])
 		}
 	case releasecontroller.ReleaseUpgradeFromPreviousMinor:
+		if previousMinorOverride != nil {
+			targetVersion, err := releasecontroller.ParseMajorMinor(previousMinorOverride.TargetVersion)
+			if err != nil {
+				return "", "", err
+			}
+			version, err := semver.Parse(releaseTag.Name)
+			if err != nil {
+				return "", "", fmt.Errorf("cannot match previousMinorOverride target %s: %w", releaseTag.Name, err)
+			}
+			if version.Major == targetVersion.Major && version.Minor == targetVersion.Minor {
+				return c.resolvePreviousMinorOverride(release, previousMinorOverride)
+			}
+		}
 		if version, err := semver.Parse(releaseTag.Name); err == nil && version.Minor > 0 {
 			version.Minor--
 			if ref, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister); err == nil {
@@ -153,6 +166,28 @@ func (c *Controller) getUpgradeTagAndPullSpec(release *releasecontroller.Release
 		return "", "", fmt.Errorf("release %s has job %s which defines invalid upgradeFrom: %s", release.Config.Name, name, upgradeType)
 	}
 	return previousTag, previousReleasePullSpec, err
+}
+
+func (c *Controller) resolvePreviousMinorOverride(release *releasecontroller.Release, override *releasecontroller.PreviousMinorOverride) (string, string, error) {
+	version, err := releasecontroller.ParseMajorMinor(override.Version)
+	if err != nil {
+		return "", "", err
+	}
+	refs, err := releasecontroller.GetStableReleases(c.parsedReleaseConfigCache, c.eventRecorder, c.releaseLister, c.releasePayloadLister)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot resolve previousMinorOverride stream %s: %w", override.Stream, err)
+	}
+	matching := &releasecontroller.StableReferences{}
+	for _, stable := range refs.Releases {
+		if stable.Release.Config.Name == override.Stream && stable.Release.Source.Namespace == release.Source.Namespace {
+			matching.Releases = append(matching.Releases, stable)
+		}
+	}
+	tag, pullSpec := findLatestStableForVersion(matching, version)
+	if tag == "" || pullSpec == "" {
+		return "", "", fmt.Errorf("previousMinorOverride: no accepted %s source in stable stream %s in namespace %s", override.Version, override.Stream, release.Source.Namespace)
+	}
+	return tag, pullSpec, nil
 }
 
 func findLatestStableForVersion(ref *releasecontroller.StableReferences, version semver.Version) (string, string) {

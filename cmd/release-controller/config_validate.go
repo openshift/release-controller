@@ -77,11 +77,17 @@ func validateUpgradeJobs(releaseConfigs []releasecontroller.ReleaseConfig) []err
 	errors := []error{}
 	for _, config := range releaseConfigs {
 		for name, verify := range config.Verify {
+			if err := releasecontroller.ValidatePreviousMinorOverride(verify.Upgrade, verify.UpgradeFrom, verify.UpgradeFromRelease, verify.PreviousMinorOverride); err != nil {
+				errors = append(errors, fmt.Errorf("%s: verification job %s: %w", config.Name, name, err))
+			}
 			if len(verify.UpgradeFrom) > 0 && verify.UpgradeFromRelease != nil {
 				errors = append(errors, fmt.Errorf("%s: verification job %s cannot have both upgradeFrom and upgradeFromRelease set", config.Name, name))
 			}
 		}
 		for name, periodic := range config.Periodic {
+			if err := releasecontroller.ValidatePreviousMinorOverride(periodic.Upgrade, periodic.UpgradeFrom, periodic.UpgradeFromRelease, periodic.PreviousMinorOverride); err != nil {
+				errors = append(errors, fmt.Errorf("%s: periodic job %s: %w", config.Name, name, err))
+			}
 			if len(periodic.UpgradeFrom) > 0 && periodic.UpgradeFromRelease != nil {
 				errors = append(errors, fmt.Errorf("%s: periodic job %s cannot have both upgradeFrom and upgradeFromRelease set", config.Name, name))
 			}
