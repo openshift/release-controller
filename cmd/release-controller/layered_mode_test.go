@@ -191,3 +191,101 @@ func TestExternalRegistryPublishValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestKonfluxReleasePublishValidation(t *testing.T) {
+	const valid = `{"namespace": "tenant", "releasePlan": "plan", "secretName": "konflux-kubeconfig", "cliImage": "quay.io/openshift/cli:latest"}`
+
+	testCases := []struct {
+		name        string
+		configJSON  string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Valid konflux release publish configuration",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": ` + valid + `}}}`,
+			expectError: false,
+		},
+		{
+			name:        "Valid on a stable stream",
+			configJSON:  `{"name": "test", "as": "Stable", "publish": {"konflux": {"konfluxRelease": ` + valid + `}}}`,
+			expectError: false,
+		},
+		{
+			name:        "Konflux release publish on an integration stream",
+			configJSON:  `{"name": "test", "to": "releases", "publish": {"konflux": {"konfluxRelease": ` + valid + `}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux requires 'as' to be 'Stable' or 'Layered'",
+		},
+		{
+			name:        "Konflux release publish missing namespace",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"releasePlan": "plan", "secretName": "s", "cliImage": "i"}}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux has no namespace",
+		},
+		{
+			name:        "Konflux release publish missing releasePlan",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "secretName": "s", "cliImage": "i"}}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux has no releasePlan",
+		},
+		{
+			name:        "Konflux release publish missing secretName",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "releasePlan": "plan", "cliImage": "i"}}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux has no secretName",
+		},
+		{
+			name:        "Konflux release publish missing cliImage",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "releasePlan": "plan", "secretName": "s"}}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux has no cliImage",
+		},
+		{
+			name:        "Konflux release publish with a step name that is not a DNS label",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"Konflux Prod": {"konfluxRelease": ` + valid + `}}}`,
+			expectError: true,
+		},
+		{
+			name:        "Konflux release data may reference the release tag",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "releasePlan": "plan", "secretName": "s", "cliImage": "i", "data": {"mapping": {"components": [{"name": "c", "tags": ["${RELEASE_TAG}", "{{ git_sha }}"]}]}}}}}}`,
+			expectError: false,
+		},
+		{
+			name:        "Konflux release data rejects an unknown variable",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "releasePlan": "plan", "secretName": "s", "cliImage": "i", "data": {"mapping": {"tags": ["${RELEASE-TAG}"]}}}}}}`,
+			expectError: true,
+			errorMsg:    "konfluxRelease publish for konflux has invalid data: references unknown variables ${RELEASE-TAG}, supported variables are ${RELEASE_TAG}, ${RELEASE_NAME}, ${SNAPSHOT}",
+		},
+		{
+			name:        "Konflux release data must be an object",
+			configJSON:  `{"name": "test", "as": "Layered", "publish": {"konflux": {"konfluxRelease": {"namespace": "tenant", "releasePlan": "plan", "secretName": "s", "cliImage": "i", "data": ["nope"]}}}}`,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config, err := releasecontroller.ParseReleaseConfig(tc.configJSON, nil)
+
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+					return
+				}
+
+				if tc.errorMsg != "" && err.Error() != tc.errorMsg {
+					t.Errorf("Expected error message %q, got %q", tc.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+
+				if config == nil {
+					t.Errorf("Expected valid config but got nil")
+				}
+			}
+		})
+	}
+}
