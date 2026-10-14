@@ -55,7 +55,37 @@ func validateReleaseConfigs(configDir string) error {
 	errors = append(errors, validateQualifiers(releaseConfigs)...)
 	errors = append(errors, validateOptionalAggregatedJobs(releaseConfigs)...)
 	errors = append(errors, validateVerifyNames(releaseConfigs)...)
+	errors = append(errors, validateKonfluxReleases(releaseConfigs)...)
 	return utilerrors.NewAggregate(errors)
+}
+
+// validateKonfluxReleases checks the konfluxRelease publish steps. These checks duplicate the
+// ones ParseReleaseConfig makes, because this validator decodes the configs itself rather
+// than going through ParseReleaseConfig, and a konfluxRelease step that only fails at runtime
+// would silently never release.
+func validateKonfluxReleases(releaseConfigs []releasecontroller.ReleaseConfig) []error {
+	errors := []error{}
+	for _, config := range releaseConfigs {
+		plans := map[string]string{}
+		for stepName, publish := range config.Publish {
+			if publish.KonfluxRelease == nil {
+				continue
+			}
+			if err := releasecontroller.ValidateKonfluxReleasePublish(stepName, config.As, publish.KonfluxRelease); err != nil {
+				errors = append(errors, fmt.Errorf("%s: %w", config.Name, err))
+				continue
+			}
+			// Two steps releasing the same snapshot through the same release plan would
+			// start the same pipeline twice.
+			plan := fmt.Sprintf("%s/%s", publish.KonfluxRelease.Namespace, publish.KonfluxRelease.ReleasePlan)
+			if previous, ok := plans[plan]; ok {
+				errors = append(errors, fmt.Errorf("%s: konfluxRelease publish steps %s and %s both target release plan %s", config.Name, previous, stepName, plan))
+				continue
+			}
+			plans[plan] = stepName
+		}
+	}
+	return errors
 }
 
 func validateAsyncJobs(releaseConfigs []releasecontroller.ReleaseConfig) []error {

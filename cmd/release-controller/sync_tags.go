@@ -267,6 +267,48 @@ func (c *Controller) setReleaseAnnotation(release *releasecontroller.Release, ph
 	return nil
 }
 
+// setReleaseTagAnnotations records annotations against a release tag without asserting
+// anything about the phase the tag is in.
+//
+// setReleaseAnnotation requires the phase annotation on the tag to match the phase the
+// caller believes the release to be in, which is not safe for a caller that selected the tag
+// through GetTagPhase. That prefers the phase of the ReleasePayload over the annotation on
+// the tag, and the two legitimately disagree: once a payload reports Accepted the tag stops
+// being listed as ready, so syncReady no longer reaches it and the annotation is left behind
+// at its previous value.
+func (c *Controller) setReleaseTagAnnotations(release *releasecontroller.Release, name string, annotations map[string]string) error {
+	target := release.Target.DeepCopy()
+	tag := releasecontroller.FindTagReference(target, name)
+	if tag == nil {
+		return fmt.Errorf("release %s no longer exists, cannot be annotated", name)
+	}
+	if tag.Annotations == nil {
+		tag.Annotations = make(map[string]string)
+	}
+	for k, v := range annotations {
+		if len(v) == 0 {
+			delete(tag.Annotations, k)
+		} else {
+			tag.Annotations[k] = v
+		}
+	}
+
+	// if there is no change, avoid updating anything
+	if oldTag := releasecontroller.FindTagReference(release.Target, name); oldTag != nil {
+		if reflect.DeepEqual(oldTag.Annotations, tag.Annotations) {
+			return nil
+		}
+	}
+
+	klog.V(2).Infof("Adding annotations to release %s", name)
+	is, err := c.imageClient.ImageStreams(target.Namespace).Update(context.TODO(), target, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	updateReleaseTarget(release, is)
+	return nil
+}
+
 func (c *Controller) markReleaseReady(release *releasecontroller.Release, annotations map[string]string, names ...string) error {
 	return c.ensureReleaseTagPhase(release, []string{releasecontroller.ReleasePhasePending, releasecontroller.ReleasePhaseReady, ""}, releasecontroller.ReleasePhaseReady, annotations, names...)
 }
