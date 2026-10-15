@@ -1,6 +1,7 @@
 package releasecontroller
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -261,6 +262,9 @@ type ReleasePublish struct {
 	ExternalRegistry *PublishExternalRegistry `json:"externalRegistry"`
 	// VerifyIssue marks jira issues fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
 	VerifyIssues *PublishVerifyIssues `json:"verifyIssues"`
+	// KonfluxRelease creates a Konflux Release resource on an external Konflux cluster,
+	// which starts that cluster's managed release pipeline.
+	KonfluxRelease *PublishKonfluxRelease `json:"konfluxRelease"`
 }
 
 // PublishTagReference ensures that the release image stream has a tag that points to
@@ -300,6 +304,36 @@ type PublishExternalRegistry struct {
 	Tags []string `json:"tags,omitempty"`
 	// ExcludeTags if set will explicitly exclude these tags from mirroring.
 	ExcludeTags []string `json:"excludeTags,omitempty"`
+}
+
+// PublishKonfluxRelease creates an appstudio.redhat.com/v1alpha1 Release on a Konflux
+// cluster when a release tag is accepted, handing the accepted image to the Konflux
+// managed release pipeline.
+//
+// The Snapshot the Release refers to is read from the "release.openshift.io/konflux-snapshot"
+// annotation on the accepted image stream tag, which is stamped by whatever promoted the
+// image into the stream.
+//
+// The Release is created exactly once per accepted tag and its outcome is not tracked;
+// acceptance is never gated on it.
+type PublishKonfluxRelease struct {
+	// Namespace is the Konflux tenant namespace holding the ReleasePlan and the Snapshot.
+	// The Release is created here. Required.
+	Namespace string `json:"namespace"`
+	// ReleasePlan is the name of the Konflux ReleasePlan to invoke. Required.
+	ReleasePlan string `json:"releasePlan"`
+	// SecretName is the name of a secret in the job namespace containing a "kubeconfig"
+	// key with credentials for the Konflux cluster. Required.
+	SecretName string `json:"secretName"`
+	// CLIImage is the image used to run the job that creates the Release. It must contain
+	// `oc`. Required, because layered releases have no CLI image available of their own.
+	CLIImage string `json:"cliImage"`
+	// Data is passed through as the Release's spec.data, which the Konflux release
+	// pipeline merges with the data of the ReleasePlan. String values within it may
+	// contain the variables listed in KonfluxDataVariables, which are expanded before the
+	// Release is created. ${RELEASE_TAG} is how the accepted release tag reaches the
+	// Konflux mapping, so that the image Konflux pushes is tagged with it.
+	Data json.RawMessage `json:"data,omitempty"`
 }
 
 // PublishVerifyIssues marks jira issue fixed by this tag as VERIFIED in Jira if the QA contact reviewed and approved the bugfix PR
@@ -676,6 +710,17 @@ const (
 	// ReleaseAnnotationIssuesVerified indicates whether the release has been
 	// processed by the JiraVerifier
 	ReleaseAnnotationIssuesVerified = "release.openshift.io/issues-verified"
+
+	// ReleaseAnnotationKonfluxSnapshot names the Konflux Snapshot that the image behind this
+	// tag was built from. It is stamped on the image stream tag by whatever promotes the image
+	// into the stream, which runs after the Snapshot exists, and is read by the konfluxRelease
+	// publish step. The release controller never queries Konflux to discover it.
+	ReleaseAnnotationKonfluxSnapshot = "release.openshift.io/konflux-snapshot"
+
+	// ReleaseAnnotationKonfluxReleasePrefix is prefixed to a publish step name to form the
+	// annotation that records the Konflux Release created for an accepted tag by that step.
+	// Its presence means the Release was already created and must not be created again.
+	ReleaseAnnotationKonfluxReleasePrefix = "release.openshift.io/konflux-release-"
 
 	// ReleaseAnnotationSoftDelete indicates automation external to the release controller can use this annotation to decide when, formatted with RFC3339, to clean up the tag
 	ReleaseAnnotationSoftDelete = "release.openshift.io/soft-delete"
