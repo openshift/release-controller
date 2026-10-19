@@ -869,8 +869,7 @@ func calculateReleaseUpgrades(release *releasecontroller.Release, tags []*imagev
 			}
 			visual[i] = ReleaseTagUpgradeVisual{Current: b}
 		}
-		for i := len(visual) - 1; i >= 0; i-- {
-			row := visual[i]
+		for i, row := range slices.Backward(visual) {
 			if row.Current == nil {
 				visual = visual[:i]
 				continue

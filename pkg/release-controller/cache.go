@@ -116,13 +116,13 @@ func (c *latestImageCache) Get() (string, error) {
 func NewDynamicSharedIndexInformer(client dynamic.NamespaceableResourceInterface, namespace string, resyncPeriod time.Duration, selector labels.Selector) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).List(context.TODO(), options)
+				return client.Namespace(namespace).List(ctx, options)
 			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = selector.String()
-				return client.Namespace(namespace).Watch(context.TODO(), options)
+				return client.Namespace(namespace).Watch(ctx, options)
 			},
 		},
 		&unstructured.Unstructured{},
