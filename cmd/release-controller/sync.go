@@ -716,6 +716,11 @@ func (c *Controller) syncAccepted(release *releasecontroller.Release) error {
 				errs = append(errs, fmt.Errorf("unable to mirror to external registry for publish step %s: %v", name, err))
 				continue
 			}
+		case publishType.KonfluxRelease != nil:
+			if err := c.ensureKonfluxRelease(release, name, publishType.KonfluxRelease, newestAccepted); err != nil {
+				errs = append(errs, fmt.Errorf("unable to create Konflux release for publish step %s: %v", name, err))
+				continue
+			}
 		}
 	}
 	if len(errs) > 0 {
