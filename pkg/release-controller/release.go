@@ -181,6 +181,9 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 		if !isValidEnvVarName(verify.LayeredImageEnvVar) {
 			return nil, fmt.Errorf("verify config %s has an invalid layeredImageEnvVar: %s", name, verify.LayeredImageEnvVar)
 		}
+		if err := ValidatePreviousMinorOverride(verify.Upgrade, verify.UpgradeFrom, verify.UpgradeFromRelease, verify.PreviousMinorOverride); err != nil {
+			return nil, fmt.Errorf("verify config %s: %w", name, err)
+		}
 		switch verify.UpgradeFrom {
 		case ReleaseUpgradeFromPreviousMinor, ReleaseUpgradeFromPreviousPatch, ReleaseUpgradeFromPrevious, "":
 		default:
@@ -193,6 +196,9 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 		}
 	}
 	for name, periodic := range cfg.Periodic {
+		if err := ValidatePreviousMinorOverride(periodic.Upgrade, periodic.UpgradeFrom, periodic.UpgradeFromRelease, periodic.PreviousMinorOverride); err != nil {
+			return nil, fmt.Errorf("periodic config %s: %w", name, err)
+		}
 		if !isValidEnvVarName(periodic.LayeredImageEnvVar) {
 			return nil, fmt.Errorf("periodic config %s has an invalid layeredImageEnvVar: %s", name, periodic.LayeredImageEnvVar)
 		}

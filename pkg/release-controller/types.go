@@ -348,6 +348,11 @@ type ReleaseVerification struct {
 	//
 	// If no matching target exists the job will be a no-op.
 	UpgradeFrom string `json:"upgradeFrom"`
+	// PreviousMinorOverride selects an explicit stable source stream and minor for
+	// one target major.minor. It requires Upgrade and UpgradeFrom=PreviousMinor.
+	// Other target minors retain normal PreviousMinor selection. Missing eligible
+	// sources are errors instead of successful no-op verifications.
+	PreviousMinorOverride *PreviousMinorOverride `json:"previousMinorOverride,omitempty"`
 	// UpgradeFromRelease, if set, describes the release that should be used as the inital
 	// release in upgrade verification jobs.
 	UpgradeFromRelease *UpgradeRelease `json:"upgradeFromRelease"`
@@ -423,6 +428,9 @@ type ReleasePeriodic struct {
 	//
 	// If no matching target exists the job will be a no-op.
 	UpgradeFrom string `json:"upgradeFrom"`
+	// PreviousMinorOverride selects an explicit stable source for one target
+	// major.minor, with the same behavior as in ReleaseVerification.
+	PreviousMinorOverride *PreviousMinorOverride `json:"previousMinorOverride,omitempty"`
 	// UpgradeFromRelease, if set, describes the release that should be used as the inital
 	// release in upgrade periodic jobs.
 	UpgradeFromRelease *UpgradeRelease `json:"upgradeFromRelease"`
@@ -435,6 +443,19 @@ type ReleasePeriodic struct {
 	// for this periodic, allowing each job to override a different image within its
 	// ci-operator steps. This field is only used when the release's As is Layered.
 	LayeredImageEnvVar string `json:"layeredImageEnvVar,omitempty"`
+}
+
+// PreviousMinorOverride defines an opt-in exception to PreviousMinor selection.
+// Sources must be Accepted in a Stable stream in the target's namespace, keeping
+// architecture-specific streams isolated. Patch and prerelease identifiers do not
+// affect target matching or source major.minor matching.
+type PreviousMinorOverride struct {
+	// TargetVersion is the target major.minor to override, for example "5.0".
+	TargetVersion string `json:"targetVersion"`
+	// Stream is the exact ReleaseConfig.Name of the stable source stream.
+	Stream string `json:"stream"`
+	// Version is the source major.minor, for example "4.22".
+	Version string `json:"version"`
 }
 
 type UpgradeRelease struct {

@@ -10,3 +10,6 @@ To build and test changes to this repository, ensure your environment has a KUBE
 `make && ./release-controller --release-namespace ocp --job-namespace ci-release -v=4 --dry-run`
 
 Then navigate to `http://localhost:8080` (plus any relevant path)
+
+Target-scoped previous-minor source policies are described in
+[docs/upgrade-source-policy.md](docs/upgrade-source-policy.md).
