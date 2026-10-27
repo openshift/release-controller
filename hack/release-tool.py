@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import dataclasses
+import enum
 import json
 import logging
 import os.path
@@ -8,6 +10,7 @@ import re
 import tempfile
 import time
 import typing
+from collections import Counter
 
 import openshift_client as oc
 from openshift_client import OpenShiftPythonException, Missing
@@ -408,6 +411,620 @@ def reimport(ctx, namespace, imagestream, execute):
             raise e
 
 
+# ----------------------------------------------------------------------------- #
+# reset: purge a release's controller state so it can be cleanly re-promoted
+# ----------------------------------------------------------------------------- #
+#
+# When a promoted release fails its creation job or its blocking verification
+# jobs, its controller state becomes "burned" and a same-name re-import will not
+# re-run cleanly, because:
+#   - the ReleasePayload records terminal / retry-exhausted job results (the retry
+#     gate then skips relaunching),
+#   - the release tag stays adopted (keeps release.openshift.io/{source,phase}) so
+#     the controller never re-adopts it and never creates a fresh ReleasePayload,
+#   - the verify ProwJobs are named deterministically (<tag>-<verify>[-<retry>]) and
+#     are adopted by name on retry; they are NOT GC'd by the release-controller
+#     (only by prow's sinker, ~24h), so a re-import re-adopts the old FAILED runs.
+#
+# This removes all of that (payload imagestream, release tag, ReleasePayload,
+# creation job, verify ProwJobs) across the requested arches, after backing each
+# up, so a subsequent ART re-import yields a fresh tag -> re-adopt -> fresh
+# ReleasePayload -> fresh verification, without bumping the version number. The
+# ART assembly/source imagestream (...-art-assembly-...) is never touched.
+
+# Release-controller annotation / label keys and Kubernetes condition values.
+ANNOTATION_PHASE = 'release.openshift.io/phase'
+ANNOTATION_KEEP = 'release.openshift.io/keep'
+LABEL_PAYLOAD = 'release.openshift.io/payload'
+LABEL_VERIFY = 'release.openshift.io/verify'
+IMPORT_SUCCESS_CONDITION = 'ImportSuccess'
+CONDITION_STATUS_TRUE = 'True'
+CONDITION_STATUS_FALSE = 'False'
+
+
+class ReleasePhase(str, enum.Enum):
+    """Phases reported by the release-controller's GetReleasePhase()."""
+    ACCEPTED = 'Accepted'
+    REJECTED = 'Rejected'
+    FAILED = 'Failed'
+    READY = 'Ready'
+    PENDING = 'Pending'
+
+
+class PayloadConditionType(str, enum.Enum):
+    """ReleasePayload status condition types consulted for the phase."""
+    ACCEPTED = 'PayloadAccepted'
+    REJECTED = 'PayloadRejected'
+    FAILED = 'PayloadFailed'
+    CREATED = 'PayloadCreated'
+
+
+class ProwJobState(str, enum.Enum):
+    """The prow job states that indicate an in-flight (not terminal) run."""
+    TRIGGERED = 'triggered'
+    PENDING = 'pending'
+    RUNNING = 'running'
+
+
+ACTIVE_PROWJOB_STATES = frozenset(state.value for state in ProwJobState)
+
+
+class ResetChoice(str, enum.Enum):
+    """Result of the per-release confirmation gate."""
+    DELETE = 'y'
+    WRITE_ONLY = 'w'
+    SKIP = 'n'
+
+
+@dataclasses.dataclass
+class ResetTarget:
+    """The release-controller resources for a single (release, architecture)."""
+    release: str
+    arch: str
+    namespace: str
+    stream: str
+    job_namespace: str
+    job_name: str
+    payload_is_present: bool = False
+    status_tags: int = 0
+    import_failures: int = 0
+    releasepayload_present: bool = False
+    rp_phase: typing.Optional[ReleasePhase] = None
+    tag_present: bool = False
+    tag_phase: typing.Optional[str] = None
+    keep: typing.Optional[str] = None
+    job_present: bool = False
+    job_status: typing.Optional[str] = None
+
+
+@dataclasses.dataclass
+class VerifyProwJob:
+    """A release-controller verify ProwJob and its current state."""
+    name: str
+    state: str
+
+
+def verify_prowjob_labels(release: str) -> typing.Dict[str, str]:
+    """Label selector identifying a release's verify ProwJobs (not arch-scoped)."""
+    return {LABEL_VERIFY: 'true', LABEL_PAYLOAD: release}
+
+
+def find_spec_tag(stream_obj, name: str):
+    """Return the spec tag Model entry named `name` from a release imagestream, or None.
+
+    `stream_obj` is an APIObject (or None). Uses openshift_client Model attribute
+    access; absent paths yield the Missing sentinel rather than raising.
+    """
+    if stream_obj is None:
+        return None
+    spec_tags = stream_obj.model.spec.tags
+    if spec_tags is Missing:
+        return None
+    for spec_tag in spec_tags:
+        if spec_tag.name == name:
+            return spec_tag
+    return None
+
+
+def find_status_tag(stream_obj, name: str):
+    """Return the status tag Model entry whose `tag` is `name`, or None."""
+    if stream_obj is None:
+        return None
+    status_tags = stream_obj.model.status.tags
+    if status_tags is Missing:
+        return None
+    for status_tag in status_tags:
+        if status_tag.tag == name:
+            return status_tag
+    return None
+
+
+def tag_annotation(spec_tag, key: str) -> typing.Optional[str]:
+    """Return a spec tag annotation value, or None when absent."""
+    if spec_tag is None:
+        return None
+    value = spec_tag.annotations[key]
+    return None if value is Missing else value
+
+
+def count_import_failures(payload_is) -> typing.Tuple[int, int]:
+    """Return (total status tags, count of tags whose ImportSuccess is False)."""
+    status_tags = payload_is.model.status.tags
+    if status_tags is Missing:
+        return 0, 0
+    total = 0
+    failures = 0
+    for status_tag in status_tags:
+        total += 1
+        if status_tag.conditions is Missing:
+            continue
+        for condition in status_tag.conditions:
+            if condition.type == IMPORT_SUCCESS_CONDITION and condition.status == CONDITION_STATUS_FALSE:
+                failures += 1
+    return total, failures
+
+
+def job_status_summary(job) -> str:
+    """Render a batch job's succeeded/active/failed counts."""
+    status = job.model.status
+    succeeded = 0 if status.succeeded is Missing else status.succeeded
+    active = 0 if status.active is Missing else status.active
+    failed = 0 if status.failed is Missing else status.failed
+    return f'succeeded={succeeded} active={active} failed={failed}'
+
+
+def payload_phase(payload) -> ReleasePhase:
+    """Replicate the release-controller GetReleasePhase() precedence from a ReleasePayload."""
+    conditions = payload.model.status.conditions
+    if conditions is Missing:
+        return ReleasePhase.PENDING
+    created = False
+    for condition in conditions:
+        if condition.status != CONDITION_STATUS_TRUE:
+            continue
+        if condition.type == PayloadConditionType.ACCEPTED:
+            return ReleasePhase.ACCEPTED
+        if condition.type == PayloadConditionType.REJECTED:
+            return ReleasePhase.REJECTED
+        if condition.type == PayloadConditionType.FAILED:
+            return ReleasePhase.FAILED
+        if condition.type == PayloadConditionType.CREATED:
+            created = True
+    return ReleasePhase.READY if created else ReleasePhase.PENDING
+
+
+def discover_reset_target(ctx: dict, options: dict, product: str, private: bool, release: str, arch: str) -> ResetTarget:
+    """Gather the per-arch release-controller resources for a single (release, arch).
+
+    Coordinates are read from the live ReleasePayload when present (so naming
+    variants like release-5-multi / ci-release-multi resolve correctly), with
+    conventional fallbacks derived from generate_resource_values().
+    """
+    namespace, stream = generate_resource_values(product, 'release', arch, private)
+    target = ResetTarget(
+        release=release, arch=arch, namespace=namespace, stream=stream,
+        job_namespace=('ci-release' if arch == 'amd64' else f'ci-release-{arch}'),
+        job_name=release,
+    )
+
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(namespace), oc.options(options):
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                target.releasepayload_present = True
+                target.rp_phase = payload_phase(rp)
+                stream_name = rp.model.spec.payloadCoordinates.imagestreamName
+                if stream_name is not Missing:
+                    target.stream = stream_name
+                job_namespace = rp.model.status.releaseCreationJobResult.coordinates.namespace
+                if job_namespace is not Missing:
+                    target.job_namespace = job_namespace
+                job_name = rp.model.status.releaseCreationJobResult.coordinates.name
+                if job_name is not Missing:
+                    target.job_name = job_name
+
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                target.payload_is_present = True
+                target.status_tags, target.import_failures = count_import_failures(payload_is)
+
+            spec_tag = find_spec_tag(oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True), release)
+            if spec_tag is not None:
+                target.tag_present = True
+                target.tag_phase = tag_annotation(spec_tag, ANNOTATION_PHASE)
+                target.keep = tag_annotation(spec_tag, ANNOTATION_KEEP)
+
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
+            if job is not None:
+                target.job_present = True
+                target.job_status = job_status_summary(job)
+
+    return target
+
+
+def discover_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str) -> typing.List[VerifyProwJob]:
+    """List the verify ProwJobs for a release (label-selected; not arch-scoped)."""
+    prowjobs: typing.List[VerifyProwJob] = []
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(prow_namespace), oc.options(options):
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
+            for obj in selector.objects(ignore_not_found=True):
+                state = obj.model.status.state
+                prowjobs.append(VerifyProwJob(
+                    name=obj.model.metadata.name,
+                    state='unknown' if state is Missing else state,
+                ))
+    return prowjobs
+
+
+def current_keep_annotation(ctx: dict, options: dict, target: ResetTarget) -> typing.Optional[str]:
+    """Re-read the release tag's keep annotation.
+
+    Called immediately before deletion so a "keep" added after discovery still
+    protects the resources (guards against a check-then-act race).
+    """
+    with oc.options(ctx), oc.tracking(), oc.timeout(30):
+        with oc.project(target.namespace), oc.options(options):
+            spec_tag = find_spec_tag(oc.selector(f'imagestream/{target.stream}').object(ignore_not_found=True), target.release)
+            return tag_annotation(spec_tag, ANNOTATION_KEEP)
+
+
+def render_reset_report(release: str, targets: typing.List[ResetTarget],
+                        prowjobs: typing.List[VerifyProwJob], prow_namespace: str) -> str:
+    """Human-readable report of everything a reset would remove for a release."""
+    lines = [f'===== reset report: {release} =====']
+    for target in targets:
+        bits = [f'  [{target.arch:<8}] ns={target.namespace}']
+        if target.payload_is_present:
+            bits.append(f'payloadIS=yes(tags={target.status_tags},importFail={target.import_failures})')
+        else:
+            bits.append('payloadIS=absent')
+        bits.append(f'releaseTag={target.tag_phase if target.tag_present else "absent"}')
+        bits.append(f'releasePayload={target.rp_phase.value if target.rp_phase else "absent"}')
+        bits.append(f'creationJob=[{target.job_status}]' if target.job_present else 'creationJob=absent')
+        if target.keep:
+            bits.append('KEEP-ANNOTATED(will be skipped)')
+        lines.append(' '.join(bits))
+    states = Counter(prowjob.state for prowjob in prowjobs)
+    summary = ', '.join(f'{state}={count}' for state, count in sorted(states.items())) if prowjobs else 'none'
+    lines.append(f'  verify prowjobs in {prow_namespace} ({len(prowjobs)}): {summary}')
+    active = [prowjob for prowjob in prowjobs if prowjob.state in ACTIVE_PROWJOB_STATES]
+    if active:
+        lines.append(f'  WARNING: {len(active)} verify prowjob(s) still active — deletion will terminate them')
+    return '\n'.join(lines)
+
+
+def backup_reset_target(ctx: dict, options: dict, target: ResetTarget, output_dir: str) -> None:
+    """Back up every present resource for a (release, arch) to output_dir."""
+    ns, release, stream = target.namespace, target.release, target.stream
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(ns), oc.options(options):
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                path = write_backup_file(output_dir, f'{ns}_is', release, payload_is.model._primitive())
+                logger.info(f'Backup written to: {path}')
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                path = write_backup_file(output_dir, f'{ns}_releasepayload', release, rp.model._primitive())
+                logger.info(f'Backup written to: {path}')
+            stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
+            spec_tag = find_spec_tag(stream_obj, release)
+            status_tag = find_status_tag(stream_obj, release)
+            if spec_tag is not None or status_tag is not None:
+                entry = {
+                    'stream': stream,
+                    'namespace': ns,
+                    'spec_tag': None if spec_tag is None else spec_tag._primitive(),
+                    'status_tag': None if status_tag is None else status_tag._primitive(),
+                }
+                path = write_backup_file(output_dir, f'{ns}_{stream}-tag', release, entry)
+                logger.info(f'Backup written to: {path}')
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
+            if job is not None:
+                path = write_backup_file(output_dir, f'{target.job_namespace}_job', target.job_name, job.model._primitive())
+                logger.info(f'Backup written to: {path}')
+
+
+def backup_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str, output_dir: str) -> None:
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(prow_namespace), oc.options(options):
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
+            objs = [obj.model._primitive() for obj in selector.objects(ignore_not_found=True)]
+            if objs:
+                path = write_backup_file(output_dir, f'{prow_namespace}_prowjobs', release, objs)
+                logger.info(f'Backup written to: {path}')
+
+
+def delete_reset_target(ctx: dict, options: dict, target: ResetTarget) -> None:
+    """Delete the per-arch resources: creation job, ReleasePayload, release tag, payload IS."""
+    ns, release, stream = target.namespace, target.release, target.stream
+    if target.keep:
+        logger.warning(f'{ns}/{stream}:{release} is flagged "keep" — skipping this arch.')
+        return
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(target.job_namespace), oc.options(options):
+            job = oc.selector(f'job/{target.job_name}').object(ignore_not_found=True)
+            if job is not None:
+                logger.info(f'Deleting job: {target.job_namespace}/{target.job_name}')
+                job.delete(ignore_not_found=True)
+        with oc.project(ns), oc.options(options):
+            rp = oc.selector(f'releasepayload/{release}').object(ignore_not_found=True)
+            if rp is not None:
+                logger.info(f'Deleting releasepayload: {ns}/{release}')
+                rp.delete(ignore_not_found=True)
+            # Re-check the spec tag live (rather than trusting discovery-time state)
+            # so an already-removed tag does not abort the run.
+            stream_obj = oc.selector(f'imagestream/{stream}').object(ignore_not_found=True)
+            if find_spec_tag(stream_obj, release) is not None:
+                logger.info(f'Deleting release tag: {ns}/{stream}:{release}')
+                oc.invoke('tag', cmd_args=['--delete', f'{stream}:{release}'])
+            payload_is = oc.selector(f'imagestream/{release}').object(ignore_not_found=True)
+            if payload_is is not None:
+                logger.info(f'Deleting payload imagestream: {ns}/{release}')
+                payload_is.delete(ignore_not_found=True)
+
+
+def delete_verify_prowjobs(ctx: dict, options: dict, prow_namespace: str, release: str) -> None:
+    with oc.options(ctx), oc.tracking(), oc.timeout(300):
+        with oc.project(prow_namespace), oc.options(options):
+            selector = oc.selector('prowjobs', labels=verify_prowjob_labels(release))
+            count = len(selector.objects(ignore_not_found=True))
+            if count > 0:
+                logger.info(f'Deleting {count} verify prowjob(s) in {prow_namespace} for {release}')
+                selector.delete(ignore_not_found=True)
+
+
+def confirm_reset(release: str) -> ResetChoice:
+    """Per-release gate: [y]es delete / [w]rite backups only / [n]o skip."""
+    i = 1
+    while i <= 5:
+        answer = input(f'Reset {release}?  [y] delete  /  [w] write backups only  /  [n] skip: ').strip().lower()
+        if answer in ('y', 'yes'):
+            return ResetChoice.DELETE
+        if answer in ('w', 'write'):
+            return ResetChoice.WRITE_ONLY
+        if answer in ('n', 'no', ''):
+            return ResetChoice.SKIP
+        print('Please enter y, w, or n')
+        i += 1
+    return ResetChoice.SKIP
+
+
+def reset_releases(ctx: dict, options: dict, product: str, private: bool, prow_namespace: str,
+                   arches: typing.List[str], releases: typing.List[str], execute: bool,
+                   assume_yes: bool, keep_prowjobs: bool, output_dir: str) -> None:
+    for release in releases:
+        targets = [discover_reset_target(ctx, options, product, private, release, arch) for arch in arches]
+        prowjobs = discover_verify_prowjobs(ctx, options, prow_namespace, release)
+
+        report = render_reset_report(release, targets, prowjobs, prow_namespace)
+        logger.info('\n' + report)
+
+        if not execute:
+            logger.warning(f'[dry-run] {release}: no changes made. Specify "--execute" to apply.')
+            continue
+
+        choice = ResetChoice.DELETE if assume_yes else confirm_reset(release)
+        if choice == ResetChoice.SKIP:
+            logger.info(f'{release}: skipped, no changes made.')
+            continue
+
+        # Back up everything (for both "write-only" and "delete").
+        for target in targets:
+            backup_reset_target(ctx, options, target, output_dir)
+        backup_verify_prowjobs(ctx, options, prow_namespace, release, output_dir)
+        ts = int(round(time.time() * 1000))
+        report_file = f'{output_dir}/reset-report_{release}-{ts}.txt'
+        with open(report_file, mode='w', encoding='utf-8') as handle:
+            handle.write(report + '\n')
+        logger.info(f'Report written to: {report_file}')
+
+        if choice == ResetChoice.WRITE_ONLY:
+            logger.info(f'{release}: report and backups written to {output_dir}; no resources deleted.')
+            continue
+
+        # Re-read the keep annotation immediately before deleting (guards against a
+        # keep added between discovery and now). Verify ProwJobs are release-wide
+        # (not arch-scoped), so they are retained whenever ANY selected arch is
+        # keep-annotated; per-arch resources are still gated individually.
+        for target in targets:
+            target.keep = current_keep_annotation(ctx, options, target)
+        kept = [target for target in targets if target.keep]
+
+        if not keep_prowjobs:
+            if kept:
+                logger.warning(f'{release}: retaining shared verify ProwJobs; keep-annotated arch(es): {", ".join(target.arch for target in kept)}')
+            else:
+                delete_verify_prowjobs(ctx, options, prow_namespace, release)
+        for target in targets:
+            delete_reset_target(ctx, options, target)
+        logger.info(f'{release}: reset complete. Backups in {output_dir}.')
+
+
+# ----------------------------------------------------------------------------- #
+# reset-tags: delete stuck release tags from a stream so it regenerates
+# ----------------------------------------------------------------------------- #
+#
+# A lighter-weight companion to "reset". Nightly (and CI) streams have
+# maxUnreadyReleases: a single tag stuck in Pending occupies the slot and freezes
+# the stream, so no new payloads are created. Deleting the stuck tag(s) frees the
+# slot; the release-controller then regenerates the stream and GCs the orphaned
+# ReleasePayload / mirror / creation job on its own.
+#
+# Unlike "reset" this does NOT touch ReleasePayloads, creation jobs or verify
+# ProwJobs. It fetches the release imagestream exactly once and drives both the
+# selection and the per-tag backups from that single snapshot, so a transient API
+# read cannot leave a tag deleted without a backup.
+
+@dataclasses.dataclass
+class StreamTag:
+    """A release tag in a stream, carrying both its annotation phase and its
+    ReleasePayload (CRD) phase so reset-tags can decide safely."""
+    name: str
+    annotation_phase: typing.Optional[str]
+    crd_phase: typing.Optional[str]  # None when no ReleasePayload exists (orphaned)
+    keep: typing.Optional[str]
+
+    @property
+    def effective_phase(self) -> typing.Optional[str]:
+        # Mirrors GetTagPhase: the CRD phase wins when present, else the annotation.
+        return self.crd_phase if self.crd_phase is not None else self.annotation_phase
+
+    @property
+    def desynced(self) -> bool:
+        return (self.crd_phase is not None and self.annotation_phase is not None
+                and self.crd_phase != self.annotation_phase)
+
+
+def discover_release_imagestream(ctx: dict, options: dict, namespace: str, stream: str) -> typing.Optional[str]:
+    """Find the imagestream in `namespace` that holds `stream`'s release tags."""
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(namespace), oc.options(options):
+            for imagestream in oc.selector('imagestreams').objects(ignore_not_found=True):
+                spec_tags = imagestream.model.spec.tags
+                if spec_tags is Missing:
+                    continue
+                for spec_tag in spec_tags:
+                    if spec_tag.name == stream or spec_tag.name.startswith(f'{stream}-'):
+                        return imagestream.name()
+    return None
+
+
+def releasepayload_phase(ctx: dict, options: dict, namespace: str, name: str) -> typing.Optional[ReleasePhase]:
+    """Return the ReleasePayload (CRD) phase for a tag, or None when no ReleasePayload exists."""
+    with oc.options(ctx), oc.tracking(), oc.timeout(30):
+        with oc.project(namespace), oc.options(options):
+            rp = oc.selector(f'releasepayload/{name}').object(ignore_not_found=True)
+            return None if rp is None else payload_phase(rp)
+
+
+def collect_stream_tags(ctx: dict, options: dict, namespace: str, stream_obj, stream: str) -> typing.List[StreamTag]:
+    """All tags of `stream` (from the imagestream snapshot), each annotated with its CRD phase."""
+    tags: typing.List[StreamTag] = []
+    spec_tags = stream_obj.model.spec.tags
+    if spec_tags is Missing:
+        return tags
+    for spec_tag in spec_tags:
+        name = spec_tag.name
+        if name != stream and not name.startswith(f'{stream}-'):
+            continue
+        crd = releasepayload_phase(ctx, options, namespace, name)
+        tags.append(StreamTag(
+            name=name,
+            annotation_phase=tag_annotation(spec_tag, ANNOTATION_PHASE),
+            crd_phase=(crd.value if crd is not None else None),
+            keep=tag_annotation(spec_tag, ANNOTATION_KEEP),
+        ))
+    return tags
+
+
+def backup_stream_tag(stream_obj, namespace: str, imagestream: str, name: str, output_dir: str) -> None:
+    """Back up a tag's spec+status entry from an already-fetched imagestream snapshot."""
+    spec_tag = find_spec_tag(stream_obj, name)
+    status_tag = find_status_tag(stream_obj, name)
+    entry = {
+        'stream': imagestream,
+        'namespace': namespace,
+        'spec_tag': None if spec_tag is None else spec_tag._primitive(),
+        'status_tag': None if status_tag is None else status_tag._primitive(),
+    }
+    path = write_backup_file(output_dir, f'{namespace}_{imagestream}-tag', name, entry)
+    logger.info(f'Backup written to: {path}')
+
+
+def delete_stream_tag(ctx: dict, options: dict, namespace: str, imagestream: str, name: str) -> None:
+    logger.info(f'Deleting tag: {namespace}/{imagestream}:{name}')
+    with oc.options(ctx), oc.tracking(), oc.timeout(60):
+        with oc.project(namespace), oc.options(options):
+            oc.invoke('tag', cmd_args=['--delete', f'{imagestream}:{name}'])
+
+
+def confirm_delete_batch(count: int, description: str) -> bool:
+    """Single confirmation for a batch tag deletion."""
+    i = 1
+    while i <= 5:
+        answer = input(f'Delete {count} tag(s) from {description}? (yes or no) ').strip().lower()
+        if answer in ('yes', 'y', 'ye'):
+            return True
+        if answer in ('no', 'n', '0', ''):
+            return False
+        print('Please enter yes or no')
+        i += 1
+    return False
+
+
+def reset_tags(ctx: dict, options: dict, product: str, private: bool, arch: str,
+               imagestream: typing.Optional[str], stream: str, phases: typing.List[str],
+               execute: bool, assume_yes: bool, output_dir: str) -> None:
+    namespace, _ = generate_resource_values(product, 'release', arch, private)
+
+    if imagestream is None:
+        imagestream = discover_release_imagestream(ctx, options, namespace, stream)
+        if imagestream is None:
+            logger.error(f'Unable to find an imagestream in {namespace} holding tags for stream "{stream}". '
+                         f'Specify one with -i/--imagestream.')
+            return
+        logger.info(f'Discovered imagestream: {namespace}/{imagestream}')
+
+    # Fetch the imagestream exactly once; drive selection and backups from it.
+    with oc.options(ctx), oc.tracking(), oc.timeout(120):
+        with oc.project(namespace), oc.options(options):
+            stream_obj = oc.selector(f'imagestream/{imagestream}').object(ignore_not_found=True)
+    if stream_obj is None:
+        logger.error(f'Imagestream not found: {namespace}/{imagestream}')
+        return
+
+    phase_filter = set(phases)
+    tags = collect_stream_tags(ctx, options, namespace, stream_obj, stream)
+    if not tags:
+        logger.info(f'No tags found for stream "{stream}" in {namespace}/{imagestream}.')
+        return
+
+    # Decide per tag using the EFFECTIVE (CRD-first) phase, never the annotation alone.
+    # An Accepted ReleasePayload is a good release and is never deleted, regardless of a
+    # stale Pending annotation (the OCPCRT-598 desync).
+    deletable: typing.List[StreamTag] = []
+    skipped: typing.List[typing.Tuple[StreamTag, str]] = []
+    for tag in tags:
+        if tag.keep:
+            skipped.append((tag, 'keep annotation'))
+        elif tag.crd_phase == ReleasePhase.ACCEPTED.value:
+            skipped.append((tag, 'ReleasePayload Accepted — refusing to delete a good release'))
+        elif tag.effective_phase not in phase_filter:
+            skipped.append((tag, f'effective phase "{tag.effective_phase}" not in target {sorted(phase_filter)}'))
+        else:
+            deletable.append(tag)
+
+    logger.info(f'Stream "{stream}" in {namespace}/{imagestream}: {len(tags)} tag(s); target phases '
+                f'{sorted(phase_filter)}; {len(deletable)} to delete, {len(skipped)} skipped')
+    for tag in tags:
+        decision = 'DELETE' if tag in deletable else 'skip'
+        desync = '  [DESYNC annotation!=CRD]' if tag.desynced else ''
+        logger.info(f'  [{decision:<6}] {tag.name}  annotation={tag.annotation_phase} crd={tag.crd_phase or "none"}{desync}')
+    for tag, reason in skipped:
+        logger.info(f'    skipped {tag.name}: {reason}')
+
+    if not deletable:
+        logger.info('Nothing to delete.')
+        return
+
+    if not execute:
+        logger.warning(f'[dry-run] would delete {len(deletable)} tag(s). Specify "--execute" to apply.')
+        return
+
+    if not assume_yes and not confirm_delete_batch(len(deletable), f'{namespace}/{imagestream} [{stream}]'):
+        logger.info('Aborted, no changes made.')
+        return
+
+    for tag in deletable:
+        backup_stream_tag(stream_obj, namespace, imagestream, tag.name, output_dir)
+        delete_stream_tag(ctx, options, namespace, imagestream, tag.name)
+    logger.info(f'reset-tags complete: deleted {len(deletable)} tag(s) from {namespace}/{imagestream}. '
+                f'Backups in {output_dir}.')
+
+
 class NightlyComponents(typing.NamedTuple):
     major_minor: str
     arch: str
@@ -728,6 +1345,28 @@ if __name__ == '__main__':
     import_parser.set_defaults(action='import')
     import_parser.add_argument('imagestream', help='The name of the imagestream to process (e.g. 4.13-art-latest)')
 
+    reset_parser = subparsers.add_parser('reset',
+                                         help='Purge a release\'s controller state (payload imagestream, release tag, '
+                                              'ReleasePayload, creation job, verify ProwJobs) across arches so it can be '
+                                              'cleanly re-promoted without a version bump')
+    reset_parser.set_defaults(action='reset')
+    reset_parser.add_argument('releases', help='Version(s) to reset (e.g. 4.19.48 5.0.0-rc.3)', nargs='+', type=str)
+    reset_parser.add_argument('--arches', help='Arches to process (default: all supported)', nargs='+',
+                              choices=SUPPORTED_ARCHITECTURES, default=SUPPORTED_ARCHITECTURES)
+    reset_parser.add_argument('--prow-namespace', help='Namespace holding verify ProwJobs (default: "ci")', default='ci')
+    reset_parser.add_argument('-y', '--yes', help='Skip the per-release prompt (assume "y"/delete)', action='store_true')
+    reset_parser.add_argument('--keep-prowjobs', help='Do not delete verify ProwJobs', action='store_true')
+
+    reset_tags_parser = subparsers.add_parser('reset-tags',
+                                              help='Delete stuck release tags (default: Pending) from a stream so the '
+                                                   'release-controller regenerates it (frees the maxUnreadyReleases slot). '
+                                                   'Fetches the imagestream once and backs up each tag before deletion.')
+    reset_tags_parser.set_defaults(action='reset-tags')
+    reset_tags_parser.add_argument('stream', help='The release stream whose stuck tags to delete (e.g. 5.1.0-0.nightly-arm64)')
+    reset_tags_parser.add_argument('--phases', help='Only delete tags in these phases (default: Pending)', nargs='+',
+                                   default=[ReleasePhase.PENDING.value])
+    reset_tags_parser.add_argument('-y', '--yes', help='Skip the confirmation prompt', action='store_true')
+
     keep_parser = subparsers.add_parser('keep',
                                         help='Add/Delete the keep annotation from the respective release or list all imagestreamtags with keep annotation if no options are specified')
     keep_parser.set_defaults(action='keep')
@@ -827,6 +1466,12 @@ if __name__ == '__main__':
         archive(context, release_namespace, release_image_stream, args['prefixes'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'import':
         reimport(context, release_namespace, release_image_stream, args['execute'])
+    elif args['action'] == 'reset':
+        reset_releases(context, options, args['name'], args['private'], args['prow_namespace'], args['arches'],
+                       args['releases'], args['execute'], args['yes'], args['keep_prowjobs'], output_dir)
+    elif args['action'] == 'reset-tags':
+        reset_tags(context, options, args['name'], args['private'], args['architecture'], args['imagestream'],
+                   args['stream'], args['phases'], args['execute'], args['yes'], output_dir)
     elif args['action'] == 'revert':
         revert(context, args['to_nightly'], args['component'], args['execute'])
     elif args['action'] == 'bypass':
