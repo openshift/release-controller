@@ -219,6 +219,11 @@ func ParseReleaseConfig(data string, configCache *lru.Cache) (*ReleaseConfig, er
 				return nil, fmt.Errorf("externalRegistry publish for %s has no secretName", name)
 			}
 		}
+		if publish.KonfluxRelease != nil {
+			if err := ValidateKonfluxReleasePublish(name, cfg.As, publish.KonfluxRelease); err != nil {
+				return nil, err
+			}
+		}
 	}
 	copied := *cfg
 	if configCache != nil {
