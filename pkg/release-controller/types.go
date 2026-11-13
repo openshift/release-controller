@@ -142,6 +142,10 @@ type ReleaseConfig struct {
 	// `source` then the controller will attempt to keep the originating reference in place.
 	ReferenceMode string `json:"referenceMode"`
 
+	// AllowMissingImages lets release creation continue when an operator references
+	// an image that is absent from the payload.
+	AllowMissingImages bool `json:"allowMissingImages,omitempty"`
+
 	// PullSecretName is the name of a pull secret in the release job namespace to mount
 	// into the pod that will create the release. The secret must contain a single file
 	// config.json with a valid Docker auths array.
