@@ -35,11 +35,15 @@ func (c *Controller) ensureReleaseJob(release *releasecontroller.Release, name s
 		if c.manifestListMode && !release.Config.DisableManifestListMode {
 			manifestListMode = "true"
 		}
+		allowMissingImages := ""
+		if release.Config.AllowMissingImages {
+			allowMissingImages = " --allow-missing-images=true"
+		}
 
 		job.Spec.Template.Spec.Containers[0].Command = []string{
 			"/bin/bash", "-c",
 			prefix + `
-			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"
+			oc adm release new "--name=$1" "--from-image-stream=$2" "--namespace=$3" "--to-image=$4" "--reference-mode=$5" "--keep-manifest-list=$6"` + allowMissingImages + `
 			`,
 			"",
 			name, mirror.Name, mirror.Namespace, toImage, release.Config.ReferenceMode, manifestListMode,
