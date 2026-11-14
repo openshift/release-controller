@@ -61,7 +61,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ChangeLog: %v\n", err)
 		os.Exit(1)
 	}
-	out, err = rhcos.TransformMarkDownOutput(out, *fromTag, *toTag, archName, archExt)
+	out, err = rhcos.TransformMarkDownOutput(out, *fromTag, *toTag, archName, archExt, info, *to)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "TransformMarkDownOutput: %v\n", err)
 		os.Exit(1)
