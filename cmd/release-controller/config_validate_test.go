@@ -925,3 +925,31 @@ func TestValidateReleaseQualifiersConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateUpgradeJobsPreviousMinorOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name, target string
+		upgrade      bool
+		wantError    bool
+	}{
+		{name: "valid policy", target: "5.0", upgrade: true},
+		{name: "invalid target version", target: "5.0.0", upgrade: true, wantError: true},
+		{name: "not an upgrade job", target: "5.0", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := &releasecontroller.PreviousMinorOverride{TargetVersion: tc.target, Stream: "4-scos-stable", Version: "4.22"}
+			for _, periodic := range []bool{false, true} {
+				config := releasecontroller.ReleaseConfig{Name: "5-scos-stable"}
+				if periodic {
+					config.Periodic = map[string]releasecontroller.ReleasePeriodic{"upgrade-minor": {Upgrade: tc.upgrade, UpgradeFrom: "PreviousMinor", PreviousMinorOverride: policy}}
+				} else {
+					config.Verify = map[string]releasecontroller.ReleaseVerification{"upgrade-minor": {Upgrade: tc.upgrade, UpgradeFrom: "PreviousMinor", PreviousMinorOverride: policy}}
+				}
+				errs := validateUpgradeJobs([]releasecontroller.ReleaseConfig{config})
+				if (len(errs) > 0) != tc.wantError {
+					t.Errorf("periodic=%v: errors = %v, wantError=%v", periodic, errs, tc.wantError)
+				}
+			}
+		})
+	}
+}
